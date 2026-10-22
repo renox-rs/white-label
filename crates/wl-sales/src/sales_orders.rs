@@ -31,8 +31,8 @@ use renox::serde_json::Value;
 use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::invoicing::{DEFAULT_CURRENCY, InvoiceDraft, invoicer};
 use wl_kernel::sales::{
-    CancelByVertical, FulfilOrder, FulfilledLine, FulfilmentOutcome, OrderFulfilment,
-    OrderLineView, OrderView, ReverseFulfilment, SALES_ORDER_SUBJECT_TYPE, SalesFuture,
+    AmendOrder, CancelByVertical, CancelLine, CancelOrder, ChangeOutcome, FulfilOrder, FulfilledLine, FulfilmentOutcome, OrderFulfilment,
+    NoGoodsRefund, OrderLineView, OrderView, ReverseFulfilment, SALES_ORDER_SUBJECT_TYPE, SalesFuture,
     SalesOrderCancelled, SalesOrderClosed, SalesOrderConfirmed, SalesOrderDesk,
     SalesOrderFulfilled, SalesOrderFulfilmentReversed, SalesOrderId, SalesOrderPlaced,
     SalesOrderRejected,
@@ -618,6 +618,9 @@ async fn view_of(state: &AppState, id: i64) -> Result<Option<OrderView>> {
         gross_total: order.gross_total,
         legal_entity: order.legal_entity_id,
         status: order.status.as_str().to_owned(),
+        revision: order.revision,
+        refunded_amount: order.refunded_amount,
+        aggregator: config_of(state).is_aggregator_channel(&order.channel),
         lines: lines
             .iter()
             .map(|line| OrderLineView {
@@ -710,6 +713,132 @@ impl SalesOrderDesk for Desk {
             .await
             .map(|_| ())
         })
+    }
+
+    fn amend<'a>(
+        &'a self,
+        state: &'a AppState,
+        user: &'a AuthUser,
+        request: AmendOrder,
+    ) -> SalesFuture<'a, ChangeOutcome> {
+        Box::pin(async move {
+            let order = SalesOrder::find_or_404(&state.db, request.order.0).await?;
+            let lines = SaleLine::of(&state.db, &order.subject()).await?;
+            let mut input =
+                crate::amend::AmendInput::new(&request.reason).seen_at(request.seen_revision);
+            for change in &request.changes {
+                // The discount of a line stays as it is.
+                let discount = lines
+                    .iter()
+                    .find(|line| line.id == change.line)
+                    .map_or(0, |line| line.discount);
+                input = input.line(change.line, change.quantity_milli, change.unit_price, discount);
+            }
+            for added in &request.added {
+                input = input.add(&added.item_code, added.quantity_milli, added.unit_price);
+                if let Some(line) = input.added.last_mut() {
+                    line.description = added.description.clone();
+                }
+            }
+            match crate::amend::amend(state, user, order.id, input).await? {
+                crate::amend::AmendOutcome::Amended(_) => Ok(ChangeOutcome::Done),
+                crate::amend::AmendOutcome::Waiting(waiting) => {
+                    Ok(ChangeOutcome::Waiting { request: waiting.id })
+                }
+            }
+        })
+    }
+
+    fn cancel_line<'a>(
+        &'a self,
+        state: &'a AppState,
+        user: &'a AuthUser,
+        request: CancelLine,
+    ) -> SalesFuture<'a, ChangeOutcome> {
+        Box::pin(async move {
+            let order = SalesOrder::find_or_404(&state.db, request.order.0).await?;
+            let lines = SaleLine::of(&state.db, &order.subject()).await?;
+            let open = lines
+                .iter()
+                .find(|line| line.id == request.line)
+                .map_or(0, SaleLine::open_milli);
+            let quantity = if request.quantity_milli > 0 {
+                request.quantity_milli
+            } else {
+                open
+            };
+            // No fee: the vertical decides the money.
+            let mut choice = crate::cancel_lines::WantedLine::default().fee(0);
+            choice.outcome = request.outcome;
+            let outcome = crate::cancel_lines::cancel_line(
+                state,
+                user,
+                order.id,
+                request.line,
+                quantity,
+                &request.reason,
+                Some(choice),
+            )
+            .await?;
+            Ok(change_of(outcome))
+        })
+    }
+
+    fn cancel_order<'a>(
+        &'a self,
+        state: &'a AppState,
+        user: &'a AuthUser,
+        request: CancelOrder,
+    ) -> SalesFuture<'a, ChangeOutcome> {
+        Box::pin(async move {
+            let choices = request
+                .outcomes
+                .iter()
+                .map(|(line, kind)| {
+                    crate::cancel_lines::WantedLine::new(*line, 0)
+                        .outcome(*kind)
+                        .fee(0)
+                })
+                .collect();
+            let outcome = crate::cancel_lines::cancel_order(
+                state,
+                user,
+                request.order.0,
+                &request.reason,
+                choices,
+            )
+            .await?;
+            Ok(change_of(outcome))
+        })
+    }
+
+    fn refund_no_goods<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: NoGoodsRefund,
+    ) -> SalesFuture<'a, i64> {
+        Box::pin(async move {
+            let sale = Subject::new(SALES_ORDER_SUBJECT_TYPE, request.order.0);
+            let mut new = crate::sales_returns::NewReturn::no_goods(sale)
+                .reason(&request.reason)
+                .complaint(&request.category, &request.party);
+            for (line, fils) in &request.lines {
+                new = new.refund_line(*line, *fils);
+            }
+            let done =
+                crate::sales_returns::refund_by_vertical(state, new, request.credit_only).await?;
+            Ok(done.id)
+        })
+    }
+}
+
+/// What a cancellation of the kernel's desk did, as the vertical reads it.
+fn change_of(outcome: crate::cancel_lines::CancelOutcome) -> ChangeOutcome {
+    match outcome {
+        crate::cancel_lines::CancelOutcome::Done(_) => ChangeOutcome::Done,
+        crate::cancel_lines::CancelOutcome::Waiting(waiting) => {
+            ChangeOutcome::Waiting { request: waiting.id }
+        }
     }
 }
 

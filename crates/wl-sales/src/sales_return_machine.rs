@@ -93,6 +93,10 @@ pub struct ResolveInput {
     /// Why the service found the resolution not acceptable (a cap, a value
     /// not in the settings), `None` when nothing is wrong.
     pub problem: Option<String>,
+    /// Whether the vertical resolves the *no goods* return as the system
+    /// (06: a delivery reversed after review): a refund or a credit note, with
+    /// no approval, and a credit note names no document (nothing was paid).
+    pub by_vertical: bool,
 }
 
 /// A guard that fails with the English `key` unless `ok`.
@@ -268,7 +272,9 @@ fn resolving(
             let input = ctx.input_as::<ResolveInput>().ok();
             Box::pin(async move {
                 let ok = input.is_none_or(|i| {
-                    i.resolution != Some(ReturnResolution::CreditNote) || i.credit_note.is_some()
+                    i.resolution != Some(ReturnResolution::CreditNote)
+                        || i.credit_note.is_some()
+                        || i.by_vertical
                 });
                 check(ok, "wl_sales.returns.problem.credit_note")
             })
@@ -285,7 +291,9 @@ fn resolving(
             let wrong = channel_only
                 && ctx
                     .input_as::<ResolveInput>()
-                    .is_ok_and(|i| i.resolution != Some(ReturnResolution::RefundedByChannel));
+                    .is_ok_and(|i| {
+                        i.resolution != Some(ReturnResolution::RefundedByChannel) && !i.by_vertical
+                    });
             Box::pin(async move { check(!wrong, "wl_sales.returns.problem.channel_only") })
         })
         .effect(|r: &SalesReturn, ctx, tx| {

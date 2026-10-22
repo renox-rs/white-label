@@ -1316,6 +1316,14 @@ pub struct OrderView {
     pub legal_entity: Option<i64>,
     /// The order's status, by its stored name.
     pub status: String,
+    /// The revision in force (1 until the order is amended).
+    pub revision: i64,
+    /// What was refunded after the order was handed over, in fils (sales
+    /// returns of kind *no goods*, BL-SAL-14).
+    pub refunded_amount: i64,
+    /// Whether the channel is an aggregator's: its orders are changed on the
+    /// aggregator's own tablet and it refunds its customer itself.
+    pub aggregator: bool,
     /// The lines, in order.
     pub lines: Vec<OrderLineView>,
 }
@@ -1337,9 +1345,110 @@ pub struct CancelByVertical {
     pub by: Option<i64>,
 }
 
+/// What a change asked of the sales order did (06: `amend`, `cancel_line`,
+/// `cancel`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeOutcome {
+    /// The change is made.
+    Done,
+    /// A manager must approve first (`SAL.ACL.01`, `SAL.ACL.05`): the request
+    /// `request` waits and nothing changed yet. The vertical hears of the
+    /// change when it is made (`SalesOrderAmended`, `SalesOrderLineCancelled`,
+    /// `SalesOrderCancelled`).
+    Waiting {
+        /// The approval request (`ApprovalRequest` id).
+        request: i64,
+    },
+}
+
+/// The new quantity and price of one line of an amendment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmendChange {
+    /// The sale line.
+    pub line: i64,
+    /// The quantity it will have, in thousandths (0 drops the line).
+    pub quantity_milli: i64,
+    /// The price of one unit before VAT, in fils.
+    pub unit_price: i64,
+}
+
+/// A line an amendment adds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmendAdd {
+    /// The item code.
+    pub item_code: String,
+    /// The description.
+    pub description: String,
+    /// The quantity, in thousandths.
+    pub quantity_milli: i64,
+    /// The price of one unit before VAT, in fils.
+    pub unit_price: i64,
+}
+
+/// An amendment of a placed order as a new revision (BL-SAL-05).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmendOrder {
+    /// The order.
+    pub order: SalesOrderId,
+    /// Why.
+    pub reason: String,
+    /// The revision the user saw; 0 when not given.
+    pub seen_revision: i64,
+    /// The lines that change; the discount of a line stays.
+    pub changes: Vec<AmendChange>,
+    /// The lines that are added.
+    pub added: Vec<AmendAdd>,
+}
+
+/// A cancelled line (BL-SAL-08).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CancelLine {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The sale line.
+    pub line: i64,
+    /// The quantity cancelled, in thousandths; 0 cancels all that is open.
+    pub quantity_milli: i64,
+    /// Why.
+    pub reason: String,
+    /// What happens to the goods when the line's fulfilment started.
+    pub outcome: Option<LineOutcomeKind>,
+}
+
+/// A cancelled order, as a user asks for it (BL-SAL-07).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CancelOrder {
+    /// The order.
+    pub order: SalesOrderId,
+    /// Why.
+    pub reason: String,
+    /// What happens to the goods of each line the fulfilment had started.
+    pub outcomes: Vec<(i64, LineOutcomeKind)>,
+}
+
+/// A refund after completion with nothing coming back, raised and resolved
+/// at once by the vertical as the system (BL-SAL-14): 06 reverses a delivery.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoGoodsRefund {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The sale lines and the amount with VAT refunded of each, in fils.
+    pub lines: Vec<(i64, i64)>,
+    /// The complaint category (a stored name of the sales settings).
+    pub category: String,
+    /// The responsible party (a stored name of the sales settings).
+    pub party: String,
+    /// Why, in words.
+    pub reason: String,
+    /// Resolve by credit note only: no refund payment is asked (cash on
+    /// delivery that nobody paid).
+    pub credit_only: bool,
+}
+
 /// What a vertical may ask of the sales orders without depending on
 /// `wl-sales`: read an order with its lines, accept or reject it as a user,
-/// and cancel it as the system. `wl-sales` provides it; without that module
+/// cancel it as the system, change it as a user (amend, cancel a line or the
+/// order) and refund it after completion. `wl-sales` provides it; without that module
 /// [`order_desk`] gives [`NoSalesOrderDesk`], which knows no order.
 pub trait SalesOrderDesk: Send + Sync + 'static {
     /// The order `order` with its lines, or `None`.
@@ -1380,6 +1489,51 @@ pub trait SalesOrderDesk: Send + Sync + 'static {
         _state: &'a AppState,
         _request: CancelByVertical,
     ) -> SalesFuture<'a, ()> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Amends the order as `user` (`sales_orders.amend`); a started line asks
+    /// a manager first.
+    fn amend<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _user: &'a AuthUser,
+        _request: AmendOrder,
+    ) -> SalesFuture<'a, ChangeOutcome> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Cancels one line as `user` (`sales_orders.cancel`); a started line
+    /// needs an outcome and a manager.
+    fn cancel_line<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _user: &'a AuthUser,
+        _request: CancelLine,
+    ) -> SalesFuture<'a, ChangeOutcome> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Cancels the whole order as `user` (`sales_orders.cancel`); a started
+    /// line needs an outcome, and a started line or a paid order above the
+    /// limit needs a manager.
+    fn cancel_order<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _user: &'a AuthUser,
+        _request: CancelOrder,
+    ) -> SalesFuture<'a, ChangeOutcome> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Raises a *no goods* return of the handed-over order and resolves it as
+    /// the system, with a refund or by credit note only. Returns the return's
+    /// id.
+    fn refund_no_goods<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: NoGoodsRefund,
+    ) -> SalesFuture<'a, i64> {
         Box::pin(async { Err(Error::NotFound) })
     }
 }

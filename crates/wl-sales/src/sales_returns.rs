@@ -643,6 +643,54 @@ pub async fn refund_by_channel(state: &AppState, new: NewReturn) -> Result<Sales
     resolve_by_channel(state, created.id).await
 }
 
+/// Raises the *no goods* return `new` of a handed-over order and resolves it
+/// as the system for the vertical (06: a delivery reversed after review),
+/// with no approval: by a refund, or by credit note only when `credit_only`
+/// (cash on delivery nobody paid: no refund payment is asked and no document
+/// is named). The order's amount refunded rises, and the cap still applies.
+///
+/// # Errors
+///
+/// 422 for everything [`request`] refuses and when the complaint category or
+/// the responsible party is missing.
+pub async fn refund_by_vertical(
+    state: &AppState,
+    new: NewReturn,
+    credit_only: bool,
+) -> Result<SalesReturn> {
+    let new = NewReturn {
+        kind: ReturnKind::NoGoods,
+        ..new
+    };
+    let created = request(state, new).await?;
+    let resolution = if credit_only {
+        ReturnResolution::CreditNote
+    } else {
+        ReturnResolution::Refund
+    };
+    let input = checked(
+        state,
+        &created,
+        ResolveInput {
+            resolution: Some(resolution),
+            complaint_category: created.complaint_category.clone(),
+            responsible_party: created.responsible_party.clone(),
+            by_vertical: true,
+            ..ResolveInput::default()
+        },
+        None,
+    )
+    .await?;
+    let _ = created
+        .transition(RESOLVE_SYSTEM)
+        .by_system()
+        .input(&input)
+        .run(state)
+        .await
+        .map_err(|e| e.into_error())?;
+    SalesReturn::find_or_404(&state.db, created.id).await
+}
+
 /// Resolves the *no goods* return `id` as the system, *refunded by the
 /// channel*, with the category and party it was raised with.
 ///
