@@ -407,3 +407,36 @@ async fn the_permits_name_their_campaign() {
         .assert_ok()
         .assert_see(&campaign);
 }
+
+/// A ticket names the record it is about: the claim by its number
+/// (`CLM-0004`), never `clinics.claim #4`, on its page and in the list.
+#[renox::test]
+async fn the_tickets_name_the_record_they_are_about() {
+    let app = booted().await;
+    host::clinics_demo::seed(app.kernel()).await.unwrap();
+    let admin = User::find_by_email(app.db(), "admin@palmgrove.example")
+        .await
+        .unwrap()
+        .expect("the demo administrator");
+    app.acting_as(&admin);
+    let ticket = count(
+        &app,
+        "select min(id) from wl_ticketing_tickets where subject_type = 'clinics.claim'",
+    )
+    .await;
+    assert!(ticket > 0, "the demo has a ticket about a claim");
+    let claim = count(
+        &app,
+        &format!("select subject_id from wl_ticketing_tickets where id = {ticket}"),
+    )
+    .await;
+    app.get(&format!("/tickets/{ticket}"))
+        .await
+        .assert_ok()
+        .assert_see(&format!("CLM-{claim:04}"))
+        .assert_dont_see("clinics.claim");
+    app.get("/tickets")
+        .await
+        .assert_ok()
+        .assert_dont_see("clinics.claim");
+}

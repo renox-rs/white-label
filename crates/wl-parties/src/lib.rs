@@ -426,6 +426,18 @@ impl Module for WlParties {
     }
 
     fn register(&self, app: &mut Registry) {
+        // A page that holds only a party's id (a ticket, a document) shows its
+        // name.
+        wl_kernel::documents::register_subject_label(
+            wl_kernel::parties::PARTY_SUBJECT_TYPE,
+            |db, id| {
+                Box::pin(async move {
+                    Ok(Party::find(db, id)
+                        .await?
+                        .map(|party| format!("{} · {}", party.code, party.name_in("en"))))
+                })
+            },
+        );
         app.model::<Party>()
             .model::<PersonDetails>()
             .model::<CompanyDetails>()

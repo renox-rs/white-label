@@ -220,6 +220,18 @@ impl Module for WlScheduling {
     }
 
     fn register(&self, app: &mut Registry) {
+        // A page that holds only a booking's id (a ticket, a task) shows its
+        // number.
+        wl_kernel::documents::register_subject_label(
+            wl_kernel::scheduling::BOOKING_SUBJECT_TYPE,
+            |db, id| {
+                Box::pin(async move {
+                    Ok(booking::Booking::find(db, id)
+                        .await?
+                        .map(|booking| booking.number))
+                })
+            },
+        );
         app.model::<Resource>()
             .model::<ServiceType>()
             .model::<ServiceResource>()

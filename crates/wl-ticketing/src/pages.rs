@@ -158,7 +158,10 @@ fn grid_with(t: Text<'_>) -> Grid {
         )
         .column(
             Column::text("subject", &t("fields.subject"))
-                .computed("{T}.\"subject_type\" || ' #' || {T}.\"subject_id\""),
+                // `clinics.claim` and `4` read as `clinics claim #4`.
+                .computed(
+                    "REPLACE(REPLACE({T}.\"subject_type\", '.', ' '), '_', ' ') || ' #' || {T}.\"subject_id\"",
+                ),
         )
         .column(Column::related(
             "category",
@@ -705,6 +708,20 @@ async fn comment_rows(
     Ok(rows)
 }
 
+/// The record a ticket is about, for people: its registered label
+/// (`CLM-0004`) when its module has one, else the type in words and the id
+/// (`clinics claim #4`).
+async fn subject_text(db: &Db, ticket: &Ticket) -> Result<String> {
+    if let Some(label) = wl_kernel::documents::subject_label(db, &ticket.subject()).await? {
+        return Ok(label);
+    }
+    Ok(format!(
+        "{} #{}",
+        ticket.subject_type.replace(['.', '_'], " "),
+        ticket.subject_id
+    ))
+}
+
 /// `GET /tickets/{id}`: the card with its service level times, the actions
 /// for its state, the assign sheet, the reassignment history and the
 /// timeline.
@@ -741,7 +758,7 @@ async fn show(
             .unwrap_or_default(),
         priority: t(&format!("priority.{}", ticket.priority.as_str())),
         channel: t(&format!("channel.{}", ticket.channel.as_str())),
-        subject: format!("{} #{}", ticket.subject_type, ticket.subject_id),
+        subject: subject_text(&state.db, &ticket).await?,
         requester,
         assignee,
         visit: when(&state, ticket.visit_at),

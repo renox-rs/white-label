@@ -209,6 +209,9 @@ impl Module for Clinics {
         visit_machine::register();
         // A bill or a document that names the visit it comes from shows
         // `VIS-0009`, not `clinics.visit:9`.
+        wl_kernel::documents::register_subject_label(claim::CLAIM_SUBJECT_TYPE, |db, id| {
+            Box::pin(async move { Ok(Claim::find(db, id).await?.map(|claim| claim.number())) })
+        });
         wl_kernel::documents::register_subject_label(visit::VISIT_SUBJECT_TYPE, |db, id| {
             Box::pin(async move { Ok(Visit::find(db, id).await?.map(|visit| visit.number())) })
         });
