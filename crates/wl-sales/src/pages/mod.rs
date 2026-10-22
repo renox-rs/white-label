@@ -37,3 +37,14 @@ pub fn routes() -> Routes {
         .merge(sales_returns::routes())
         .merge(segments::routes())
 }
+
+/// The name of the party `id` in the page's language, else `#id`: a member
+/// or a customer is shown by name, never by the number of the party.
+pub(crate) async fn party_name(state: &AppState, lang: &Lang, id: i64) -> String {
+    wl_kernel::parties::directory(state)
+        .display_name(&state.db, wl_kernel::PartyId(id), &lang.locale)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| format!("#{id}"))
+}

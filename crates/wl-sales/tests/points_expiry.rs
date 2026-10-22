@@ -176,6 +176,10 @@ async fn a_reminder_that_gave_up_does_not_stop_the_lot_expiring_and_the_account_
         .get("/loyalty")
         .await
         .assert_ok()
+        // The member is shown by name (`#7` where no directory knows the
+        // party), under the heading "Loyalty member", not as a bare party id.
+        .assert_see("#7")
+        .assert_see("Loyalty member")
         .assert_dont_see("Reminder not delivered");
 
     // The message gives up (wl-notify emits this when every channel failed).
