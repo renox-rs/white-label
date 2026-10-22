@@ -104,13 +104,17 @@ impl Module for Manpower {
             .view_data::<pages::RequestsPage>()
             .view_data::<pages::DeploymentsPage>()
             .view_data::<screens::contract_page::ContractPage>()
-            .view_data::<screens::request_page::RequestPage>();
+            .view_data::<screens::request_page::RequestPage>()
+            .view_data::<screens::deployment_page::DeploymentPage>();
         // An approval of a contract or a request links to its page.
         wl_kernel::approvals::register_subject_link(contract::SUBJECT_TYPE, |id| {
             screens::contract_page::url(id)
         });
         wl_kernel::approvals::register_subject_link(request::SUBJECT_TYPE, |id| {
             screens::request_page::url(id)
+        });
+        wl_kernel::approvals::register_subject_link(deployment::SUBJECT_TYPE, |id| {
+            screens::deployment_page::url(id)
         });
         app.templates(|env| {
             for (name, source) in VIEWS.iter().chain(screens::VIEWS) {

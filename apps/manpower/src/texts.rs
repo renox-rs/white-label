@@ -414,6 +414,32 @@ const TEXTS: &[(&str, &str)] = &[
         "manpower.deployment.end_reason",
         "Give a reason you may use: the end date has come, or another worker took the place.",
     ),
+    // The checks of an activation, in words (BL-MPW-24).
+    (
+        "manpower.check.expired",
+        "{{ kind }} of {{ worker }} expired on {{ date }}",
+    ),
+    (
+        "manpower.check.missing",
+        "{{ kind }} of {{ worker }} is missing",
+    ),
+    (
+        "manpower.check.rejected",
+        "{{ kind }} of {{ worker }} was rejected",
+    ),
+    (
+        "manpower.check.pending",
+        "{{ kind }} of {{ worker }} is not accepted yet",
+    ),
+    (
+        "manpower.check.override_allowed",
+        "(can be overridden with approval)",
+    ),
+    ("manpower.check.override_never", "(cannot be overridden)"),
+    (
+        "manpower.check.hold",
+        "The contract is on hold. {{ detail }}",
+    ),
     (
         "manpower.deployment.employee_not_active",
         "The employee is not active in HR: onboarding, leave, notice and exit do not start a deployment.",
@@ -592,7 +618,7 @@ const TEXTS: &[(&str, &str)] = &[
     // Ending for a reason that needs more (§7.1 `end`, BL-MPW-14).
     (
         "manpower.end.note_required",
-        "Give the client's note: why the client rejected the worker.",
+        "Write the client's note: why the client rejected the worker.",
     ),
     (
         "manpower.end.before_today",
@@ -1271,6 +1297,236 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "manpower.screen.requests.client_note",
         "The client wrote: {{ note }}",
+    ),
+    ("manpower.screen.status.voided", "Voided"),
+    ("manpower.screen.deployment.title", "Deployment"),
+    ("manpower.screen.deployment.worker", "Worker"),
+    ("manpower.screen.deployment.client", "Client"),
+    (
+        "manpower.screen.deployment.is_cover",
+        "Stands in for another worker",
+    ),
+    ("manpower.screen.deployment.activated", "Activated on"),
+    ("manpower.screen.deployment.suspension", "Suspension"),
+    (
+        "manpower.screen.deployment.cancel_reason",
+        "Cancelled because",
+    ),
+    (
+        "manpower.screen.deployment.days_suspended_one",
+        "{{ days }} day suspended",
+    ),
+    (
+        "manpower.screen.deployment.days_suspended",
+        "{{ days }} days suspended",
+    ),
+    (
+        "manpower.screen.deployment.suspended_because",
+        "Suspended: {{ reasons }}. {{ days }}.",
+    ),
+    (
+        "manpower.screen.deployment.withdrawal_planned",
+        "The worker is withdrawn after {{ date }} because the client has not paid.",
+    ),
+    ("manpower.screen.deployment.ended", "How it ended"),
+    (
+        "manpower.screen.deployment.ended_because",
+        "Ended on {{ date }}: {{ reason }}.",
+    ),
+    (
+        "manpower.screen.deployment.client_note",
+        "The client's note: {{ note }}",
+    ),
+    (
+        "manpower.screen.deployment.waiver_note",
+        "Waiver of the notice period: {{ waiver }}",
+    ),
+    (
+        "manpower.screen.deployment.replacement_link",
+        "Open the replacement request",
+    ),
+    (
+        "manpower.screen.deployment.covers",
+        "This deployment stands in for {{ worker }}",
+    ),
+    (
+        "manpower.screen.deployment.cover_request",
+        "Cover request, {{ period }} ({{ status }})",
+    ),
+    ("manpower.screen.deployment.cover_title", "Cover"),
+    (
+        "manpower.screen.deployment.checks",
+        "Why it cannot start yet",
+    ),
+    (
+        "manpower.screen.deployment.request_override",
+        "Request override (MD approval)",
+    ),
+    ("manpower.screen.deployment.documents", "Documents"),
+    ("manpower.screen.deployment.document", "Document"),
+    ("manpower.screen.deployment.validity", "Validity"),
+    (
+        "manpower.screen.deployment.documents_empty",
+        "No document is needed for this role.",
+    ),
+    (
+        "manpower.screen.deployment.doc_no_expiry",
+        "Does not expire",
+    ),
+    (
+        "manpower.screen.deployment.doc_valid_until",
+        "Valid until {{ date }}",
+    ),
+    (
+        "manpower.screen.deployment.doc_expired_on",
+        "Expired on {{ date }}",
+    ),
+    ("manpower.screen.deployment.timesheets", "Timesheets"),
+    (
+        "manpower.screen.deployment.timesheets_empty",
+        "No timesheet yet.",
+    ),
+    ("manpower.screen.deployment.sheet_kind", "Kind"),
+    (
+        "manpower.screen.deployment.activate_hint",
+        "Starts the deployment today. Every check that fails is listed and nothing starts until they pass.",
+    ),
+    ("manpower.screen.deployment.extend", "Extend"),
+    (
+        "manpower.screen.deployment.extend_hint",
+        "Moves the last day later. The documents must stay valid to the new date.",
+    ),
+    ("manpower.screen.deployment.suspend", "Suspend"),
+    (
+        "manpower.screen.deployment.suspend_hint",
+        "The worker stops working at the site and the days are not billed.",
+    ),
+    ("manpower.screen.deployment.suspend_reason", "Reason"),
+    ("manpower.screen.deployment.resume", "Resume"),
+    (
+        "manpower.screen.deployment.resume_hint",
+        "The worker returns to the site. The documents must be valid again.",
+    ),
+    ("manpower.screen.deployment.cover", "Ask for cover"),
+    (
+        "manpower.screen.deployment.cover_hint",
+        "Opens a request for a worker to stand in for the days the worker is away.",
+    ),
+    ("manpower.screen.deployment.cover_from", "From"),
+    ("manpower.screen.deployment.cover_to", "To"),
+    (
+        "manpower.screen.deployment.cover_to_hint",
+        "Leave empty while the return is not known.",
+    ),
+    ("manpower.screen.deployment.end", "End"),
+    (
+        "manpower.screen.deployment.end_hint",
+        "Ends the deployment. The reason decides what else is asked.",
+    ),
+    ("manpower.screen.deployment.end_reason", "Reason"),
+    ("manpower.screen.deployment.end_note", "The client's note"),
+    (
+        "manpower.screen.deployment.end_note_hint",
+        "Write what the client said. A replacement request opens when the contract needs cover.",
+    ),
+    (
+        "manpower.screen.deployment.end_conduct",
+        "Conduct is involved: open a complaint ticket",
+    ),
+    (
+        "manpower.screen.deployment.end_last_day",
+        "Last day on site",
+    ),
+    (
+        "manpower.screen.deployment.end_last_day_hint",
+        "At least the notice period of the contract from today, unless a waiver is given.",
+    ),
+    (
+        "manpower.screen.deployment.cancel_hint",
+        "The deployment never starts.",
+    ),
+    ("manpower.screen.end_reason.end_date", "End date reached"),
+    (
+        "manpower.screen.end_reason.replaced",
+        "Replaced by another worker",
+    ),
+    (
+        "manpower.screen.end_reason.client_rejected",
+        "Client rejected the worker",
+    ),
+    (
+        "manpower.screen.end_reason.client_non_payment",
+        "Client does not pay",
+    ),
+    (
+        "manpower.screen.end_reason.entered_in_error",
+        "Entered in error",
+    ),
+    (
+        "manpower.screen.end_reason.contract_end",
+        "The contract ended",
+    ),
+    (
+        "manpower.screen.end_reason.exit",
+        "The worker left the agency",
+    ),
+    (
+        "manpower.screen.end_reason.absconded",
+        "The worker absconded",
+    ),
+    ("manpower.screen.end_reason.deceased", "The worker died"),
+    ("manpower.screen.doc_state.valid", "Valid"),
+    ("manpower.screen.doc_state.expired", "Expired"),
+    ("manpower.screen.doc_state.missing", "Missing"),
+    ("manpower.screen.doc_state.rejected", "Rejected"),
+    ("manpower.screen.doc_state.pending", "Waiting for review"),
+    ("manpower.screen.sheet_kind.regular", "Regular"),
+    ("manpower.screen.sheet_kind.adjustment", "Adjustment"),
+    ("manpower.screen.sheet_status.open", "Open"),
+    ("manpower.screen.sheet_status.submitted", "Submitted"),
+    ("manpower.screen.sheet_status.approved", "Approved"),
+    ("manpower.screen.sheet_status.locked", "Locked"),
+    ("manpower.screen.deployments.request", "Request"),
+    (
+        "manpower.screen.deployments.request_option",
+        "{{ role }} at {{ site }}, {{ client }}, {{ period }}",
+    ),
+    (
+        "manpower.screen.deployments.plan_hint_list",
+        "Pick the request to fill and the worker. The deployment is planned; Activate starts it.",
+    ),
+    ("manpower.screen.tab.timesheets", "Timesheets"),
+    (
+        "manpower.screen.done.deployment_planned",
+        "The deployment is planned.",
+    ),
+    (
+        "manpower.screen.done.deployment_activated",
+        "The deployment is active.",
+    ),
+    (
+        "manpower.screen.done.deployment_extended",
+        "The deployment was extended.",
+    ),
+    (
+        "manpower.screen.done.deployment_suspended",
+        "The deployment is suspended.",
+    ),
+    (
+        "manpower.screen.done.deployment_resumed",
+        "The deployment is active again.",
+    ),
+    (
+        "manpower.screen.done.deployment_ended",
+        "The deployment has ended.",
+    ),
+    (
+        "manpower.screen.done.deployment_cancelled",
+        "The deployment was cancelled.",
+    ),
+    (
+        "manpower.screen.deployment.end_reason_unknown",
+        "Choose one of the reasons in the list.",
     ),
     ("manpower.screen.request_status.draft", "Draft"),
     ("manpower.screen.request_status.open", "Submitted"),

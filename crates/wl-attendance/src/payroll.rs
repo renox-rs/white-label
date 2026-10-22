@@ -510,6 +510,32 @@ impl Timesheets for AttendanceTimesheets {
         Box::pin(async move { billable_hours(state, timesheet).await })
     }
 
+    fn of_context<'a>(
+        &'a self,
+        state: &'a AppState,
+        context: &'a Subject,
+    ) -> LabourFuture<'a, Vec<wl_kernel::timesheets::TimesheetSummary>> {
+        Box::pin(async move {
+            let sheets = Timesheet::query()
+                .where_(Timesheet::CONTEXT_TYPE.eq(context.subject_type.clone()))
+                .where_(Timesheet::CONTEXT_ID.eq(context.subject_id))
+                .order_by(Timesheet::PERIOD_FROM)
+                .order_by(Timesheet::ID)
+                .get(&state.db)
+                .await?;
+            Ok(sheets
+                .into_iter()
+                .map(|sheet| wl_kernel::timesheets::TimesheetSummary {
+                    subject: Subject::new(wl_kernel::timesheets::TIMESHEET_SUBJECT_TYPE, sheet.id),
+                    from: sheet.period_from,
+                    to: sheet.period_to,
+                    status: sheet.status.as_str().to_owned(),
+                    kind: sheet.kind.as_str().to_owned(),
+                })
+                .collect())
+        })
+    }
+
     fn record_billing_use<'a>(
         &'a self,
         state: &'a AppState,

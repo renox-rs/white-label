@@ -22,6 +22,7 @@
 //! | `POST /manpower/requests/{id}/cancel` | `manpower.request_cancel` | `requests.manage` for the client, or the client's approver |
 //! | `POST /manpower/deployments/{id}/cover` | `manpower.deployment_cover` | `requests.manage` for the client |
 //! | `GET /manpower/deployments` | `manpower.deployments` | `deployments.view` or `deployments.manage` for the client or the site, or the client's portal access (only the workers on site, name, role, site, shift and dates) |
+//! | `GET /manpower/deployments/{id}` | `manpower.deployment` | `deployments.view` or `deployments.manage` for the client or the site (BL-MPW-24) |
 //! | `POST /manpower/deployments` | `manpower.deployment_plan` | `deployments.manage` for the client |
 //! | `POST /manpower/deployments/{id}/activate` | `manpower.deployment_activate` | `deployments.manage` for the client |
 //! | `POST /manpower/deployments/{id}/extend` | `manpower.deployment_extend` | `deployments.manage` for the client |
@@ -59,7 +60,7 @@ use crate::renewal::RenewAsk;
 use crate::request::{ManpowerRequest, RequestKind};
 use crate::requests::{self, NewRequest};
 use crate::resumption;
-use crate::screens::{self, contract_page, done, request_page};
+use crate::screens::{self, contract_page, deployment_page, done, request_page};
 use crate::site::{self, Site};
 use crate::suspension::{self, DeploymentSuspension};
 use crate::termination::TerminateAsk;
@@ -110,6 +111,8 @@ pub fn routes() -> Routes {
         .name("manpower.request_cancel")
         .get("/manpower/deployments", deployments_index)
         .name("manpower.deployments")
+        .get("/manpower/deployments/{id}", screens::deployment_page::show)
+        .name("manpower.deployment")
         .post("/manpower/deployments", plan_deployment)
         .name("manpower.deployment_plan")
         .post("/manpower/deployments/{id}/activate", activate_deployment)
@@ -846,6 +849,8 @@ pub(crate) struct DeploymentRow {
     /// The calendar days suspended so far (BL-MPW-11); suspended days are not
     /// billed.
     days_suspended: i64,
+    /// The deployment's page.
+    url: String,
     /// While `suspended`: why, and for how long.
     suspension: Vec<String>,
 }
@@ -874,6 +879,8 @@ pub(crate) struct PageDeploymentRow {
     #[serde(flatten)]
     row: ClientDeploymentRow,
     flags: Vec<String>,
+    /// The deployment's page; empty for a client user.
+    url: String,
 }
 
 /// What the deployments page needs; both kinds of row have the keys the
@@ -883,6 +890,9 @@ pub(crate) struct PageDeploymentRow {
 pub(crate) struct DeploymentsPage {
     tx: BTreeMap<&'static str, String>,
     deployments: Vec<PageDeploymentRow>,
+    /// Whether the person may plan a deployment; the sheet's options follow.
+    can_plan: bool,
+    plan: deployment_page::PlanForm,
 }
 
 /// The line staff see on a `suspended` deployment: the reasons and the days
@@ -982,6 +992,7 @@ async fn deployments_index(
                     .map(DeploymentDocumentFlag::text)
                     .collect(),
                 days_suspended: deployment.days_suspended(today()),
+                url: deployment_page::url(deployment.id),
                 suspension: suspension_note(&state, &deployment).await?,
             });
         } else {
@@ -1017,6 +1028,7 @@ async fn deployments_index(
                 .map(|row| PageDeploymentRow {
                     row,
                     flags: Vec::new(),
+                    url: String::new(),
                 })
                 .collect()
         } else {
@@ -1039,12 +1051,21 @@ async fn deployments_index(
                         .chain(&row.suspension)
                         .cloned()
                         .collect(),
+                    url: deployment_page::url(row.id),
                 })
                 .collect()
+        };
+        let can_plan = user.has_permission_anywhere(permissions::DEPLOYMENTS_MANAGE);
+        let plan = if can_plan {
+            deployment_page::plan_form(&state, &user, &lang).await?
+        } else {
+            deployment_page::PlanForm::default()
         };
         return Ok(View::typed(DeploymentsPage {
             tx: screen_texts(&lang),
             deployments: rows,
+            can_plan: can_plan && !plan.requests.is_empty(),
+            plan,
         })
         .into_response());
     }
@@ -1058,7 +1079,9 @@ async fn deployments_index(
 /// `POST /manpower/deployments`: `employee_id`, `client_contract_id`,
 /// `site_id`, `role`, `shift_type`, `start_date` and, optionally,
 /// `request_id`, `shift_start`, `shift_end`, `work_days` (`mon,tue,fri`) and
-/// `end_date`.
+/// `end_date`. With a `request_id` the contract, site, role and shift that are
+/// not given are the request's (the plan sheet of the list asks for the
+/// request, the worker and the dates only).
 async fn plan_deployment(
     State(state): State<AppState>,
     user: AuthUser,
@@ -1066,28 +1089,68 @@ async fn plan_deployment(
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
     let bad = || refused(t(&lang, "manpower.bad_input"));
+    let request_id = number(&lang, &form, "request_id")?;
+    let request = match request_id {
+        Some(id) => ManpowerRequest::find(&state.db, id).await?,
+        None => None,
+    };
+    let given = |name: &str, own: Option<String>| {
+        Some(field(&form, name))
+            .filter(|value| !value.is_empty())
+            .or(own)
+            .unwrap_or_default()
+    };
+    let contract_id = match number(&lang, &form, "client_contract_id")? {
+        Some(id) => id,
+        None => request
+            .as_ref()
+            .map(|request| request.client_contract_id)
+            .ok_or_else(bad)?,
+    };
+    let site_id = match number(&lang, &form, "site_id")? {
+        Some(id) => id,
+        None => request
+            .as_ref()
+            .map(|request| request.site_id)
+            .ok_or_else(bad)?,
+    };
     let new = NewDeployment {
         employee: EmployeeId(number(&lang, &form, "employee_id")?.ok_or_else(bad)?),
-        contract_id: number(&lang, &form, "client_contract_id")?.ok_or_else(bad)?,
-        site_id: number(&lang, &form, "site_id")?.ok_or_else(bad)?,
-        request_id: number(&lang, &form, "request_id")?,
-        role: field(&form, "role"),
-        shift_type: field(&form, "shift_type"),
-        shift_start: Some(field(&form, "shift_start")),
-        shift_end: Some(field(&form, "shift_end")),
+        contract_id,
+        site_id,
+        request_id,
+        role: given("role", request.as_ref().map(|request| request.role.clone())),
+        shift_type: given(
+            "shift_type",
+            request.as_ref().map(|request| request.shift_type.clone()),
+        ),
+        shift_start: Some(given(
+            "shift_start",
+            request
+                .as_ref()
+                .and_then(|request| request.shift_start.clone()),
+        )),
+        shift_end: Some(given(
+            "shift_end",
+            request
+                .as_ref()
+                .and_then(|request| request.shift_end.clone()),
+        )),
         work_days: Some(field(&form, "work_days")),
         start_date: date(&lang, &form, "start_date")?.ok_or_else(bad)?,
         end_date: date(&lang, &form, "end_date")?,
     };
-    let (_planned, warning) = deployments::plan_with_warning(&state, &user, new).await?;
+    let (planned, warning) = deployments::plan_with_warning(&state, &user, new).await?;
     // Planning only warns about the documents (`MPW.ACL.07`).
+    let page = deployment_page::url(planned.id);
     Ok(match warning {
-        Some(warning) => (warning.toast(), back("/manpower/deployments")).into_response(),
-        None => back("/manpower/deployments"),
+        Some(warning) => (warning.toast(), back(&page)).into_response(),
+        None => done(&lang, &page, "manpower.screen.done.deployment_planned"),
     })
 }
 
-/// `POST /manpower/deployments/{id}/activate`.
+/// `POST /manpower/deployments/{id}/activate`: the service lists every
+/// failing check, one line each; the page lists them in words too.
 async fn activate_deployment(
     State(state): State<AppState>,
     user: AuthUser,
@@ -1095,7 +1158,11 @@ async fn activate_deployment(
     Path(id): Path<i64>,
 ) -> Result<Response> {
     deployments::activate(&state, &user, id, &lang.locale).await?;
-    Ok(back("/manpower/deployments"))
+    Ok(done(
+        &lang,
+        &deployment_page::url(id),
+        "manpower.screen.done.deployment_activated",
+    ))
 }
 
 /// `POST /manpower/deployments/{id}/extend`: `end_date`.
@@ -1109,7 +1176,11 @@ async fn extend_deployment(
     let end =
         date(&lang, &form, "end_date")?.ok_or_else(|| refused(t(&lang, "manpower.bad_input")))?;
     deployments::extend(&state, &user, id, end, &lang.locale).await?;
-    Ok(back("/manpower/deployments"))
+    Ok(done(
+        &lang,
+        &deployment_page::url(id),
+        "manpower.screen.done.deployment_extended",
+    ))
 }
 
 /// `POST /manpower/deployments/{id}/suspend`: `reason`.
@@ -1121,7 +1192,11 @@ async fn suspend_deployment(
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
     suspension::suspend(&state, &user, id, &field(&form, "reason"), &lang.locale).await?;
-    Ok(back("/manpower/deployments"))
+    Ok(done(
+        &lang,
+        &deployment_page::url(id),
+        "manpower.screen.done.deployment_suspended",
+    ))
 }
 
 /// `POST /manpower/deployments/{id}/resume`.
@@ -1132,7 +1207,11 @@ async fn resume_deployment(
     Path(id): Path<i64>,
 ) -> Result<Response> {
     resumption::resume(&state, &user, id, &lang.locale).await?;
-    Ok(back("/manpower/deployments"))
+    Ok(done(
+        &lang,
+        &deployment_page::url(id),
+        "manpower.screen.done.deployment_resumed",
+    ))
 }
 
 /// `POST /manpower/deployments/{id}/end`: `reason` and, for the reasons that
@@ -1145,33 +1224,44 @@ async fn end_deployment(
     Path(id): Path<i64>,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
+    let reason = field(&form, "reason");
+    let deployment = deployments::load(&state, id).await?;
+    deployments::require_manage(&user, deployment.client())?;
+    // A reason that is not a user's is refused in words, not by its key.
+    if !crate::deployment::reasons::USER.contains(&reason.as_str()) {
+        return Err(refused(t(
+            &lang,
+            "manpower.screen.deployment.end_reason_unknown",
+        )));
+    }
     let details = ends::EndDetails {
         note: Some(field(&form, "note")),
         conduct: matches!(field(&form, "conduct").as_str(), "on" | "true" | "1"),
         end_date: date(&lang, &form, "end_date")?,
         waiver: Some(field(&form, "waiver")),
     };
-    ends::end(
-        &state,
-        &user,
-        id,
-        &field(&form, "reason"),
-        details,
-        &lang.locale,
-    )
-    .await?;
-    Ok(back("/manpower/deployments"))
+    ends::end(&state, &user, id, &reason, details, &lang.locale).await?;
+    Ok(done(
+        &lang,
+        &deployment_page::url(id),
+        "manpower.screen.done.deployment_ended",
+    ))
 }
 
 /// `POST /manpower/deployments/{id}/cancel`: `reason`.
 async fn cancel_deployment(
     State(state): State<AppState>,
     user: AuthUser,
+    lang: Lang,
     Path(id): Path<i64>,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
     deployments::cancel(&state, &user, id, &field(&form, "reason")).await?;
-    Ok(back("/manpower/deployments"))
+    Ok(done(
+        &lang,
+        &deployment_page::url(id),
+        "manpower.screen.done.deployment_cancelled",
+    ))
 }
 
 /// `POST /manpower/deployments/{id}/cover`: `from` (`2027-03-01`) and,

@@ -197,6 +197,32 @@ pub trait Timesheets: Send + Sync + 'static {
     ) -> LabourFuture<'a, bool> {
         Box::pin(async { Ok(false) })
     }
+
+    /// The timesheets whose context is `context` (a deployment), oldest
+    /// period first. The default knows none.
+    fn of_context<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _context: &'a Subject,
+    ) -> LabourFuture<'a, Vec<TimesheetSummary>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// A timesheet of a context as a screen lists it (09 Manpower deployment
+/// page, BL-MPW-24).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TimesheetSummary {
+    /// The timesheet, `attendance.timesheet:3`.
+    pub subject: Subject,
+    /// The first day.
+    pub from: NaiveDate,
+    /// The last day.
+    pub to: NaiveDate,
+    /// The status key (`open`, `submitted`, `approved`...).
+    pub status: String,
+    /// `regular` or `adjustment`.
+    pub kind: String,
 }
 
 /// A timesheet that payroll paid on provisional hours was approved, and the

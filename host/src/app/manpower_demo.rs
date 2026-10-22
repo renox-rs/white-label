@@ -823,9 +823,11 @@ impl Seed {
                 "emirates_id",
                 "health_insurance",
                 "site_pass",
+                // The health card guards every deployment (`MPW.ACL.07`).
+                "health_card",
             ];
             if worker.role.starts_with("security") {
-                kinds.extend(["sira_licence", "health_card"]);
+                kinds.push("sira_licence");
             }
             for kind in kinds {
                 let until = match (index, kind) {

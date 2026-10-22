@@ -24,6 +24,7 @@
 //!   file of the same name under its own `resources/views/manpower/`.
 
 pub(crate) mod contract_page;
+pub(crate) mod deployment_page;
 pub(crate) mod request_page;
 
 use std::collections::BTreeMap;
@@ -44,6 +45,10 @@ pub(crate) const VIEWS: &[(&str, &str)] = &[
     (
         "manpower/contract.html",
         include_str!("../../views/manpower/contract.html"),
+    ),
+    (
+        "manpower/deployment.html",
+        include_str!("../../views/manpower/deployment.html"),
     ),
     (
         "manpower/request.html",
@@ -86,6 +91,27 @@ pub(crate) fn aed(fils: i64) -> String {
 pub(crate) fn role_text(role: &str) -> String {
     let words = role.replace('_', " ");
     let mut chars = words.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
+/// A document kind as words: `residence_visa` is `Residence visa`,
+/// `emirates_id` is `Emirates ID`.
+pub(crate) fn kind_label(kind: &str) -> String {
+    let words: Vec<String> = kind
+        .split('_')
+        .map(|word| {
+            if matches!(word, "id" | "sira") {
+                word.to_uppercase()
+            } else {
+                word.to_owned()
+            }
+        })
+        .collect();
+    let text = words.join(" ");
+    let mut chars = text.chars();
     match chars.next() {
         Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
         None => String::new(),
