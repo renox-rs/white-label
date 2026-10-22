@@ -458,6 +458,22 @@ draft final settlement · a deployment where no one checked in.
 5. PRO dashboard: visas and Emirates IDs by expiry. **Wow 3:** no more fines for missed
    renewals.
 
+**Screens.** `manpower:demo` ends by printing the screen map (URL, the login that owns it, one
+line on what it shows), with the ids read from the database; the code is
+`host/src/app/manpower_demo/screens.rs` (`host::manpower_demo::screen_map`) and
+`host/tests/manpower_demo_screens.rs` opens every URL as its owner. The groups:
+
+- **Start:** `/dashboard` (admin, account manager, HR: the tiles differ), `/menu`, `/approvals` (MD).
+- **Contracts:** the list (and its two tile filters), the running contract, the one ending in
+  45 days, the one on credit hold (Al Quoz: the seed runs the hold job on its overdue invoice).
+- **Rate cards:** a card and a version. **Requests:** the list, a part-filled and an open request.
+- **Deployments:** the list (account manager and site supervisor), an active and a suspended worker.
+- **Absence:** the list and a case (HR). **Timesheets:** the list, one waiting for the client, one locked and billed.
+- **Payroll:** runs, a run, settlements, a settlement, a pay account (HR).
+- **Workers:** the list, a worker's page (HR, and the account manager without salary), the salary
+  after Reveal, the worker's documents.
+- **Client portal:** the approver's home, requests, deployments, timesheets and a timesheet page.
+
 **Must not appear.** Real client companies, real worker identities or salaries of real
 people.
 

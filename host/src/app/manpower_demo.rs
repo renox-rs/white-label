@@ -63,6 +63,10 @@ use super::roles::{
 };
 use super::seed::PASSWORD;
 
+mod screens;
+
+pub use screens::{Screen, map as screen_map};
+
 /// The command that fills a local database with the demo agency.
 pub const COMMAND: &str = "manpower:demo";
 
@@ -384,12 +388,14 @@ async fn run_command(client: wl_kernel::ClientConfig, state: AppState, said: boo
     let kernel = app.config((*state.config).clone()).boot().await?;
     if !seed(&kernel).await? {
         println!("The demo agency is there already.");
+        println!("{}", screens::print(kernel.state()).await?);
         return Ok(());
     }
     println!("The demo agency is made. Log in with any of these (password {PASSWORD}):");
     for login in LOGINS {
         println!("  {:<40} {}", login.email, login.label);
     }
+    println!("{}", screens::print(kernel.state()).await?);
     Ok(())
 }
 
