@@ -7,7 +7,7 @@ mod support;
 
 use std::sync::{Arc, Mutex};
 
-use renox::chrono::{Months, NaiveDate};
+use renox::chrono::{Months, NaiveDate, TimeDelta};
 use renox::prelude::*;
 use wl_kernel::invoicing::{InvoiceId, InvoicePaid};
 use wl_kernel::sales::{
@@ -275,7 +275,7 @@ async fn the_system_moves_the_end_date_on_by_the_frozen_days_without_using_the_l
     let package = paid(&t).await;
     Package::query()
         .where_(Package::ID.eq(package.id))
-        .update(t.db(), &[("valid_to", &Some(day(2026, 12, 31)))])
+        .update(t.db(), &[("valid_to", &Some(today() + TimeDelta::days(60)))])
         .await
         .unwrap();
 
@@ -284,9 +284,9 @@ async fn the_system_moves_the_end_date_on_by_the_frozen_days_without_using_the_l
         .extend_days(t.state(), package.package_id(), 10, "Enrolment frozen")
         .await
         .unwrap();
-    assert_eq!(moved, Some(day(2027, 1, 10)));
+    assert_eq!(moved, Some(today() + TimeDelta::days(70)));
     let after = reload(&t, &package).await;
-    assert_eq!(after.valid_to, Some(day(2027, 1, 10)));
+    assert_eq!(after.valid_to, Some(today() + TimeDelta::days(70)));
     assert_eq!(after.status, PackageStatus::Active);
     assert_eq!(after.extensions, 0, "the limit of a user's extend is untouched");
     let movements = wl_sales::PackageMovement::query()
@@ -313,8 +313,4 @@ async fn the_system_moves_the_end_date_on_by_the_frozen_days_without_using_the_l
             .unwrap(),
         None
     );
-}
-
-fn day(year: i32, month: u32, date: u32) -> NaiveDate {
-    NaiveDate::from_ymd_opt(year, month, date).unwrap()
 }
