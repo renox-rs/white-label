@@ -20,6 +20,7 @@ use host::roles::{ACCOUNTANT, ADMIN, CENTRE_MANAGER, COUNSELLOR, OWNER, RECEIVAB
 use renox::chrono::{Datelike, Days, NaiveDate, Weekday};
 use renox::prelude::*;
 use renox::testing::TestApp;
+use renox::state_machine::StateMachine;
 use support::{
     company, count_messages, day, edtech_booted, edtech_booted_with_gateway, entity,
     issued_invoice, messages_to, person, reload, tenant,

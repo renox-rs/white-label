@@ -31,14 +31,6 @@ pub enum SessionStatus {
 }
 
 impl SessionStatus {
-    /// The stored name, as the machine and the texts use it.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            SessionStatus::Scheduled => "scheduled",
-            SessionStatus::Held => "held",
-            SessionStatus::Cancelled => "cancelled",
-        }
-    }
 }
 
 /// A session.

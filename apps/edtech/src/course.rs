@@ -29,15 +29,6 @@ pub enum DeliveryMode {
 }
 
 impl DeliveryMode {
-    /// The stored name: `in_person`, `online` or `hybrid`.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            DeliveryMode::InPerson => "in_person",
-            DeliveryMode::Online => "online",
-            DeliveryMode::Hybrid => "hybrid",
-        }
-    }
-
     /// The mode stored as `text`.
     pub fn parse(text: &str) -> Option<DeliveryMode> {
         [

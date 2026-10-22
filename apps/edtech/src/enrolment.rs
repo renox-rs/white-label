@@ -39,14 +39,6 @@ pub enum EnrolmentKind {
 }
 
 impl EnrolmentKind {
-    /// The stored name, as the texts use it.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            EnrolmentKind::Course => "course",
-            EnrolmentKind::Package => "package",
-            EnrolmentKind::Membership => "membership",
-        }
-    }
 }
 
 /// Where an enrolment stands (10 §7.1 *Enrolment*).
@@ -71,19 +63,6 @@ pub enum EnrolmentStatus {
 }
 
 impl EnrolmentStatus {
-    /// The stored name, as the machine and the texts use it.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            EnrolmentStatus::PendingPayment => "pending_payment",
-            EnrolmentStatus::Active => "active",
-            EnrolmentStatus::Frozen => "frozen",
-            EnrolmentStatus::Completed => "completed",
-            EnrolmentStatus::Withdrawn => "withdrawn",
-            EnrolmentStatus::Transferred => "transferred",
-            EnrolmentStatus::Lapsed => "lapsed",
-        }
-    }
-
     /// Whether the enrolment counts against the seats of its batch: `active`,
     /// `frozen` and `pending_payment` (`EDU.ACL.17`).
     pub fn takes_a_seat(self) -> bool {
@@ -296,15 +275,6 @@ pub enum FreezeCause {
 }
 
 impl FreezeCause {
-    /// The stored name.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            FreezeCause::Student => "student",
-            FreezeCause::Linked => "linked",
-            FreezeCause::Block => "block",
-        }
-    }
-
     /// Whether the days count against the allowance.
     pub fn counts_against_allowance(self) -> bool {
         matches!(self, FreezeCause::Student)

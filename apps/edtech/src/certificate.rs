@@ -35,15 +35,6 @@ pub enum CertificateStatus {
 }
 
 impl CertificateStatus {
-    /// The stored name, as the machine and the texts use it.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            CertificateStatus::Draft => "draft",
-            CertificateStatus::Issued => "issued",
-            CertificateStatus::Superseded => "superseded",
-            CertificateStatus::Revoked => "revoked",
-        }
-    }
 }
 
 /// A certificate.

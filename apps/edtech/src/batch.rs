@@ -38,18 +38,6 @@ pub enum BatchStatus {
 }
 
 impl BatchStatus {
-    /// The stored name, as the machine and the texts use it.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            BatchStatus::Planned => "planned",
-            BatchStatus::Open => "open",
-            BatchStatus::Running => "running",
-            BatchStatus::Completed => "completed",
-            BatchStatus::Cancelled => "cancelled",
-            BatchStatus::Terminated => "terminated",
-        }
-    }
-
     /// Whether the batch can still change: it is not completed, cancelled or
     /// terminated.
     pub fn is_live(self) -> bool {

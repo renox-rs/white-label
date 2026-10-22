@@ -59,17 +59,6 @@ pub enum Mark {
 }
 
 impl Mark {
-    /// The stored name, as the texts use it.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Mark::Pending => "pending",
-            Mark::Present => "present",
-            Mark::Late => "late",
-            Mark::Absent => "absent",
-            Mark::Excused => "excused",
-        }
-    }
-
     /// The mark stored under `name`.
     pub fn parse(name: &str) -> Option<Mark> {
         [

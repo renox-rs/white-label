@@ -757,20 +757,20 @@ async fn escalate_one(state: &AppState, session_id: i64, at: DateTime) -> Result
         .unwrap_or_default();
     let label = format!("{} · {}", batch.number(), session.number);
     let time = crate::sessions::time_text(session.starts_at);
-    let params: [(&str, &dyn std::fmt::Display); 4] = [
-        ("session", &label),
-        ("date", &session.session_date),
-        ("time", &time),
-        ("reason", &reason),
-    ];
-    let told = notices::tell_users(
-        state,
-        session.subject(),
-        &label,
-        &users,
-        &english("edtech.alerts.escalation_title", &params),
-        &english("edtech.alerts.escalation_body", &params),
-    )
+    // The borrowed parameters are dropped before the await (they are not `Send`).
+    let (title, body) = {
+        let params: [(&str, &dyn std::fmt::Display); 4] = [
+            ("session", &label),
+            ("date", &session.session_date),
+            ("time", &time),
+            ("reason", &reason),
+        ];
+        (
+            english("edtech.alerts.escalation_title", &params),
+            english("edtech.alerts.escalation_body", &params),
+        )
+    };
+    let told = notices::tell_users(state, session.subject(), &label, &users, &title, &body)
     .await?;
     if told {
         Session::query()

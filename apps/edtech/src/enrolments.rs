@@ -439,7 +439,7 @@ async fn run(
     };
     // What the listeners after the commit need to know: which cause, which day.
     let meta = renox::serde_json::json!({
-        "cause": input.cause.map(FreezeCause::as_str),
+        "cause": input.cause.map(|cause| cause.as_str()),
         "on": input.on.map(|day| day.to_string()),
     });
     let _outcome = builder

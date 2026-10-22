@@ -275,24 +275,21 @@ async fn announce(
     } else {
         batches.iter().map(batch_line).collect::<Vec<_>>().join("\n")
     };
-    let params: [(&str, &dyn std::fmt::Display); 4] = [
-        ("what", &what),
-        ("name", &name),
-        ("date", &expires_on),
-        ("batches", &lines),
-    ];
     let (title_key, body_key) = match phase {
         Phase::Expiring => ("edtech.permits.expiring_title", "edtech.permits.expiring_body"),
         Phase::Expired => ("edtech.permits.expired_title", "edtech.permits.expired_body"),
     };
-    notices::tell_users(
-        state,
-        subject.clone(),
-        &name,
-        &users,
-        &english(title_key, &params),
-        &english(body_key, &params),
-    )
+    // The borrowed parameters are dropped before the await (they are not `Send`).
+    let (title, body) = {
+        let params: [(&str, &dyn std::fmt::Display); 4] = [
+            ("what", &what),
+            ("name", &name),
+            ("date", &expires_on),
+            ("batches", &lines),
+        ];
+        (english(title_key, &params), english(body_key, &params))
+    };
+    notices::tell_users(state, subject.clone(), &name, &users, &title, &body)
     .await?;
     // The renewal task, due on the expiry date, for the kind's responsible role.
     let role = responsible_role(kind);
