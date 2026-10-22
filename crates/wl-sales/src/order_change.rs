@@ -310,7 +310,7 @@ mod tests {
             gross: 420_000,
         };
         let revision = OrderRevision {
-            lines: renox::serde_json::to_string(&[line.clone()]).unwrap(),
+            lines: renox::serde_json::to_string(std::slice::from_ref(&line)).unwrap(),
             ..OrderRevision::default()
         };
         assert_eq!(revision.lines(), vec![line]);

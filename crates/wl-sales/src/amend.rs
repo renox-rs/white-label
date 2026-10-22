@@ -517,9 +517,7 @@ async fn amend_in(tx: &mut Transaction, order: SalesOrder, run: &AmendInput) -> 
             });
         }
     }
-    let mut next = before.len() as i64;
-    for added in &run.added {
-        next += 1;
+    for (next, added) in (before.len() as i64 + 1..).zip(run.added.iter()) {
         let held = if hold { added.quantity_milli } else { 0 };
         let mut line = SaleLine {
             subject_type: SALES_ORDER_SUBJECT_TYPE.to_owned(),

@@ -123,6 +123,7 @@ impl NewSalesOrder {
 
 /// What entering an order from a channel gave.
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)] // boxing `SalesOrder` would change the public API used by callers and tests
 pub enum Imported {
     /// The draft order that was made.
     Created(SalesOrder),
