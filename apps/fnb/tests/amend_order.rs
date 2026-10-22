@@ -499,3 +499,28 @@ async fn cancelling_a_started_line_needs_an_outcome_and_a_manager_and_scraps_the
     // Nothing is left to cook, so the order is ready.
     assert_eq!(w.reload(&accepted).await.status, FnbOrderStatus::Ready);
 }
+
+/// A line that is cancelled is not paid for on the doorstep: the delivery of a
+/// cash order collects what is still open, and the order's total follows.
+#[renox::test]
+async fn the_delivery_of_a_cash_order_collects_only_what_is_still_open() {
+    let w = boot_own_riders().await;
+    let c = customer(&w).await;
+    let accepted = w
+        .accept(&w.place(c, "cash_on_delivery", &MAIN_AND_FRIES).await)
+        .await;
+    let fries = tickets_of(&w, &accepted).await.remove(1);
+
+    w.post(
+        &w.cashier,
+        &format!("/orders/{}/line-cancel", accepted.id),
+        &line_form(&fries.sale_line_id.to_string(), ""),
+    )
+    .await
+    .assert_status(303);
+    assert_eq!(w.reload(&accepted).await.total, 3_000);
+
+    let ready = w.cook(&accepted).await;
+    let delivery = w.delivery_of(&ready).await;
+    assert_eq!(delivery.amount_to_collect, 3_000);
+}

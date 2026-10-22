@@ -80,7 +80,8 @@ pub(crate) async fn request_delivery(state: &AppState, id: i64) -> Result {
         .promise(placed, minutes);
     request.recipient_party = Some(order.party());
     if order.is_cash_on_delivery() {
-        request = request.collect(order.total);
+        // What is still open: a line cancelled or replaced is not paid for.
+        request = request.collect(crate::changes::open_total(&view));
     }
     for line in view.lines.iter().filter(|l| l.is_item && l.open_milli() > 0) {
         request = request.item(

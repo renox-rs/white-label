@@ -527,12 +527,44 @@ async fn settle_waiting(state: &AppState, order_id: i64, kind: &str) -> Result {
     Ok(())
 }
 
+/// What is still to be made, paid and delivered: the open quantity of each
+/// item line with VAT, in fils. A cancelled line leaves the sales order's
+/// stored totals as ordered (the refund is its money), so the delivery of a
+/// cash order collects this, not the ordered total.
+pub(crate) fn open_total(view: &OrderView) -> i64 {
+    view.lines
+        .iter()
+        .filter(|line| line.is_item && line.quantity_milli > 0)
+        .map(|line| {
+            let share = i128::from(line.gross) * i128::from(line.open_milli())
+                / i128::from(line.quantity_milli);
+            i64::try_from(share).unwrap_or(line.gross)
+        })
+        .sum()
+}
+
+/// The order's total follows its lines after a change, and what was paid in
+/// advance never exceeds it (the difference was refunded).
+async fn refresh_money(state: &AppState, order: &FnbOrder) -> Result {
+    let Some(view) = order_desk(state).find(state, order.sales_order()).await? else {
+        return Ok(());
+    };
+    let total = open_total(&view);
+    let paid = order.paid_amount.min(total);
+    FnbOrder::query()
+        .where_(FnbOrder::ID.eq(order.id))
+        .update(&state.db, &[("total", &total), ("paid_amount", &paid)])
+        .await?;
+    Ok(())
+}
+
 /// `SalesOrderAmended`: the kitchen's tickets follow the new revision.
 pub(crate) async fn on_amended(state: &AppState, event: SalesOrderAmended) -> Result {
     let Some(order) = FnbOrder::of_sales_order(&state.db, event.order.0).await? else {
         return Ok(());
     };
     settle_waiting(state, order.id, KIND_AMEND).await?;
+    refresh_money(state, &order).await?;
     crate::kitchen::sync_tickets(state, order.id).await
 }
 
@@ -564,5 +596,6 @@ pub(crate) async fn on_line_cancelled(state: &AppState, event: SalesOrderLineCan
         };
         expected.insert(&state.db).await?;
     }
+    refresh_money(state, &order).await?;
     crate::kitchen::sync_tickets(state, order.id).await
 }
