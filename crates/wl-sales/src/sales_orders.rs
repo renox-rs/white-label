@@ -144,7 +144,7 @@ pub fn external_key(number: &str) -> Option<String> {
 }
 
 /// The promo code `code` as a row to hold a use of, refused (422) when it
-/// does not exist, ended, or its uses are used up.
+/// does not exist or ended.
 async fn promo_of(state: &AppState, code: &str) -> Result<PromoCode> {
     let found = PromoCode::query()
         .where_(PromoCode::CODE.eq(code.trim().to_uppercase()))
@@ -159,9 +159,7 @@ async fn promo_of(state: &AppState, code: &str) -> Result<PromoCode> {
     {
         return Err(refused("wl_sales.orders.problem.promo_ended"));
     }
-    if promo.used_up() {
-        return Err(refused("wl_sales.orders.problem.promo_used_up"));
-    }
+    // Its uses are counted at `submit`, not when the order is entered.
     Ok(promo)
 }
 
@@ -176,7 +174,7 @@ async fn promo_of(state: &AppState, code: &str) -> Result<PromoCode> {
 ///
 /// # Errors
 ///
-/// 422 for an unknown, ended or used-up promo code.
+/// 422 for an unknown or ended promo code.
 pub async fn import(state: &AppState, by: Option<i64>, new: NewSalesOrder) -> Result<Imported> {
     let external = new
         .external_number

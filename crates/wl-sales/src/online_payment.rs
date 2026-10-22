@@ -173,7 +173,11 @@ pub(crate) async fn open_link(state: &AppState, id: i64) -> Result {
     };
     let entity = match order.legal_entity_id {
         Some(entity) => entity,
-        None => LegalEntity::default_entity(&state.db).await?.id,
+        None => match LegalEntity::default_entity(&state.db).await {
+            Ok(entity) => entity.id,
+            // No legal entity to bill: no link; the order times out.
+            Err(_) => return Ok(()),
+        },
     };
     let request = PaymentLinkRequest {
         party: order.party(),

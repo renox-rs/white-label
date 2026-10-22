@@ -4,6 +4,7 @@
 #![allow(dead_code)]
 
 pub mod floor;
+pub mod online;
 pub mod retention;
 pub mod shop;
 
