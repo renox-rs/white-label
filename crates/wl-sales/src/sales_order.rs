@@ -141,6 +141,9 @@ pub struct SalesOrder {
     /// [`external_number`](Self::external_number) trimmed and lower-cased; the
     /// unique key with the channel. Empty when the number is not checked.
     pub external_key: Option<String>,
+    /// The state the order had before a credit hold (`release` goes back to
+    /// it, BL-SAL-10).
+    pub held_from: Option<String>,
     /// Where the online payment is.
     pub payment_status: OrderPaymentStatus,
     /// When the payment window ends (set when the order waits for the gateway).

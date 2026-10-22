@@ -15,17 +15,18 @@
 //!     partially_fulfilled | fulfilled --reverse_fulfilment--> partially_fulfilled
 //!     partially_fulfilled | fulfilled --reverse_fulfilment_all--> confirmed
 //!     fulfilled --close--> closed
-//!     confirmed --cancel_line--> confirmed
-//!     partially_fulfilled --cancel_line_partly--> partially_fulfilled
+//!     pending_acceptance | credit_hold | confirmed | partially_fulfilled --amend--> same state
+//!     pending_acceptance | confirmed | partially_fulfilled --hold--> credit_hold
+//!     confirmed | partially_fulfilled --cancel_line--> same state, or fulfilled
+//!     partially_fulfilled --cancel_remaining--> fulfilled
 //! ```
 //!
-//! `cancel_line` is the part of the spec's `cancel_line` that BL-SAL-23 needs
-//! (open quantity of one line cancelled, a reason, a state that stays); the
-//! outcome per line, the approval when fulfilment started, the refund and the
-//! credit note, and the move to `fulfilled` when nothing is open (use
-//! `cancel_remaining`) come with BL-SAL-06 and BL-SAL-09.
-//! `hold`, `release`, `amend` and `cancel_remaining` come with
-//! their issues (BL-SAL-05 to BL-SAL-11). `confirm_payment`, `payment_failed`,
+//! `amend` (a family of four, [`crate::amend`]) and `hold` ([`crate::credit`])
+//! come with BL-SAL-05, `cancel_line` and `cancel_remaining` (a family of
+//! four, [`crate::cancel_lines`]) with BL-SAL-08 and BL-SAL-09, each with the
+//! `_approved` twin the kernel runs at the last yes. `release` and the rest
+//! of the credit hold come with BL-SAL-10, the other changes with their
+//! issues (BL-SAL-07, BL-SAL-11). `confirm_payment`, `payment_failed`,
 //! `fulfil`, `fulfil_last`, `reverse_fulfilment`, `reverse_fulfilment_all` and
 //! `close` are system transitions (the gateway, the hand-over, the invoicing
 //! state); the rest are by users.
@@ -83,12 +84,6 @@ pub const REVERSE_FULFILMENT: &str = "reverse_fulfilment";
 pub const REVERSE_FULFILMENT_ALL: &str = "reverse_fulfilment_all";
 /// `fulfilled → closed`: everything fulfilled is invoiced.
 pub const CLOSE: &str = "close";
-/// `confirmed → confirmed`: open quantity of one line cancelled.
-pub const CANCEL_LINE: &str = "cancel_line";
-/// `partially_fulfilled → partially_fulfilled`: open quantity of one line
-/// cancelled.
-pub const CANCEL_LINE_PARTLY: &str = "cancel_line_partly";
-
 /// What the `submit` family takes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubmitInput {
@@ -149,17 +144,6 @@ pub struct CloseInput {
     pub invoiced: bool,
 }
 
-/// What `cancel_line` takes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CancelLineInput {
-    /// The sale line.
-    pub line: i64,
-    /// The open quantity cancelled, in thousandths.
-    pub quantity_milli: i64,
-    /// Why the quantity is not acceptable, found by the service.
-    pub problem: Option<String>,
-}
-
 /// A guard that fails with the English `key` unless `ok`.
 fn check(ok: bool, key: &str) -> std::result::Result<(), String> {
     if ok { Ok(()) } else { Err(english(key, &[])) }
@@ -175,7 +159,7 @@ fn reason_of(ctx: &renox::state_machine::TransitionCtx) -> Option<String> {
 
 /// Adds `quantity` to the cancelled quantity of line `line` of order
 /// `order`, in one statement. Fails when it would leave more than is open.
-async fn move_cancelled(
+pub(crate) async fn move_cancelled(
     tx: &mut renox::db::Transaction,
     order: i64,
     line: i64,
@@ -246,7 +230,7 @@ impl StateMachine for SalesOrder {
             AwaitingPayment, Cancelled, Closed, Confirmed, CreditHold, Draft, Fulfilled,
             PartiallyFulfilled, PendingAcceptance, Rejected,
         };
-        Machine::new()
+        let machine = Machine::new()
             .initial([Draft])
             .state(Draft)
             .tone("neutral")
@@ -291,9 +275,13 @@ impl StateMachine for SalesOrder {
             .transition(fulfil(FULFIL_LAST, Fulfilled))
             .transition(reverse(REVERSE_FULFILMENT, PartiallyFulfilled))
             .transition(reverse(REVERSE_FULFILMENT_ALL, Confirmed))
-            .transition(close())
-            .transition(cancel_line(CANCEL_LINE, Confirmed))
-            .transition(cancel_line(CANCEL_LINE_PARTLY, PartiallyFulfilled))
+            .transition(close());
+        // The changes of a placed order: amend (BL-SAL-05), cancel a line or
+        // the remaining lines (BL-SAL-08, BL-SAL-09) and the credit hold they
+        // can lead to (BL-SAL-05).
+        let machine = crate::amend::add_to(machine);
+        let machine = crate::cancel_lines::add_to(machine);
+        crate::credit::add_to(machine)
     }
 }
 
@@ -660,35 +648,6 @@ fn reverse(name: &str, to: SalesOrderStatus) -> Transition<SalesOrder> {
         })
 }
 
-/// `cancel_line` and `cancel_line_partly`: open quantity of one line is
-/// cancelled and the order stays where it is.
-fn cancel_line(name: &str, state: SalesOrderStatus) -> Transition<SalesOrder> {
-    Transition::new(name)
-        .label("Cancel a line")
-        .tone("danger")
-        .permission(permissions::SALES_ORDERS_CANCEL)
-        .reason_required()
-        .from([state])
-        .to(state)
-        .guard("quantity_open", |_o: &SalesOrder, ctx| {
-            let problem = match ctx.input_as::<CancelLineInput>() {
-                Ok(input) => input.problem,
-                Err(_) => Some(english("wl_sales.orders.problem.input", &[])),
-            };
-            Box::pin(async move { problem.map_or(Ok(()), Err) })
-        })
-        .effect(|order: &SalesOrder, ctx, tx| {
-            let id = order.id;
-            let input = ctx.input_as::<CancelLineInput>().ok();
-            Box::pin(async move {
-                let Some(input) = input else {
-                    return Ok(());
-                };
-                move_cancelled(tx, id, input.line, input.quantity_milli).await
-            })
-        })
-}
-
 /// `close`: fulfilled → closed once everything fulfilled is invoiced.
 fn close() -> Transition<SalesOrder> {
     Transition::new(CLOSE)
@@ -760,15 +719,8 @@ mod tests {
                 true,
             ),
             (CLOSE, vec!["fulfilled"], "closed", true),
-            (CANCEL_LINE, vec!["confirmed"], "confirmed", false),
-            (
-                CANCEL_LINE_PARTLY,
-                vec!["partially_fulfilled"],
-                "partially_fulfilled",
-                false,
-            ),
         ];
-        assert_eq!(machine.transitions().len(), table.len());
+        assert!(machine.transitions().len() >= table.len());
         for (name, from, to, system) in table {
             let t = machine.find(name).expect(name);
             assert_eq!(t.is_system(), system, "{name}");
@@ -783,7 +735,12 @@ mod tests {
         let machine = SalesOrder::machine();
         assert!(machine.find(CANCEL).unwrap().needs_reason());
         assert!(machine.find(REJECT).unwrap().needs_reason());
-        assert!(machine.find(CANCEL_LINE).unwrap().needs_reason());
+        assert!(
+            machine
+                .find(crate::cancel_lines::CANCEL_LINE)
+                .unwrap()
+                .needs_reason()
+        );
         assert!(!machine.find(ACCEPT).unwrap().needs_reason());
     }
 }

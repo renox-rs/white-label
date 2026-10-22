@@ -835,6 +835,10 @@ pub struct SalesOrderCancelled {
     pub party: PartyId,
     /// The reason.
     pub reason: String,
+    /// The outcome and fee of each line whose fulfilment had started
+    /// (BL-SAL-07); empty when nothing had started.
+    #[serde(default)]
+    pub outcomes: Vec<LineOutcome>,
 }
 
 impl Event for SalesOrderCancelled {}
@@ -1033,9 +1037,221 @@ pub struct SalesOrderLineCancelled {
     pub quantity_milli: i64,
     /// The reason.
     pub reason: String,
+    /// What happens to the started goods of the line (BL-SAL-08); `None`
+    /// when the line's fulfilment had not started.
+    #[serde(default)]
+    pub outcome: Option<LineOutcomeKind>,
+    /// The cancellation fee on the line, in fils (0 when none or waived).
+    #[serde(default)]
+    pub fee: i64,
+    /// Whether the manager waived the fee.
+    #[serde(default)]
+    pub fee_waived: bool,
 }
 
 impl Event for SalesOrderLineCancelled {}
+
+/// What happens to the goods of a line whose fulfilment had started when the
+/// line (or the order) is cancelled (wl-sales §4.2 *Cancelling after
+/// fulfilment started*). `wl-inventory` and the vertical act on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LineOutcomeKind {
+    /// Picked goods go back to stock and the reservation is released.
+    ReturnToStock,
+    /// The work order runs to the end and its output goes to free stock.
+    FinishToStock,
+    /// Work in progress or prepared goods are written off.
+    Scrap,
+}
+
+impl LineOutcomeKind {
+    /// Every outcome, in the order the screens offer them.
+    pub const ALL: [LineOutcomeKind; 3] = [
+        LineOutcomeKind::ReturnToStock,
+        LineOutcomeKind::FinishToStock,
+        LineOutcomeKind::Scrap,
+    ];
+
+    /// The stored name: `return_to_stock`, `finish_to_stock` or `scrap`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LineOutcomeKind::ReturnToStock => "return_to_stock",
+            LineOutcomeKind::FinishToStock => "finish_to_stock",
+            LineOutcomeKind::Scrap => "scrap",
+        }
+    }
+
+    /// The outcome called `text`.
+    pub fn parse(text: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.as_str() == text.trim())
+    }
+
+    /// Whether choosing it needs a manager on its own (`SAL.ACL.05`: *finish
+    /// to stock* and *scrap*).
+    pub fn needs_manager(self) -> bool {
+        !matches!(self, LineOutcomeKind::ReturnToStock)
+    }
+}
+
+/// The outcome of one started line of a cancellation, as the events carry it
+/// (BL-SAL-07, BL-SAL-08, BL-SAL-09).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LineOutcome {
+    /// The sale line.
+    pub line: i64,
+    /// What happens to its goods.
+    pub kind: LineOutcomeKind,
+    /// The cancellation fee on the line, in fils (0 when none or waived).
+    pub fee: i64,
+    /// Whether the manager waived the fee.
+    pub fee_waived: bool,
+}
+
+/// One line of an order changed by an amendment (`SalesOrderAmended`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AmendedLine {
+    /// The sale line (its id in `wl-sales`).
+    pub line: i64,
+    /// The quantity before, in thousandths (0 for an added line).
+    pub quantity_before_milli: i64,
+    /// The quantity after, in thousandths.
+    pub quantity_after_milli: i64,
+    /// The unit price before, in fils.
+    pub unit_price_before: i64,
+    /// The unit price after, in fils.
+    pub unit_price_after: i64,
+    /// The part of the added quantity held back from fulfilment until the
+    /// payment link of a prepaid increase is paid, in thousandths.
+    pub held_milli: i64,
+}
+
+/// A sales order was amended: a new revision is in force (BL-SAL-05).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SalesOrderAmended {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The customer.
+    pub party: PartyId,
+    /// The new revision.
+    pub revision: i64,
+    /// The lines that changed.
+    pub lines: Vec<AmendedLine>,
+    /// The total with VAT before, in fils.
+    pub value_before: i64,
+    /// The total with VAT after, in fils.
+    pub value_after: i64,
+    /// The reason.
+    pub reason: String,
+}
+
+impl Event for SalesOrderAmended {}
+
+/// Quantities held back by a prepaid increase are released to fulfilment
+/// (BL-SAL-06): the payment link was paid.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SalesOrderLinesReleased {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The customer.
+    pub party: PartyId,
+    /// The lines and the quantities now released.
+    pub lines: Vec<FulfilledLine>,
+}
+
+impl Event for SalesOrderLinesReleased {}
+
+/// What the vertical knows about the fulfilment of an order: which lines
+/// have started (goods picked, a work order or production batch started,
+/// the kitchen started the line). The module that does the work provides
+/// it (`wl-inventory` for picking, the vertical for its own); the default
+/// knows no started line (BL-SAL-05, BL-SAL-08, BL-SAL-09).
+pub trait FulfilmentProgress: Send + Sync + 'static {
+    /// Of the sale lines `lines` of `order`, those whose fulfilment started.
+    fn started_lines<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _order: SalesOrderId,
+        _lines: &'a [i64],
+    ) -> SalesFuture<'a, Vec<i64>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// The progress when nothing provides one: no line has started.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoFulfilmentProgress;
+
+impl FulfilmentProgress for NoFulfilmentProgress {}
+
+/// Makes `progress` the app's [`FulfilmentProgress`].
+pub fn provide_fulfilment_progress(app: &mut Registry, progress: impl FulfilmentProgress) {
+    let progress: Arc<dyn FulfilmentProgress> = Arc::new(progress);
+    app.provide(progress);
+}
+
+/// The app's [`FulfilmentProgress`], or [`NoFulfilmentProgress`] when none is
+/// provided.
+pub fn fulfilment_progress(state: &AppState) -> Arc<dyn FulfilmentProgress> {
+    match state.provided::<Arc<dyn FulfilmentProgress>>() {
+        Some(progress) => Arc::clone(&progress),
+        None => Arc::new(NoFulfilmentProgress),
+    }
+}
+
+/// What a customer account owes and may owe (`SAL.RUL.01`, BL-SAL-10): the
+/// exposure counts the open orders, invoices and cheques, without the order
+/// being checked; the caller adds that order at the total it has now.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreditPosition {
+    /// The customer's exposure without the order being checked, in fils.
+    pub exposure: i64,
+    /// The customer's credit limit, in fils; `None` when it has none.
+    pub limit: Option<i64>,
+    /// The exposure of the customer's group without that order, when the
+    /// limit is combined.
+    pub group_exposure: Option<i64>,
+    /// The group's combined limit.
+    pub group_limit: Option<i64>,
+}
+
+/// The credit position of a customer. The module that holds the credit
+/// limits provides it (BL-SAL-10); the default knows none, so no order is
+/// held for credit.
+pub trait CreditExposure: Send + Sync + 'static {
+    /// The position of `party` in `currency` without the order `excluding`,
+    /// or `None` without a limit.
+    fn position<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _party: PartyId,
+        _currency: &'a str,
+        _excluding: &'a Subject,
+    ) -> SalesFuture<'a, Option<CreditPosition>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The exposure when nothing provides one: no customer has a limit.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoCreditExposure;
+
+impl CreditExposure for NoCreditExposure {}
+
+/// Makes `exposure` the app's [`CreditExposure`].
+pub fn provide_credit_exposure(app: &mut Registry, exposure: impl CreditExposure) {
+    let exposure: Arc<dyn CreditExposure> = Arc::new(exposure);
+    app.provide(exposure);
+}
+
+/// The app's [`CreditExposure`], or [`NoCreditExposure`] when none is
+/// provided.
+pub fn credit_exposure(state: &AppState) -> Arc<dyn CreditExposure> {
+    match state.provided::<Arc<dyn CreditExposure>>() {
+        Some(exposure) => Arc::clone(&exposure),
+        None => Arc::new(NoCreditExposure),
+    }
+}
 
 /// A loyalty redemption to price (`DiscountEngine::quote_redemption`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

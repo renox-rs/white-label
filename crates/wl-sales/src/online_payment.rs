@@ -247,6 +247,11 @@ pub async fn on_payment_received(state: &AppState, event: &PaymentReceived) -> R
         // The same payment was delivered twice.
         return Ok(());
     };
+    // The payment of the link of an amendment (BL-SAL-06) is not the payment
+    // of the order: it releases the quantity held back until it was paid.
+    if crate::settle::on_link_paid(state, &order, event.amount).await? {
+        return settle(state, row.id, PAYMENT_CONFIRMED, None).await;
+    }
     let before: i64 = OrderPayment::of_order(&state.db, order.id)
         .await?
         .iter()

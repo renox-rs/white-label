@@ -33,8 +33,7 @@ use wl_kernel::invoicing::{DEFAULT_CURRENCY, InvoiceDraft, invoicer};
 use wl_kernel::sales::{
     FulfilOrder, FulfilledLine, FulfilmentOutcome, OrderFulfilment, ReverseFulfilment,
     SALES_ORDER_SUBJECT_TYPE, SalesFuture, SalesOrderCancelled, SalesOrderClosed,
-    SalesOrderConfirmed, SalesOrderFulfilled, SalesOrderFulfilmentReversed,
-    SalesOrderLineCancelled, SalesOrderRejected,
+    SalesOrderConfirmed, SalesOrderFulfilled, SalesOrderFulfilmentReversed, SalesOrderRejected,
 };
 use wl_kernel::{PartyId, Subject};
 
@@ -45,8 +44,8 @@ use crate::sales_order::{
     FulfilmentRecord, ORDER_SERIES, PAYMENT_ONLINE, SalesOrder, SalesOrderStatus,
 };
 use crate::sales_order_machine::{
-    ACCEPT, CANCEL, CANCEL_LINE, CANCEL_LINE_PARTLY, CLOSE, CONFIRM_PAYMENT,
-    CONFIRM_PAYMENT_FOR_ACCEPTANCE, CancelLineInput, CloseInput, FULFIL, FULFIL_LAST, FulfilInput,
+    ACCEPT, CANCEL, CLOSE, CONFIRM_PAYMENT, CONFIRM_PAYMENT_FOR_ACCEPTANCE, CloseInput, FULFIL,
+    FULFIL_LAST, FulfilInput,
     PAYMENT_FAILED, PayInput, REJECT, REVERSE_FULFILMENT, REVERSE_FULFILMENT_ALL, ReverseInput,
     SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_ONLINE, SubmitInput,
 };
@@ -415,7 +414,7 @@ pub async fn fulfil(state: &AppState, request: FulfilOrder) -> Result<Fulfilment
         });
     }
     let lines = SaleLine::of(&state.db, &order.subject()).await?;
-    let problem = problem_with(&lines, &request.lines, SaleLine::open_milli);
+    let problem = problem_with(&lines, &request.lines, SaleLine::fulfillable_milli);
     let complete = problem.is_none()
         && item_lines(&lines).iter().all(|line| {
             let taken = request
@@ -523,67 +522,9 @@ pub async fn reverse_fulfilment(
     })
 }
 
-/// Cancels `quantity_milli` of the open quantity of the item line `line` of
-/// the order `id` as `by`, with `reason` (`cancel_line`).
-///
-/// Decision: the order's stored totals stay as they were ordered; the money
-/// side of a cancelled line (refund, credit note, a smaller invoice) is
-/// BL-SAL-06 and BL-SAL-09. A cancellation that would leave nothing open or
-/// fulfilled is `cancel`'s, and one that would leave only fulfilled
-/// quantities is `cancel_remaining`'s; both are refused here.
-///
-/// # Errors
-///
-/// 422 when the order is not `confirmed` or `partially_fulfilled`, the line
-/// is not an item of the order, the quantity is not above zero or exceeds
-/// what is open, the reason is blank, or nothing would stay open.
-pub async fn cancel_line(
-    state: &AppState,
-    by: &AuthUser,
-    id: i64,
-    line: i64,
-    quantity_milli: i64,
-    reason: &str,
-) -> Result<SalesOrder> {
-    let order = SalesOrder::find_or_404(&state.db, id).await?;
-    let lines = SaleLine::of(&state.db, &order.subject()).await?;
-    let items = item_lines(&lines);
-    let problem = match items.iter().find(|l| l.id == line) {
-        None => Some(english("wl_sales.orders.problem.unknown_line", &[])),
-        Some(found) if quantity_milli <= 0 || quantity_milli > found.open_milli() => {
-            Some(english("wl_sales.orders.problem.quantity", &[]))
-        }
-        Some(_) => {
-            let left: i64 = items.iter().map(|l| l.open_milli()).sum::<i64>() - quantity_milli;
-            (left <= 0).then(|| english("wl_sales.orders.problem.cancel_line_last", &[]))
-        }
-    };
-    let input = CancelLineInput {
-        line,
-        quantity_milli,
-        problem,
-    };
-    let name = if order.status == SalesOrderStatus::PartiallyFulfilled {
-        CANCEL_LINE_PARTLY
-    } else {
-        CANCEL_LINE
-    };
-    let meta = renox::serde_json::to_value(&input).unwrap_or(Value::Null);
-    let _ = order
-        .transition(name)
-        .by(by)
-        .reason(reason.trim().to_owned())
-        .input(&input)
-        .meta(meta)
-        .run(state)
-        .await
-        .map_err(|e| e.into_error())?;
-    SalesOrder::find_or_404(&state.db, id).await
-}
-
 /// Drafts the invoice of a fulfilled order, once, with the order as its
 /// source; nothing when invoicing is off.
-async fn draft_invoice(state: &AppState, id: i64) -> Result {
+pub(crate) async fn draft_invoice(state: &AppState, id: i64) -> Result {
     let order = SalesOrder::find_or_404(&state.db, id).await?;
     if order.invoice_id.is_some() {
         return Ok(());
@@ -594,7 +535,10 @@ async fn draft_invoice(state: &AppState, id: i64) -> Result {
         draft = draft.legal_entity(entity);
     }
     for line in &lines {
-        draft = draft.line(line.draft_line().origin(order.subject()));
+        // What was cancelled is not billed (BL-SAL-08, BL-SAL-09).
+        if let Some(billed) = line.billable_draft_line() {
+            draft = draft.line(billed.origin(order.subject()));
+        }
     }
     if let Some(invoice) = invoicer(state).draft(&state.db, draft).await? {
         SalesOrder::query()
@@ -704,6 +648,7 @@ async fn announce(state: &AppState, event: &Transitioned<SalesOrder>) -> Result 
                     order: id,
                     party,
                     reason: order.reason.clone().unwrap_or_default(),
+                    outcomes: Vec::new(),
                 })
                 .await
         }
@@ -716,20 +661,10 @@ async fn announce(state: &AppState, event: &Transitioned<SalesOrder>) -> Result 
                 })
                 .await
         }
-        CANCEL_LINE | CANCEL_LINE_PARTLY => {
-            let Ok(input) = renox::serde_json::from_value::<CancelLineInput>(event.meta.clone())
-            else {
-                return Ok(());
-            };
-            state
-                .emit(SalesOrderLineCancelled {
-                    order: id,
-                    party,
-                    line: input.line,
-                    quantity_milli: input.quantity_milli,
-                    reason: event.reason.clone().unwrap_or_default(),
-                })
-                .await
+        // An amendment or a cancelled line (BL-SAL-05, BL-SAL-08, BL-SAL-09):
+        // the events and the money, from the change the transition wrote.
+        other if crate::order_changes::is_change(other) => {
+            crate::order_changes::announce_pending(state, order.id).await
         }
         CLOSE => state.emit(SalesOrderClosed { order: id, party }).await,
         _ => Ok(()),
@@ -745,4 +680,7 @@ pub(crate) fn register(app: &mut Registry) {
     });
     // The online payment: `PaymentReceived`, `PaymentFailed` and the window.
     crate::online_payment::register(app);
+    // The changes of a placed order: the approval wiring and the money jobs.
+    crate::order_changes::register(app);
+    crate::settle::register(app);
 }

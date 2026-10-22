@@ -303,6 +303,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::SALES_ORDERS_CREATE,
             sales::SALES_ORDERS_ACCEPT,
             sales::SALES_ORDERS_CANCEL,
+            sales::SALES_ORDERS_AMEND,
+            sales::SALES_ORDERS_APPROVE,
             sales::RETURNS_REQUEST,
             sales::RETURNS_HANDLE,
             sales::LOYALTY_VIEW,

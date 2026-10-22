@@ -7,11 +7,13 @@ pub mod acquisition_daily;
 pub mod adjustment;
 pub mod adjustment_machine;
 pub mod adjustments;
+pub mod amend;
 pub mod attribution;
 pub mod bill_links;
 pub mod block;
 pub mod budget;
 pub mod campaign;
+pub mod cancel_lines;
 pub mod closure;
 pub mod config;
 pub mod cost_entry;
@@ -20,6 +22,7 @@ pub mod costs;
 pub mod counter_sale;
 pub mod counter_sale_machine;
 pub mod counter_sales;
+pub mod credit;
 pub mod daily;
 mod events;
 pub mod expiry;
@@ -37,6 +40,9 @@ pub mod machine;
 pub mod merge;
 pub mod notices;
 pub mod online_payment;
+pub mod order_change;
+pub mod order_changes;
+mod order_notices;
 pub mod package;
 pub mod package_machine;
 pub mod package_reopen;
@@ -59,8 +65,10 @@ pub mod sales_returns;
 pub mod seed;
 pub mod segment;
 pub mod segments;
+pub mod settle;
 pub mod terms;
 mod texts;
+mod texts_changes;
 pub mod voids;
 
 use renox::db::Migration;
@@ -85,6 +93,7 @@ pub use loyalty_account::{AccountStatus, Enrolment, LoyaltyAccount};
 pub use loyalty_attach::MemberRef;
 pub use loyalty_points::{LoyaltyEarning, LoyaltyReview, PointsKind, PointsMovement};
 pub use loyalty_programme::{EarnKind, LoyaltyProgramme, NewProgramme};
+pub use order_change::{OrderChange, OrderRevision, OrderSettlement};
 pub use package::{MovementKind, Package, PackageMovement, PackageStatus};
 pub use package_reopen::{PackageRefusal, PackageReopening};
 pub use promo_code::PromoCode;
@@ -154,6 +163,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-sales/sales_order.html"),
     ),
     (
+        "wl-sales/sales_order_revision.html",
+        include_str!("../views/wl-sales/sales_order_revision.html"),
+    ),
+    (
         "wl-sales/sales_returns.html",
         include_str!("../views/wl-sales/sales_returns.html"),
     ),
@@ -221,8 +234,14 @@ pub mod permissions {
     pub const SALES_ORDERS_CREATE: &str = "sales_orders.create";
     /// Accept or reject an order that waits for the seller.
     pub const SALES_ORDERS_ACCEPT: &str = "sales_orders.accept";
-    /// Cancel a sales order.
+    /// Cancel a sales order, one of its lines or its remaining lines.
     pub const SALES_ORDERS_CANCEL: &str = "sales_orders.cancel";
+    /// Amend a sales order as a new revision (`SAL.ACL.02`, `SAL.ACL.05`).
+    pub const SALES_ORDERS_AMEND: &str = "sales_orders.amend";
+    /// Approve an amendment or a cancellation after fulfilment started, a
+    /// manual discount beyond the limit, a *finish to stock* or *scrap*
+    /// outcome and a waived cancellation fee (`SAL.ACL.02`, `SAL.ACL.05`).
+    pub const SALES_ORDERS_APPROVE: &str = "sales_orders.approve";
     /// Request a sales return.
     pub const RETURNS_REQUEST: &str = "returns.request";
     /// Receive, resolve, reject and reverse sales returns.
@@ -385,6 +404,71 @@ impl WlSales {
         self
     }
 
+    /// The channels whose orders are changed on the channel's own system, so
+    /// `amend` is not offered (§7, default: the aggregators).
+    pub fn aggregator_channels(mut self, channels: &[&str]) -> Self {
+        self.config.aggregator_channels = channels.iter().map(|c| c.trim().to_lowercase()).collect();
+        self
+    }
+
+    /// The manual discount above which a change needs a manager
+    /// (`SAL.ACL.02`), in percent of the line (default 10; 07, 08: 5).
+    pub fn manual_discount_limit_percent(mut self, percent: i64) -> Self {
+        assert!(percent >= 0, "a limit is zero or more");
+        self.config.manual_discount_limit_bps = percent * 100;
+        self
+    }
+
+    /// The outcomes offered when a started line is cancelled, narrowed to
+    /// what the vertical can do (06: `return_to_stock`, `scrap`; 08:
+    /// `return_to_stock`). Unknown names are left out.
+    pub fn cancel_outcomes(mut self, outcomes: &[&str]) -> Self {
+        self.config.cancel_outcomes = outcomes
+            .iter()
+            .filter(|o| wl_kernel::sales::LineOutcomeKind::parse(o).is_some())
+            .map(|o| o.trim().to_owned())
+            .collect();
+        self
+    }
+
+    /// The default cancellation fee on a started line, in percent of the
+    /// line value with VAT (§7, default 0).
+    pub fn cancellation_fee_percent(mut self, percent: i64) -> Self {
+        assert!(percent >= 0, "a fee is zero or more");
+        self.config.cancellation_fee_bps = percent * 100;
+        self
+    }
+
+    /// The default cancellation fee on a started line as a fixed amount in
+    /// fils, used when no percentage is set (§7, default 0).
+    pub fn cancellation_fee_amount(mut self, fils: i64) -> Self {
+        assert!(fils >= 0, "a fee is zero or more");
+        self.config.cancellation_fee_amount = fils;
+        self
+    }
+
+    /// The VAT category of a cancellation fee line: `standard` (default),
+    /// `zero_rated` or `exempt`. Open item A-04 decides it.
+    pub fn cancellation_fee_vat(mut self, category: &str) -> Self {
+        self.config.cancellation_fee_vat = category.to_owned();
+        self
+    }
+
+    /// The role told when an order goes on credit hold (`SAL.RUL.01`); the
+    /// company admin when not set.
+    pub fn accountant_role(mut self, role: &str) -> Self {
+        self.config.accountant_role = role.to_owned();
+        self
+    }
+
+    /// The role that owns the orders of the channels that are not website or
+    /// portal, told when a payment link of an amendment expires (06: the
+    /// outlet manager owns the website orders; this is the sales rep).
+    pub fn sales_rep_role(mut self, role: &str) -> Self {
+        self.config.sales_rep_role = role.to_owned();
+        self
+    }
+
     /// The earning sales per member per day before the account is listed
     /// for the manager's review (§7, default 5).
     pub fn loyalty_daily_sales_limit(mut self, limit: i64) -> Self {
@@ -537,6 +621,7 @@ impl Module for WlSales {
             .view_data::<pages::counter_sales::ShowPage>()
             .view_data::<pages::sales_orders::IndexPage>()
             .view_data::<pages::sales_orders::ShowPage>()
+            .view_data::<pages::sales_orders::RevisionPage>()
             .view_data::<pages::sales_returns::IndexPage>()
             .view_data::<pages::sales_returns::ShowPage>()
             .view_data::<pages::loyalty::IndexPage>()
