@@ -39,3 +39,17 @@
     white-space: nowrap;
   }
 }
+
+/* A table wider than a phone scrolls inside its box. The edge where more
+   columns wait is shaded (a scroll shadow that disappears at the end), so a
+   clipped column reads as "scroll", not as missing. */
+@media (max-width: 560px) {
+  .rx-table-wrap {
+    overflow-x: auto;
+    background:
+      linear-gradient(to right, var(--rx-surface, #fff) 30%, transparent) left center / 24px 100% no-repeat local,
+      linear-gradient(to left, var(--rx-surface, #fff) 30%, transparent) right center / 24px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.18), transparent) left center / 10px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.18), transparent) right center / 10px 100% no-repeat scroll;
+  }
+}

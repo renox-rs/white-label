@@ -111,7 +111,7 @@
               <rx-table :rows="sites" as="site" :key="site.id" :caption="tx['sites.title']">
                 <rx-column :label="tx['sites.name']">{{ site.name }}</rx-column>
                 <rx-column :label="tx['sites.address']" hide-narrow>{{ site.address }}</rx-column>
-                <rx-column :label="tx['sites.licences']">{{ site.licences }}</rx-column>
+                <rx-column :label="tx['sites.licences']" hide-narrow>{{ site.licences }}</rx-column>
                 <rx-column :label="tx['sites.actions'] if can_sites else ''">
                   <rx-action-sheet :id="'edit-site-' ~ site.id" :label="tx['sites.edit']" :action="site.action"
                                    :title="tx['sites.edit']" :submit-label="tx['sites.save']" icon="pencil">

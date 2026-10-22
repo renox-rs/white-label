@@ -682,3 +682,20 @@ async fn the_party_picker_of_a_new_contract_lists_clients_only() {
         );
     }
 }
+
+/// At 390 px a table wider than the screen scrolls inside its box and shows a
+/// shade on the edge where more columns wait (the site table also drops its
+/// licences column there), so nothing is clipped without a hint.
+#[renox::test]
+async fn a_wide_table_on_a_phone_scrolls_with_a_visible_hint() {
+    let css =
+        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/public/app.css")).unwrap();
+    let phone = css.split("@media (max-width: 560px)").last().unwrap();
+    assert!(phone.contains(".rx-table-wrap"), "{phone}");
+    assert!(phone.contains("overflow-x: auto"));
+    assert!(phone.contains("radial-gradient"), "the scroll shade");
+    let app = demo().await;
+    let id = contract(&app, "CC-DEMO-001").await;
+    let html = page(&app, AMAL, &format!("/manpower/contracts/{id}")).await;
+    assert!(html.contains("rx-table-wrap"));
+}
