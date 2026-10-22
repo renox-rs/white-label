@@ -335,13 +335,18 @@ async fn edu_06_a_deactivated_counsellor_who_still_holds_the_role_gets_no_task()
         .assign_role_in(t.db(), edtech::permissions::COUNSELLOR_ROLE, &scope)
         .await
         .unwrap();
-    let recipients = edtech::chargebacks::recipients(t.state(), &e).await.unwrap();
+    let recipients = edtech::chargebacks::recipients(t.state(), &e)
+        .await
+        .unwrap();
     assert_eq!(recipients, vec![c1_user.id], "C1 is in post: C1 gets it");
 
     // C1 is deactivated: the exit settled, the role and the permission remain.
     wl_hr::Employee::query()
         .where_(wl_hr::Employee::ID.eq(hired.id))
-        .update(t.db(), &[("status", &wl_hr::employee::EmployeeStatus::Exited)])
+        .update(
+            t.db(),
+            &[("status", &wl_hr::employee::EmployeeStatus::Exited)],
+        )
         .await
         .unwrap();
     assert!(
