@@ -963,7 +963,6 @@ async fn delivered_delivery(state: &AppState, order: &FnbOrder) -> Result {
         .address(&order.address, &order.area)
         .phone(&order.recipient_phone)
         .perishable()
-        .partial_acceptance(false)
         .promise(order.placed_at.unwrap_or_else(renox::db::now), 45)
         .collect(collected)
         .item(DeliveryItem::new(&format!("Order {}", order.number), 1_000));
@@ -1012,7 +1011,6 @@ async fn ask_delivery(state: &AppState, order: &FnbOrder) -> Result {
         .address(&order.address, &order.area)
         .phone(&order.recipient_phone)
         .perishable()
-        .partial_acceptance(false)
         .promise(order.placed_at.unwrap_or_else(renox::db::now), 45)
         .collect(if order.is_cash_on_delivery() { order.total } else { 0 })
         .item(DeliveryItem::new(&format!("Order {}", order.number), 1_000));
@@ -1203,8 +1201,10 @@ async fn central_stock(state: &AppState) -> Result<Location> {
     {
         Some(location) => location,
         None => {
+            // The central kitchen blocks a movement below zero (`STK.RUL.06`,
+            // BL-FNB-17): its stock is lot-tracked and counted.
             let mut location = Location::new("CENTRAL", "Central Production Kitchen");
-            location.negative_stock_policy = NegativeStockPolicy::AllowConsumption;
+            location.negative_stock_policy = NegativeStockPolicy::Block;
             location.save(db).await?;
             location
         }

@@ -87,6 +87,9 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
         // [`super::clinics_money::invoicing`].
         super::clinics_seed::CLINICS => super::clinics_money::invoicing(module, entities),
         "manpower" => super::manpower_seed::invoicing(module, entities),
+        // 06 `FIN.RUL.23`, `FIN.RUL.24`, `FIN.ACL.21` (BL-FNB-16): see
+        // [`super::fnb_seed::invoicing`].
+        super::fnb_seed::FNB => super::fnb_seed::invoicing(module, entities),
         // 03 `FIN.ACL.15`, `FIN.RUL.14`, `FIN.RUL.15`, `FIN.RUL.23`,
         // `FIN.RUL.24`, `FIN.ACL.21` and the e-invoicing scope (BL-LOG-26,
         // BL-LOG-25): see [`super::logistics_seed::invoicing`].
@@ -158,6 +161,9 @@ pub fn payments_for(client_app: &str) -> WlPayments {
         "logistics" => super::logistics_seed::payments(module),
         "construction" => super::construction_seed::payments(module),
         "manpower" => super::manpower_seed::payments(module),
+        // 06: pending payments, late payments, refund retry, shortage
+        // write-off and chargebacks (BL-FNB-16).
+        super::fnb_seed::FNB => super::fnb_seed::payments(module),
         // 04: a bounced cheque adds no fee; the billing role decides with the
         // engagement manager (BL-ACC-24).
         "accounting" => super::accounting_seed::payments(module),

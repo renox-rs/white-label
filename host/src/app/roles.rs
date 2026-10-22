@@ -1374,6 +1374,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::VIEW,
             invoices::BUDGETS_VIEW,
             invoices::BUDGETS_APPROVE,
+            // The forecast the alert (`FIN.RUL.23`) points to, and every
+            // owner drawing, whatever its amount (`FIN.ACL.21`, BL-FNB-16).
+            invoices::CASHFLOW_VIEW,
+            invoices::DRAWINGS_APPROVE,
             wl_kernel::permissions::APPROVALS_VIEW,
         ],
     ),
@@ -1479,6 +1483,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             payments::REFUNDS_APPROVE,
             payments::CASH_VIEW,
             payments::CASH_COUNT,
+            // Writes off a rider's or a till's shortage up to AED 20; above
+            // it the area manager approves (`FIN.ACL.06`, BL-FNB-16).
+            payments::CASH_WRITE_OFF,
             // Stock of the kitchen: wastage above the limit needs this role
             // (`STK.ACL.02`); the dispatcher task of a cancelled line is theirs.
             inventory::ITEMS_VIEW,
