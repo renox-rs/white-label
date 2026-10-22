@@ -316,6 +316,75 @@ async fn an_account_manager_of_one_client_counts_that_client_only() {
     assert_eq!(counted(&html, LABELS[2]), towers);
 }
 
+/// AC6 (the demo's own account manager): when his role is scoped to Gulf Tower
+/// only, he counts Gulf Tower's contracts, requests and timesheets and nothing
+/// of the other clients, and has no payroll, absence or document tile (their
+/// permissions are global).
+#[renox::test]
+async fn the_demo_account_manager_of_one_client_sees_that_clients_tiles_only() {
+    let app = demo().await;
+    let before = page(&app, AMAL, "/dashboard").await;
+    assert_eq!(
+        counted(&before, LABELS[0]),
+        1,
+        "all three clients: the hold"
+    );
+    assert_eq!(
+        counted(&before, LABELS[6]),
+        2,
+        "all three clients: two sheets"
+    );
+
+    let amal = person(&app, AMAL).await;
+    for other in ["Marina Bay Hospitality LLC", "Al Quoz Logistics Park LLC"] {
+        let party = client(&app, other).await;
+        amal.remove_role_in(
+            app.db(),
+            host::roles::ACCOUNT_MANAGER,
+            &manpower::permissions::client_scope(party.0),
+        )
+        .await
+        .unwrap();
+    }
+    let tower = client(&app, "Gulf Tower Facilities LLC").await;
+    let html = page(&app, AMAL, "/dashboard").await;
+    assert_eq!(
+        counted(&html, LABELS[0]),
+        0,
+        "the hold is Al Quoz's, not counted"
+    );
+    let towers = rows(
+        &app,
+        &format!(
+            "select count(*) from manpower_requests where status in ('open','partially_filled') and client_party_id = {}",
+            tower.0
+        ),
+    )
+    .await;
+    assert!(towers > 0);
+    assert_eq!(counted(&html, LABELS[2]), towers, "Gulf Tower's requests");
+    let ending = rows(
+        &app,
+        &format!(
+            "select count(*) from manpower_client_contracts where client_party_id = {} and status = 'active'",
+            tower.0
+        ),
+    )
+    .await;
+    assert!(
+        counted(&html, LABELS[1]) <= ending,
+        "no contract of another client"
+    );
+    assert_eq!(counted(&html, LABELS[6]), 1, "Gulf Tower's one sheet");
+    for (pair, what) in [
+        (LABELS[3], "documents"),
+        (LABELS[5], "absence"),
+        (LABELS[7], "payroll"),
+    ] {
+        assert_eq!(linked(&html, pair), None, "{what}");
+    }
+}
+
 /// AC7: the client approver sees none of these tiles.
 #[renox::test]
 async fn the_client_approver_sees_none_of_the_agency_tiles() {
