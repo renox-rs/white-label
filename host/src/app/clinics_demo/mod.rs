@@ -230,6 +230,16 @@ impl Module for ClinicsDemo {
     }
 
     fn register(&self, app: &mut Registry) {
+        // The demo clinic's two branches are scopes of roles, bookings and
+        // recall notices; a page names them, never `clinics.branch 2`.
+        wl_kernel::scopes::register_label(BRANCH, |_db, id| {
+            let label = match id.parse() {
+                Ok(JUMEIRAH) => Some("Jumeirah".to_owned()),
+                Ok(BUSINESS_BAY) => Some("Business Bay".to_owned()),
+                _ => None,
+            };
+            Box::pin(async move { Ok(label) })
+        });
         let client = self.client.clone();
         app.command(
             COMMAND,

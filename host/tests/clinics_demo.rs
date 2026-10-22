@@ -349,3 +349,26 @@ async fn the_pages_name_a_service_in_words() {
         .assert_see("Checked in")
         .assert_dont_see("clinics.visits.transition");
 }
+
+/// A branch is named (*Business Bay*), never shown as its scope key
+/// (`clinics.branch 2`), on the recall's trace and the recall calls.
+#[renox::test]
+async fn the_pages_name_a_branch_in_words() {
+    let app = booted().await;
+    host::clinics_demo::seed(app.kernel()).await.unwrap();
+    let admin = User::find_by_email(app.db(), "admin@palmgrove.example")
+        .await
+        .unwrap()
+        .expect("the demo administrator");
+    app.acting_as(&admin);
+    let recall = count(&app, "select min(id) from wl_inventory_recalls").await;
+    app.get(&format!("/clinics/recalls/{recall}"))
+        .await
+        .assert_ok()
+        .assert_dont_see("clinics.branch")
+        .assert_see("Business Bay");
+    app.get("/clinics/recall-calls")
+        .await
+        .assert_ok()
+        .assert_dont_see("clinics.branch");
+}
