@@ -1202,7 +1202,10 @@ async fn minors_batch_of(
         .where_(wl_documents::Document::ID.eq(clearance.id))
         .update(
             w.db(),
-            &[("accepted_at", &Some(renox::db::now() - TimeDelta::days(400)))],
+            &[(
+                "accepted_at",
+                &Some(renox::db::now() - TimeDelta::days(400)),
+            )],
         )
         .await
         .unwrap();
@@ -1351,9 +1354,8 @@ const PACK: &str = "pack10";
 
 /// The local time `hour:minute` of `date` (Asia/Dubai) as an instant.
 fn local(date: NaiveDate, hour: u32, minute: u32) -> renox::db::DateTime {
-    wl_kernel::BusinessCalendar::default().from_local(
-        date.and_hms_opt(hour, minute, 0).expect("a time"),
-    )
+    wl_kernel::BusinessCalendar::default()
+        .from_local(date.and_hms_opt(hour, minute, 0).expect("a time"))
 }
 
 /// The `n`th session (from 0) of `batch`, set to start at `starts` and last
@@ -1503,7 +1505,11 @@ async fn edu_15_the_real_ledger_charges_the_unexcused_absence_only() {
         .await
         .unwrap();
     assert!(!mark_row(&w, &early, &e).await.consumed);
-    assert_eq!(credits_left(&w, party).await, 9, "an excused absence is free");
+    assert_eq!(
+        credits_left(&w, party).await,
+        9,
+        "an excused absence is free"
+    );
     let rights = edtech::make_up::open_rights(w.db(), &reload(&w, &e).await)
         .await
         .unwrap();
@@ -1587,9 +1593,10 @@ async fn edu_15_the_real_ledger_is_not_asked_for_a_cancelled_session() {
         .await
         .unwrap();
 
-    let done = edtech::sessions::cancel(w.state(), &c.coordinator, cancelled.id, "Tutor sick", None)
-        .await
-        .unwrap();
+    let done =
+        edtech::sessions::cancel(w.state(), &c.coordinator, cancelled.id, "Tutor sick", None)
+            .await
+            .unwrap();
     assert_eq!(done.status, edtech::SessionStatus::Cancelled);
     assert_eq!(credits_left(&w, party).await, 10, "nothing consumed");
     let package = wl_sales::Package::query()
@@ -1698,7 +1705,11 @@ async fn edu_11_a_flagged_session_still_uses_the_real_credit() {
             .len(),
         1
     );
-    assert_eq!(credits_left(&w, party).await, 9, "the flag changes no credit");
+    assert_eq!(
+        credits_left(&w, party).await,
+        9,
+        "the flag changes no credit"
+    );
 }
 
 // ---- #447 and #448: a batch stops and the refunds, through the real wl-payments and wl-invoicing -
@@ -1709,7 +1720,10 @@ async fn pay_by_card(w: &World, e: &Enrolment) {
     let payment = start_payment(w, e).await;
     online::gateway_succeeded(
         w.state(),
-        payment.gateway_transaction.as_deref().expect("a transaction"),
+        payment
+            .gateway_transaction
+            .as_deref()
+            .expect("a transaction"),
         payment.amount,
     )
     .await
@@ -1778,7 +1792,10 @@ async fn edu_12_the_approved_termination_asks_the_real_payments_for_the_refund()
     let (_, rita) = w.staff("Rita", host::roles::ACCOUNTANT).await;
     let b = started_batch(&w, &coordinator, "B").await;
     let b2 = w.open_batch(&coordinator, "B2", day(30)).await;
-    let (omar, sara) = (tenant(&w.app, "Omar Khan").await, tenant(&w.app, "Sara Ali").await);
+    let (omar, sara) = (
+        tenant(&w.app, "Omar Khan").await,
+        tenant(&w.app, "Sara Ali").await,
+    );
     let e1 = enrolments::create(
         w.state(),
         &dina,
@@ -1822,13 +1839,17 @@ async fn edu_12_the_approved_termination_asks_the_real_payments_for_the_refund()
     .await
     .unwrap();
     let request = asked.approval_request.expect("the centre manager decides");
-    assert!(refunds(&w).await.is_empty(), "nothing moves before the approval");
+    assert!(
+        refunds(&w).await.is_empty(),
+        "nothing moves before the approval"
+    );
     wl_kernel::approvals::approve(w.state(), request, &manager, "")
         .await
         .unwrap();
 
     let sessions = edtech::Session::of_batch(w.db(), b.id).await.unwrap();
-    let count = |status: edtech::SessionStatus| sessions.iter().filter(|s| s.status == status).count();
+    let count =
+        |status: edtech::SessionStatus| sessions.iter().filter(|s| s.status == status).count();
     assert_eq!(count(edtech::SessionStatus::Cancelled), 7);
     assert_eq!(count(edtech::SessionStatus::Held), 5);
     let one = reload(&w, &e1).await;
@@ -1981,7 +2002,9 @@ async fn edu_16_only_a_user_who_may_issue_reissues_or_copies() {
                 .assert_forbidden();
         }
     }
-    let still = edtech::Certificate::find_or_404(w.db(), issued.id).await.unwrap();
+    let still = edtech::Certificate::find_or_404(w.db(), issued.id)
+        .await
+        .unwrap();
     assert_eq!(still.status, edtech::CertificateStatus::Issued);
     assert_eq!(
         edtech::Certificate::of_enrolment(w.db(), e.id)
@@ -2071,7 +2094,11 @@ async fn give_up_tasks_of_enrolments(w: &World) -> Vec<wl_ticketing::Ticket> {
         .await
         .unwrap()
         .into_iter()
-        .filter(|t| t.source_key.as_deref().is_some_and(|k| k.starts_with(prefix)))
+        .filter(|t| {
+            t.source_key
+                .as_deref()
+                .is_some_and(|k| k.starts_with(prefix))
+        })
         .collect()
 }
 
@@ -2126,10 +2153,18 @@ async fn edu_17_a_notice_that_bounces_at_both_guardians_gives_the_counsellor_one
 
     let messages = sent_of(&w, edtech::notices::FAMILY_NOTICE).await;
     let addresses: Vec<_> = messages.iter().filter_map(|m| m.address.clone()).collect();
-    assert!(addresses.contains(&"huda.khan@parties.example".to_owned()), "{addresses:?}");
-    assert!(addresses.contains(&"khalid.khan@parties.example".to_owned()), "{addresses:?}");
     assert!(
-        messages.iter().all(|m| m.status == wl_notify::MessageStatus::Abandoned),
+        addresses.contains(&"huda.khan@parties.example".to_owned()),
+        "{addresses:?}"
+    );
+    assert!(
+        addresses.contains(&"khalid.khan@parties.example".to_owned()),
+        "{addresses:?}"
+    );
+    assert!(
+        messages
+            .iter()
+            .all(|m| m.status == wl_notify::MessageStatus::Abandoned),
         "none arrived"
     );
     let tasks = give_up_tasks_of_enrolments(&w).await;
@@ -2150,10 +2185,8 @@ async fn campus_batch(
     days: &[i64],
     from: NaiveDate,
 ) -> Batch {
-    let mut room = wl_scheduling::Resource::new(
-        &format!("Room {campus}"),
-        wl_scheduling::ResourceType::Room,
-    );
+    let mut room =
+        wl_scheduling::Resource::new(&format!("Room {campus}"), wl_scheduling::ResourceType::Room);
     room.capacity = 14;
     room.save(w.db()).await.unwrap();
     let first = monday_from(from);
@@ -2206,11 +2239,47 @@ async fn edu_17_a_tutors_clearance_expiring_tells_the_coordinator_of_each_campus
     )
     .await
     .unwrap();
-    let three = campus_batch(&w, &coordinator, &kids, (layla.id, employee), 3, &[1, 3], day(7)).await;
-    let four = campus_batch(&w, &coordinator, &kids, (layla.id, employee), 4, &[2, 4], day(7)).await;
-    let cora = scoped_person(&w.app, "Cora", ACADEMIC_COORDINATOR, &Scope::new("test.campus", 3)).await;
-    let dalia = scoped_person(&w.app, "Dalia", ACADEMIC_COORDINATOR, &Scope::new("test.campus", 4)).await;
-    let eman = scoped_person(&w.app, "Eman", ACADEMIC_COORDINATOR, &Scope::new("test.campus", 5)).await;
+    let three = campus_batch(
+        &w,
+        &coordinator,
+        &kids,
+        (layla.id, employee),
+        3,
+        &[1, 3],
+        day(7),
+    )
+    .await;
+    let four = campus_batch(
+        &w,
+        &coordinator,
+        &kids,
+        (layla.id, employee),
+        4,
+        &[2, 4],
+        day(7),
+    )
+    .await;
+    let cora = scoped_person(
+        &w.app,
+        "Cora",
+        ACADEMIC_COORDINATOR,
+        &Scope::new("test.campus", 3),
+    )
+    .await;
+    let dalia = scoped_person(
+        &w.app,
+        "Dalia",
+        ACADEMIC_COORDINATOR,
+        &Scope::new("test.campus", 4),
+    )
+    .await;
+    let eman = scoped_person(
+        &w.app,
+        "Eman",
+        ACADEMIC_COORDINATOR,
+        &Scope::new("test.campus", 5),
+    )
+    .await;
 
     expires(&clearance, day(25), &w).await;
     wl_documents::expiry::run(w.state(), wl_kernel::documents::today())
@@ -2220,7 +2289,13 @@ async fn edu_17_a_tutors_clearance_expiring_tells_the_coordinator_of_each_campus
     let text = |messages: &[wl_notify::Message]| {
         messages
             .iter()
-            .map(|m| format!("{} {}", m.rendered_subject.clone().unwrap_or_default(), m.rendered_body))
+            .map(|m| {
+                format!(
+                    "{} {}",
+                    m.rendered_subject.clone().unwrap_or_default(),
+                    m.rendered_body
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n")
     };
@@ -2293,8 +2368,15 @@ async fn edu_17_a_campaign_reports_its_cost_per_lead_cac_and_roas_and_waits_over
         manages_costs: false,
     };
     for amount in [300_000, 100_000] {
-        let saved = costs::save(w.state(), entry(amount)).await.unwrap().unwrap();
-        assert_eq!(saved.status, wl_sales::CostStatus::Approved, "within the budget");
+        let saved = costs::save(w.state(), entry(amount))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            saved.status,
+            wl_sales::CostStatus::Approved,
+            "within the budget"
+        );
     }
     for i in 0..20 {
         let new = wl_sales::NewLead::web_form(None, &format!("Lead {i}")).campaign_code("IG-OCT");
@@ -2320,7 +2402,10 @@ async fn edu_17_a_campaign_reports_its_cost_per_lead_cac_and_roas_and_waits_over
     for n in 0..4 {
         let party = PartyId(500 + n);
         attribution
-            .attribute(w.state(), Attribute::party(party, "social").campaign("IG-OCT"))
+            .attribute(
+                w.state(),
+                Attribute::party(party, "social").campaign("IG-OCT"),
+            )
             .await
             .unwrap();
         attribution
@@ -2339,7 +2424,8 @@ async fn edu_17_a_campaign_reports_its_cost_per_lead_cac_and_roas_and_waits_over
 
     let config = wl_sales::config::config_of(w.state());
     let row = |facts: &report::Facts| {
-        report::compute(facts, &Filter::default(), GroupBy::Campaign, &Viewer::all()).rows[0].cells()
+        report::compute(facts, &Filter::default(), GroupBy::Campaign, &Viewer::all()).rows[0]
+            .cells()
     };
     let facts = report::load(w.db(), &config).await.unwrap();
     let cells = row(&facts);
@@ -2354,11 +2440,22 @@ async fn edu_17_a_campaign_reports_its_cost_per_lead_cac_and_roas_and_waits_over
     assert_eq!(cells.roas, "1.50");
 
     // AED 2,000 more takes the campaign over its AED 5,000 budget.
-    let over = costs::save(w.state(), entry(200_000)).await.unwrap().unwrap();
-    assert_eq!(over.status, wl_sales::CostStatus::PendingApproval, "it waits");
+    let over = costs::save(w.state(), entry(200_000))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        over.status,
+        wl_sales::CostStatus::PendingApproval,
+        "it waits"
+    );
     let request = over.approval_request_id.expect("a request for a manager");
     let facts = report::load(w.db(), &config).await.unwrap();
-    assert_eq!(row(&facts).cost, "4,000.00", "a waiting entry is not counted");
+    assert_eq!(
+        row(&facts).cost,
+        "4,000.00",
+        "a waiting entry is not counted"
+    );
     assert!(
         wl_kernel::approvals::approve(w.state(), request, &marketer, "")
             .await
@@ -2423,7 +2520,12 @@ async fn edu_17_hiring_a_tutor_creates_the_checklist_and_reminds_the_open_steps(
     let mut told = Vec::new();
     for step in &steps {
         for user in step.assignees(w.db()).await.unwrap() {
-            told.push((user, step.title_en.clone(), step.due_date, step.owner.clone()));
+            told.push((
+                user,
+                step.title_en.clone(),
+                step.due_date,
+                step.owner.clone(),
+            ));
         }
     }
     for (name, user) in [
@@ -2431,7 +2533,10 @@ async fn edu_17_hiring_a_tutor_creates_the_checklist_and_reminds_the_open_steps(
         ("the academic coordinator", coordinator.id),
         ("the employee", account.id),
     ] {
-        assert!(told.iter().any(|(u, ..)| *u == user), "{name} has a step: {told:?}");
+        assert!(
+            told.iter().any(|(u, ..)| *u == user),
+            "{name} has a step: {told:?}"
+        );
     }
     assert!(
         told.iter()
@@ -2458,7 +2563,10 @@ async fn edu_17_hiring_a_tutor_creates_the_checklist_and_reminds_the_open_steps(
         page.text()
     );
     assert_eq!(
-        wl_hr::Employee::find_or_404(w.db(), hired.id).await.unwrap().status,
+        wl_hr::Employee::find_or_404(w.db(), hired.id)
+            .await
+            .unwrap()
+            .status,
         wl_hr::employee::EmployeeStatus::Active
     );
     assert!(
@@ -2469,32 +2577,51 @@ async fn edu_17_hiring_a_tutor_creates_the_checklist_and_reminds_the_open_steps(
     // An open step of the employee's own is reminded after its due date.
     let (_, title, due, _) = told
         .iter()
-        .find(|(u, title, ..)| *u == account.id && title == "Upload your Emirates ID and your documents")
+        .find(|(u, title, ..)| {
+            *u == account.id && title == "Upload your Emirates ID and your documents"
+        })
         .cloned()
         .expect("a step of the employee");
     let reminded = |user: i64| {
         let title = title.clone();
         let w = &w;
         async move {
-            support::messages_to(&w.app, "hr.onboarding_step_reminder", &User::find_or_404(w.db(), user).await.unwrap())
-                .await
-                .into_iter()
-                .filter(|m| m.rendered_body.contains(&title) || m.subject_label.as_deref() == Some(title.as_str()))
-                .count()
+            support::messages_to(
+                &w.app,
+                "hr.onboarding_step_reminder",
+                &User::find_or_404(w.db(), user).await.unwrap(),
+            )
+            .await
+            .into_iter()
+            .filter(|m| {
+                m.rendered_body.contains(&title)
+                    || m.subject_label.as_deref() == Some(title.as_str())
+            })
+            .count()
         }
     };
     wl_hr::reminders::run(w.state(), due).await.unwrap();
     w.app.run_all_jobs().await;
     assert_eq!(reminded(account.id).await, 0, "not on the due date");
-    wl_hr::reminders::run(w.state(), due + TimeDelta::days(1)).await.unwrap();
+    wl_hr::reminders::run(w.state(), due + TimeDelta::days(1))
+        .await
+        .unwrap();
     w.app.run_all_jobs().await;
     assert_eq!(reminded(account.id).await, 1, "the first run after it");
-    wl_hr::reminders::run(w.state(), due + TimeDelta::days(2)).await.unwrap();
+    wl_hr::reminders::run(w.state(), due + TimeDelta::days(2))
+        .await
+        .unwrap();
     w.app.run_all_jobs().await;
     assert_eq!(reminded(account.id).await, 1, "not the next day");
-    wl_hr::reminders::run(w.state(), due + TimeDelta::days(3)).await.unwrap();
+    wl_hr::reminders::run(w.state(), due + TimeDelta::days(3))
+        .await
+        .unwrap();
     w.app.run_all_jobs().await;
-    assert_eq!(reminded(account.id).await, 2, "and two days after the first");
+    assert_eq!(
+        reminded(account.id).await,
+        2,
+        "and two days after the first"
+    );
 }
 
 // ---- #453: the refund of a withdrawal through the app's own path --------------------------------
@@ -2575,9 +2702,15 @@ async fn edu_18_a_withdrawal_refund_needs_another_approver_and_is_paid() {
         .expect("B approves");
     assert!(approved.approved_by.is_some());
     assert_ne!(approved.approved_by, approved.requested_by);
-    let paid = wl_payments::refund::pay(w.state(), &rita, &approved, PaymentMethod::Transfer, "BANK-88")
-        .await
-        .expect("the transfer is recorded");
+    let paid = wl_payments::refund::pay(
+        w.state(),
+        &rita,
+        &approved,
+        PaymentMethod::Transfer,
+        "BANK-88",
+    )
+    .await
+    .expect("the transfer is recorded");
     assert_eq!(paid.status, RefundStatus::Paid);
     assert_eq!(reload(&w, &e).await.status, EnrolmentStatus::Withdrawn);
 }
@@ -2639,10 +2772,16 @@ async fn edu_18_a_declined_card_refund_is_retried_once_then_the_accountant_pays_
 
     // Not two minutes before 24 hours after the failure; once after it.
     w.app.travel(Duration::from_secs(24 * 3600 - 120));
-    w.app.run_scheduled(wl_payments::refund_retry::TASK).await.unwrap();
+    w.app
+        .run_scheduled(wl_payments::refund_retry::TASK)
+        .await
+        .unwrap();
     assert_eq!(retries_of(w.db(), refund.id).await.unwrap(), 0);
     w.app.travel(Duration::from_secs(300));
-    w.app.run_scheduled(wl_payments::refund_retry::TASK).await.unwrap();
+    w.app
+        .run_scheduled(wl_payments::refund_retry::TASK)
+        .await
+        .unwrap();
     assert_eq!(retries_of(w.db(), refund.id).await.unwrap(), 1);
     assert_eq!(
         Refund::find_or_404(w.db(), refund.id).await.unwrap().status,
@@ -2666,8 +2805,15 @@ async fn edu_18_a_declined_card_refund_is_retried_once_then_the_accountant_pays_
     .await
     .unwrap();
     w.app.travel(Duration::from_secs(200 * 3600));
-    w.app.run_scheduled(wl_payments::refund_retry::TASK).await.unwrap();
-    assert_eq!(retries_of(w.db(), refund.id).await.unwrap(), 1, "no third attempt");
+    w.app
+        .run_scheduled(wl_payments::refund_retry::TASK)
+        .await
+        .unwrap();
+    assert_eq!(
+        retries_of(w.db(), refund.id).await.unwrap(),
+        1,
+        "no third attempt"
+    );
     let tasks = wl_payments::FollowupTask::open_for(w.db(), "accountant")
         .await
         .unwrap();
@@ -2693,9 +2839,10 @@ async fn edu_18_a_declined_card_refund_is_retried_once_then_the_accountant_pays_
         changed
     };
     assert_eq!(ready.method, Some(PaymentMethod::Transfer));
-    let paid = wl_payments::refund::pay(w.state(), &rita, &ready, PaymentMethod::Transfer, "BANK-89")
-        .await
-        .expect("the transfer is recorded as paid");
+    let paid =
+        wl_payments::refund::pay(w.state(), &rita, &ready, PaymentMethod::Transfer, "BANK-89")
+            .await
+            .expect("the transfer is recorded as paid");
     assert_eq!(paid.status, RefundStatus::Paid);
     assert!(
         wl_payments::FollowupTask::open_for(w.db(), "accountant")
@@ -2874,7 +3021,9 @@ async fn edu_18_a_desk_shortage_of_aed_20_waits_for_approval_and_never_comes_off
         .await
         .expect("the cash is collected")
         .expect("payments is on");
-    let handover = wl_payments::CashHandover::find_or_404(w.db(), id.0).await.unwrap();
+    let handover = wl_payments::CashHandover::find_or_404(w.db(), id.0)
+        .await
+        .unwrap();
 
     let post = |user: &User, path: String, pairs: Vec<(&'static str, &'static str)>| {
         let w = &w;
@@ -2884,10 +3033,16 @@ async fn edu_18_a_desk_shortage_of_aed_20_waits_for_approval_and_never_comes_off
             w.app.htmx().post(&path, &pairs).await
         }
     };
-    post(&rita, format!("/cash/{}/count", handover.id), vec![("counted", "2230.00")])
+    post(
+        &rita,
+        format!("/cash/{}/count", handover.id),
+        vec![("counted", "2230.00")],
+    )
+    .await
+    .assert_ok();
+    let short = wl_payments::CashHandover::find_or_404(w.db(), id.0)
         .await
-        .assert_ok();
-    let short = wl_payments::CashHandover::find_or_404(w.db(), id.0).await.unwrap();
+        .unwrap();
     assert_eq!(short.status, wl_kernel::custody::HandoverStatus::Short);
     assert_eq!(short.difference, 2_000, "AED 20.00 short");
 
@@ -2908,14 +3063,25 @@ async fn edu_18_a_desk_shortage_of_aed_20_waits_for_approval_and_never_comes_off
     assert_eq!(deduction.status.as_u16(), 422, "salary recovery is off");
 
     // The accountant counts but does not write off; the manager asks.
-    post(&rita, format!("/cash/{}/write-off", handover.id), vec![("reason", "Till error")])
-        .await
-        .assert_forbidden();
-    post(&mona, format!("/cash/{}/write-off", handover.id), vec![("reason", "Till error")])
-        .await
-        .assert_ok();
+    post(
+        &rita,
+        format!("/cash/{}/write-off", handover.id),
+        vec![("reason", "Till error")],
+    )
+    .await
+    .assert_forbidden();
+    post(
+        &mona,
+        format!("/cash/{}/write-off", handover.id),
+        vec![("reason", "Till error")],
+    )
+    .await
+    .assert_ok();
     assert_eq!(
-        wl_payments::CashHandover::find_or_404(w.db(), id.0).await.unwrap().status,
+        wl_payments::CashHandover::find_or_404(w.db(), id.0)
+            .await
+            .unwrap()
+            .status,
         wl_kernel::custody::HandoverStatus::Short,
         "AED 20 needs an approval"
     );
@@ -2940,7 +3106,9 @@ async fn edu_18_a_desk_shortage_of_aed_20_waits_for_approval_and_never_comes_off
     wl_kernel::approvals::approve(w.state(), request.id, &ada, "agreed")
         .await
         .expect("the company admin approves");
-    let after = wl_payments::CashHandover::find_or_404(w.db(), id.0).await.unwrap();
+    let after = wl_payments::CashHandover::find_or_404(w.db(), id.0)
+        .await
+        .unwrap();
     assert_eq!(after.status, wl_kernel::custody::HandoverStatus::WrittenOff);
     assert_eq!(after.written_off, 2_000);
 }
@@ -2963,7 +3131,12 @@ async fn tutor_with_account(
     )
     .await
     .expect("the tutor is hired");
-    (tutor_resource(w, name, Some(hired.id)).await, hired.id, user, auth)
+    (
+        tutor_resource(w, name, Some(hired.id)).await,
+        hired.id,
+        user,
+        auth,
+    )
 }
 
 /// `EDU.ACL.03`: Layla teaches the batch; Omar, another tutor of the centre, may
@@ -2979,8 +3152,17 @@ async fn edu_14_a_tutor_marks_and_corrects_only_the_sessions_of_their_own_batch(
     let (layla, layla_employee, _, layla_auth) = tutor_with_account(&w, "Layla Hassan").await;
     let (_, _, omar_user, omar_auth) = tutor_with_account(&w, "Omar Nasser").await;
     let course = w.course(&coordinator).await;
-    let batch = planned_of(&w, &coordinator, &course, "A", (layla.id, Some(layla_employee))).await;
-    let batch = batches::open(w.state(), &coordinator, batch.id).await.unwrap();
+    let batch = planned_of(
+        &w,
+        &coordinator,
+        &course,
+        "A",
+        (layla.id, Some(layla_employee)),
+    )
+    .await;
+    let batch = batches::open(w.state(), &coordinator, batch.id)
+        .await
+        .unwrap();
     let (e, _) = package_student(&w, &desk, "Sara Ali", 10, None).await;
     let ended = renox::db::now() - TimeDelta::hours(2);
     let session = session_at(&w, &batch, 0, ended - TimeDelta::minutes(90)).await;
@@ -3008,7 +3190,10 @@ async fn edu_14_a_tutor_marks_and_corrects_only_the_sessions_of_their_own_batch(
         .await
         .assert_forbidden();
     assert_eq!(
-        edtech::Session::find_or_404(w.db(), session.id).await.unwrap().status,
+        edtech::Session::find_or_404(w.db(), session.id)
+            .await
+            .unwrap()
+            .status,
         edtech::SessionStatus::Scheduled
     );
 
@@ -3072,7 +3257,9 @@ async fn edu_17_a_one_to_one_booking_needs_the_tutors_clearance_in_the_real_guar
         .await
         .unwrap()
         .expect("the host seeds the one-to-one service type");
-    resource::offer(w.db(), service_type.id, layla.id).await.unwrap();
+    resource::offer(w.db(), service_type.id, layla.id)
+        .await
+        .unwrap();
     for weekday in 1..=7 {
         AvailabilityRule::new(layla.id, weekday, 0, 1440)
             .save(w.db())
@@ -3087,7 +3274,12 @@ async fn edu_17_a_one_to_one_booking_needs_the_tutors_clearance_in_the_real_guar
         async move {
             match service::book(
                 &state,
-                wl_scheduling::NewBooking::new(parent, service_id, &[tutor_id], local(lesson, 10, 0)),
+                wl_scheduling::NewBooking::new(
+                    parent,
+                    service_id,
+                    &[tutor_id],
+                    local(lesson, 10, 0),
+                ),
                 wl_scheduling::Actor::staff(1),
                 renox::db::now(),
             )
@@ -3101,7 +3293,10 @@ async fn edu_17_a_one_to_one_booking_needs_the_tutors_clearance_in_the_real_guar
 
     let refused = book(&w).await;
     assert_ne!(refused, "booked");
-    assert!(refused.to_lowercase().contains("police clearance"), "{refused}");
+    assert!(
+        refused.to_lowercase().contains("police clearance"),
+        "{refused}"
+    );
 
     record_document(
         &w.app,
