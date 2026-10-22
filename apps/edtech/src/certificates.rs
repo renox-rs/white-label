@@ -140,8 +140,8 @@ async fn run(
 
 /// `issue`: the draft is published with its number.
 ///
-/// The slot BL-EDU-07 fills: the centre permit (and the course approval when
-/// the certificate states it) valid on the date in the input.
+/// The centre permit (and the course approval when the certificate states it)
+/// must be valid on the date in the input (BL-EDU-07, [`crate::documents`]).
 ///
 /// # Errors
 ///
@@ -149,7 +149,14 @@ async fn run(
 /// `draft` and the criteria are met.
 pub async fn issue(state: &AppState, by: &AuthUser, id: i64) -> Result<Certificate> {
     let certificate = Certificate::find_or_404(&state.db, id).await?;
-    let input = input_for(state, &certificate, by).await?;
+    let mut input = input_for(state, &certificate, by).await?;
+    // The centre permit, and the course approval when the certificate states
+    // it, valid on the day it is judged on; the machine's guard
+    // `document_valid` refuses what the guard refused, naming the documents.
+    let on = input.on_date.unwrap_or_else(today);
+    input.documents = Some(
+        crate::documents::check_certificate_issue(state, &certificate, on, Some(by.id)).await?,
+    );
     run(state, by, &certificate, ISSUE, None, input).await
 }
 

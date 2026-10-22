@@ -2,7 +2,7 @@
 //!
 //! | Transition | From | To | By | Guards |
 //! |---|---|---|---|---|
-//! | [`ISSUE`] | draft | issued | `certificates.issue` | `criteria_met` (`EDU.ACL.06`), `document_valid` (slot, BL-EDU-07) |
+//! | [`ISSUE`] | draft | issued | `certificates.issue` | `criteria_met` (`EDU.ACL.06`), `document_valid` (BL-EDU-07) |
 //! | [`REISSUE`] | issued | superseded | `certificates.issue` | a reason, `criteria_met` |
 //! | [`REVOKE`] | issued | revoked | `certificates.revoke` | a reason |
 //!
@@ -16,9 +16,11 @@
 //!   own transaction, so a refused issue leaves no gap and a number is never
 //!   reused. A reissued draft links the certificate it replaces to itself in
 //!   the same step: the old public page then points to the new number.
-//! - `document_valid` is the slot BL-EDU-07 fills: the centre permit must be
-//!   valid on `on_date`, and the course approval too when the certificate
-//!   states it. For a reissued draft `on_date` is the enrolment's completion
+//! - `document_valid` reads the verdict of the document guard that
+//!   [`crate::certificates`] asks before the run ([`crate::documents`]): the
+//!   centre permit must be valid on `on_date`, and the course approval too when
+//!   the certificate states it, with no override. A run without a verdict is
+//!   refused. For a reissued draft `on_date` is the enrolment's completion
 //!   date, so a correct certificate earned under a valid approval can be
 //!   reissued after the approval expired (BL-EDU-16).
 //! - `reissue` is the seam of BL-EDU-16: it supersedes the certificate and
@@ -78,6 +80,21 @@ pub struct CertificateInput {
     /// copied to the new draft ([`REISSUE`]).
     #[serde(default)]
     pub copy_attestation: bool,
+    /// What the document guard answered for the centre permit and the course
+    /// approval on [`CertificateInput::on_date`] ([`ISSUE`]).
+    #[serde(default)]
+    pub documents: Option<DocumentsVerdict>,
+}
+
+/// The answer of the document guard (`wl-documents`) for `certificate.issue`,
+/// gathered by the service because a guard of the machine cannot reach the
+/// database.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DocumentsVerdict {
+    /// Every document the certificate needs is valid on the day.
+    Valid,
+    /// One or more are expired or missing; the lines name them.
+    Refused(String),
 }
 
 fn input_of(ctx: &TransitionCtx) -> CertificateInput {
@@ -142,8 +159,15 @@ fn issue() -> Transition<Certificate> {
             let ok = input_of(ctx).criteria_met == Some(true);
             Box::pin(async move { check(ok, "edtech.certificates.problem.criteria") })
         })
-        .guard("document_valid", |_c: &Certificate, _ctx| {
-            Box::pin(async { Ok::<(), String>(()) })
+        .guard("document_valid", |_c: &Certificate, ctx| {
+            let verdict = input_of(ctx).documents;
+            Box::pin(async move {
+                match verdict {
+                    Some(DocumentsVerdict::Valid) => Ok(()),
+                    Some(DocumentsVerdict::Refused(lines)) => Err(lines),
+                    None => Err(english("edtech.certificates.problem.documents", &[])),
+                }
+            })
         })
         .effect(|c: &Certificate, ctx, tx| {
             let c = c.clone();

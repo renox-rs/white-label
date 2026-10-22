@@ -218,9 +218,9 @@ pub(crate) async fn run(
 /// `open`: the batch is open for enrolment. The plan is made from the weekly
 /// pattern around the holidays and checked before the run.
 ///
-/// The slots BL-EDU-07 (the centre permit and the course approval valid on the
-/// batch's last session date) and BL-EDU-08 (the tutor passes `EDU.ACL.14` on
-/// every session date) put their checks in [`before_open`].
+/// The centre permit and the course approval must be valid on the batch's last
+/// session date (BL-EDU-07, [`crate::documents`]); BL-EDU-08 adds the tutor's
+/// `EDU.ACL.14` on every session date. Both are checked in [`before_open`].
 ///
 /// # Errors
 ///
@@ -233,7 +233,7 @@ pub async fn open(state: &AppState, by: &AuthUser, id: i64) -> Result<Batch> {
     } else {
         Vec::new()
     };
-    before_open(state, &batch, &sessions).await?;
+    before_open(state, &batch, &sessions, by.id).await?;
     let input = BatchInput {
         sessions,
         by: Some(by.id),
@@ -244,11 +244,21 @@ pub async fn open(state: &AppState, by: &AuthUser, id: i64) -> Result<Batch> {
 
 /// What must hold before a batch opens and the machine cannot see: the tutor
 /// and the room are free for every session of the plan (all or nothing: the
-/// refusal names the days that fail). BL-EDU-07 adds the centre permit and the
-/// course approval valid on the last session date, and BL-EDU-08 the tutor's
-/// eligibility on every session date.
-async fn before_open(state: &AppState, batch: &Batch, plan: &[PlannedSession]) -> Result {
-    sessions::check_free(&state.db, batch, plan).await
+/// refusal names the days that fail), and the centre permit and the course
+/// approval, where the course needs one, are valid on the **last session date**
+/// (BL-EDU-07: they must cover the whole batch; no override). BL-EDU-08 adds the
+/// tutor's eligibility on every session date.
+async fn before_open(
+    state: &AppState,
+    batch: &Batch,
+    plan: &[PlannedSession],
+    actor: i64,
+) -> Result {
+    sessions::check_free(&state.db, batch, plan).await?;
+    if let Some(last) = plan.last() {
+        crate::documents::check_batch_open(state, batch, last.date, Some(actor)).await?;
+    }
+    Ok(())
 }
 
 /// `start` batch `id`, as the system; a batch that is no longer `open` is left

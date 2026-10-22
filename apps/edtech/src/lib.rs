@@ -12,6 +12,7 @@ pub mod chargeback;
 pub mod chargebacks;
 pub mod course;
 pub mod courses;
+pub mod documents;
 mod db;
 pub mod enrolment;
 pub mod enrolment_machine;
@@ -23,6 +24,7 @@ pub mod lapse;
 pub mod linked;
 pub mod notices;
 pub mod pages;
+pub mod permits;
 pub mod permissions;
 pub mod plan;
 pub mod reasons;
@@ -38,6 +40,7 @@ mod texts_chargeback;
 mod texts_exit;
 mod texts_hold;
 mod texts_lapse;
+mod texts_permit;
 mod texts_more;
 mod texts_seats;
 pub mod transfer;
@@ -181,6 +184,11 @@ impl Module for EdTech {
         // completes.
         enrolments::register(app);
         certificates::register();
+        // The centre permit and the course approval block `batch.open` and
+        // `certificate.issue`; their expiry tells the centre (`EDU.RUL.13`).
+        documents::register();
+        permits::register();
+        permits::listen(app);
         notices::register_types();
         // A bill or a document that names a record shows `ENR-0007`, not
         // `edtech.enrolment:7`.
