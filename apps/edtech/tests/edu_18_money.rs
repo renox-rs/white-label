@@ -111,13 +111,13 @@ fn edu_18_the_values_of_the_table() {
     assert_eq!((money::REFUND_RETRY_HOURS, money::REFUND_MAX_RETRIES), (24, 1));
     assert_eq!(money::PENDING_TIMEOUT_MINUTES, 30);
     assert_eq!(money::MEMBERSHIP_RETRY_DAYS, [1, 3, 7]);
-    assert!(money::MEMBERSHIP_SUSPENDS);
+    const { assert!(money::MEMBERSHIP_SUSPENDS); }
     assert_eq!(money::PAUSE_ALLOWANCE_DAYS, 30);
     assert_eq!(money::CASH_WRITE_OFF_LIMIT, 0);
-    assert!(!money::SALARY_RECOVERY);
-    assert!(!money::PORTAL_DISPUTES);
+    const { assert!(!money::SALARY_RECOVERY); }
+    const { assert!(!money::PORTAL_DISPUTES); }
     assert_eq!(money::DISPUTE_ESCALATION_DAYS, 14);
-    assert!(!money::SUSPEND_PACKAGE_WHILE_UNPAID);
+    const { assert!(!money::SUSPEND_PACKAGE_WHILE_UNPAID); }
     assert_eq!(money::CASH_THRESHOLD, 2_500_000, "AED 25,000");
     assert_eq!(money::CASH_FORECAST_WEEKS, 13);
     assert_eq!(money::CASH_ALERT_TIME, "06:00");

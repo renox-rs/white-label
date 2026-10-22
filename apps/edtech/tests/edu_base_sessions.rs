@@ -245,7 +245,7 @@ async fn edu_base_the_batch_changes_tutor_from_a_date() {
         tutor_employee_id: Some(5),
         ..BatchInput::default()
     };
-    batch
+    let _ = batch
         .transition(CHANGE_TUTOR)
         .by(&amal)
         .input(&input)

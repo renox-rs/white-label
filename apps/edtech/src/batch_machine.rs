@@ -55,7 +55,6 @@
 //!   and eligible on every remaining date, all or nothing, is BL-EDU-09's.
 
 use renox::chrono::NaiveDate;
-use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 use wl_kernel::SubjectMachine;

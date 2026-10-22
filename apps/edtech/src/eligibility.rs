@@ -151,7 +151,7 @@ pub async fn failures(
             if !valid {
                 found.push(Failure {
                     date: *date,
-                    kind: *kind,
+                    kind,
                 });
             }
         }

@@ -579,7 +579,7 @@ async fn show(
         instalment_count: e.instalments,
         terms: e.terms_accepted_at.map_or_else(
             || text(&lang, "enrolments.terms_missing"),
-            |at| dubai_text(at),
+            dubai_text,
         ),
         discount_state: text(
             &lang,
@@ -592,7 +592,7 @@ async fn show(
         seat_hold_until: e
             .seat_hold_until
             .filter(|_| pending)
-            .map_or_else(|| none.clone(), |at| dubai_text(at)),
+            .map_or_else(|| none.clone(), dubai_text),
         paid,
         balance,
         payment_link: e

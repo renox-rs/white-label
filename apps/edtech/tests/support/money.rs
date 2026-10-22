@@ -481,12 +481,15 @@ pub struct Linked {
     pub cancelled: bool,
 }
 
+/// A refund asked, with the user who asked (`None`: the system).
+type AskedRefund = (RefundRequest, Option<i64>);
+
 /// The payments module as the enrolments see it: the payments made for a
 /// record, the refunds asked, the payment links made and cancelled.
 #[derive(Clone, Default)]
 pub struct Cash {
     payments: Arc<Mutex<Vec<Paid>>>,
-    refunds: Arc<Mutex<Vec<(RefundRequest, Option<i64>)>>>,
+    refunds: Arc<Mutex<Vec<AskedRefund>>>,
     links: Arc<Mutex<Vec<Linked>>>,
     no_links: Arc<Mutex<bool>>,
     refusing: Arc<Mutex<bool>>,
@@ -516,7 +519,7 @@ impl Cash {
     }
 
     /// The refunds asked, with the user who asked (`None`: the system).
-    pub fn refunds(&self) -> Vec<(RefundRequest, Option<i64>)> {
+    pub fn refunds(&self) -> Vec<AskedRefund> {
         self.refunds.lock().unwrap().clone()
     }
 

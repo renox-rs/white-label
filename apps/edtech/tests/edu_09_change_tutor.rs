@@ -311,7 +311,7 @@ async fn edu_09_two_changes_to_one_tutor_at_the_same_time_only_one_wins() {
         1,
         "exactly one change goes through"
     );
-    let refused = if a.is_ok() { b.unwrap_err() } else { a.unwrap_err() };
+    let refused = a.err().or_else(|| b.err()).expect("one change is refused");
     if let Error::Status(_, message) = &refused {
         assert!(message.contains(&monday().to_string()), "{message}");
     }

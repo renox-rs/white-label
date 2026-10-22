@@ -349,10 +349,11 @@ impl DocumentGuard for Documents {
     ) -> DocumentFuture<'a, BTreeMap<i64, u64>> {
         let mut counts: BTreeMap<i64, u64> = ids.iter().map(|id| (*id, 0)).collect();
         for flag in self.flags.lock().unwrap().iter() {
-            if flag.record_type == record_type && !flag.is_reviewed() {
-                if let Some(count) = counts.get_mut(&flag.record_id) {
-                    *count += 1;
-                }
+            if flag.record_type == record_type
+                && !flag.is_reviewed()
+                && let Some(count) = counts.get_mut(&flag.record_id)
+            {
+                *count += 1;
             }
         }
         Box::pin(async move { Ok(counts) })

@@ -34,34 +34,6 @@ async fn open_started(t: &Centre) -> Batch {
     t.open_batch(&tutor, &room, next_weekday(day(-14), 1)).await
 }
 
-/// A batch of `seats` seats (the room holds `room_limit`), opened.
-async fn small_batch(t: &Centre, seats: i64, room_limit: i64) -> Batch {
-    let tutor = t.tutor("Layla").await;
-    let room = t.room("Room 1", room_limit).await;
-    let course = t.course().await;
-    let amal = t.coordinator().await;
-    let first = next_weekday(day(7), 1);
-    let batch = batches::create(
-        t.state(),
-        &amal,
-        NewBatch::new(
-            course.id,
-            seats,
-            (first, first + TimeDelta::days(27)),
-            &[1, 3],
-            "18:00",
-            90,
-        )
-        .tutor(tutor.id, None)
-        .room(room.id, Some(room_limit)),
-    )
-    .await
-    .expect("the batch is planned");
-    batches::open(t.state(), &amal, batch.id)
-        .await
-        .expect("the batch opens")
-}
-
 /// The first invoice of `enrolment` is paid in full.
 async fn pay_first(t: &Centre, enrolment: &Enrolment) {
     let id = enrolment.first_invoice_id.expect("a first invoice");

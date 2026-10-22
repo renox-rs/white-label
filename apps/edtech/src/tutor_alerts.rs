@@ -228,8 +228,7 @@ pub async fn affected_sessions(
                             &batch,
                         )
                         .await?
-                        .iter()
-                        .any(|required| *required == kind.as_str()),
+                        .contains(&kind.as_str()),
                         None => false,
                     };
                     needs.push((session.batch_id, needed));

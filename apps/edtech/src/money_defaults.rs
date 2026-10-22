@@ -180,6 +180,6 @@ mod tests {
     #[test]
     fn the_cash_values_never_allow_a_salary_recovery_or_a_free_write_off() {
         assert_eq!(CASH_WRITE_OFF_LIMIT, 0);
-        assert!(!SALARY_RECOVERY);
+        const { assert!(!SALARY_RECOVERY) };
     }
 }

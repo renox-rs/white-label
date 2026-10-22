@@ -7,7 +7,6 @@ mod support;
 
 use edtech::enrolments;
 use edtech::{Certificate, Enrolment};
-use renox::prelude::*;
 use support::{boot, day, next_weekday};
 use wl_kernel::Subject;
 use wl_kernel::documents::{labelled_subject_types, subject_label};
