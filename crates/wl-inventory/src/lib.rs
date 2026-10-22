@@ -25,6 +25,7 @@ pub mod pending_issue;
 pub mod po_issue;
 pub mod po_revise;
 pub mod preferred_change;
+pub mod price_variance;
 pub mod purchase_order;
 pub mod purchase_request;
 pub mod recall;
@@ -520,6 +521,7 @@ impl Module for WlInventory {
         app.model::<RecallLine>();
         app.model::<PendingIssue>();
         app.model::<ShortageAlert>();
+        app.model::<price_variance::PriceVariance>();
         app.model::<GoodsReceipt>();
         app.model::<GoodsReceiptLine>();
         app.model::<SupplierReturn>();
