@@ -131,6 +131,10 @@ pub fn grant_roles(client_app: &str) {
             // approves above AED 50 or for a started line).
             fnb_perm::ORDERS_CANCEL,
             fnb_perm::ORDERS_AMEND,
+            // Enters an order a payout statement names and the kitchen never
+            // recorded, as a late entry (BL-FNB-10).
+            fnb_perm::LATE_ORDERS_ENTER,
+            fnb_perm::RECONCILIATION_VIEW,
             sales::SALES_ORDERS_VIEW,
             sales::SALES_ORDERS_CREATE,
             sales::SALES_ORDERS_CANCEL,
@@ -145,11 +149,19 @@ pub fn grant_roles(client_app: &str) {
         ACCOUNTANT,
         &[
             fnb_perm::ORDERS_VIEW,
+            // Imports, matches and voids the aggregators' payout statements
+            // and reads the reports.
+            fnb_perm::RECONCILIATION_VIEW,
+            fnb_perm::RECONCILIATION_MANAGE,
+            fnb_perm::LATE_ORDERS_ENTER,
+            fnb_perm::REPORTS_VIEW,
             sales::SALES_ORDERS_VIEW,
             payments::VIEW,
             delivery::VIEW,
         ],
     );
+    // HR sees the rider fault entries on the riders' records (BL-FNB-08).
+    roles::grant_extra(roles::HR, &[fnb_perm::RIDER_FAULTS_VIEW]);
     // The storekeeper sees the orders whose food they stock.
     roles::grant_extra(STOREKEEPER, &[fnb_perm::ORDERS_VIEW]);
 }
@@ -183,6 +195,8 @@ pub async fn install(db: &Db) -> Result<usize> {
         reason.insert(db).await?;
         added += 1;
     }
+    // The aggregators' payout column presets and refund reason mappings.
+    added += fnb::seed::install_payouts(db).await?;
     Ok(added)
 }
 

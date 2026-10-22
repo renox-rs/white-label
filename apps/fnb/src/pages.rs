@@ -55,6 +55,7 @@ use crate::order::{FnbOrder, FnbOrderStatus, cancel_reason, kind, party};
 use crate::permissions;
 use crate::placing::{Details, refused};
 use crate::refunds::{self, RefundAsk};
+use crate::payout_texts::PAYOUT_TEXTS;
 use crate::screen_texts::SCREEN_TEXTS;
 use crate::texts::t;
 use crate::ticket::{BUMP, KitchenTicket, START, TicketStatus};
@@ -103,6 +104,7 @@ const DELIVERIES_REVERSE: &str = "deliveries.reverse";
 pub(crate) fn tx(lang: &Lang) -> Texts {
     SCREEN_TEXTS
         .iter()
+        .chain(PAYOUT_TEXTS)
         .filter_map(|(key, _)| Some((key.strip_prefix(PREFIX)?, t(lang, key))))
         .collect()
 }

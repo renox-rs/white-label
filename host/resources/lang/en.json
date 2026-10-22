@@ -110,7 +110,11 @@
     "sections": "Sections",
     "orders": "Orders",
     "kitchen": "Kitchen",
-    "cod_customers": "Customers without cash on delivery"
+    "cod_customers": "Customers without cash on delivery",
+    "payouts": "Payout statements",
+    "refunds_report": "Refunds after completion",
+    "failed_report": "Failed deliveries",
+    "rider_faults": "Rider faults"
   },
   "patterns": {
     "art": {

@@ -5,6 +5,7 @@ use std::fmt::Display;
 
 use renox::prelude::*;
 
+use crate::payout_texts::PAYOUT_TEXTS;
 use crate::screen_texts::SCREEN_TEXTS;
 
 /// Every key the app uses besides the screens', with its English text.
@@ -283,6 +284,7 @@ pub(crate) fn english(key: &str, params: &[(&str, &(dyn Display + Sync))]) -> St
     let text = TEXTS
         .iter()
         .chain(SCREEN_TEXTS)
+        .chain(PAYOUT_TEXTS)
         .find(|(k, _)| *k == key)
         .map_or(key, |(_, text)| *text);
     let mut data = renox::serde_json::Map::new();
@@ -300,6 +302,7 @@ pub(crate) fn template(key: &str) -> &'static str {
     TEXTS
         .iter()
         .chain(SCREEN_TEXTS)
+        .chain(PAYOUT_TEXTS)
         .find(|(k, _)| *k == key)
         .map_or("", |(_, text)| *text)
 }
@@ -313,6 +316,7 @@ mod tests {
         let mut keys: Vec<&str> = TEXTS
             .iter()
             .chain(SCREEN_TEXTS)
+        .chain(PAYOUT_TEXTS)
             .map(|(key, _)| *key)
             .collect();
         assert!(keys.iter().all(|key| key.starts_with("fnb.")));

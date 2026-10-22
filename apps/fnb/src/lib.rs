@@ -15,6 +15,12 @@ pub mod notices;
 pub mod order;
 pub mod order_machine;
 pub mod pages;
+pub mod payout;
+pub mod payout_csv;
+pub mod payout_machine;
+pub mod payout_pages;
+mod payout_texts;
+pub mod payouts;
 pub mod permissions;
 pub mod pickup;
 pub mod placing;
@@ -36,6 +42,11 @@ pub use changes::{ChangeNote, ExpectedRefund};
 pub use cod::{CustomerFlag, PaymentOptions};
 pub use order::{FnbOrder, FnbOrderStatus, SUBJECT_TYPE};
 pub use order_machine::OrderInput;
+pub use payout::{
+    ImportPreset, LateOrder, PayoutLine, PayoutStatement, PayoutStatus, ReasonMap,
+    STATEMENT_SERIES,
+};
+pub use payout_machine::PayoutInput;
 pub use refunds::RefundAsk;
 pub use settings::FnbSettings;
 pub use ticket::{KitchenTicket, TicketStatus};
@@ -95,6 +106,15 @@ impl Fnb {
         self
     }
 
+    /// The unmatched amount, in fils, above which an imported payout statement
+    /// gives the accountant a reconciliation task (`FNB.RUL.10`, default AED
+    /// 100), and whether the rule is on.
+    pub fn payout_task(mut self, fils: i64, on: bool) -> Self {
+        self.settings.payout_task_fils = fils;
+        self.settings.payout_rule = on;
+        self
+    }
+
     /// Turns `FNB.RUL.14` on or off (default on).
     pub fn cod_rule(mut self, on: bool) -> Self {
         self.settings.cod_rule = on;
@@ -108,7 +128,7 @@ impl Module for Fnb {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes()
+        pages::routes().merge(payout_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -121,9 +141,11 @@ impl Module for Fnb {
             .view_data::<pages::KitchenPage>()
             .view_data::<pages::CodPage>()
             .view_data::<pages::CheckoutPage>()
-            .view_data::<pages::MyOrderPage>();
+            .view_data::<pages::MyOrderPage>()
+            .view_data::<payout_pages::PayoutsPage>()
+            .view_data::<payout_pages::ShowPayoutPage>();
         app.templates(|env| {
-            for (name, source) in pages::VIEWS {
+            for (name, source) in pages::VIEWS.iter().chain(payout_pages::VIEWS) {
                 // The app's own file of that name wins.
                 if env.get_template(name).is_err() {
                     renox::view::add_template(env, *name, *source)
@@ -140,10 +162,20 @@ impl Module for Fnb {
             .model::<ChangeNote>()
             .model::<ExpectedRefund>()
             .model::<RefundAsk>()
-            .model::<CustomerFlag>();
+            .model::<CustomerFlag>()
+            .model::<PayoutStatement>()
+            .model::<PayoutLine>()
+            .model::<ReasonMap>()
+            .model::<ImportPreset>()
+            .model::<LateOrder>();
         // The order and the ticket have machines of their own.
         renox::state_machine::register::<FnbOrder>();
         renox::state_machine::register::<KitchenTicket>();
+        // The payout statement is a voidable subject with its own approval
+        // action, and the order a statement names that the kitchen never
+        // recorded is a late entry.
+        payout_machine::register();
+        payouts::register_late_entry();
         // The settings the rules read.
         app.provide(self.settings.clone());
         // The kitchen tells the sales and stock modules which lines it started
@@ -171,6 +203,14 @@ impl Module for Fnb {
                 .group("nav.app")
                 .order(9)
                 .permission(permissions::KDS_WORK),
+        );
+        app.nav(
+            "app",
+            NavLink::route("fnb.payouts", "nav.payouts")
+                .icon("file-spreadsheet")
+                .group("nav.app")
+                .order(11)
+                .permission(permissions::RECONCILIATION_VIEW),
         );
         app.nav(
             "app",

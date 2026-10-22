@@ -390,6 +390,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             fnb_perm::ORDERS_REFUND_REQUEST,
             fnb_perm::KDS_WORK,
             fnb_perm::CUSTOMERS_COD,
+            fnb_perm::RECONCILIATION_VIEW,
+            fnb_perm::RECONCILIATION_MANAGE,
+            fnb_perm::LATE_ORDERS_ENTER,
+            fnb_perm::REPORTS_VIEW,
+            fnb_perm::RIDER_FAULTS_VIEW,
             attendance::VIEW,
             attendance::MARK,
             attendance::SELF_CHECK_IN,
@@ -1314,6 +1319,12 @@ pub const ROLES: &[(&str, &[&str])] = &[
         &[
             hr::LEAVE_REQUEST,
             fnb_perm::ORDERS_VIEW,
+            // Reads the reports and the payout statements; as a second holder
+            // of the reconciliation permission approves the void of a matched
+            // statement (`PLT.ACL.09`).
+            fnb_perm::REPORTS_VIEW,
+            fnb_perm::RECONCILIATION_VIEW,
+            fnb_perm::RECONCILIATION_MANAGE,
             sales::SALES_ORDERS_VIEW,
             sales::SALES_ORDERS_APPROVE,
             delivery::VIEW,
@@ -1339,6 +1350,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             fnb_perm::ORDERS_VIEW,
             fnb_perm::ORDERS_MANAGE,
             fnb_perm::CUSTOMERS_COD,
+            fnb_perm::REPORTS_VIEW,
+            fnb_perm::RECONCILIATION_VIEW,
             sales::SALES_ORDERS_VIEW,
             sales::SALES_ORDERS_APPROVE,
             delivery::VIEW,
@@ -1365,6 +1378,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             fnb_perm::ORDERS_AMEND,
             fnb_perm::KDS_WORK,
             fnb_perm::CUSTOMERS_COD,
+            // The failed deliveries and refunds reports, and the rider fault
+            // entries of the riders (BL-FNB-08).
+            fnb_perm::REPORTS_VIEW,
+            fnb_perm::RIDER_FAULTS_VIEW,
             // Accepts and amends orders, cancels and approves a started line
             // (`SAL.ACL.05`), approves a return and a refund above the limit
             // (`SAL.ACL.06`).
