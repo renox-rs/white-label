@@ -178,6 +178,12 @@ mod tests {
                 true,
             ),
             ("fail_aborted", vec!["out_for_delivery"], "attempted", true),
+            ("reattempt", vec!["attempted"], "pending", false),
+            ("reattempt_by_system", vec!["attempted"], "pending", true),
+            ("return", vec!["attempted"], "returned", false),
+            ("return_by_system", vec!["attempted"], "returned", true),
+            ("discard", vec!["attempted"], "discarded", false),
+            ("discard_approved", vec!["attempted"], "discarded", true),
         ];
         assert_eq!(machine.transitions().len(), expected.len());
         for (name, from, to, system) in expected {

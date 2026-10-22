@@ -778,7 +778,7 @@ const TEXTS: &[(&str, &str)] = &[
     // The hand-over window of a perishable stop (#166).
     (
         "wl_delivery.hand_over.arrival_needed",
-        "{number} is perishable: enter the arrival the receiving run expects.",
+        "{number} is perishable: enter its expected arrival on the receiving run.",
     ),
     (
         "wl_delivery.hand_over.outside_window",
