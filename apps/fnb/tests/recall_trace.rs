@@ -60,7 +60,7 @@ async fn delivered(w: &World, customer: PartyId) -> fnb::FnbOrder {
     let (order, delivery, _run) = w
         .dispatched_via("phone", customer, "cash_on_delivery", &PLATE)
         .await;
-    w.deliver_stop(&delivery, "30.00").await.assert_ok();
+    w.deliver_stop(&delivery, "30.00").await.assert_status(303);
     let done = w.reload(&order).await;
     assert_eq!(done.status, FnbOrderStatus::Completed);
     done

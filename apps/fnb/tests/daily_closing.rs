@@ -181,6 +181,9 @@ async fn a_cut_off_change_applies_from_the_next_business_day() {
 
     // Through the screen: the area manager sets it, a kitchen manager cannot.
     let path = format!("/outlets/{}/cutoff", o.marina.id);
+    // Today's business date under the cut-off in force when it is set (the new
+    // one is read only after the change, and near 02:00 it would shift today).
+    let today = o.marina.business_date(now_of(&w).await);
     w.post(&o.kitchen, &path, &[("time", "02:00")])
         .await
         .assert_forbidden();
@@ -193,7 +196,6 @@ async fn a_cut_off_change_applies_from_the_next_business_day() {
     let saved = Outlet::find_or_404(w.db(), o.marina.id).await.unwrap();
     assert_eq!(saved.cutoff_minutes, None, "today's cut-off is kept");
     assert_eq!(saved.pending_cutoff_minutes, Some(120));
-    let today = saved.business_date(now_of(&w).await);
     assert_eq!(saved.pending_cutoff_from, Some(today.succ_opt().unwrap()));
 }
 

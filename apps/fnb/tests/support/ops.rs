@@ -143,7 +143,10 @@ pub async fn now_of(w: &World) -> DateTime {
 pub async fn go_to(w: &World, target: DateTime) {
     let delta = target - now_of(w).await;
     assert!(delta >= TimeDelta::zero(), "the clock only moves forward");
-    w.travel(delta);
+    // The app's clock moves by whole seconds: round up, so that it is at the
+    // target or just past it, never a fraction of a second before.
+    let whole = TimeDelta::seconds(delta.num_seconds() + i64::from(delta.subsec_nanos() > 0));
+    w.travel(whole);
 }
 
 /// A heartbeat of `device` of the connection `key`.
