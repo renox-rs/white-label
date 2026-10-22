@@ -235,6 +235,7 @@ async fn edu_01_a_late_payment_is_refunded_and_the_counsellor_told() {
         !subjects.is_active(t.state(), &e1.subject()).await.unwrap(),
         "a lapsed enrolment is never an active subject"
     );
+    assert_eq!(seats::available(t.db(), batch.id).await.unwrap(), 12);
     // Another counsellor enrols the student again before the payment comes.
     let dalia_user = t
         .user(
@@ -254,6 +255,11 @@ async fn edu_01_a_late_payment_is_refunded_and_the_counsellor_told() {
     .await
     .expect("a lapsed enrolment never reopens: this is a new one");
     assert_ne!(e1.id, e2.id);
+    assert_eq!(
+        seats::available(t.db(), batch.id).await.unwrap(),
+        11,
+        "E2 took its seat when it was created, before any payment"
+    );
     assert!(subjects.is_active(t.state(), &e2.subject()).await.unwrap());
 
     // AED 1,050 arrives late for E1 and wl-payments approves its refund itself.
@@ -341,7 +347,10 @@ async fn edu_01_a_lapsed_student_cannot_take_a_seat_of_a_full_batch() {
     )
     .await;
 
-    assert!(again.is_err(), "EDU.ACL.17 applies to a re-enrolment");
+    let refusal = again.expect_err("EDU.ACL.17 applies to a re-enrolment");
+    assert!(refusal.to_string().contains("no free seat"), "{refusal}");
+    assert!(refusal.to_string().contains("waiting list"), "{refusal}");
+    assert_eq!(seats::available(t.db(), batch.id).await.unwrap(), 0);
     let mine = Enrolment::query()
         .where_(Enrolment::STUDENT_PARTY_ID.eq(1))
         .count(t.db())
