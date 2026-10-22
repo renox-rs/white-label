@@ -15,7 +15,7 @@
         </rx-stack>
       </rx-column>
       <rx-column :label="tx['deployments.shift']" hide-narrow>{{ deployment.shift_type }}</rx-column>
-      <rx-column :label="tx['deployments.period']" hide-narrow>{{ deployment.start_date }} - {{ deployment.end_date }}</rx-column>
+      <rx-column :label="tx['deployments.period']" hide-narrow>{{ deployment.start_date }} - {{ deployment.end_date if deployment.end_date else tx['open_ended'] }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['deployments.empty']" :message="tx['deployments.empty_text']" icon="users"/></rx-slot>
     </rx-table>
   </rx-stack>

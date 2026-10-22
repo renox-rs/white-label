@@ -16,7 +16,7 @@
         </rx-stack>
       </rx-column>
       <rx-column :label="tx['requests.workers']" align="num">{{ request.filled_count }} / {{ request.headcount }}</rx-column>
-      <rx-column :label="tx['requests.period']" hide-narrow>{{ request.start_date }} - {{ request.end_date }}</rx-column>
+      <rx-column :label="tx['requests.period']" hide-narrow>{{ request.start_date }} - {{ request.end_date if request.end_date else tx['open_ended'] }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['requests.empty']" :message="tx['requests.empty_text']" icon="users"/></rx-slot>
     </rx-table>
   </rx-stack>

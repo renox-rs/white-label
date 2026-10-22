@@ -709,6 +709,8 @@ const TEXTS: &[(&str, &str)] = &[
     ("manpower.screen.contracts.billing", "Billing"),
     ("manpower.screen.contracts.cover", "Cover"),
     ("manpower.screen.contracts.cover_required", "Cover required"),
+    ("manpower.screen.contracts.cover_none", "Not required"),
+    ("manpower.screen.open_ended", "open-ended"),
     (
         "manpower.screen.contracts.held_since",
         "On credit hold since",

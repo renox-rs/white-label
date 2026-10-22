@@ -1147,7 +1147,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.settlement.last_working_day", "Last working day"),
     ("wl_hr.settlement.deadline", "Legal deadline"),
     ("wl_hr.settlement.unpaid_salary", "Unpaid salary (AED)"),
-    ("wl_hr.settlement.leave_encashment", "Leave encashment (AED)"),
+    (
+        "wl_hr.settlement.leave_encashment",
+        "Leave encashment (AED)",
+    ),
     ("wl_hr.settlement.gratuity", "Gratuity (AED)"),
     ("wl_hr.settlement.notice_pay", "Notice pay (AED)"),
     ("wl_hr.settlement.other_dues", "Other dues (AED)"),
