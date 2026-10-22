@@ -32,6 +32,7 @@ use renox::prelude::*;
 use wl_delivery::reasons::FailureReason;
 use wl_delivery::{PerishableAction, WlDelivery};
 use wl_kernel::delivery::CodAbsorber;
+use wl_inventory::WlInventory;
 use wl_sales::WlSales;
 
 use super::roles::{self, ACCOUNTANT, CASHIER, KITCHEN_MANAGER, STOREKEEPER};
@@ -101,6 +102,30 @@ pub fn delivery(module: WlDelivery) -> WlDelivery {
             CodAbsorber::Driver,
         ])
         .dispatcher_role(KITCHEN_MANAGER)
+}
+
+/// H, the hours before an undecided line of a temperature hold is reminded to
+/// the chef, and half the hours before the kitchen manager is told
+/// (`STK.RUL.07`, lowered from 24 for food).
+pub const TEMPERATURE_HOLD_REMINDER_HOURS: i64 = 2;
+
+/// The stock module with the 06 client's values: a temperature hold is
+/// reminded after 2 hours and escalated to the kitchen manager after 4
+/// (`STK.RUL.07`), only a recall hold needs a second holder of `lots.release`
+/// to release (`STK.ACL.05`), a goods receipt rejection for `temperature`
+/// needs the reading (BL-FNB-12).
+pub fn inventory(module: WlInventory) -> WlInventory {
+    module
+        .hold_reminder_hours_for_reason("temperature", TEMPERATURE_HOLD_REMINDER_HOURS)
+        .hold_escalation_role_for_reason("temperature", KITCHEN_MANAGER)
+        .hold_second_person_reasons(&["recall"])
+        .rejection_reason("temperature", true)
+}
+
+/// The stock module for a client: the 06 values for F&B, the given module for
+/// any other.
+pub fn inventory_for(client_app: &str, module: WlInventory) -> WlInventory {
+    if client_app == FNB { inventory(module) } else { module }
 }
 
 /// The delivery module for a client: the 06 values for F&B, the module's own
