@@ -53,9 +53,13 @@
     {%- if (request.path == item.url or (item.url != '/' and request.path[:(item.url | length) + 1] == item.url ~ '/')) and item.url | length > current.url | length %}{% set current.url = item.url %}{% endif %}
   {%- endfor %}{% endfor %}
   <rx-sidebar brand="{{ brand }}" href="{{ route('home') }}">
-    <template rx-for="group in nav('app')">
-      <rx-sidebar-section rx-if="group.label" :title="group.label"/>
-      <rx-sidebar-link rx-for="item in group['items']" :href="item.url" :label="item.label" :icon="item.icon" :badge="item.badge" :active="item.url == current.url"/>
+    {#- A guest (the worker who opens a signed link, an error page) sees none of
+        the staff's links: the modules draw some for anyone signed in. -#}
+    <template rx-if="auth.check">
+      <template rx-for="group in nav('app')">
+        <rx-sidebar-section rx-if="group.label" :title="group.label"/>
+        <rx-sidebar-link rx-for="item in group['items']" :href="item.url" :label="item.label" :icon="item.icon" :badge="item.badge" :active="item.url == current.url"/>
+      </template>
     </template>
     <rx-sidebar-link rx-if="not auth.check" route="home" label="{{ t('nav.home') }}" icon="house"/>
   </rx-sidebar>

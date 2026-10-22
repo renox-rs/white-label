@@ -155,3 +155,18 @@ async fn every_sidebar_link_opens_for_the_admin() {
         );
     }
 }
+
+/// A guest (a worker who opens a signed link, an error page) is shown none of
+/// the staff's sidebar links, though some modules add theirs for anyone
+/// signed in (the review tasks, the broadcasts).
+#[renox::test]
+async fn a_guest_sees_no_staff_link_in_the_sidebar() {
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    let page = app.get("/no-such-page").await;
+    page.assert_status(404);
+    let html = page.text();
+    for label in ["Broadcasts", "Review tasks", "Block overrides"] {
+        assert!(!html.contains(label), "a guest is shown `{label}`");
+    }
+}
