@@ -86,5 +86,10 @@
       <rx-column :label="tx['enrolments.ended']">{{ row.ended }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['enrolments.no_freezes']" icon="calendar"/></rx-slot>
     </rx-table>
+    <rx-table :rows="certificates" as="row" :key="row.id" :caption="tx['enrolments.certificates']" card>
+      <rx-column :label="tx['certificates.number']"><a href="{{ route('edtech.certificate', row.id) }}">{{ row.number }}</a></rx-column>
+      <rx-column :label="tx['fields.status']">{{ row.status }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['enrolments.no_certificates']" icon="award"/></rx-slot>
+    </rx-table>
   </rx-stack>
 </rx-page>

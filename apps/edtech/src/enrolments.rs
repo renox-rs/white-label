@@ -668,8 +668,8 @@ pub async fn withdraw(
 }
 
 /// What follows a transition once it committed: a lead is won and a
-/// membership starts when the enrolment activates and the subscription ends
-/// when the student withdraws.
+/// membership starts when the enrolment activates, the subscription ends when
+/// the student withdraws, the certificate is evaluated when it completes.
 async fn after(state: &AppState, event: &Transitioned<Enrolment>) -> Result {
     let Some(enrolment) = Enrolment::find(&state.db, event.key).await? else {
         return Ok(());
@@ -689,6 +689,9 @@ async fn after(state: &AppState, event: &Transitioned<Enrolment>) -> Result {
                     .cancel(state, &enrolment.subject(), CancelSubscription::new(on))
                     .await?;
             }
+        }
+        COMPLETE => {
+            crate::certificates::evaluate(state, &enrolment).await?;
         }
         _ => {}
     }

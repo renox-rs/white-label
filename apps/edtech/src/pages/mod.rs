@@ -4,6 +4,7 @@
 //! handler checks the permission of its action.
 
 pub mod batches;
+pub mod certificates;
 pub mod courses;
 pub mod enrolments;
 pub mod sessions;
@@ -25,6 +26,8 @@ pub fn routes() -> Routes {
         .merge(batches::routes())
         .merge(sessions::routes())
         .merge(enrolments::routes())
+        .merge(certificates::routes())
+        .merge(certificates::public_routes())
 }
 
 /// The app text `key` (without the `edtech.` prefix).

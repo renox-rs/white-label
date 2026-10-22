@@ -4,6 +4,9 @@
 pub mod batch;
 pub mod batch_machine;
 pub mod batches;
+pub mod certificate;
+pub mod certificate_machine;
+pub mod certificates;
 pub mod course;
 pub mod courses;
 mod db;
@@ -29,6 +32,7 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use batch::{Batch, BatchStatus};
+pub use certificate::{Certificate, CertificateStatus};
 pub use course::{Course, DeliveryMode};
 pub use enrolment::{
     Enrolment, EnrolmentFreeze, EnrolmentKind, EnrolmentStatus, FreezeCause, Instalment,
@@ -66,6 +70,18 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "edtech/enrolment.html",
         include_str!("../views/edtech/enrolment.html"),
+    ),
+    (
+        "edtech/certificates.html",
+        include_str!("../views/edtech/certificates.html"),
+    ),
+    (
+        "edtech/certificate.html",
+        include_str!("../views/edtech/certificate.html"),
+    ),
+    (
+        "edtech/verify.html",
+        include_str!("../views/edtech/verify.html"),
     ),
 ];
 
@@ -107,7 +123,10 @@ impl Module for EdTech {
             .view_data::<pages::sessions::IndexPage>()
             .view_data::<pages::sessions::ShowPage>()
             .view_data::<pages::enrolments::IndexPage>()
-            .view_data::<pages::enrolments::ShowPage>();
+            .view_data::<pages::enrolments::ShowPage>()
+            .view_data::<pages::certificates::IndexPage>()
+            .view_data::<pages::certificates::ShowPage>()
+            .view_data::<pages::certificates::VerifyPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -122,14 +141,17 @@ impl Module for EdTech {
             .model::<Session>()
             .model::<Enrolment>()
             .model::<EnrolmentFreeze>()
-            .model::<Instalment>();
+            .model::<Instalment>()
+            .model::<Certificate>();
         // The batch and its sessions: the machines, the start of a batch on its
         // first session date, its completion after the last session, and the
         // blocks the sessions make in wl-scheduling.
         batches::register(app);
-        // The enrolments: the machine, the fees and their daily run and the
-        // first payment that activates one.
+        // The enrolments: the machine, the fees and their daily run, the
+        // first payment that activates one, and the certificate of one that
+        // completes.
         enrolments::register(app);
+        certificates::register();
         // In the app group of the staff sidebar; the labels are the host's
         // `nav.courses`, `nav.batches` and `nav.sessions` texts.
         app.nav(
@@ -163,6 +185,14 @@ impl Module for EdTech {
                 .group("nav.app")
                 .order(83)
                 .permission(permissions::ENROLMENTS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("edtech.certificates", "nav.certificates")
+                .icon("award")
+                .group("nav.app")
+                .order(84)
+                .permission(permissions::CERTIFICATES_VIEW),
         );
     }
 }

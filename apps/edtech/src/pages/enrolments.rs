@@ -31,6 +31,7 @@ use super::{
     ticked,
 };
 use crate::batch::{Batch, BatchStatus};
+use crate::certificate::Certificate;
 use crate::course::Course;
 use crate::enrolment::{
     Enrolment, EnrolmentFreeze, EnrolmentKind, EnrolmentStatus, FreezeCause, Instalment,
@@ -343,6 +344,17 @@ pub struct FreezeRow {
     pub ended: String,
 }
 
+/// One certificate of the page.
+#[derive(Serialize, Debug, Clone)]
+pub struct CertificateRow {
+    /// The primary key.
+    pub id: i64,
+    /// The number, or a draft label.
+    pub number: String,
+    /// The status.
+    pub status: String,
+}
+
 /// What the page of one enrolment needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "edtech/enrolment.html")]
@@ -374,6 +386,7 @@ pub(crate) struct ShowPage {
     withdrawn_reason: String,
     instalments: Vec<InstalmentRow>,
     freezes: Vec<FreezeRow>,
+    certificates: Vec<CertificateRow>,
     can_activate: bool,
     can_terms: bool,
     can_discount: bool,
@@ -440,6 +453,15 @@ async fn show(
             ended: row.ended_on.map_or_else(|| none.clone(), |d| d.to_string()),
         })
         .collect();
+    let certificates = Certificate::of_enrolment(&state.db, e.id)
+        .await?
+        .into_iter()
+        .map(|c| CertificateRow {
+            id: c.id,
+            number: c.label(),
+            status: super::certificates::status_text(&lang, c.status),
+        })
+        .collect();
     let (preview_refund, preview_owed) = preview
         .as_ref()
         .map_or((String::new(), String::new()), |r| {
@@ -486,6 +508,7 @@ async fn show(
         withdrawn_reason: e.withdrawal_reason.clone().unwrap_or_else(|| none.clone()),
         instalments,
         freezes,
+        certificates,
         can_activate: pending && manage,
         can_terms: pending && manage && e.terms_accepted_at.is_none(),
         can_discount: pending
