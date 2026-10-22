@@ -93,6 +93,50 @@ every status change goes through a state machine that leaves a history row.
   failed deliveries report groups failures by reason. A return or a closed
   failed delivery blamed on the rider writes a *rider fault* for the rider of
   the last run, for the kitchen manager and HR only, with no pay effect.
+- **Production batches** (`batch`, `batch_machine`, `batches`, `batch_pages`;
+  BL-FNB-11): the central kitchen plans a batch of a recipe (`/batches`), the
+  chef starts it picking one lot per ingredient (the earliest expiry is
+  proposed; a lot on hold, expired, of another item or short is refused, and the
+  lots used are kept as the batch's genealogy) and finishes it with the yield
+  and an expiry not later than the earliest expiry of its ingredients. The
+  stock module consumes the lots and makes the output lot (kernel
+  `BatchStock`); an ingredient lot on hold at that moment holds the output lot at
+  once. A held lot (`LotHeld`) puts its batch `on_hold`, `LotReleased` brings it
+  back and `LotDiscarded` discards it with the lot's own wastage linked, never a
+  second movement; a hold on a location (temperature) leaves it `produced`. A
+  chef discards a `produced` batch (wastage posted once; above AED 200 a second
+  holder of `stock.approve` approves); a batch on hold is discarded only through
+  its stock hold line. Cancelling a planned batch deletes it.
+- **Cold units and temperature holds** (`cold`, `cold_pages`; BL-FNB-12): the
+  kitchen manager sets up each fridge, freezer or hot-holding unit with a stock
+  location (required) and a range (`/cold-units`); cooks record readings.
+  `FNB.RUL.05` runs as a compliance-critical kernel rule on a reading out of
+  range: one stock hold (reason `temperature`, the reading as reference) on the
+  stock in the unit through `StockHoldService`, one equipment task for the
+  kitchen manager, and a notice to the chef and the kitchen manager; later
+  readings join the hold and stock moved in joins it as new lines (the stock
+  module warns on its transfer screen). The chef decides each line (release,
+  discard, return to the supplier) recording the reading and the minutes out of
+  range; a temperature hold is released by one person, a discard above AED 200
+  waits for the kitchen manager. `STK.RUL.07` is the stock module's reminder
+  (host: 2 hours, then the kitchen manager after 4). A failed run is retried and
+  alerts the owner.
+- **Recall trace** (`recall`, `recall_pages`, `consumption`; BL-FNB-13): with
+  the setting `recipe_consumption` on (the 06 client) a completed order
+  consumes its recipe from the outlet's stock as theoretical consumption, so the
+  trace of a recalled ingredient lot lists the orders of the outlets that had it
+  (or a batch lot made from it) on hand as *possible*, never *confirmed*. The
+  app is the `TracePartyResolver`: an order is its customer, or nobody known for
+  an aggregator's order and a counter sale. `/recalls/{id}/orders` (the stock
+  module's recall page links to it) lists one line per direct-order customer
+  with their possible orders and one line per outlet and day for the rest; the
+  head chef or the owner tells the customers (one notice each, English and
+  Arabic, listing all their orders; a closed account is waived), and the owner
+  decides the public notice and the aggregators (a task opens when the trace
+  finds such sales; the decision waives or tells those lines). The authority's
+  notification is open item AU-20, not built (setting `authority_notice_task`
+  gives the owner a task to do it by hand); the recall report is exported from
+  the recall page.
 - **Catalogue** (`catalogue`): brands, outlets and menu items with recipes, as
   far as the orders need them. `progress` gives the shared modules the
   kitchen's `FulfilmentProgress` and `SaleLineStockSource`.
@@ -101,7 +145,9 @@ every status change goes through a state machine that leaves a history row.
 
 `orders.view`, `.manage`, `.cancel`, `.amend` and `.refund_request`,
 `kds.work`, `customers.cod`, `reconciliation.view` and `.manage`,
-`orders.late_entry`, `fnb_reports.view` and `rider_faults.view` (`permissions`). The host maps them to the roles of 06 §3.1:
+`orders.late_entry`, `fnb_reports.view`, `rider_faults.view`, `production.view`
+and `.manage`, `temperature.view` and `.log`, `cold_units.manage`,
+`fnb_recalls.view` and `.decide` (`permissions`). The host maps them to the roles of 06 §3.1:
 the kitchen manager, the cashier, the line cook, the area manager, the
 operations director and the rider; the company admin holds everything.
 

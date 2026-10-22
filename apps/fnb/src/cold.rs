@@ -47,7 +47,7 @@ use wl_kernel::inventory::{
 use wl_kernel::role_tasks::{self, RoleTask};
 use wl_kernel::Subject;
 
-use crate::money::{parse_tenths, tenths_text};
+use crate::money::tenths_text;
 use crate::notices::tell_holders;
 use crate::permissions;
 use crate::placing::refused;

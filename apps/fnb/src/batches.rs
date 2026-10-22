@@ -44,8 +44,8 @@ use wl_kernel::inventory::{
 };
 
 use crate::batch::{
-    BatchInput, BatchRecipe, BatchRecipeLine, BatchStatus, BatchWastage, BATCH_SERIES,
-    ProductionBatch, posted_by,
+    BATCH_SERIES, BatchRecipe, BatchRecipeLine, BatchStatus, BatchWastage, ProductionBatch,
+    posted_by,
 };
 use crate::batch_machine::{
     BatchRun, DISCARD, DISCARD_APPROVED, DISCARD_SYSTEM, FINISH, HOLD, PickedLot, RELEASE, START,
