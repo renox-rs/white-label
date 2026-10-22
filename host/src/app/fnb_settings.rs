@@ -844,8 +844,8 @@ pub fn compliance_rows(owner_role: &str) -> Vec<Row> {
             format!(
                 "Halal certificate (item for central kitchen products, supplier party for supplier ingredients; responsible role {}), Trademark registration ({} days; the brand is the mark; subject the legal entity) and Other certification ({} days; legal entity), the last two with {OPERATIONS_DIRECTOR_ROLE}; no blocks",
                 super::roles::STOREKEEPER,
-                days(&wl_documents::registrations::REGISTRATIONS[0].reminders),
-                days(&wl_documents::registrations::REGISTRATIONS[4].reminders)
+                days(wl_documents::registrations::REGISTRATIONS[0].reminders),
+                days(wl_documents::registrations::REGISTRATIONS[4].reminders)
             ),
             "default of the module, on for 06 (roles: F&B seed)",
             "§5; §7.2 settings",

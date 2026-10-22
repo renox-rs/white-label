@@ -20,7 +20,7 @@ fn order(channel: &str, number: &str) -> NewSalesOrder {
         .external_number(number)
 }
 
-async fn count(db: &Db) -> i64 {
+async fn count(db: &Db) -> u64 {
     SalesOrder::query().count(db).await.unwrap()
 }
 

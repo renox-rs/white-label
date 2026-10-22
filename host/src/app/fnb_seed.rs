@@ -581,8 +581,6 @@ impl Module for FnbSeed {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn the_failure_reasons_are_not_reattempted_and_the_rider_issue_is_not_counted() {
         for (code, _, _, counts, allows) in fnb::failed::FAILURE_REASONS {

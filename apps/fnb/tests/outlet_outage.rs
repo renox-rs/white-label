@@ -19,7 +19,7 @@ use wl_kernel::integrations::ConnectionStatus;
 use renox::testing::TestResponse;
 use support::World;
 use support::ops::{
-    MARINA, Ops, SHARJAH, beat, boot_ops, day_after, dubai_at, go_to, now_of, status_of, tick,
+    MARINA, SHARJAH, beat, boot_ops, day_after, dubai_at, go_to, now_of, status_of, tick,
 };
 
 const NOTICE: &str = "fnb.staff_notice";

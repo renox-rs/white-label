@@ -13,6 +13,7 @@ mod support;
 
 use renox::chrono::TimeDelta;
 use renox::db::now;
+use renox::prelude::Model;
 use wl_kernel::Subject;
 use wl_kernel::approvals;
 use wl_kernel::invoicing::InvoiceStatus;

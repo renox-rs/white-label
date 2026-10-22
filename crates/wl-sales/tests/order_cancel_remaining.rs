@@ -14,7 +14,6 @@ use wl_kernel::approvals;
 use wl_kernel::sales::LineOutcomeKind;
 use wl_sales::{SaleLine, SalesOrder, SalesOrderStatus, WlSales};
 
-use renox::prelude::*;
 use support::Booted;
 use support::changes::{
     Changes, boot_changes, boot_changes_with, clerk, hand_over, lines, manager, place, reload,

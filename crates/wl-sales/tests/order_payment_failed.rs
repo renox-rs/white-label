@@ -7,6 +7,7 @@
 mod support;
 
 use renox::chrono::TimeDelta;
+use renox::prelude::Model;
 use wl_kernel::PartyId;
 use wl_kernel::notify::NotifyRecipient;
 use wl_sales::notices::ORDER_PAYMENT_FAILED;
