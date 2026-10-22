@@ -6,6 +6,7 @@
 //! | `POST /edtech/batches` | `edtech.batch_create` | `batches.manage` |
 //! | `GET /edtech/batches/{id}` | `edtech.batch` | `batches.view` |
 //! | `POST /edtech/batches/{id}/open` | `edtech.batch_open` | `batches.manage` |
+//! | `POST /edtech/batches/{id}/tutor` | `edtech.batch_tutor` | `batches.manage` |
 //!
 //! The page of a batch lists its sessions (see [`super::sessions`]).
 //!
@@ -15,6 +16,7 @@
 
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
+use wl_kernel::documents::today;
 
 use super::sessions::{SessionRow, row_of};
 use super::{
@@ -27,6 +29,7 @@ use crate::permissions;
 use crate::seats;
 use crate::session::Session;
 use crate::texts;
+use crate::tutors;
 
 /// The routes of the pages.
 pub fn routes() -> Routes {
@@ -39,6 +42,8 @@ pub fn routes() -> Routes {
         .name("edtech.batch")
         .post("/edtech/batches/{id}/open", open)
         .name("edtech.batch_open")
+        .post("/edtech/batches/{id}/tutor", tutor)
+        .name("edtech.batch_tutor")
         .require_auth()
 }
 
@@ -246,7 +251,23 @@ pub(crate) struct ShowPage {
     tutor: String,
     room: String,
     sessions: Vec<SessionRow>,
+    tutor_history: Vec<TutorRow>,
+    from_date: String,
     can_open: bool,
+    can_change_tutor: bool,
+}
+
+/// One tutor assignment of the page.
+#[derive(Serialize, Debug, Clone)]
+pub struct TutorRow {
+    /// The tutor.
+    pub tutor: String,
+    /// What it covers: the batch, or one session.
+    pub scope: String,
+    /// The first day.
+    pub from: String,
+    /// The last day, or a dash while it holds.
+    pub to: String,
 }
 
 /// A resource as the page reads it: `Resource 12`, or a dash.
@@ -270,6 +291,21 @@ async fn show(
     let number = batch.number();
     let planned = Session::of_batch(&state.db, batch.id).await?;
     let rows = planned.iter().map(|s| row_of(&lang, s, &number)).collect();
+    let history = tutors::history(&state.db, batch.id)
+        .await?
+        .into_iter()
+        .map(|a| TutorRow {
+            tutor: resource_text(&lang, Some(a.tutor_resource_id)),
+            scope: match a.session_id {
+                Some(session) => format!("{} {session}", text(&lang, "tutors.session")),
+                None => text(&lang, "tutors.batch"),
+            },
+            from: a.valid_from.to_string(),
+            to: a
+                .valid_to
+                .map_or_else(|| text(&lang, "none"), |day| day.to_string()),
+        })
+        .collect();
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         id: batch.id,
@@ -284,7 +320,11 @@ async fn show(
         tutor: resource_text(&lang, batch.tutor_resource_id),
         room: resource_text(&lang, batch.room_resource_id),
         sessions: rows,
+        tutor_history: history,
+        from_date: today().to_string(),
         can_open: batch.status == BatchStatus::Planned
+            && user.has_permission(permissions::BATCHES_MANAGE),
+        can_change_tutor: batch.status.is_live()
             && user.has_permission(permissions::BATCHES_MANAGE),
     }))
 }
@@ -299,6 +339,43 @@ async fn open(
     batches::open(&state, &user, id).await?;
     Ok((
         Toast::success(text(&lang, "batches.opened")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form of `change_tutor`.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct TutorForm {
+    /// The new tutor's resource number.
+    #[serde(default)]
+    pub tutor: String,
+    /// The new tutor's employee number.
+    #[serde(default)]
+    pub employee: String,
+    /// The first day the new tutor teaches.
+    #[serde(default)]
+    pub from: String,
+}
+
+/// `POST /edtech/batches/{id}/tutor`.
+async fn tutor(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<TutorForm>,
+) -> Result<Response> {
+    let resource = parse_number(&form.tutor)?;
+    let employee = parse_optional_id(&form.employee)?;
+    let from = if form.from.trim().is_empty() {
+        tutors::default_from()
+    } else {
+        parse_date(&form.from)?
+    };
+    tutors::change_batch_tutor(&state, &user, id, resource, employee, from).await?;
+    Ok((
+        Toast::success(text(&lang, "tutors.changed")),
         renox::HxRefresh,
     )
         .into_response())

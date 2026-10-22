@@ -55,6 +55,7 @@ use crate::permissions;
 use crate::plan::PlannedSession;
 use crate::sessions;
 use crate::texts::english;
+use crate::tutors::{self, Tutor};
 
 /// `planned → open`: open for enrolment; the sessions are generated.
 pub const OPEN: &str = "open";
@@ -200,7 +201,15 @@ fn change_tutor(name: &'static str, state: BatchStatus) -> Transition<Batch> {
                         ("tutor_employee_id", &input.tutor_employee_id),
                     ],
                 )
-                .await
+                .await?;
+                if let (Some(resource), Some(from)) = (input.tutor_resource_id, input.from) {
+                    let tutor = Tutor {
+                        resource_id: resource,
+                        employee_id: input.tutor_employee_id,
+                    };
+                    tutors::record_batch(tx, id, &tutor, from, input.by).await?;
+                }
+                Ok(())
             })
         })
 }

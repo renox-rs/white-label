@@ -8,6 +8,14 @@
         <rx-confirm :id="'batch-open-' ~ id" :label="tx['batches.open']" :action="route('edtech.batch_open', id)" method="POST"
                     :title="tx['batches.open']" :message="tx['batches.open_message']" :confirm-label="tx['batches.open']" :cancel-label="tx['button_cancel']" icon="check"/>
       </template>
+      <template rx-if="can_change_tutor">
+        <rx-action-sheet :id="'batch-tutor-' ~ id" :label="tx['tutors.change']" :action="route('edtech.batch_tutor', id)"
+                         :title="tx['tutors.change']" :description="tx['tutors.change_description']" :submit-label="tx['tutors.change']" icon="user">
+          <rx-input name="tutor" type="number" :label="tx['batches.tutor_resource']" :id="'batch-tutor-resource-' ~ id" required/>
+          <rx-input name="employee" type="number" :label="tx['batches.tutor_employee']" :id="'batch-tutor-employee-' ~ id"/>
+          <rx-input name="from" type="date" :label="tx['tutors.from']" :value="from_date" :id="'batch-tutor-from-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
     </rx-page-header>
     <rx-card :title="tx['batches.details']">
       <rx-infolist columns="2">
@@ -20,6 +28,13 @@
         <rx-entry :label="tx['batches.room']" :value="room"/>
       </rx-infolist>
     </rx-card>
+    <rx-table :rows="tutor_history" as="row" :key="row.from" :caption="tx['tutors.history']" card>
+      <rx-column :label="tx['batches.tutor']">{{ row.tutor }}</rx-column>
+      <rx-column :label="tx['tutors.scope']">{{ row.scope }}</rx-column>
+      <rx-column :label="tx['tutors.from']">{{ row.from }}</rx-column>
+      <rx-column :label="tx['tutors.to']">{{ row.to }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['tutors.none']" icon="user"/></rx-slot>
+    </rx-table>
     <rx-table :rows="sessions" as="row" :key="row.id" :caption="tx['batches.sessions']" card>
       <rx-column :label="tx['sessions.number']"><a href="{{ route('edtech.session', row.id) }}">{{ row.number }}</a></rx-column>
       <rx-column :label="tx['sessions.date']">{{ row.date }}</rx-column>

@@ -40,6 +40,7 @@ use wl_kernel::documents::dubai_date;
 use crate::permissions;
 use crate::session::{Session, SessionStatus};
 use crate::texts::english;
+use crate::tutors::{self, Tutor};
 
 /// `scheduled → scheduled`: another time.
 pub const RESCHEDULE: &str = "reschedule";
@@ -168,18 +169,26 @@ fn change_tutor() -> Transition<Session> {
             Box::pin(async move { check(ok, "edtech.sessions.problem.new_tutor") })
         })
         .effect(|s: &Session, ctx, tx| {
-            let id = s.id;
+            let session = s.clone();
             let input = input_of(ctx);
             Box::pin(async move {
                 set(
                     tx,
-                    id,
+                    session.id,
                     &[
                         ("tutor_resource_id", &input.tutor_resource_id),
                         ("tutor_employee_id", &input.tutor_employee_id),
                     ],
                 )
-                .await
+                .await?;
+                if let Some(resource) = input.tutor_resource_id {
+                    let tutor = Tutor {
+                        resource_id: resource,
+                        employee_id: input.tutor_employee_id,
+                    };
+                    tutors::record_session(tx, &session, &tutor, input.by).await?;
+                }
+                Ok(())
             })
         })
 }

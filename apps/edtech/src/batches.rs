@@ -25,6 +25,7 @@ use crate::permissions;
 use crate::plan::{self, PlanProblem, PlannedSession};
 use crate::sessions;
 use crate::texts::english;
+use crate::tutors::{self, Tutor};
 
 /// The scheduled task and command that start the batches whose first session
 /// date came.
@@ -174,12 +175,21 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewBatch) -> Result<Ba
     if plan_for(state, &batch)?.is_empty() {
         return Err(refused(english("edtech.batches.problem.no_sessions", &[])));
     }
-    batch.save(&state.db).await?;
+    let mut tx = state.db.begin().await?;
+    batch.insert(&mut tx).await?;
+    if let Some(resource) = batch.tutor_resource_id {
+        let tutor = Tutor {
+            resource_id: resource,
+            employee_id: batch.tutor_employee_id,
+        };
+        tutors::record_batch(&mut tx, batch.id, &tutor, batch.start_date, Some(by.id)).await?;
+    }
+    tx.commit().await?;
     Ok(batch)
 }
 
 /// Runs the transition `name` on batch `id`, as the user `by` or the system.
-async fn run(
+pub(crate) async fn run(
     state: &AppState,
     by: Option<&AuthUser>,
     id: i64,

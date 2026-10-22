@@ -33,6 +33,7 @@ use crate::session_machine::{
     CANCEL, CHANGE_TUTOR, RESCHEDULE, SUBMIT_ATTENDANCE, SessionInput,
 };
 use crate::texts::english;
+use crate::tutors::{self, Tutor};
 
 /// The reason of a block a session makes in wl-scheduling.
 pub const BLOCK_REASON: &str = "session";
@@ -134,7 +135,7 @@ fn clash_error(clashes: &[Clash]) -> Error {
 }
 
 /// Refuses with the days of `clashes` when there are any.
-fn no_clash(clashes: &[Clash]) -> Result {
+pub(crate) fn no_clash(clashes: &[Clash]) -> Result {
     if clashes.is_empty() {
         Ok(())
     } else {
@@ -398,6 +399,11 @@ pub async fn change_tutor(
     employee: Option<i64>,
 ) -> Result<Session> {
     let session = load(state, by, id, permissions::BATCHES_MANAGE).await?;
+    let tutor = Tutor {
+        resource_id: resource,
+        employee_id: employee,
+    };
+    tutors::tutor_eligible(state, &tutor, &[session.session_date]).await?;
     if session.status == SessionStatus::Scheduled {
         let clashes = conflicts(
             &state.db,
