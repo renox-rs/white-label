@@ -339,7 +339,10 @@ pub async fn accept(
     let document = document.map(str::trim).filter(|d| !d.is_empty());
     let by_client = client_accepts(state, by, &card).await?;
     if !by_client {
-        if !by.has_permission_anywhere(permissions::RATE_CARDS_MANAGE) {
+        let scope = wl_kernel::scopes::scope_of(&state.db, &card.source()).await?;
+        if !by.has_permission_in(permissions::RATE_CARDS_MANAGE, &scope)
+            && !by.has_permission(permissions::RATE_CARDS_MANAGE)
+        {
             return Err(Error::Forbidden);
         }
         if document.is_none() {

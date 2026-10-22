@@ -212,6 +212,12 @@ pub fn grant_roles(client_app: &str) {
         return;
     }
     super::roles::grant_extra(manpower::permissions::MD_ROLE, &MD_PERMISSIONS);
+    // The accountant sees the rate cards (`MPW.ACL.04`): the rates are for the
+    // account manager, the accountant and the MD.
+    super::roles::grant_extra(
+        seed::ACCOUNTANT,
+        &[wl_invoicing::permissions::RATE_CARDS_VIEW],
+    );
     for role in [seed::HR, seed::ACCOUNTANT] {
         super::roles::grant_extra(
             role,

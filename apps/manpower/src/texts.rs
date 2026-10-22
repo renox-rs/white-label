@@ -977,6 +977,12 @@ const TEXTS: &[(&str, &str)] = &[
     ("manpower.screen.sites.actions", "Actions"),
     ("manpower.screen.sites.empty", "No site yet"),
     ("manpower.screen.rates.version", "Version"),
+    ("manpower.screen.rates.open_card", "Open the rate card"),
+    ("manpower.screen.rates.start", "Start the rate card"),
+    (
+        "manpower.screen.rates.start_hint",
+        "Makes the empty rate card of this contract. Then add its first version with the effective date and the lines.",
+    ),
     ("manpower.screen.rates.effective", "Prices from"),
     ("manpower.screen.rates.accepted", "Accepted"),
     ("manpower.screen.rates.lines", "Roles priced"),

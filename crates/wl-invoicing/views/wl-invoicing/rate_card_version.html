@@ -1,0 +1,104 @@
+{#- wl-invoicing: one rate card version (09 Manpower MPW.ACL.16): where it
+    stands in words, its lines (read-only once the client accepted), the
+    client's acceptance with the signed document, the MD's approval of a
+    version dated in the past, and the price preview. Replace it with
+    resources/views/wl-invoicing/rate_card_version.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['screen.card_title'] ~ ' - ' ~ title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="note" :badge="status" :badge-kind="status_kind"
+                    :back="card_url" :back-label="back_label"/>
+    <rx-form-errors/>
+    <rx-alert rx-if="approval" kind="warning" :message="tx['screen.waiting_banner']"/>
+    <rx-row>
+      <template rx-if="can_add_line">
+        <rx-action-sheet id="add-rate-line" :label="tx['screen.add_line']" :action="route('wl_invoicing.rate_card_line_add', id)"
+                         :title="tx['screen.add_line']" :description="tx['screen.add_line_hint']" :submit-label="tx['screen.add_line']" icon="plus">
+          <rx-input name="role" :label="tx['screen.field_role']" :hint="tx['screen.field_role_hint']" id="add-rate-line-role" required/>
+          <rx-input name="shift_type" :label="tx['screen.field_shift']" id="add-rate-line-shift" value="day" required/>
+          <rx-select name="unit" :label="tx['screen.field_unit']" :options="units" :selected="'hour'" id="add-rate-line-unit"/>
+          <rx-input name="rate" :label="tx['screen.field_rate']" id="add-rate-line-rate" inputmode="decimal" required/>
+          <rx-input name="ot_multiplier" :label="tx['screen.field_overtime']" id="add-rate-line-ot" value="1.25" inputmode="decimal"/>
+          <rx-input name="holiday_multiplier" :label="tx['screen.field_holiday']" id="add-rate-line-holiday" value="1.50" inputmode="decimal"/>
+          <rx-input name="min_hours" :label="tx['screen.field_minimum']" id="add-rate-line-min" value="0" inputmode="decimal"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_accept">
+        <template rx-if="accept_blocked">
+          <rx-button :label="tx['screen.accept']" variant="primary" icon="check" :disabled-reason="accept_blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="accept-rate-version" :label="tx['screen.accept']" :action="route('wl_invoicing.rate_card_version_accept', id)"
+                           :title="tx['screen.accept']" :description="tx['screen.accept_hint']" :submit-label="tx['screen.accept']" variant="primary" icon="check">
+            <rx-input name="document" :label="tx['screen.field_document']" :hint="tx['screen.field_document_hint']" id="accept-rate-version-document" required/>
+          </rx-action-sheet>
+        </template>
+      </template>
+      <template rx-for="request in approval">
+        <template rx-if="request.can_decide">
+          <rx-action-sheet :id="'approve-rate-' ~ request.id" :label="tx['screen.approve']" :action="route('wl_kernel.approvals.approve', request.id)"
+                           :title="tx['screen.approve']" :submit-label="tx['screen.approve']" variant="primary" icon="check">
+            <rx-textarea name="comment" :label="tx['screen.comment']" :hint="tx['screen.comment_optional']" :id="'approve-rate-comment-' ~ request.id"/>
+          </rx-action-sheet>
+          <rx-action-sheet :id="'reject-rate-' ~ request.id" :label="tx['screen.reject']" :action="route('wl_kernel.approvals.reject', request.id)"
+                           :title="tx['screen.reject']" :submit-label="tx['screen.reject']" icon="circle-x" danger>
+            <rx-textarea name="comment" :label="tx['screen.comment']" :hint="tx['screen.comment_required']" :id="'reject-rate-comment-' ~ request.id" required/>
+          </rx-action-sheet>
+        </template>
+      </template>
+    </rx-row>
+    <rx-card :title="title">
+      <rx-infolist columns="2">
+        <rx-entry rx-for="fact in facts" :label="fact.label" :value="fact.value"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-alert rx-if="not editable" kind="info" :message="tx['screen.read_only']"/>
+    <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['screen.lines_title']" card>
+      <rx-column :label="tx['screen.role']">{{ line.role }}</rx-column>
+      <rx-column :label="tx['screen.shift']" hide-narrow>{{ line.shift }}</rx-column>
+      <rx-column :label="tx['screen.rate']" align="num">{{ line.rate }} {{ line.unit }}</rx-column>
+      <rx-column :label="tx['screen.overtime']" align="num" hide-narrow>{{ line.overtime }}</rx-column>
+      <rx-column :label="tx['screen.holiday']" align="num" hide-narrow>{{ line.holiday }}</rx-column>
+      <rx-column :label="tx['screen.minimum']" align="num" hide-narrow>{{ line.minimum }}</rx-column>
+      <rx-column label="">
+        <template rx-if="can_add_line">
+          <rx-action-sheet :id="'edit-rate-line-' ~ line.id" :label="tx['screen.edit_line']" :action="route('wl_invoicing.rate_card_line_edit', line.id)"
+                           :title="tx['screen.edit_line'] ~ ': ' ~ line.role" :submit-label="tx['screen.edit_line']" icon="pencil">
+            <input type="hidden" name="role" value="{{ line.role_key }}">
+            <input type="hidden" name="shift_type" value="{{ line.shift_key }}">
+            <rx-select name="unit" :label="tx['screen.field_unit']" :options="units" :selected="line.unit_key" :id="'edit-rate-line-unit-' ~ line.id"/>
+            <rx-input name="rate" :label="tx['screen.field_rate']" :value="line.rate_value" :id="'edit-rate-line-rate-' ~ line.id" inputmode="decimal" required/>
+            <rx-input name="ot_multiplier" :label="tx['screen.field_overtime']" :value="line.overtime_value" :id="'edit-rate-line-ot-' ~ line.id" inputmode="decimal"/>
+            <rx-input name="holiday_multiplier" :label="tx['screen.field_holiday']" :value="line.holiday_value" :id="'edit-rate-line-holiday-' ~ line.id" inputmode="decimal"/>
+            <rx-input name="min_hours" :label="tx['screen.field_minimum']" :value="line.minimum_value" :id="'edit-rate-line-min-' ~ line.id" inputmode="decimal"/>
+          </rx-action-sheet>
+        </template>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['screen.lines_empty']" :message="tx['screen.lines_empty_text']" icon="list"/></rx-slot>
+    </rx-table>
+    <rx-card :title="tx['screen.preview_title']">
+      <rx-stack>
+        <form method="get" action="{{ route('wl_invoicing.rate_card_version', id) }}">
+          <rx-toolbar>
+            <rx-select name="line" :label="tx['screen.preview_line']" :options="preview.options" :selected="preview.selected" id="preview-line"/>
+            <rx-input name="date" type="date" :label="tx['screen.preview_date']" :value="preview.date" id="preview-date"/>
+            <rx-input name="regular" :label="tx['screen.preview_regular']" :value="preview.regular" id="preview-regular" inputmode="decimal"/>
+            <rx-input name="overtime" :label="tx['screen.preview_overtime']" :value="preview.overtime" id="preview-overtime" inputmode="decimal"/>
+            <rx-input name="holiday" :label="tx['screen.preview_holiday']" :value="preview.holiday" id="preview-holiday" inputmode="decimal"/>
+            <rx-button type="submit" :label="tx['screen.preview_submit']" icon="calculator"/>
+          </rx-toolbar>
+        </form>
+        <rx-alert rx-if="preview.message" kind="warning" :message="preview.message"/>
+        <template rx-for="result in preview.result">
+          <rx-table :rows="result.rows" as="row" :key="row.what" :caption="result.heading" card>
+            <rx-column :label="tx['screen.preview_what']">{{ row.what }}</rx-column>
+            <rx-column :label="tx['screen.preview_hours']" align="num">{{ row.billed }}</rx-column>
+            <rx-column :label="tx['screen.rate']" align="num" hide-narrow>{{ row.rate }}</rx-column>
+            <rx-column :label="tx['screen.preview_amount']" align="num">{{ row.amount }}</rx-column>
+          </rx-table>
+          <p><strong>{{ result.heading }}</strong></p>
+          <p><strong>{{ tx['screen.preview_total'] }}: {{ result.total }}</strong></p>
+        </template>
+      </rx-stack>
+    </rx-card>
+  </rx-stack>
+</rx-page>

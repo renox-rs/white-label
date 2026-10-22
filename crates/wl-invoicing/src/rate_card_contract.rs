@@ -38,6 +38,14 @@ impl RateCards for Cards {
         })
     }
 
+    fn card_of<'a>(
+        &'a self,
+        state: &'a AppState,
+        source: &'a Subject,
+    ) -> RateCardFuture<'a, Option<i64>> {
+        Box::pin(async move { Ok(RateCard::of_source(&state.db, source).await?.map(|c| c.id)) })
+    }
+
     fn versions<'a>(
         &'a self,
         state: &'a AppState,
@@ -55,6 +63,7 @@ impl RateCards for Cards {
             let mut rows = Vec::new();
             for version in versions {
                 rows.push(VersionRow {
+                    id: version.id,
                     version: version.version,
                     effective_from: version.effective_from,
                     status: version.status.as_str().to_owned(),

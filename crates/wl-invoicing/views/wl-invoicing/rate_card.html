@@ -1,0 +1,27 @@
+{#- wl-invoicing: the rate card of a contract (09 Manpower MPW.ACL.16): its
+    versions with the day they take effect, where each stands in words and who
+    accepted it, and the sheet that makes the next version. Replace it with
+    resources/views/wl-invoicing/rate_card.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['screen.card_title']">
+  <rx-stack>
+    <rx-page-header :title="tx['screen.card_title']" :subtitle="tx['screen.new_version_hint']"
+                    :back="back" :back-label="back_label"/>
+    <rx-form-errors/>
+    <rx-row rx-if="can_manage">
+      <rx-action-sheet id="new-rate-version" :label="tx['screen.new_version']" :action="route('wl_invoicing.rate_card_version_create', id)"
+                       :title="tx['screen.new_version']" :description="tx['screen.new_version_hint']" :submit-label="tx['screen.new_version']" variant="primary" icon="plus">
+        <rx-input name="effective_from" type="date" :label="tx['screen.effective_date']" id="new-rate-version-date" required/>
+        <rx-checkbox name="copy" :label="tx['screen.copy']" id="new-rate-version-copy"/>
+      </rx-action-sheet>
+    </rx-row>
+    <rx-table :rows="versions" as="version" :key="version.version" :caption="tx['screen.versions']" card>
+      <rx-column :label="tx['screen.version']"><a href="{{ version.url }}">{{ version.version }}</a></rx-column>
+      <rx-column :label="tx['screen.effective']">{{ version.effective }}</rx-column>
+      <rx-column :label="tx['screen.status']"><rx-badge :kind="version.status_kind" :text="version.status"/></rx-column>
+      <rx-column :label="tx['screen.accepted']" hide-narrow>{{ version.accepted }}</rx-column>
+      <rx-column :label="tx['screen.lines']" align="num" hide-narrow>{{ version.lines }}</rx-column>
+      <rx-column label=""><a href="{{ version.url }}">{{ tx['screen.open'] }}</a></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['screen.empty']" :message="tx['screen.empty_text']" icon="banknote"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

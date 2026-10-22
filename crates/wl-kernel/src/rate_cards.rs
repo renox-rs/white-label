@@ -46,6 +46,8 @@ pub struct RateCardVersion {
 /// version stands (`MPW.ACL.04`: the rates are not shown to a role without it).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VersionRow {
+    /// The version, for the link to its page.
+    pub id: i64,
     /// The version number, from 1.
     pub version: i64,
     /// The first day the version prices.
@@ -76,6 +78,17 @@ pub trait RateCards: Send + Sync + 'static {
         _source: &'a Subject,
         _on: NaiveDate,
     ) -> RateCardFuture<'a, Option<RateCardVersion>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// The id of the rate card whose source contract is `source`, for the
+    /// link to its page; none when the contract has no card. The default
+    /// knows none.
+    fn card_of<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _source: &'a Subject,
+    ) -> RateCardFuture<'a, Option<i64>> {
         Box::pin(async { Ok(None) })
     }
 

@@ -39,6 +39,11 @@ use crate::permissions;
 use crate::site::Site;
 use crate::texts::{screen_texts, t, tf, word};
 
+/// The permission to see rate cards (wl-invoicing `rate_cards.view`, `MPW.ACL.04`).
+const RATE_CARDS_VIEW: &str = "rate_cards.view";
+/// The permission to make rate card versions (wl-invoicing `rate_cards.manage`).
+const RATE_CARDS_MANAGE: &str = "rate_cards.manage";
+
 /// The address of a contract's page.
 pub(crate) fn url(id: i64) -> String {
     format!("/manpower/contracts/{id}")
@@ -89,6 +94,8 @@ pub(crate) struct DeploymentLine {
 /// A rate card version in the *Rate cards* tab.
 #[derive(Debug, Serialize, Clone)]
 pub(crate) struct VersionLine {
+    /// The page of the version, empty for a person who may not see rates.
+    url: String,
     version: String,
     effective: String,
     status: String,
@@ -153,6 +160,12 @@ pub(crate) struct ContractPage {
     approvals: Vec<ApprovalLine>,
     deployments: Vec<DeploymentLine>,
     versions: Vec<VersionLine>,
+    /// The rate card page, empty when the contract has no card or the person
+    /// may not see rates (`MPW.ACL.04`).
+    rate_card_url: String,
+    /// Whether *Start the rate card* is offered.
+    can_start_rate_card: bool,
+    subject: String,
     sites: Vec<SiteLine>,
     can_sites: bool,
     activity: Vec<ActivityLine>,
@@ -560,12 +573,26 @@ async fn build(
         });
     }
 
-    // The rate card versions: where each stands, never the rates.
-    let versions = rate_cards(state)
-        .versions(state, &contract.subject())
-        .await?
+    // The rate card versions: where each stands, never the rates; the rates
+    // are on the card pages of those who may see them.
+    let can_rates = user.has_permission_anywhere(RATE_CARDS_VIEW);
+    let cards = rate_cards(state);
+    let card = cards.card_of(state, &contract.subject()).await?;
+    let rows = cards.versions(state, &contract.subject()).await?;
+    let rate_card_url = match card {
+        Some(id) if can_rates => format!("/rate-cards/{id}"),
+        _ => String::new(),
+    };
+    let can_start_rate_card =
+        card.is_none() && manage && user.has_permission_anywhere(RATE_CARDS_MANAGE);
+    let versions = rows
         .into_iter()
         .map(|row| VersionLine {
+            url: if can_rates {
+                format!("/rate-card-versions/{}", row.id)
+            } else {
+                String::new()
+            },
             version: format!("v{}", row.version),
             effective: date_text(row.effective_from),
             status: word(lang, "rate_status", &row.status),
@@ -643,6 +670,9 @@ async fn build(
         approvals,
         deployments,
         versions,
+        rate_card_url,
+        can_start_rate_card,
+        subject: contract.subject().to_string(),
         sites,
         can_sites,
         activity,

@@ -137,8 +137,18 @@
         </rx-table>
       </rx-tab>
       <rx-tab key="rates" :label="tx['tab.rates']">
+        <rx-row rx-if="rate_card_url">
+          <rx-link-button :href="rate_card_url" :label="tx['rates.open_card']" icon="banknote"/>
+        </rx-row>
+        <rx-row rx-if="can_start_rate_card">
+          <rx-action-sheet id="start-rate-card" :label="tx['rates.start']" :action="route('wl_invoicing.rate_card_create')"
+                           :title="tx['rates.start']" :description="tx['rates.start_hint']" :submit-label="tx['rates.start']" variant="primary" icon="plus">
+            <input type="hidden" name="party" value="{{ client_party_id }}">
+            <input type="hidden" name="source" value="{{ subject }}">
+          </rx-action-sheet>
+        </rx-row>
         <rx-table :rows="versions" as="version" :key="version.version" :caption="tx['tab.rates']" card>
-          <rx-column :label="tx['rates.version']">{{ version.version }}</rx-column>
+          <rx-column :label="tx['rates.version']"><a rx-if="version.url" href="{{ version.url }}">{{ version.version }}</a><span rx-if="not version.url">{{ version.version }}</span></rx-column>
           <rx-column :label="tx['rates.effective']">{{ version.effective }}</rx-column>
           <rx-column :label="tx['fields.status']"><rx-badge :kind="version.status_kind" :text="version.status"/></rx-column>
           <rx-column :label="tx['rates.accepted']" hide-narrow>{{ version.accepted }}</rx-column>
