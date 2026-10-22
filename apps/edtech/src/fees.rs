@@ -54,7 +54,9 @@ pub fn split(total: i64, count: i64) -> Vec<i64> {
 /// `start`: monthly.
 pub fn due_date(start: NaiveDate, number: i64) -> NaiveDate {
     let months = u32::try_from((number - 1).max(0)).unwrap_or(0);
-    start.checked_add_months(Months::new(months)).unwrap_or(start)
+    start
+        .checked_add_months(Months::new(months))
+        .unwrap_or(start)
 }
 
 /// One line of an enrolment's invoice: `gross` with VAT.
@@ -164,10 +166,7 @@ pub async fn raise(state: &AppState, enrolment: &Enrolment) -> Result<Enrolment>
             if let Some(user) = enrolment.counsellor_id {
                 sale = sale.sold_by(user);
             }
-            package = package_sales(state)
-                .sell(state, sale)
-                .await?
-                .map(|id| id.0);
+            package = package_sales(state).sell(state, sale).await?.map(|id| id.0);
         }
         EnrolmentKind::Membership => {
             // The subscription starts when the enrolment activates; only the
@@ -273,7 +272,9 @@ pub async fn invoice_due(state: &AppState, on: NaiveDate) -> Result<usize> {
         if enrolment.status != EnrolmentStatus::Active {
             continue;
         }
-        let total = Instalment::of_enrolment(&state.db, enrolment.id).await?.len();
+        let total = Instalment::of_enrolment(&state.db, enrolment.id)
+            .await?
+            .len();
         let name = enrolment.item_name.clone().unwrap_or_default();
         let text = instalment_text(&name, row.number, i64::try_from(total).unwrap_or(1));
         let lines = vec![line(&text, row.amount, &enrolment)];
@@ -331,7 +332,13 @@ mod tests {
     fn instalments_fall_due_a_month_apart() {
         let start = NaiveDate::from_ymd_opt(2026, 11, 30).unwrap();
         assert_eq!(due_date(start, 1), start);
-        assert_eq!(due_date(start, 2), NaiveDate::from_ymd_opt(2026, 12, 30).unwrap());
-        assert_eq!(due_date(start, 4), NaiveDate::from_ymd_opt(2027, 2, 28).unwrap());
+        assert_eq!(
+            due_date(start, 2),
+            NaiveDate::from_ymd_opt(2026, 12, 30).unwrap()
+        );
+        assert_eq!(
+            due_date(start, 4),
+            NaiveDate::from_ymd_opt(2027, 2, 28).unwrap()
+        );
     }
 }

@@ -38,7 +38,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "edtech.lapse.staff_body",
         ":student's seat in :batch was released: no payment arrived within :hours hours.",
     ),
-    ("edtech.lapse.retry_title", "Your payment did not go through"),
+    (
+        "edtech.lapse.retry_title",
+        "Your payment did not go through",
+    ),
     (
         "edtech.lapse.retry_body",
         "The payment for :enrolment failed and your seat is still held until :until. Pay with this new link: :link",

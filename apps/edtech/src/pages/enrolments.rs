@@ -499,12 +499,17 @@ async fn show(
     // The balance of a first payment that was only part paid.
     let (paid, balance) = if pending {
         let paid = enrolments::paid_of(&state, &e).await?;
-        (money_text(paid), money_text((e.fee() + e.registration_fee - paid).max(0)))
+        (
+            money_text(paid),
+            money_text((e.fee() + e.registration_fee - paid).max(0)),
+        )
     } else {
         (none.clone(), none.clone())
     };
     let subject = e.subject();
-    let waiting = !approvals::pending_for(&state.db, &subject).await?.is_empty();
+    let waiting = !approvals::pending_for(&state.db, &subject)
+        .await?
+        .is_empty();
     let approval_cards = approvals::cards_for(&state.db, &subject, &user, &lang).await?;
     let settlement = &e.settlement.0;
     let withdrawn = e.status == EnrolmentStatus::Withdrawn;
@@ -512,7 +517,10 @@ async fn show(
         if ids.is_empty() {
             none.clone()
         } else {
-            ids.iter().map(i64::to_string).collect::<Vec<_>>().join(", ")
+            ids.iter()
+                .map(i64::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
         }
     };
     let settle_state = if !withdrawn {
@@ -577,10 +585,9 @@ async fn show(
         registration_fee: money_text(e.registration_fee),
         admin_fee: money_text(e.admin_fee),
         instalment_count: e.instalments,
-        terms: e.terms_accepted_at.map_or_else(
-            || text(&lang, "enrolments.terms_missing"),
-            dubai_text,
-        ),
+        terms: e
+            .terms_accepted_at
+            .map_or_else(|| text(&lang, "enrolments.terms_missing"), dubai_text),
         discount_state: text(
             &lang,
             if e.discount_approved {
@@ -820,7 +827,9 @@ async fn collect(
             .await?;
         let (invoice, balance) = match summary {
             Some(found) => (
-                found.number.unwrap_or_else(|| format!("#{}", row.invoice_id)),
+                found
+                    .number
+                    .unwrap_or_else(|| format!("#{}", row.invoice_id)),
                 found.balance.max(0),
             ),
             None => (format!("#{}", row.invoice_id), row.amount),
@@ -829,10 +838,7 @@ async fn collect(
             invoice,
             balance: money_text(balance),
             reopened: row.reopened_on.to_string(),
-            reason: row
-                .reversal_reason
-                .clone()
-                .unwrap_or_else(|| none.clone()),
+            reason: row.reversal_reason.clone().unwrap_or_else(|| none.clone()),
         });
     }
     let amount = crate::chargebacks::outstanding(&state, e.id).await?;

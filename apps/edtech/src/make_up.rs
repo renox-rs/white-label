@@ -80,10 +80,7 @@ pub(crate) async fn grant(tx: &mut Transaction, row: &Attendance, session: &Sess
                 .where_(MakeUpRight::ID.eq(right.id))
                 .update(
                     &mut *tx,
-                    &[
-                        ("voided_at", &None::<DateTime>),
-                        ("updated_at", &now()),
-                    ],
+                    &[("voided_at", &None::<DateTime>), ("updated_at", &now())],
                 )
                 .await?;
         }

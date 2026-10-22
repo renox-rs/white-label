@@ -9,10 +9,10 @@
 mod support;
 
 use edtech::batches;
+use edtech::enrolments::{self, NewEnrolment};
 use edtech::notices::FAMILY_NOTICE;
 use edtech::sessions;
 use edtech::tutors;
-use edtech::enrolments::{self, NewEnrolment};
 use edtech::{Batch, BatchStatus, Session, SessionStatus, TutorAssignment};
 use renox::chrono::{NaiveDate, TimeDelta};
 use renox::prelude::*;
@@ -53,7 +53,13 @@ async fn open_batch(t: &Centre, tutor: &(Resource, i64), room: &str) -> Batch {
     let room = t.room(room, 14).await;
     let course = t.course().await;
     let batch = t
-        .batch_with(&course, (&tutor.0, Some(tutor.1)), &room, monday(), &[1, 3, 5])
+        .batch_with(
+            &course,
+            (&tutor.0, Some(tutor.1)),
+            &room,
+            monday(),
+            &[1, 3, 5],
+        )
         .await;
     let amal = t.coordinator().await;
     batches::open(t.state(), &amal, batch.id).await.unwrap()
@@ -109,7 +115,9 @@ async fn edu_09_the_remaining_sessions_move_to_the_new_tutor_and_everyone_is_tol
     enrolments::create(
         t.state(),
         &desk,
-        NewEnrolment::course(child, batch.id, PRICE).guardian(mother).terms_accepted(),
+        NewEnrolment::course(child, batch.id, PRICE)
+            .guardian(mother)
+            .terms_accepted(),
     )
     .await
     .unwrap();
@@ -117,16 +125,10 @@ async fn edu_09_the_remaining_sessions_move_to_the_new_tutor_and_everyone_is_tol
     let from = monday() + TimeDelta::days(7);
     let amal = t.coordinator().await;
 
-    let changed = tutors::change_batch_tutor(
-        t.state(),
-        &amal,
-        batch.id,
-        nour.0.id,
-        Some(nour.1),
-        from,
-    )
-    .await
-    .unwrap();
+    let changed =
+        tutors::change_batch_tutor(t.state(), &amal, batch.id, nour.0.id, Some(nour.1), from)
+            .await
+            .unwrap();
 
     assert_eq!(changed.status, BatchStatus::Running);
     assert_eq!(changed.tutor_resource_id, Some(nour.0.id));
@@ -135,12 +137,29 @@ async fn edu_09_the_remaining_sessions_move_to_the_new_tutor_and_everyone_is_tol
     assert!(moved.len() >= 6, "a good number of remaining sessions");
     for session in &sessions {
         if session.session_date >= from {
-            assert_eq!(session.tutor_resource_id, Some(nour.0.id), "{}", session.session_date);
+            assert_eq!(
+                session.tutor_resource_id,
+                Some(nour.0.id),
+                "{}",
+                session.session_date
+            );
             assert_eq!(session.tutor_employee_id, Some(nour.1));
-            assert!(!session.is_flagged(), "T's flag on {} is cleared", session.session_date);
+            assert!(
+                !session.is_flagged(),
+                "T's flag on {} is cleared",
+                session.session_date
+            );
         } else {
-            assert_eq!(session.tutor_resource_id, Some(layla.0.id), "{}", session.session_date);
-            assert!(session.is_flagged(), "the sessions before the date keep T and their flag");
+            assert_eq!(
+                session.tutor_resource_id,
+                Some(layla.0.id),
+                "{}",
+                session.session_date
+            );
+            assert!(
+                session.is_flagged(),
+                "the sessions before the date keep T and their flag"
+            );
         }
     }
     let told = change_notices(&t);
@@ -150,8 +169,14 @@ async fn edu_09_the_remaining_sessions_move_to_the_new_tutor_and_everyone_is_tol
     for notice in &told {
         let text = Messages::text(notice);
         assert!(text.contains(&from.to_string()), "{text}");
-        assert!(!text.to_lowercase().contains("clearance"), "no reason: {text}");
-        assert!(!text.to_lowercase().contains("expired"), "no reason: {text}");
+        assert!(
+            !text.to_lowercase().contains("clearance"),
+            "no reason: {text}"
+        );
+        assert!(
+            !text.to_lowercase().contains("expired"),
+            "no reason: {text}"
+        );
         assert!(!text.to_lowercase().contains("sick"), "no reason: {text}");
     }
     let history = TutorAssignment::of_batch(t.db(), batch.id).await.unwrap();
@@ -171,7 +196,13 @@ async fn edu_09_a_tutor_who_is_busy_on_a_date_changes_nothing_and_the_date_is_sh
     let room2 = t.room("Room 2", 14).await;
     let course = t.course().await;
     let other = t
-        .batch_with(&course, (&nour.0, Some(nour.1)), &room2, monday() + TimeDelta::days(7), &[1])
+        .batch_with(
+            &course,
+            (&nour.0, Some(nour.1)),
+            &room2,
+            monday() + TimeDelta::days(7),
+            &[1],
+        )
         .await;
     let amal = t.coordinator().await;
     batches::open(t.state(), &amal, other.id).await.unwrap();
@@ -188,18 +219,34 @@ async fn edu_09_a_tutor_who_is_busy_on_a_date_changes_nothing_and_the_date_is_sh
     .unwrap_err();
 
     let message = refusal(&error);
-    assert!(message.contains(&(monday() + TimeDelta::days(7)).to_string()), "{message}");
-    assert!(t
-        .sessions_of(&batch)
-        .await
-        .iter()
-        .all(|s| s.tutor_resource_id == Some(layla.0.id)));
+    assert!(
+        message.contains(&(monday() + TimeDelta::days(7)).to_string()),
+        "{message}"
+    );
+    assert!(
+        t.sessions_of(&batch)
+            .await
+            .iter()
+            .all(|s| s.tutor_resource_id == Some(layla.0.id))
+    );
     assert_eq!(
-        Batch::find_or_404(t.db(), batch.id).await.unwrap().tutor_resource_id,
+        Batch::find_or_404(t.db(), batch.id)
+            .await
+            .unwrap()
+            .tutor_resource_id,
         Some(layla.0.id)
     );
-    assert_eq!(TutorAssignment::of_batch(t.db(), batch.id).await.unwrap().len(), 1);
-    assert!(change_notices(&t).is_empty(), "nobody is told of a change that did not happen");
+    assert_eq!(
+        TutorAssignment::of_batch(t.db(), batch.id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        change_notices(&t).is_empty(),
+        "nobody is told of a change that did not happen"
+    );
 }
 
 /// Changing one session to tutor V affects only that session, the students are
@@ -225,12 +272,20 @@ async fn edu_09_one_session_moves_alone() {
     assert!(!moved.is_flagged(), "this session's flag is cleared");
     for other in t.sessions_of(&batch).await {
         if other.id != one.id {
-            assert_eq!(other.tutor_resource_id, Some(layla.0.id), "{}", other.session_date);
+            assert_eq!(
+                other.tutor_resource_id,
+                Some(layla.0.id),
+                "{}",
+                other.session_date
+            );
             assert!(other.is_flagged(), "the others keep their flag");
         }
     }
     assert_eq!(
-        Batch::find_or_404(t.db(), batch.id).await.unwrap().tutor_resource_id,
+        Batch::find_or_404(t.db(), batch.id)
+            .await
+            .unwrap()
+            .tutor_resource_id,
         Some(layla.0.id)
     );
     let told = change_notices(&t);
@@ -270,7 +325,12 @@ async fn edu_09_a_session_moved_earlier_and_a_cancelled_one_keep_their_tutor() {
         } else {
             uma.0.id
         };
-        assert_eq!(session.tutor_resource_id, Some(expected), "{}", session.session_date);
+        assert_eq!(
+            session.tutor_resource_id,
+            Some(expected),
+            "{}",
+            session.session_date
+        );
     }
     let still = Session::find_or_404(t.db(), cancelled.id).await.unwrap();
     assert_eq!(still.status, SessionStatus::Cancelled);
@@ -302,8 +362,22 @@ async fn edu_09_two_changes_to_one_tutor_at_the_same_time_only_one_wins() {
     };
 
     let (a, b) = renox::tokio::join!(
-        tutors::change_batch_tutor(t.state(), &amal, first.id, nour.0.id, Some(nour.1), monday()),
-        tutors::change_batch_tutor(t.state(), &other, second.id, nour.0.id, Some(nour.1), monday()),
+        tutors::change_batch_tutor(
+            t.state(),
+            &amal,
+            first.id,
+            nour.0.id,
+            Some(nour.1),
+            monday()
+        ),
+        tutors::change_batch_tutor(
+            t.state(),
+            &other,
+            second.id,
+            nour.0.id,
+            Some(nour.1),
+            monday()
+        ),
     );
 
     assert_eq!(
@@ -324,7 +398,11 @@ async fn edu_09_two_changes_to_one_tutor_at_the_same_time_only_one_wins() {
     slots.sort();
     let count = slots.len();
     slots.dedup();
-    assert_eq!(slots.len(), count, "the tutor is never in two places at once");
+    assert_eq!(
+        slots.len(),
+        count,
+        "the tutor is never in two places at once"
+    );
 }
 
 /// A planned batch has no sessions and nobody enrolled: its tutor is replaced in

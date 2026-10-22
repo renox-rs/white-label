@@ -1150,9 +1150,7 @@ async fn without_payments_the_recorder_finds_nothing_and_refuses_to_record() {
 #[renox::test]
 async fn a_registered_prepaid_type_is_asked_before_the_provided_contract() {
     use wl_kernel::Subject;
-    use wl_kernel::payments::{
-        PaymentFuture, prepaid_subjects, register_prepaid_subject_type,
-    };
+    use wl_kernel::payments::{PaymentFuture, prepaid_subjects, register_prepaid_subject_type};
 
     fn only_even<'a>(_state: &'a AppState, subject: &'a Subject) -> PaymentFuture<'a, bool> {
         Box::pin(async move { Ok(subject.subject_id % 2 == 0) })
@@ -2230,8 +2228,10 @@ async fn without_sales_the_frozen_days_move_no_package() {
 /// user's.
 #[test]
 fn the_pause_events_name_their_cause_and_agreement() {
-    use wl_kernel::subscriptions::{PauseCause, SubscriptionId, SubscriptionPaused, SubscriptionResumed};
     use wl_kernel::Subject;
+    use wl_kernel::subscriptions::{
+        PauseCause, SubscriptionId, SubscriptionPaused, SubscriptionResumed,
+    };
 
     let paused = SubscriptionPaused {
         subscription: SubscriptionId(4),

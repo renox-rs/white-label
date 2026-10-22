@@ -1210,7 +1210,11 @@ async fn announce(state: &AppState, event: &Transitioned<Subscription>) -> Resul
             let cause = event.meta.get("cause").and_then(Value::as_str);
             let first = event.from != SubscriptionStatus::Paused.as_str();
             // The cause added is told to the vertical (10 `EDU.RUL.14`).
-            if let Some(added) = PauseCause::ALL.iter().copied().find(|c| Some(c.as_str()) == cause) {
+            if let Some(added) = PauseCause::ALL
+                .iter()
+                .copied()
+                .find(|c| Some(c.as_str()) == cause)
+            {
                 let until = SubscriptionPause::open_of(&state.db, subscription.id)
                     .await?
                     .into_iter()

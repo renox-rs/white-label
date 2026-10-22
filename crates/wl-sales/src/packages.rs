@@ -343,7 +343,8 @@ pub async fn extend_by_days(
     if days < 1 || package.status != PackageStatus::Active {
         return Ok(None);
     }
-    let Some(new_end) = end.checked_add_days(renox::chrono::Days::new(u64::try_from(days).unwrap_or(0)))
+    let Some(new_end) =
+        end.checked_add_days(renox::chrono::Days::new(u64::try_from(days).unwrap_or(0)))
     else {
         return Ok(None);
     };
@@ -541,7 +542,16 @@ async fn on_invoice_paid(state: &AppState, event: &InvoicePaid) -> Result {
 /// Emits the kernel events after a package transition committed.
 async fn announce(state: &AppState, event: &Transitioned<Package>) -> Result {
     let name = event.transition.as_str();
-    if ![ACTIVATE, CONSUME, CONSUME_LAST, EXTEND, EXTEND_SYSTEM, EXPIRE].contains(&name) {
+    if ![
+        ACTIVATE,
+        CONSUME,
+        CONSUME_LAST,
+        EXTEND,
+        EXTEND_SYSTEM,
+        EXPIRE,
+    ]
+    .contains(&name)
+    {
         return Ok(());
     }
     let Some(package) = Package::find(&state.db, event.key).await? else {

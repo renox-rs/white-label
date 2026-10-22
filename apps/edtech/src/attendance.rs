@@ -248,7 +248,11 @@ pub(crate) async fn store_marks(
                             ("marked_at", &Some(found.marked_at.unwrap_or(at))),
                             (
                                 "corrected_at",
-                                &if corrected { Some(at) } else { found.corrected_at },
+                                &if corrected {
+                                    Some(at)
+                                } else {
+                                    found.corrected_at
+                                },
                             ),
                             ("updated_at", &at),
                         ],

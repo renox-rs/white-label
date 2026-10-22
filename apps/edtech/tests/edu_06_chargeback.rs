@@ -10,10 +10,10 @@
 
 mod support;
 
-use edtech::enrolments::{self, NewEnrolment};
-use edtech::{Batch, Chargeback, Enrolment, EnrolmentFreeze, EnrolmentStatus};
 use edtech::batches::{self, NewBatch};
+use edtech::enrolments::{self, NewEnrolment};
 use edtech::notices::NOTICE;
+use edtech::{Batch, Chargeback, Enrolment, EnrolmentFreeze, EnrolmentStatus};
 use renox::auth::permissions::{self, Scope};
 use renox::chrono::TimeDelta;
 use renox::prelude::*;
@@ -76,20 +76,39 @@ async fn edu_06_a_charged_back_fee_gives_the_counsellor_one_task_and_changes_not
     t.charge_back(&e, invoice, gross).await;
 
     let after = reload(&t, &e).await;
-    assert_eq!(after.status, EnrolmentStatus::Active, "the enrolment is unchanged");
-    assert!(EnrolmentFreeze::open_of(t.db(), e.id).await.unwrap().is_empty());
+    assert_eq!(
+        after.status,
+        EnrolmentStatus::Active,
+        "the enrolment is unchanged"
+    );
+    assert!(
+        EnrolmentFreeze::open_of(t.db(), e.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert!(after.seat_held);
     let tasks = t.tasks.about(&e.subject());
     assert_eq!(tasks.len(), 1, "one task");
     let task = &tasks[0];
     assert!(task.is_open());
-    assert_eq!(task.assignee_user(), Some(desk_user.id), "to the enrolment's counsellor");
+    assert_eq!(
+        task.assignee_user(),
+        Some(desk_user.id),
+        "to the enrolment's counsellor"
+    );
     assert!(task.ticket.due_at.is_some(), "due in two working days");
     let text = &task.ticket.description;
     assert!(text.contains("AED 2,520.00"), "{text}");
     assert!(text.contains("Sara Ali"), "the payer: {text}");
-    assert!(text.contains(&format!("/edtech/enrolments/{}/collect", e.id)), "{text}");
-    assert!(text.contains(&format!("/edtech/enrolments/{}", e.id)), "{text}");
+    assert!(
+        text.contains(&format!("/edtech/enrolments/{}/collect", e.id)),
+        "{text}"
+    );
+    assert!(
+        text.contains(&format!("/edtech/enrolments/{}", e.id)),
+        "{text}"
+    );
     assert!(task.ticket.title.contains(&e.number()));
     let rows = Chargeback::outstanding_of(t.db(), e.id).await.unwrap();
     assert_eq!(rows.len(), 1);
@@ -117,8 +136,18 @@ async fn edu_06_the_task_closes_when_the_invoice_is_paid_again() {
 
     assert!(t.tasks.open().is_empty(), "no task is left open");
     let closed = &t.tasks.about(&e.subject())[0];
-    assert!(closed.completed.as_deref().is_some_and(|note| note.contains("Paid again")));
-    assert!(Chargeback::outstanding_of(t.db(), e.id).await.unwrap().is_empty());
+    assert!(
+        closed
+            .completed
+            .as_deref()
+            .is_some_and(|note| note.contains("Paid again"))
+    );
+    assert!(
+        Chargeback::outstanding_of(t.db(), e.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(reload(&t, &e).await.status, EnrolmentStatus::Active);
 }
 
@@ -155,7 +184,12 @@ async fn edu_06_a_membership_cycle_invoice_reopened_makes_no_task() {
         .unwrap();
 
     assert!(t.tasks.all().is_empty());
-    assert!(Chargeback::outstanding_of(t.db(), e.id).await.unwrap().is_empty());
+    assert!(
+        Chargeback::outstanding_of(t.db(), e.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// Given E's counsellor C1 deactivated, the task goes to the counsellors of E's
@@ -215,8 +249,13 @@ async fn edu_06_the_counsellors_of_the_campus_get_the_task_when_the_counsellor_l
     .await
     .unwrap();
     let mut campus_counsellors = Vec::new();
-    for (name, email) in [("Dina D", "dina.d@example.com"), ("Eman E", "eman.e@example.com")] {
-        let user = User::register(t.db(), name, email, "password123").await.unwrap();
+    for (name, email) in [
+        ("Dina D", "dina.d@example.com"),
+        ("Eman E", "eman.e@example.com"),
+    ] {
+        let user = User::register(t.db(), name, email, "password123")
+            .await
+            .unwrap();
         user.assign_role_in(t.db(), edtech::permissions::COUNSELLOR_ROLE, &scope)
             .await
             .unwrap();
@@ -265,8 +304,18 @@ async fn edu_06_several_reopened_invoices_of_one_enrolment_update_the_one_task()
     let tasks = t.tasks.about(&e.subject());
     assert_eq!(tasks.len(), 1, "one task");
     assert_eq!(tasks[0].comments.len(), 1, "updated, not opened again");
-    assert!(tasks[0].comments[0].contains("AED 3,150.00"), "{:?}", tasks[0].comments);
-    assert_eq!(Chargeback::outstanding_of(t.db(), e.id).await.unwrap().len(), 2);
+    assert!(
+        tasks[0].comments[0].contains("AED 3,150.00"),
+        "{:?}",
+        tasks[0].comments
+    );
+    assert_eq!(
+        Chargeback::outstanding_of(t.db(), e.id)
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
 
     // Paying one leaves the task open, updated; paying the other closes it.
     t.pay_again(&e, first, gross).await;
@@ -293,11 +342,17 @@ async fn edu_06_withdrawing_after_the_chargeback_uses_what_is_actually_paid() {
         .await
         .unwrap();
 
-    assert!(asked.approval_request.is_none(), "nothing is refunded: no approval");
+    assert!(
+        asked.approval_request.is_none(),
+        "nothing is refunded: no approval"
+    );
     assert_eq!(asked.enrolment.status, EnrolmentStatus::Withdrawn);
     assert_eq!(asked.enrolment.refund_amount, 0);
     assert!(t.cash.refunds().is_empty());
-    assert!(t.tasks.open().is_empty(), "the task ends with the withdrawal");
+    assert!(
+        t.tasks.open().is_empty(),
+        "the task ends with the withdrawal"
+    );
 }
 
 /// *Send payment link* makes a link for the money to collect, replaces the
@@ -313,7 +368,9 @@ async fn edu_06_the_page_sends_a_payment_link_for_the_money_to_collect() {
     let e = paid_by_card(&t, &batch, &desk).await;
     let gross = gross_of(&t, &e);
     assert!(
-        !edtech::lapse::enrolment_active(t.state(), &e.subject()).await.unwrap(),
+        !edtech::lapse::enrolment_active(t.state(), &e.subject())
+            .await
+            .unwrap(),
         "an active enrolment with nothing to collect takes no prepaid money"
     );
     t.charge_back(&e, e.first_invoice_id.unwrap(), gross).await;
@@ -351,9 +408,16 @@ async fn edu_06_the_page_sends_a_payment_link_for_the_money_to_collect() {
     assert_eq!(made.request.prepaid, e.subject());
     assert_eq!(made.request.created_by, Some(desk_user.id));
     let stored = reload(&t, &e).await;
-    assert_eq!(stored.payment_link_path.as_deref(), Some(format!("/pay/link-{}", made.id).as_str()));
+    assert_eq!(
+        stored.payment_link_path.as_deref(),
+        Some(format!("/pay/link-{}", made.id).as_str())
+    );
     assert!(t.messages.sent().len() > before, "the payer is told");
-    assert!(edtech::lapse::enrolment_active(t.state(), &e.subject()).await.unwrap());
+    assert!(
+        edtech::lapse::enrolment_active(t.state(), &e.subject())
+            .await
+            .unwrap()
+    );
 
     // Without a gateway there is no link and the counsellor is told so.
     t.cash.without_gateway();

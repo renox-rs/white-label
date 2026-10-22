@@ -122,9 +122,9 @@ pub async fn lapse_one(state: &AppState, id: i64, at: DateTime) -> Result<Option
         .await;
     match run {
         Ok(_outcome) => Ok(Some(Enrolment::find_or_404(&state.db, id).await?)),
-        Err(TransitionError::Guard(_) | TransitionError::NotFrom(_) | TransitionError::Conflict) => {
-            Ok(None)
-        }
+        Err(
+            TransitionError::Guard(_) | TransitionError::NotFrom(_) | TransitionError::Conflict,
+        ) => Ok(None),
         Err(other) => Err(other.into_error()),
     }
 }
@@ -196,7 +196,10 @@ async fn batch_number(state: &AppState, enrolment: &Enrolment) -> String {
             .ok()
             .flatten()
             .map_or_else(|| "-".to_owned(), |batch| batch.number()),
-        None => enrolment.item_name.clone().unwrap_or_else(|| "-".to_owned()),
+        None => enrolment
+            .item_name
+            .clone()
+            .unwrap_or_else(|| "-".to_owned()),
     }
 }
 

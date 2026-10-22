@@ -46,8 +46,13 @@ pub async fn attendance_percent(db: &Db, enrolment_id: i64) -> Result<Option<i64
     if counted == 0 {
         return Ok(None);
     }
-    let attended = i64::try_from(marks.iter().filter(|(row, _)| row.mark.is_present()).count())
-        .unwrap_or(i64::MAX);
+    let attended = i64::try_from(
+        marks
+            .iter()
+            .filter(|(row, _)| row.mark.is_present())
+            .count(),
+    )
+    .unwrap_or(i64::MAX);
     Ok(Some(attended * 100 / counted))
 }
 

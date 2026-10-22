@@ -275,7 +275,10 @@ async fn the_system_moves_the_end_date_on_by_the_frozen_days_without_using_the_l
     let package = paid(&t).await;
     Package::query()
         .where_(Package::ID.eq(package.id))
-        .update(t.db(), &[("valid_to", &Some(today() + TimeDelta::days(60)))])
+        .update(
+            t.db(),
+            &[("valid_to", &Some(today() + TimeDelta::days(60)))],
+        )
         .await
         .unwrap();
 
@@ -288,7 +291,10 @@ async fn the_system_moves_the_end_date_on_by_the_frozen_days_without_using_the_l
     let after = reload(&t, &package).await;
     assert_eq!(after.valid_to, Some(today() + TimeDelta::days(70)));
     assert_eq!(after.status, PackageStatus::Active);
-    assert_eq!(after.extensions, 0, "the limit of a user's extend is untouched");
+    assert_eq!(
+        after.extensions, 0,
+        "the limit of a user's extend is untouched"
+    );
     let movements = wl_sales::PackageMovement::query()
         .where_(wl_sales::PackageMovement::PACKAGE_ID.eq(package.id))
         .where_(wl_sales::PackageMovement::KIND.eq(MovementKind::Extend))

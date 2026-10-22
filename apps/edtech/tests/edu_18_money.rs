@@ -7,9 +7,9 @@
 
 mod support;
 
+use edtech::Enrolment;
 use edtech::money_defaults as money;
 use edtech::refund::{RefundBasis, RefundInput, RefundOutcome, RefundPolicy, calculate};
-use edtech::Enrolment;
 use renox::prelude::*;
 use support::{boot, day, next_weekday};
 
@@ -63,7 +63,11 @@ fn edu_18_the_refund_template_has_the_three_tiers() {
 
     let before = calculate(&course(0, false));
     assert_eq!(before.outcome, RefundOutcome::BeforeStart);
-    assert_eq!(before.refund, 262_500 - 10_500, "all of it less the registration fee");
+    assert_eq!(
+        before.refund,
+        262_500 - 10_500,
+        "all of it less the registration fee"
+    );
 
     let after = calculate(&course(3, true));
     assert_eq!(after.outcome, RefundOutcome::AfterStart);
@@ -72,7 +76,11 @@ fn edu_18_the_refund_template_has_the_three_tiers() {
     assert_eq!(after.refund, 262_500 - 63_000 - 21_000 - 10_500);
 
     let at_half = calculate(&course(6, true));
-    assert_eq!(at_half.outcome, RefundOutcome::AfterStart, "50% is still refunded");
+    assert_eq!(
+        at_half.outcome,
+        RefundOutcome::AfterStart,
+        "50% is still refunded"
+    );
     let past = calculate(&course(7, true));
     assert_eq!(past.outcome, RefundOutcome::NoRefund);
     assert_eq!(past.refund, 0);
@@ -108,16 +116,27 @@ async fn edu_18_a_new_enrolment_gets_the_tiered_refund_policy_and_the_absence_po
 /// 100%.
 #[test]
 fn edu_18_the_values_of_the_table() {
-    assert_eq!((money::REFUND_RETRY_HOURS, money::REFUND_MAX_RETRIES), (24, 1));
+    assert_eq!(
+        (money::REFUND_RETRY_HOURS, money::REFUND_MAX_RETRIES),
+        (24, 1)
+    );
     assert_eq!(money::PENDING_TIMEOUT_MINUTES, 30);
     assert_eq!(money::MEMBERSHIP_RETRY_DAYS, [1, 3, 7]);
-    const { assert!(money::MEMBERSHIP_SUSPENDS); }
+    const {
+        assert!(money::MEMBERSHIP_SUSPENDS);
+    }
     assert_eq!(money::PAUSE_ALLOWANCE_DAYS, 30);
     assert_eq!(money::CASH_WRITE_OFF_LIMIT, 0);
-    const { assert!(!money::SALARY_RECOVERY); }
-    const { assert!(!money::PORTAL_DISPUTES); }
+    const {
+        assert!(!money::SALARY_RECOVERY);
+    }
+    const {
+        assert!(!money::PORTAL_DISPUTES);
+    }
     assert_eq!(money::DISPUTE_ESCALATION_DAYS, 14);
-    const { assert!(!money::SUSPEND_PACKAGE_WHILE_UNPAID); }
+    const {
+        assert!(!money::SUSPEND_PACKAGE_WHILE_UNPAID);
+    }
     assert_eq!(money::CASH_THRESHOLD, 2_500_000, "AED 25,000");
     assert_eq!(money::CASH_FORECAST_WEEKS, 13);
     assert_eq!(money::CASH_ALERT_TIME, "06:00");

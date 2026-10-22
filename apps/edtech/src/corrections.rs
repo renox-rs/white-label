@@ -93,14 +93,20 @@ pub async fn correct_attendance(
         return Err(refused(english("edtech.corrections.problem.reason", &[])));
     }
     if !coordinator && !tutor_window_open(&session) {
-        return Err(refused(english("edtech.corrections.problem.window_over", &[])));
+        return Err(refused(english(
+            "edtech.corrections.problem.window_over",
+            &[],
+        )));
     }
     let rows = Attendance::of_session(&state.db, session.id).await?;
     let mut marks: Vec<MarkInput> = Vec::new();
     let mut before: Vec<Attendance> = Vec::new();
     for (enrolment_id, mark) in changes {
         let Some(row) = rows.iter().find(|row| row.enrolment_id == *enrolment_id) else {
-            return Err(refused(english("edtech.attendance.problem.not_on_roster", &[])));
+            return Err(refused(english(
+                "edtech.attendance.problem.not_on_roster",
+                &[],
+            )));
         };
         if *mark == Mark::Pending {
             return Err(refused(english("edtech.attendance.problem.mark", &[])));
@@ -157,7 +163,9 @@ async fn follow(
         };
         // A credit the ledger could not serve is kept and tried again by the job.
         let _kept_for_the_job = credits::settle(state, row.id).await;
-        let was = before.iter().find(|old| old.enrolment_id == mark.enrolment_id);
+        let was = before
+            .iter()
+            .find(|old| old.enrolment_id == mark.enrolment_id);
         if let Some(old) = was
             && old.alert_sent_at.is_some()
             && old.mark.is_absence()
@@ -187,7 +195,10 @@ async fn tell_guardian(
         return Ok(());
     };
     let student = party_name(state, "en", enrolment.student_party_id).await;
-    let mark = english(&format!("edtech.attendance.mark.{}", now_marked.as_str()), &[]);
+    let mark = english(
+        &format!("edtech.attendance.mark.{}", now_marked.as_str()),
+        &[],
+    );
     let title = english(
         "edtech.corrections.guardian_title",
         &[("student", &student), ("date", &session.session_date)],

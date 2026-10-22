@@ -23,8 +23,7 @@ use wl_kernel::notify::{
 };
 
 use crate::permissions::{
-    ACCOUNTANT_ROLE, CENTRE_MANAGER_ROLE, COORDINATOR_ROLE, COUNSELLOR_ROLE, OWNER_ROLE,
-    TUTOR_ROLE,
+    ACCOUNTANT_ROLE, CENTRE_MANAGER_ROLE, COORDINATOR_ROLE, COUNSELLOR_ROLE, OWNER_ROLE, TUTOR_ROLE,
 };
 
 // ---- Documents (10 §9) ----
@@ -72,8 +71,10 @@ pub const REQUEST_GROUP: &str = GROUP_SIGNATURES;
 
 /// The reactions when such a request gives up: the contact is marked invalid
 /// and the counsellor gets a task.
-pub const REQUEST_GIVE_UP: [GiveUpReaction; 2] =
-    [GiveUpReaction::MarkContactInvalid, GiveUpReaction::StaffTask];
+pub const REQUEST_GIVE_UP: [GiveUpReaction; 2] = [
+    GiveUpReaction::MarkContactInvalid,
+    GiveUpReaction::StaffTask,
+];
 
 /// The role that gets the task of a request that gave up.
 pub const REQUEST_TASK_ROLE: &str = COUNSELLOR_ROLE;
@@ -235,7 +236,8 @@ pub const EMAIL_FALLBACK_AR: &str =
 /// What the tutor and the coordinator do while attendance entry is down.
 pub const ATTENDANCE_FALLBACK_EN: &str = "Take the attendance on paper; the tutor or the coordinator enters it later (a reason is asked once the tutor's 24 hours have passed).";
 /// The same, in Arabic.
-pub const ATTENDANCE_FALLBACK_AR: &str = "سجّل الحضور على الورق؛ يدخله المدرّس أو المنسّق لاحقًا (يُطلب سبب بعد انقضاء 24 ساعة على المدرّس).";
+pub const ATTENDANCE_FALLBACK_AR: &str =
+    "سجّل الحضور على الورق؛ يدخله المدرّس أو المنسّق لاحقًا (يُطلب سبب بعد انقضاء 24 ساعة على المدرّس).";
 
 /// Hours after the end of a session during which the tutor enters or corrects
 /// the attendance without a reason (`EDU.ACL.16`); after it only the

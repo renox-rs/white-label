@@ -61,7 +61,11 @@ async fn target_batch(t: &Centre) -> Batch {
 async fn hold(t: &Centre, batch: &Batch, count: usize) {
     let tariq = t.teacher().await;
     let planned = Session::of_batch(t.db(), batch.id).await.unwrap();
-    for session in planned.iter().filter(|s| s.status == SessionStatus::Scheduled).take(count) {
+    for session in planned
+        .iter()
+        .filter(|s| s.status == SessionStatus::Scheduled)
+        .take(count)
+    {
         sessions::submit_attendance(t.state(), &tariq, session.id)
             .await
             .expect("the attendance is submitted");
@@ -115,7 +119,9 @@ async fn holder(t: &Centre, name: &str, role: &str, grants: &[&str]) -> User {
     let user = User::register(t.db(), name, &email, "password123")
         .await
         .unwrap();
-    permissions::define_role(t.db(), role, grants).await.unwrap();
+    permissions::define_role(t.db(), role, grants)
+        .await
+        .unwrap();
     user.assign_role(t.db(), role).await.unwrap();
     user
 }
@@ -175,7 +181,10 @@ async fn edu_12_the_approved_termination_cancels_the_rest_and_settles_each_stude
         b.id,
         "venue",
         None,
-        vec![ExitChoice::withdraw(e1.id), ExitChoice::transfer(e2.id, b2.id)],
+        vec![
+            ExitChoice::withdraw(e1.id),
+            ExitChoice::transfer(e2.id, b2.id),
+        ],
     )
     .await
     .unwrap();
@@ -192,7 +201,10 @@ async fn edu_12_the_approved_termination_cancels_the_rest_and_settles_each_stude
 
     let stopped = Batch::find_or_404(t.db(), b.id).await.unwrap();
     assert_eq!(stopped.status, BatchStatus::Terminated);
-    assert_eq!(stopped.termination_reason.as_deref(), Some("The venue is lost"));
+    assert_eq!(
+        stopped.termination_reason.as_deref(),
+        Some("The venue is lost")
+    );
     assert_eq!(count_in(&t, &b, SessionStatus::Cancelled).await, 7);
     assert_eq!(count_in(&t, &b, SessionStatus::Held).await, 5);
     let one = reload(&t, &e1).await;
@@ -217,8 +229,14 @@ async fn edu_12_the_approved_termination_cancels_the_rest_and_settles_each_stude
         "the unused value moves to the new enrolment"
     );
     let family = t.messages.of_type(FAMILY_NOTICE);
-    assert!(family.iter().any(|n| Messages::told_party(n, mother)), "the guardian is told");
-    assert!(family.iter().any(|n| Messages::told_party(n, sara)), "the student is told");
+    assert!(
+        family.iter().any(|n| Messages::told_party(n, mother)),
+        "the guardian is told"
+    );
+    assert!(
+        family.iter().any(|n| Messages::told_party(n, sara)),
+        "the student is told"
+    );
     assert!(
         t.messages
             .of_type(NOTICE)
@@ -246,7 +264,10 @@ async fn edu_12_a_regulatory_reason_tells_the_centre_manager_and_the_owner() {
         &t,
         "Manal",
         edtech::permissions::CENTRE_MANAGER_ROLE,
-        &[edtech::permissions::BATCHES_APPROVE, edtech::permissions::BATCHES_VIEW],
+        &[
+            edtech::permissions::BATCHES_APPROVE,
+            edtech::permissions::BATCHES_VIEW,
+        ],
     )
     .await;
     let owner = holder(&t, "Omar", edtech::permissions::OWNER_ROLE, &[]).await;
@@ -277,7 +298,10 @@ async fn edu_12_a_regulatory_reason_tells_the_centre_manager_and_the_owner() {
         .iter()
         .find(|n| Messages::text(n).contains("regulatory"))
         .expect("the regulatory notice");
-    assert!(Messages::told_user(regulatory, manager.id), "the centre manager");
+    assert!(
+        Messages::told_user(regulatory, manager.id),
+        "the centre manager"
+    );
     assert!(Messages::told_user(regulatory, owner.id), "the owner");
     assert!(Messages::text(regulatory).contains("approval was revoked"));
 }
@@ -309,8 +333,14 @@ async fn edu_12_the_coordinator_cannot_approve_their_own_request() {
     let amal_user = t.coordinator_user().await;
     let other = approve(t.state(), request, &amal_user, "").await;
 
-    assert!(matches!(own, Err(Error::Forbidden)), "the requester never approves");
-    assert!(matches!(other, Err(Error::Forbidden)), "nor does a coordinator without the right");
+    assert!(
+        matches!(own, Err(Error::Forbidden)),
+        "the requester never approves"
+    );
+    assert!(
+        matches!(other, Err(Error::Forbidden)),
+        "nor does a coordinator without the right"
+    );
     assert_eq!(
         Batch::find_or_404(t.db(), b.id).await.unwrap().status,
         BatchStatus::Running
@@ -388,14 +418,24 @@ async fn edu_12_sessions_held_before_the_approval_count_and_no_tier_or_fee_appli
 
     let paid = reload(&t, &e1).await;
     assert_eq!(paid.status, EnrolmentStatus::Withdrawn);
-    assert_eq!(paid.refund_amount, 105_000, "2,520 x 5/12: 7 sessions were held");
+    assert_eq!(
+        paid.refund_amount, 105_000,
+        "2,520 x 5/12: 7 sessions were held"
+    );
     assert_eq!(count_in(&t, &b, SessionStatus::Held).await, 7);
     assert_eq!(count_in(&t, &b, SessionStatus::Cancelled).await, 5);
     let unpaid = reload(&t, &waiting).await;
     assert_eq!(unpaid.status, EnrolmentStatus::Withdrawn);
     assert_eq!((unpaid.refund_amount, unpaid.amount_owed), (0, 0));
-    assert!(t.cash.links().iter().any(|l| l.cancelled), "the payment link is cancelled");
-    assert_eq!(t.books.notes().len(), 1, "a credit note for the paid student only");
+    assert!(
+        t.cash.links().iter().any(|l| l.cancelled),
+        "the payment link is cancelled"
+    );
+    assert_eq!(
+        t.books.notes().len(),
+        1,
+        "a credit note for the paid student only"
+    );
 }
 
 /// Only a running batch is terminated; a termination needs a known reason; a
@@ -462,7 +502,9 @@ async fn edu_12_the_page_offers_the_termination_and_shows_the_request() {
         .assert_ok()
         .assert_see("waits for the centre manager");
     let manager = t.manager_user().await;
-    let waiting = wl_kernel::approvals::awaiting(t.db(), &manager).await.unwrap();
+    let waiting = wl_kernel::approvals::awaiting(t.db(), &manager)
+        .await
+        .unwrap();
     assert_eq!(waiting.len(), 1);
     assert_eq!(waiting[0].action, "edtech.terminate");
 }

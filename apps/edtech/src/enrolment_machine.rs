@@ -47,19 +47,19 @@ use renox::db::{DateTime, Json, now};
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
-use wl_kernel::approvals::{self, PolicyDefault};
 use wl_kernel::SubjectMachine;
+use wl_kernel::approvals::{self, PolicyDefault};
 
-use crate::db::set_enrolment;
 use crate::batch::Batch;
+use crate::db::set_enrolment;
 use crate::enrolment::{
-    ENROLMENT_SUBJECT_TYPE, Enrolment, EnrolmentFreeze, EnrolmentKind, EnrolmentStatus, FreezeCause, Instalment,
-    InstalmentStatus,
+    ENROLMENT_SUBJECT_TYPE, Enrolment, EnrolmentFreeze, EnrolmentKind, EnrolmentStatus,
+    FreezeCause, Instalment, InstalmentStatus,
 };
 use crate::permissions;
 use crate::refund::{Refund, RefundOutcome};
-use crate::settlement::Settlement;
 use crate::seats;
+use crate::settlement::Settlement;
 use crate::texts::english;
 
 /// `pending_payment → active`: paid, or activated by staff.
@@ -414,9 +414,7 @@ fn complete() -> Transition<Enrolment> {
         .to(EnrolmentStatus::Completed)
         .effect(|e: &Enrolment, ctx, tx| {
             let e = e.clone();
-            let on = input_of(ctx)
-                .on
-                .unwrap_or_else(wl_kernel::documents::today);
+            let on = input_of(ctx).on.unwrap_or_else(wl_kernel::documents::today);
             Box::pin(async move {
                 set_enrolment(tx, e.id, &[("completed_on", &Some(on))]).await?;
                 release_seat(tx, &e).await
@@ -666,7 +664,12 @@ mod tests {
                 true,
             ),
             (TRANSFER, vec!["active", "frozen"], "transferred", false),
-            (TRANSFER_SYSTEM, vec!["active", "frozen"], "transferred", true),
+            (
+                TRANSFER_SYSTEM,
+                vec!["active", "frozen"],
+                "transferred",
+                true,
+            ),
         ];
         assert_eq!(machine.transitions().len(), expected.len());
         for (name, from, to, system) in expected {

@@ -133,7 +133,9 @@ pub fn sales(module: WlSales) -> WlSales {
         // A package whose invoice was reopened stays active and the counsellor
         // is told to collect; consumption is not suspended (BL-EDU-18).
         .package_seller_role(edtech::money_defaults::PACKAGE_COLLECT_ROLE)
-        .suspend_package_consumption_while_unpaid(edtech::money_defaults::SUSPEND_PACKAGE_WHILE_UNPAID)
+        .suspend_package_consumption_while_unpaid(
+            edtech::money_defaults::SUSPEND_PACKAGE_WHILE_UNPAID,
+        )
 }
 
 /// The send handler of a connection nothing is queued for: the manual way is
@@ -451,7 +453,14 @@ async fn install_notification_types(db: &Db) -> Result<usize> {
 
 // ---- The page /settings/compliance for the EdTech client -------------------
 
-fn row(number: &str, group: &str, setting: &str, value: String, source: &str, reference: &str) -> Row {
+fn row(
+    number: &str,
+    group: &str,
+    setting: &str,
+    value: String,
+    source: &str,
+    reference: &str,
+) -> Row {
     Row {
         number: number.to_owned(),
         group: group.to_owned(),

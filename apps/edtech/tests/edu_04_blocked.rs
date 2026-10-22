@@ -75,9 +75,15 @@ async fn family(t: &Centre) -> Family {
     let e2 = t.pay_first(&pack).await;
     assert_eq!(e2.status, EnrolmentStatus::Active);
     let e3 = paid_course(t, &batch, 4, "Noor Ali").await;
-    enrolments::freeze(t.state(), Some(&desk), e3.id, FreezeCause::Student, Some(day(14)))
-        .await
-        .expect("the student freezes");
+    enrolments::freeze(
+        t.state(),
+        Some(&desk),
+        e3.id,
+        FreezeCause::Student,
+        Some(day(14)),
+    )
+    .await
+    .expect("the student freezes");
     t.person(5, "Yusuf Ali");
     t.people.guardian(5, GUARDIAN);
     let e4 = enrolments::create(
@@ -130,7 +136,10 @@ async fn edu_04_blocking_the_payer_freezes_the_active_enrolments_and_tells_nobod
         let rows = EnrolmentFreeze::open_of(t.db(), e.id).await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].cause, FreezeCause::Block);
-        assert_eq!(rows[0].counted_days, 0, "a block uses none of the allowance");
+        assert_eq!(
+            rows[0].counted_days, 0,
+            "a block uses none of the allowance"
+        );
         assert!(frozen.seat_held, "the seat is kept");
     }
     assert_eq!(seats::count_in(t.db(), f.batch.id).await.unwrap(), seated);
@@ -171,7 +180,9 @@ async fn edu_04_only_the_centre_manager_withdraws_and_the_refund_is_asked_for_th
     let asked = enrolments::request_withdrawal(t.state(), Some(&manager), f.e1.id, "moved abroad")
         .await
         .unwrap();
-    let request = asked.approval_request.expect("the refund waits for another user");
+    let request = asked
+        .approval_request
+        .expect("the refund waits for another user");
     let accountant = t
         .user(
             "Aziz",
@@ -188,7 +199,10 @@ async fn edu_04_only_the_centre_manager_withdraws_and_the_refund_is_asked_for_th
     assert_eq!(t.books.notes().len(), 1, "the credit note is issued");
     let refunds = t.cash.refunds();
     assert_eq!(refunds.len(), 1, "the refund is asked of wl-payments");
-    assert_eq!(refunds[0].0.party.0, GUARDIAN, "to the payer, who is on hold");
+    assert_eq!(
+        refunds[0].0.party.0, GUARDIAN,
+        "to the payer, who is on hold"
+    );
 }
 
 /// Given E3 frozen by the student until later, after `PartyUnblocked` E3 stays

@@ -168,7 +168,10 @@ mod tests {
     fn a_session_starts_at_the_dubai_wall_time_and_lasts_the_duration() {
         let planned = sessions(&batch(), &BTreeSet::new()).expect("a plan");
         // 18:00 in Dubai is 14:00 UTC.
-        assert_eq!(planned[0].starts_at.to_rfc3339(), "2026-11-02T14:00:00+00:00");
+        assert_eq!(
+            planned[0].starts_at.to_rfc3339(),
+            "2026-11-02T14:00:00+00:00"
+        );
         assert_eq!(planned[0].ends_at.to_rfc3339(), "2026-11-02T15:30:00+00:00");
     }
 
@@ -176,7 +179,10 @@ mod tests {
     fn a_pattern_that_cannot_give_a_session_is_a_problem() {
         let mut bad = batch();
         bad.start_time = "evening".to_owned();
-        assert_eq!(sessions(&bad, &BTreeSet::new()), Err(PlanProblem::StartTime));
+        assert_eq!(
+            sessions(&bad, &BTreeSet::new()),
+            Err(PlanProblem::StartTime)
+        );
         let mut bad = batch();
         bad.duration_minutes = 0;
         assert_eq!(sessions(&bad, &BTreeSet::new()), Err(PlanProblem::Duration));

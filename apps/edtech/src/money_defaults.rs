@@ -166,7 +166,10 @@ mod tests {
     fn the_refund_template_is_the_tiered_one() {
         let template = refund_template();
         assert_eq!(template.key, REFUND_TEMPLATE_KEY);
-        assert_eq!(template.no_refund_after_percent, REFUND_NO_REFUND_AFTER_PERCENT);
+        assert_eq!(
+            template.no_refund_after_percent,
+            REFUND_NO_REFUND_AFTER_PERCENT
+        );
     }
 
     #[test]

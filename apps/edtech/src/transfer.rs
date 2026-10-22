@@ -86,7 +86,9 @@ pub async fn transfer(
     {
         return Err(Error::Forbidden);
     }
-    let Some(from_batch) = enrolment.batch_id.filter(|_| enrolment.kind == EnrolmentKind::Course)
+    let Some(from_batch) = enrolment
+        .batch_id
+        .filter(|_| enrolment.kind == EnrolmentKind::Course)
     else {
         return Err(refused(english("edtech.transfer.problem.not_course", &[])));
     };

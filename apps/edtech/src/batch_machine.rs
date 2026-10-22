@@ -291,9 +291,9 @@ fn cancel() -> Transition<Batch> {
             let batch = b.clone();
             let input = input_of(ctx);
             let reason = ctx.reason().map(str::to_owned);
-            Box::pin(async move {
-                exit::run_in(tx, &batch, &input, reason, ExitKind::Cancel).await
-            })
+            Box::pin(
+                async move { exit::run_in(tx, &batch, &input, reason, ExitKind::Cancel).await },
+            )
         })
 }
 
@@ -302,7 +302,11 @@ fn cancel() -> Transition<Batch> {
 /// the system's twin after it.
 fn terminate(name: &'static str, system: bool) -> Transition<Batch> {
     let transition = Transition::new(name)
-        .label(if system { "Terminate (approved)" } else { "Terminate" })
+        .label(if system {
+            "Terminate (approved)"
+        } else {
+            "Terminate"
+        })
         .from([BatchStatus::Running])
         .to(BatchStatus::Terminated)
         .reason_required();
@@ -329,9 +333,9 @@ fn terminate(name: &'static str, system: bool) -> Transition<Batch> {
             let batch = b.clone();
             let input = input_of(ctx);
             let reason = ctx.reason().map(str::to_owned);
-            Box::pin(async move {
-                exit::run_in(tx, &batch, &input, reason, ExitKind::Terminate).await
-            })
+            Box::pin(
+                async move { exit::run_in(tx, &batch, &input, reason, ExitKind::Terminate).await },
+            )
         })
 }
 

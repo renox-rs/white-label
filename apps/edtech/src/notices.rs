@@ -194,7 +194,11 @@ mod tests {
                 .template_for(NotifyChannel::Email, "en")
                 .expect("an English e-mail text");
             assert!(text.body.contains("{{ body }}"));
-            assert!(text.subject.as_deref().is_some_and(|s| s.contains("{{ title }}")));
+            assert!(
+                text.subject
+                    .as_deref()
+                    .is_some_and(|s| s.contains("{{ title }}"))
+            );
         }
     }
 

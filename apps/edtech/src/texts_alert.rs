@@ -5,14 +5,26 @@
 pub(crate) const TEXTS: &[(&str, &str)] = &[
     // The reasons a session is flagged.
     ("edtech.alerts.reason.document", "the :kind is not valid"),
-    ("edtech.alerts.reason.notice", "notice was given to the tutor or by them"),
-    ("edtech.alerts.reason.block", "the tutor is marked unavailable"),
+    (
+        "edtech.alerts.reason.notice",
+        "notice was given to the tutor or by them",
+    ),
+    (
+        "edtech.alerts.reason.block",
+        "the tutor is marked unavailable",
+    ),
     ("edtech.alerts.reason.leave", "the tutor is on leave"),
     // What a trigger says.
     ("edtech.alerts.detail.document", ":kind valid to :date"),
     ("edtech.alerts.detail.notice", "last working day :date"),
-    ("edtech.alerts.detail.block", "not available from :from to :until"),
-    ("edtech.alerts.detail.leave", "on leave from :from to :until"),
+    (
+        "edtech.alerts.detail.block",
+        "not available from :from to :until",
+    ),
+    (
+        "edtech.alerts.detail.leave",
+        "on leave from :from to :until",
+    ),
     // The coordinator's task.
     (
         "edtech.alerts.task_title",
@@ -30,7 +42,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "edtech.alerts.task_update",
         "More sessions of this tutor are now inside the window:\n:lines",
     ),
-    ("edtech.alerts.session_line", ":batch · :number · :date at :time"),
+    (
+        "edtech.alerts.session_line",
+        ":batch · :number · :date at :time",
+    ),
     ("edtech.alerts.booking_line", ":booking on :date"),
     (
         "edtech.alerts.resolved",

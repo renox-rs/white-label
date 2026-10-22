@@ -14,8 +14,8 @@ use std::collections::BTreeSet;
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::{Outcome, StateMachine, TransitionError, Transitioned};
-use wl_kernel::approvals::{ApprovalPolicy, announce, submit::REQUEST_KEY};
 use wl_kernel::Subject;
+use wl_kernel::approvals::{ApprovalPolicy, announce, submit::REQUEST_KEY};
 use wl_kernel::calendar::calendar;
 use wl_kernel::documents::today;
 
@@ -153,7 +153,10 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewBatch) -> Result<Ba
     }
     let course = Course::find_or_404(&state.db, new.course_id).await?;
     if !course.active {
-        return Err(refused(english("edtech.batches.problem.course_inactive", &[])));
+        return Err(refused(english(
+            "edtech.batches.problem.course_inactive",
+            &[],
+        )));
     }
     if new.capacity < 1 {
         return Err(refused(english("edtech.batches.problem.capacity", &[])));
@@ -405,11 +408,17 @@ pub async fn cancel(
     }
     let batch = Batch::find_or_404(&state.db, id).await?;
     if !matches!(batch.status, BatchStatus::Planned | BatchStatus::Open) {
-        return Err(refused(english("edtech.batches.problem.cancel_status", &[])));
+        return Err(refused(english(
+            "edtech.batches.problem.cancel_status",
+            &[],
+        )));
     }
     let reason = reason.trim();
     if reason.is_empty() {
-        return Err(refused(english("edtech.batches.problem.cancel_reason", &[])));
+        return Err(refused(english(
+            "edtech.batches.problem.cancel_reason",
+            &[],
+        )));
     }
     let (plan, paid) = exit::validate(state, &batch, &choices).await?;
     let input = BatchInput {
@@ -485,11 +494,17 @@ pub async fn terminate(
     }
     let batch = Batch::find_or_404(&state.db, id).await?;
     if batch.status != BatchStatus::Running {
-        return Err(refused(english("edtech.batches.problem.terminate_status", &[])));
+        return Err(refused(english(
+            "edtech.batches.problem.terminate_status",
+            &[],
+        )));
     }
     let code = code.trim();
     if !TERMINATION_REASONS.iter().any(|(known, _)| *known == code) {
-        return Err(refused(english("edtech.batches.problem.terminate_reason", &[])));
+        return Err(refused(english(
+            "edtech.batches.problem.terminate_reason",
+            &[],
+        )));
     }
     let label = english(&format!("edtech.batches.termination.{code}"), &[]);
     let reason = match note.map(str::trim).filter(|n| !n.is_empty()) {

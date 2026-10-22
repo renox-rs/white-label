@@ -96,7 +96,10 @@ async fn edu_02_without_another_batch_the_refusal_offers_the_waiting_list() {
 
     assert!(refused.contains("no free seat"), "{refused}");
     assert!(refused.contains("waiting list"), "{refused}");
-    assert!(!refused.contains("BAT-"), "no other batch is offered: {refused}");
+    assert!(
+        !refused.contains("BAT-"),
+        "no other batch is offered: {refused}"
+    );
 }
 
 /// Capacity 12, room limit 14: the centre manager enrols a 13th and a 14th
@@ -114,9 +117,13 @@ async fn edu_02_the_centre_manager_goes_over_the_capacity_up_to_the_room_limit()
     );
 
     for student in [s13, s14] {
-        enrolments::create(t.state(), &manager, NewEnrolment::course(student, b.id, PRICE))
-            .await
-            .expect("up to the room limit");
+        enrolments::create(
+            t.state(),
+            &manager,
+            NewEnrolment::course(student, b.id, PRICE),
+        )
+        .await
+        .expect("up to the room limit");
     }
     let over = enrolments::create(t.state(), &manager, NewEnrolment::course(s15, b.id, PRICE))
         .await
@@ -142,8 +149,8 @@ async fn edu_02_a_room_without_a_limit_makes_the_capacity_the_hard_limit() {
     let manager = t.manager().await;
     let sara = t.person(1, "Sara Ali");
 
-    let over = enrolments::create(t.state(), &manager, NewEnrolment::course(sara, b.id, PRICE))
-        .await;
+    let over =
+        enrolments::create(t.state(), &manager, NewEnrolment::course(sara, b.id, PRICE)).await;
 
     assert!(over.is_err());
 }
@@ -175,7 +182,9 @@ async fn edu_02_transfer_into_a_full_batch_is_refused() {
     let roomy = open_batch(&t, "Roomy", day(35)).await;
     fill(&t, &full, 100, 12, EnrolmentStatus::Active).await;
     let student = t.person(1, "Sara Ali");
-    let e = t.enrolment_in(&from, student, EnrolmentStatus::Active).await;
+    let e = t
+        .enrolment_in(&from, student, EnrolmentStatus::Active)
+        .await;
     let desk = t.desk().await;
 
     let refused = transfer(t.state(), Some(&desk), e.id, full.id)
@@ -248,7 +257,8 @@ async fn edu_02_only_active_frozen_and_held_enrolments_count() {
     }
     assert_eq!(seats::count_in(t.db(), b.id).await.unwrap(), 0);
     t.enrolment_in(&b, 200, EnrolmentStatus::Frozen).await;
-    t.enrolment_in(&b, 201, EnrolmentStatus::PendingPayment).await;
+    t.enrolment_in(&b, 201, EnrolmentStatus::PendingPayment)
+        .await;
     t.enrolment_in(&b, 202, EnrolmentStatus::Active).await;
     assert_eq!(seats::count_in(t.db(), b.id).await.unwrap(), 3);
     assert_eq!(seats::available(t.db(), b.id).await.unwrap(), 9);
@@ -271,7 +281,10 @@ async fn edu_02_the_waiting_list_is_a_plain_list_that_holds_no_seat() {
     let entry = waiting::join(t.state(), &desk, b.id, sara, Some(mother))
         .await
         .unwrap();
-    assert_eq!((entry.student_party_id, entry.payer_party_id), (sara, mother));
+    assert_eq!(
+        (entry.student_party_id, entry.payer_party_id),
+        (sara, mother)
+    );
     assert!(entry.created_at.is_some());
     let twice = waiting::join(t.state(), &desk, b.id, sara, None).await;
     assert!(twice.is_err(), "once on the list");

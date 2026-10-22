@@ -40,7 +40,10 @@ async fn edu_base_planning_a_batch_records_its_tutor_assignment() {
     assert_eq!(rows[0].valid_from, monday());
     assert!(rows[0].valid_to.is_none());
     assert!(rows[0].covers(monday() + TimeDelta::days(20)));
-    assert_eq!(rows[0].subject().to_string(), format!("edtech.tutor_assignment:{}", rows[0].id));
+    assert_eq!(
+        rows[0].subject().to_string(),
+        format!("edtech.tutor_assignment:{}", rows[0].id)
+    );
 }
 
 /// Changing the tutor of an open batch from the second Monday moves the
@@ -66,7 +69,12 @@ async fn edu_base_changing_the_tutor_of_a_batch_moves_the_remaining_sessions() {
         } else {
             layla.id
         };
-        assert_eq!(session.tutor_resource_id, Some(expected), "{}", session.session_date);
+        assert_eq!(
+            session.tutor_resource_id,
+            Some(expected),
+            "{}",
+            session.session_date
+        );
     }
     let rows = TutorAssignment::of_batch(t.db(), batch.id).await.unwrap();
     assert_eq!(rows.len(), 2);
@@ -98,13 +106,17 @@ async fn edu_base_a_tutor_who_is_taken_on_one_date_changes_nothing() {
     assert!(refused.to_string().contains("already taken"));
     let same = Batch::find_or_404(t.db(), batch.id).await.unwrap();
     assert_eq!(same.tutor_resource_id, Some(layla.id));
-    assert!(t
-        .sessions_of(&batch)
-        .await
-        .iter()
-        .all(|s| s.tutor_resource_id == Some(layla.id)));
+    assert!(
+        t.sessions_of(&batch)
+            .await
+            .iter()
+            .all(|s| s.tutor_resource_id == Some(layla.id))
+    );
     assert_eq!(
-        TutorAssignment::of_batch(t.db(), batch.id).await.unwrap().len(),
+        TutorAssignment::of_batch(t.db(), batch.id)
+            .await
+            .unwrap()
+            .len(),
         1
     );
 }
@@ -119,10 +131,9 @@ async fn edu_base_the_tutor_of_a_planned_batch_is_replaced_in_place() {
     let batch = t.batch_of(&layla, &room, monday(), &[1, 3]).await;
     let amal = t.coordinator().await;
 
-    let changed =
-        tutors::change_batch_tutor(t.state(), &amal, batch.id, nour.id, None, monday())
-            .await
-            .unwrap();
+    let changed = tutors::change_batch_tutor(t.state(), &amal, batch.id, nour.id, None, monday())
+        .await
+        .unwrap();
     assert_eq!(changed.status, BatchStatus::Planned);
     assert_eq!(changed.tutor_resource_id, Some(nour.id));
     let rows = TutorAssignment::of_batch(t.db(), batch.id).await.unwrap();
@@ -132,11 +143,12 @@ async fn edu_base_the_tutor_of_a_planned_batch_is_replaced_in_place() {
     // Opening it now gives its sessions to the new tutor.
     let opened = batches::open(t.state(), &amal, batch.id).await.unwrap();
     assert_eq!(opened.status, BatchStatus::Open);
-    assert!(t
-        .sessions_of(&batch)
-        .await
-        .iter()
-        .all(|s| s.tutor_resource_id == Some(nour.id)));
+    assert!(
+        t.sessions_of(&batch)
+            .await
+            .iter()
+            .all(|s| s.tutor_resource_id == Some(nour.id))
+    );
 }
 
 /// A session with its own tutor is recorded as that session's assignment, for
@@ -155,15 +167,18 @@ async fn edu_base_a_session_with_its_own_tutor_is_recorded() {
         .unwrap();
     assert_eq!(moved.tutor_resource_id, Some(nour.id));
     let rows = TutorAssignment::of_batch(t.db(), batch.id).await.unwrap();
-    let own: Vec<_> = rows.iter().filter(|r| r.session_id == Some(session.id)).collect();
+    let own: Vec<_> = rows
+        .iter()
+        .filter(|r| r.session_id == Some(session.id))
+        .collect();
     assert_eq!(own.len(), 1);
     assert_eq!(own[0].tutor_resource_id, nour.id);
     assert_eq!(own[0].valid_from, session.session_date);
     assert_eq!(own[0].valid_to, Some(session.session_date));
     // The batch's own assignment is untouched.
-    assert!(rows
-        .iter()
-        .any(|r| r.session_id.is_none() && r.tutor_resource_id == layla.id && r.valid_to.is_none()));
+    assert!(rows.iter().any(|r| r.session_id.is_none()
+        && r.tutor_resource_id == layla.id
+        && r.valid_to.is_none()));
 }
 
 /// The guard of BL-EDU-08 asks nothing of a tutor with no employee when the
@@ -178,9 +193,14 @@ async fn edu_base_an_adult_batch_needs_no_document_and_only_the_coordinator_chan
         resource_id: nour.id,
         employee_id: None,
     };
-    tutors::tutor_eligible(t.state(), &tutor, &batch, &[monday(), monday() + TimeDelta::days(30)])
-        .await
-        .unwrap();
+    tutors::tutor_eligible(
+        t.state(),
+        &tutor,
+        &batch,
+        &[monday(), monday() + TimeDelta::days(30)],
+    )
+    .await
+    .unwrap();
 
     let cara = t.counsellor().await;
     assert!(
@@ -228,7 +248,10 @@ async fn edu_base_the_batch_page_changes_the_tutor() {
         .htmx()
         .post(
             &format!("/edtech/batches/{}/tutor", batch.id),
-            &[("tutor", layla.id.to_string().as_str()), ("from", from.as_str())],
+            &[
+                ("tutor", layla.id.to_string().as_str()),
+                ("from", from.as_str()),
+            ],
         )
         .await
         .assert_forbidden();

@@ -9,15 +9,30 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "edtech.certificates.reissue_description",
         "A certificate is never edited. This one becomes superseded and a new draft, linked to it, carries the corrections; the new draft gets its own number when it is issued. For a name or date correction, or a changed result that still meets the criteria. Otherwise revoke it.",
     ),
-    ("edtech.certificates.reissue_reason", "Reason for the reissue"),
-    ("edtech.certificates.corrected_name", "Name as it should read"),
-    ("edtech.certificates.corrected_date", "Completed on, as it should read"),
+    (
+        "edtech.certificates.reissue_reason",
+        "Reason for the reissue",
+    ),
+    (
+        "edtech.certificates.corrected_name",
+        "Name as it should read",
+    ),
+    (
+        "edtech.certificates.corrected_date",
+        "Completed on, as it should read",
+    ),
     (
         "edtech.certificates.copy_attestation",
         "Copy the recorded KHDA attestation to the new certificate",
     ),
-    ("edtech.certificates.reissued_done", "Certificate reissued. The new draft is ready to issue."),
-    ("edtech.certificates.reissue_reason_shown", "Reissued because"),
+    (
+        "edtech.certificates.reissued_done",
+        "Certificate reissued. The new draft is ready to issue.",
+    ),
+    (
+        "edtech.certificates.reissue_reason_shown",
+        "Reissued because",
+    ),
     ("edtech.certificates.attestation", "KHDA attestation"),
     // The student's notice.
     (
@@ -36,7 +51,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ),
     ("edtech.certificates.copy_done", "Copy ready to print."),
     ("edtech.certificates.copies", "Copies printed again"),
-    ("edtech.certificates.print_title", "Certificate of completion"),
+    (
+        "edtech.certificates.print_title",
+        "Certificate of completion",
+    ),
     ("edtech.certificates.print_awarded", "Awarded to"),
     (
         "edtech.certificates.problem.not_printable",

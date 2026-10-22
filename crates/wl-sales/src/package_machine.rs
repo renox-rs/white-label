@@ -446,10 +446,7 @@ fn extend(name: &'static str, system: bool) -> Transition<Package> {
                 set(
                     tx,
                     id,
-                    &[
-                        ("valid_to", &Some(input.new_end)),
-                        ("extensions", &counted),
-                    ],
+                    &[("valid_to", &Some(input.new_end)), ("extensions", &counted)],
                 )
                 .await?;
                 movement(

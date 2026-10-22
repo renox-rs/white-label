@@ -25,10 +25,10 @@ use renox::state_machine::{StateMachine, TransitionError, Transitioned};
 use wl_kernel::documents::today;
 use wl_kernel::parties::directory;
 
+use crate::batch::Batch;
 use crate::certificate::{Certificate, CertificateStatus, new_code};
 use crate::certificate_machine::{CertificateInput, ISSUE, PRINT_COPY, REISSUE, REVOKE};
 use crate::course::Course;
-use crate::batch::Batch;
 use crate::db::refused;
 use crate::enrolment::{Enrolment, EnrolmentKind, EnrolmentStatus};
 use crate::permissions;
@@ -79,7 +79,12 @@ pub async fn evaluate(state: &AppState, enrolment: &Enrolment) -> Result<Option<
     let live = Certificate::of_enrolment(&state.db, enrolment.id)
         .await?
         .into_iter()
-        .any(|c| matches!(c.status, CertificateStatus::Draft | CertificateStatus::Issued));
+        .any(|c| {
+            matches!(
+                c.status,
+                CertificateStatus::Draft | CertificateStatus::Issued
+            )
+        });
     if live {
         return Ok(None);
     }
@@ -121,7 +126,9 @@ async fn input_for(
     // enrolment's), so a correct certificate earned under a valid approval can
     // be reissued after the approval expired.
     let on_date = if certificate.supersedes_id.is_some() {
-        enrolment.completed_on.unwrap_or(certificate.completion_date)
+        enrolment
+            .completed_on
+            .unwrap_or(certificate.completion_date)
     } else {
         today()
     };
@@ -360,10 +367,12 @@ pub async fn after_issue(state: &AppState, id: i64) -> Result {
 /// Registers the machine and the notice of a reissued certificate.
 pub(crate) fn register(app: &mut Registry) {
     crate::certificate_machine::register();
-    app.listen(|event: Transitioned<Certificate>, state: AppState| async move {
-        if event.transition == ISSUE {
-            after_issue(&state, event.key).await?;
-        }
-        Ok(())
-    });
+    app.listen(
+        |event: Transitioned<Certificate>, state: AppState| async move {
+            if event.transition == ISSUE {
+                after_issue(&state, event.key).await?;
+            }
+            Ok(())
+        },
+    );
 }

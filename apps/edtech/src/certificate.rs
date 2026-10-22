@@ -34,8 +34,7 @@ pub enum CertificateStatus {
     Revoked,
 }
 
-impl CertificateStatus {
-}
+impl CertificateStatus {}
 
 /// A certificate.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
@@ -181,7 +180,10 @@ mod tests {
         let a = new_code();
         let b = new_code();
         assert_eq!(a.len(), 10);
-        assert!(a.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()));
+        assert!(
+            a.chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+        );
         assert_ne!(a, b);
     }
 }

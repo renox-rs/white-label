@@ -177,7 +177,10 @@ pub fn calculate(input: &RefundInput) -> Refund {
         } => {
             // The used credits are valued at the single-session price, so the
             // package discount is not given back for them.
-            let used_value = input.sessions_held.max(0).saturating_mul(single_session_price);
+            let used_value = input
+                .sessions_held
+                .max(0)
+                .saturating_mul(single_session_price);
             let refund = (paid - used_value).max(0);
             Refund {
                 refund,
@@ -209,7 +212,11 @@ pub fn calculate(input: &RefundInput) -> Refund {
                     .sessions_total
                     .saturating_mul(input.policy.no_refund_after_percent);
             let owed = (charges - paid).max(0);
-            let refund = if past_limit { 0 } else { (paid - charges).max(0) };
+            let refund = if past_limit {
+                0
+            } else {
+                (paid - charges).max(0)
+            };
             Refund {
                 refund,
                 owed,

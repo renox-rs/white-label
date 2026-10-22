@@ -75,7 +75,12 @@ async fn edu_05_pausing_the_membership_freezes_the_enrolment_and_resuming_unfree
     t.subs.user_resumes(t.state(), &subject, false).await;
 
     assert_eq!(reload(&t, &e).await.status, EnrolmentStatus::Active);
-    assert!(EnrolmentFreeze::open_of(t.db(), e.id).await.unwrap().is_empty());
+    assert!(
+        EnrolmentFreeze::open_of(t.db(), e.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert!(t.subs.resumes().is_empty(), "no second resume is asked for");
 }
 
@@ -87,9 +92,15 @@ async fn edu_05_freezing_the_enrolment_pauses_the_membership_and_the_allowance_i
     let (e, subject) = membership(&t).await;
     let desk = t.desk().await;
 
-    enrolments::freeze(t.state(), Some(&desk), e.id, FreezeCause::Student, Some(day(14)))
-        .await
-        .unwrap();
+    enrolments::freeze(
+        t.state(),
+        Some(&desk),
+        e.id,
+        FreezeCause::Student,
+        Some(day(14)),
+    )
+    .await
+    .unwrap();
 
     assert_eq!(reload(&t, &e).await.status, EnrolmentStatus::Frozen);
     assert_eq!(t.subs.status_of(&subject), Some(SubscriptionStatus::Paused));
@@ -101,7 +112,9 @@ async fn edu_05_freezing_the_enrolment_pauses_the_membership_and_the_allowance_i
     );
     // The enrolment counted the 15 days (today to the 14th, both counted); the
     // pause of the subscription is the agreement's and counts none.
-    let used = EnrolmentFreeze::counted_in_year(t.db(), 1, day(0)).await.unwrap();
+    let used = EnrolmentFreeze::counted_in_year(t.db(), 1, day(0))
+        .await
+        .unwrap();
     assert_eq!(used, 15);
 
     enrolments::unfreeze(t.state(), Some(&desk), e.id, FreezeCause::Student)
@@ -123,9 +136,15 @@ async fn edu_05_a_membership_paused_by_a_block_is_not_paused_again() {
     t.subs.block_pauses(t.state(), &subject).await;
     assert_eq!(t.subs.causes_of(&subject), [PauseCause::PartyBlock]);
 
-    enrolments::freeze(t.state(), Some(&desk), e.id, FreezeCause::Student, Some(day(10)))
-        .await
-        .unwrap();
+    enrolments::freeze(
+        t.state(),
+        Some(&desk),
+        e.id,
+        FreezeCause::Student,
+        Some(day(10)),
+    )
+    .await
+    .unwrap();
 
     assert_eq!(reload(&t, &e).await.status, EnrolmentStatus::Frozen);
     assert!(t.subs.pauses().is_empty(), "no second pause");
@@ -150,9 +169,15 @@ async fn edu_05_no_transition_runs_twice_for_one_user_action() {
 
     t.subs.user_pauses(t.state(), &subject, day(14)).await;
     t.subs.user_resumes(t.state(), &subject, false).await;
-    enrolments::freeze(t.state(), Some(&desk), e.id, FreezeCause::Student, Some(day(7)))
-        .await
-        .unwrap();
+    enrolments::freeze(
+        t.state(),
+        Some(&desk),
+        e.id,
+        FreezeCause::Student,
+        Some(day(7)),
+    )
+    .await
+    .unwrap();
     enrolments::unfreeze(t.state(), Some(&desk), e.id, FreezeCause::Student)
         .await
         .unwrap();
@@ -187,7 +212,10 @@ async fn edu_05_a_membership_resumed_into_past_due_still_unfreezes_the_enrolment
 
     t.subs.user_resumes(t.state(), &subject, true).await;
 
-    assert_eq!(t.subs.status_of(&subject), Some(SubscriptionStatus::PastDue));
+    assert_eq!(
+        t.subs.status_of(&subject),
+        Some(SubscriptionStatus::PastDue)
+    );
     assert_eq!(reload(&t, &e).await.status, EnrolmentStatus::Active);
 }
 

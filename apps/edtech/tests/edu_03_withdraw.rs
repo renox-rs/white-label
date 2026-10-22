@@ -10,21 +10,21 @@
 
 mod support;
 
+use edtech::batches::{self, NewBatch};
+use edtech::enrolment::Instalment;
 use edtech::enrolments::{self, NewEnrolment};
 use edtech::refund::vat_share;
 use edtech::{Batch, Enrolment, EnrolmentKind, EnrolmentStatus, InstalmentStatus, seats};
-use edtech::batches::{self, NewBatch};
-use edtech::enrolment::Instalment;
 use renox::chrono::TimeDelta;
 use renox::prelude::*;
 use support::{Centre, PRICE, boot, day, next_weekday};
+use wl_kernel::PartyId;
 use wl_kernel::approvals::{self, approve};
 use wl_kernel::invoicing::{CREDIT_NOTE_SUBJECT_TYPE, InvoiceId, InvoicePaid};
 use wl_kernel::payments::{
     PaymentMethod, RefundAttemptRef, RefundFailed, RefundFailedFrom, RefundFailureKind, RefundId,
     RefundSource,
 };
-use wl_kernel::PartyId;
 
 /// A batch of 12 sessions that started two weeks ago (Monday and Wednesday for
 /// six weeks), 12 seats, opened: AED 210.00 a session at the course fee of
@@ -127,8 +127,14 @@ async fn edu_03_a_refund_waits_for_another_user_and_the_documents_follow() {
         .await
         .unwrap();
 
-    let request = asked.approval_request.expect("the refund waits for approval");
-    assert_eq!(asked.enrolment.status, EnrolmentStatus::Active, "not before the approval");
+    let request = asked
+        .approval_request
+        .expect("the refund waits for approval");
+    assert_eq!(
+        asked.enrolment.status,
+        EnrolmentStatus::Active,
+        "not before the approval"
+    );
     assert_eq!(asked.enrolment.refund_amount, 0);
     assert_eq!(seats::count_in(t.db(), batch.id).await.unwrap(), 1);
     assert!(t.books.notes().is_empty());
@@ -262,7 +268,9 @@ async fn edu_03_a_membership_is_cancelled_at_once_without_another_credit_note() 
     )
     .await
     .unwrap();
-    enrolments::activate(t.state(), Some(&desk), e.id).await.unwrap();
+    enrolments::activate(t.state(), Some(&desk), e.id)
+        .await
+        .unwrap();
     assert_eq!(t.subs.started().len(), 1);
 
     let asked = enrolments::request_withdrawal(t.state(), Some(&desk), e.id, "moving")
@@ -275,7 +283,10 @@ async fn edu_03_a_membership_is_cancelled_at_once_without_another_credit_note() 
     assert_eq!(cancelled.len(), 1, "the subscription is cancelled at once");
     assert_eq!(cancelled[0].0, e.subject());
     assert_eq!(cancelled[0].1, day(0));
-    assert!(t.books.notes().is_empty(), "its own pro rata credit is wl-invoicing's");
+    assert!(
+        t.books.notes().is_empty(),
+        "its own pro rata credit is wl-invoicing's"
+    );
     assert!(t.cash.refunds().is_empty());
 }
 
@@ -347,7 +358,12 @@ async fn edu_03_an_unpaid_instalment_invoice_is_credited_in_full() {
     let e = paid_enrolment(&t, &batch, 2).await;
     hold_sessions(&t, &batch, 3).await;
     let plan = Instalment::of_enrolment(t.db(), e.id).await.unwrap();
-    assert_eq!(edtech::fees::invoice_due(t.state(), plan[1].due_date).await.unwrap(), 1);
+    assert_eq!(
+        edtech::fees::invoice_due(t.state(), plan[1].due_date)
+            .await
+            .unwrap(),
+        1
+    );
     let second = Instalment::of_enrolment(t.db(), e.id).await.unwrap()[1]
         .invoice_id
         .expect("the second instalment is invoiced");
@@ -364,7 +380,10 @@ async fn edu_03_an_unpaid_instalment_invoice_is_credited_in_full() {
     // Paid 1,260.00; used 3 x 210 + 105 = 735.00; refund 525.00.
     let gone = reload(&t, &e).await;
     assert_eq!(gone.refund_amount, 52_500);
-    assert!(t.books.credited_in_full(second), "the unpaid invoice is credited in full");
+    assert!(
+        t.books.credited_in_full(second),
+        "the unpaid invoice is credited in full"
+    );
     let notes = t.books.notes();
     assert_eq!(notes.len(), 2);
     let refund_note = notes
@@ -372,7 +391,11 @@ async fn edu_03_an_unpaid_instalment_invoice_is_credited_in_full() {
         .find(|n| Some(n.invoice) == e.first_invoice_id)
         .expect("the refund is credited on the paid invoice");
     assert_eq!(refund_note.gross, 52_500);
-    assert_eq!(t.cash.refunds().len(), 1, "only the paid money is asked back");
+    assert_eq!(
+        t.cash.refunds().len(),
+        1,
+        "only the paid money is asked back"
+    );
 }
 
 /// If the refund fails afterwards the enrolment stays `withdrawn` and nothing in
@@ -415,7 +438,11 @@ async fn edu_03_a_failed_refund_leaves_the_enrolment_withdrawn() {
     assert_eq!(gone.status, EnrolmentStatus::Withdrawn);
     assert_eq!(gone.refund_amount, 178_500);
     assert!(gone.settlement.0.done);
-    assert_eq!(t.books.notes().len(), 1, "the credit note is not made again");
+    assert_eq!(
+        t.books.notes().len(),
+        1,
+        "the credit note is not made again"
+    );
     assert_eq!(t.cash.refunds().len(), 1);
 }
 
@@ -457,7 +484,11 @@ async fn edu_03_a_step_that_failed_is_repeated_without_the_others() {
     let done = edtech::settlement::settle(t.state(), e.id).await.unwrap();
 
     assert!(done.settlement.0.done);
-    assert_eq!(t.books.notes().len(), 1, "the credit note is not made twice");
+    assert_eq!(
+        t.books.notes().len(),
+        1,
+        "the credit note is not made twice"
+    );
     assert_eq!(t.cash.refunds().len(), 1);
 }
 

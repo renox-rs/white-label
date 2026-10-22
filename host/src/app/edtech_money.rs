@@ -451,6 +451,9 @@ mod tests {
         let numbers: Vec<String> = rows.iter().map(|r| r.number.clone()).collect();
         let expected: Vec<String> = (1..=20).map(|n| n.to_string()).collect();
         assert_eq!(numbers, expected);
-        assert!(rows.iter().all(|r| !r.value.is_empty() && !r.source.is_empty()));
+        assert!(
+            rows.iter()
+                .all(|r| !r.value.is_empty() && !r.source.is_empty())
+        );
     }
 }

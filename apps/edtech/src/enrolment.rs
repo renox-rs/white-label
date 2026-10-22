@@ -38,8 +38,7 @@ pub enum EnrolmentKind {
     Membership,
 }
 
-impl EnrolmentKind {
-}
+impl EnrolmentKind {}
 
 /// Where an enrolment stands (10 §7.1 *Enrolment*).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -282,9 +281,13 @@ impl FreezeCause {
 
     /// The cause stored under `name`.
     pub fn parse(name: &str) -> Option<FreezeCause> {
-        [FreezeCause::Student, FreezeCause::Linked, FreezeCause::Block]
-            .into_iter()
-            .find(|cause| cause.as_str() == name)
+        [
+            FreezeCause::Student,
+            FreezeCause::Linked,
+            FreezeCause::Block,
+        ]
+        .into_iter()
+        .find(|cause| cause.as_str() == name)
     }
 }
 

@@ -368,9 +368,7 @@ async fn apply_in(
                 let e = e.clone();
                 let input = input.clone();
                 tx.savepoint(move |tx| {
-                    Box::pin(
-                        async move { transfer_in(tx, &e, target, paid, kind, &input).await },
-                    )
+                    Box::pin(async move { transfer_in(tx, &e, target, paid, kind, &input).await })
                 })
                 .await
             };
@@ -432,7 +430,12 @@ pub(crate) async fn run_in(
 }
 
 /// The words for what an enrolment's exit means for the family.
-fn family_text(kind: ExitKind, outcome: &ExitOutcome, batch: &str, reason: &str) -> (String, String) {
+fn family_text(
+    kind: ExitKind,
+    outcome: &ExitOutcome,
+    batch: &str,
+    reason: &str,
+) -> (String, String) {
     let ended = english(
         match kind {
             ExitKind::Cancel => "edtech.exit.ended_cancel",
@@ -440,7 +443,10 @@ fn family_text(kind: ExitKind, outcome: &ExitOutcome, batch: &str, reason: &str)
         },
         &[],
     );
-    let title = english("edtech.exit.family_title", &[("batch", &batch), ("ended", &ended)]);
+    let title = english(
+        "edtech.exit.family_title",
+        &[("batch", &batch), ("ended", &ended)],
+    );
     let what = match outcome.action {
         ExitAction::Transferred => english(
             "edtech.exit.family_moved",
@@ -457,7 +463,12 @@ fn family_text(kind: ExitKind, outcome: &ExitOutcome, batch: &str, reason: &str)
     };
     let body = english(
         "edtech.exit.family_body",
-        &[("batch", &batch), ("ended", &ended), ("reason", &reason), ("what", &what)],
+        &[
+            ("batch", &batch),
+            ("ended", &ended),
+            ("reason", &reason),
+            ("what", &what),
+        ],
     );
     (title, body)
 }

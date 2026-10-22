@@ -44,7 +44,10 @@ fn edu_17_the_family_notice_tries_the_other_guardian_then_the_counsellor() {
     assert_eq!(family.staff_role.as_deref(), Some("counsellor"));
     assert!(!family.statutory);
     // WhatsApp first, e-mail when WhatsApp is down (§8).
-    assert_eq!(family.channels, [NotifyChannel::Whatsapp, NotifyChannel::Email]);
+    assert_eq!(
+        family.channels,
+        [NotifyChannel::Whatsapp, NotifyChannel::Email]
+    );
 }
 
 /// Notification types: the terms, refund policy and consent requests are
@@ -57,7 +60,10 @@ fn edu_17_the_requests_go_to_the_counsellor_and_staff_types_take_none() {
     assert_eq!(request.group, GROUP_SIGNATURES);
     assert_eq!(
         request.give_up,
-        [GiveUpReaction::MarkContactInvalid, GiveUpReaction::StaffTask]
+        [
+            GiveUpReaction::MarkContactInvalid,
+            GiveUpReaction::StaffTask
+        ]
     );
     assert_eq!(request.staff_role.as_deref(), Some("counsellor"));
 
@@ -196,7 +202,10 @@ fn edu_17_the_loyalty_values_earn_100_points_for_1000_dirhams() {
     assert_eq!(defaults::LOYALTY_VALIDITY_MONTHS, 12);
     assert_eq!(defaults::LOYALTY_REMINDER_DAYS, 30);
     assert_eq!(defaults::LOYALTY_ADJUSTMENT_LIMIT, 500);
-    assert_eq!((defaults::MARKETING_CAP, defaults::BROADCAST_APPROVAL_ABOVE), (2, 200));
+    assert_eq!(
+        (defaults::MARKETING_CAP, defaults::BROADCAST_APPROVAL_ABOVE),
+        (2, 200)
+    );
     assert_eq!(defaults::SEND_WINDOW_MINUTES, (420, 1260));
     // Points earned on 2026-11-01 expire a year on, reminded on 2027-10-02.
     let earned = NaiveDate::from_ymd_opt(2026, 11, 1).unwrap();
@@ -217,7 +226,11 @@ fn edu_17_the_checklists_and_the_sop_owners() {
     let roles: Vec<&str> = defaults::ONBOARDING.iter().map(|o| o.role).collect();
     assert_eq!(roles, ["tutor", "counsellor", "academic_coordinator"]);
     let tutor = &defaults::ONBOARDING[0];
-    for owner in ["role:centre_manager", "role:academic_coordinator", "employee"] {
+    for owner in [
+        "role:centre_manager",
+        "role:academic_coordinator",
+        "employee",
+    ] {
         assert!(tutor.steps.iter().any(|s| s.1 == owner), "{owner}");
     }
     let owners: Vec<(&str, &str)> = defaults::SOPS
@@ -255,7 +268,9 @@ async fn one_to_one(t: &Centre, tutor: &wl_scheduling::Resource) -> ServiceType 
     let mut service_type = ServiceType::new(spec.code, spec.name_en, spec.minutes);
     service_type.required_qualifications = spec.qualifications.to_owned();
     service_type.save(t.db()).await.unwrap();
-    resource::offer(t.db(), service_type.id, tutor.id).await.unwrap();
+    resource::offer(t.db(), service_type.id, tutor.id)
+        .await
+        .unwrap();
     free_all_week(t, tutor).await;
     service_type
 }
@@ -324,7 +339,9 @@ async fn edu_17_a_freelance_tutor_needs_the_permit_for_a_one_to_one() {
         );
     }
     let service_type = one_to_one(&t, &fiona).await;
-    resource::offer(t.db(), service_type.id, layla.id).await.unwrap();
+    resource::offer(t.db(), service_type.id, layla.id)
+        .await
+        .unwrap();
     free_all_week(&t, &layla).await;
 
     let refused = book(&t, &service_type, &fiona, 2).await;

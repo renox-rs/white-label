@@ -23,9 +23,9 @@
 
 use renox::db::now;
 use renox::prelude::*;
+use wl_kernel::role_tasks;
 use wl_kernel::sales::{ConsumePackage, PackageConsumption, package_ledger};
 use wl_kernel::tickets::{Assignee, OpenTicket, TASK_CATEGORY, task_creator};
-use wl_kernel::role_tasks;
 
 use crate::attendance::Attendance;
 use crate::enrolment::{Enrolment, EnrolmentKind};
@@ -53,12 +53,7 @@ pub fn task_key(enrolment: i64) -> String {
 }
 
 /// Sets the ledger side of a row.
-async fn store(
-    state: &AppState,
-    id: i64,
-    consumed: bool,
-    note: Option<&str>,
-) -> Result {
+async fn store(state: &AppState, id: i64, consumed: bool, note: Option<&str>) -> Result {
     Attendance::query()
         .where_(Attendance::ID.eq(id))
         .update(
@@ -147,7 +142,10 @@ async fn close_task_if_settled(state: &AppState, enrolment: &Enrolment) -> Resul
 pub async fn settle(state: &AppState, attendance_id: i64) -> Result<bool> {
     let row = Attendance::find_or_404(&state.db, attendance_id).await?;
     let enrolment = Enrolment::find_or_404(&state.db, row.enrolment_id).await?;
-    let Some(item) = enrolment.item_code.clone().filter(|_| enrolment.kind == EnrolmentKind::Package)
+    let Some(item) = enrolment
+        .item_code
+        .clone()
+        .filter(|_| enrolment.kind == EnrolmentKind::Package)
     else {
         return Ok(true);
     };

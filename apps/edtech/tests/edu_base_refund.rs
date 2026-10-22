@@ -3,8 +3,8 @@
 //! the Done-when points of BL-EDU-03.
 
 use edtech::refund::{
-    Refund, RefundBasis, RefundInput, RefundOutcome, RefundPolicy, calculate, net_of_gross,
-    ratio, vat_share,
+    Refund, RefundBasis, RefundInput, RefundOutcome, RefundPolicy, calculate, net_of_gross, ratio,
+    vat_share,
 };
 
 /// A 12-session course at AED 2,520 (with VAT), admin fee AED 105.

@@ -7,9 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use renox::prelude::*;
 use wl_kernel::Subject;
-use wl_kernel::tickets::{
-    OpenTicket, TaskComment, TaskCreator, TicketFuture, TicketId, TicketRef,
-};
+use wl_kernel::tickets::{OpenTicket, TaskComment, TaskCreator, TicketFuture, TicketId, TicketRef};
 
 /// A ticket opened through the task creator.
 #[derive(Debug, Clone)]
@@ -128,7 +126,9 @@ impl TaskCreator for Tasks {
             .lock()
             .unwrap()
             .iter()
-            .find(|opened| opened.is_open() && opened.ticket.source_key.as_deref() == Some(source_key))
+            .find(|opened| {
+                opened.is_open() && opened.ticket.source_key.as_deref() == Some(source_key)
+            })
             .map(|opened| reference(opened.id));
         Box::pin(async move { Ok(found) })
     }

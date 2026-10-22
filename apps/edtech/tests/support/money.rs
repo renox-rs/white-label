@@ -15,13 +15,11 @@ use wl_kernel::invoicing::{
 use wl_kernel::notify::{
     MessageId, NotificationTypeDef, Notifier, NotifyChannel, NotifyFuture, NotifyRequest,
 };
+use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary};
 use wl_kernel::payments::{
     AllocationTarget, PaymentFuture, PaymentId, PaymentLinkRef, PaymentLinkRequest, PaymentLinks,
     PaymentRecorder, PaymentStatus, PaymentSummary, RecordPayment, RefundId, RefundRequest,
     ReversalReason,
-};
-use wl_kernel::parties::{
-    PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary,
 };
 use wl_kernel::sales::{
     PackageConsumption, PackageId, PackageLedger, PackageSales, SalesFuture, SellPackage,
@@ -77,14 +75,19 @@ impl People {
 
     fn summary(&self, id: i64) -> Option<PartySummary> {
         let status = self.status_of(id);
-        self.names.lock().unwrap().get(&id).map(|name| PartySummary {
-            id: PartyId(id),
-            code: format!("P-{id:05}"),
-            kind: PartyKind::Person,
-            display_name: name.clone(),
-            status,
-            display_block_reason: (status == PartyStatus::Blocked).then(|| "on_hold".to_owned()),
-        })
+        self.names
+            .lock()
+            .unwrap()
+            .get(&id)
+            .map(|name| PartySummary {
+                id: PartyId(id),
+                code: format!("P-{id:05}"),
+                kind: PartyKind::Person,
+                display_name: name.clone(),
+                status,
+                display_block_reason: (status == PartyStatus::Blocked)
+                    .then(|| "on_hold".to_owned()),
+            })
     }
 }
 
@@ -713,9 +716,8 @@ impl Messages {
 
     /// The English title and body of `request`, joined: what a person reads.
     pub fn text(request: &NotifyRequest) -> String {
-        let def: Arc<NotificationTypeDef> =
-            wl_kernel::notify::notification_type(&request.type_key)
-                .expect("the type is registered");
+        let def: Arc<NotificationTypeDef> = wl_kernel::notify::notification_type(&request.type_key)
+            .expect("the type is registered");
         let template = def
             .template_for(NotifyChannel::Email, "en")
             .expect("an English e-mail text");
@@ -724,15 +726,17 @@ impl Messages {
             .as_deref()
             .map(|s| wl_kernel::notify::fill(s, &request.data))
             .unwrap_or_default();
-        format!("{subject} {}", wl_kernel::notify::fill(&template.body, &request.data))
+        format!(
+            "{subject} {}",
+            wl_kernel::notify::fill(&template.body, &request.data)
+        )
     }
 
     /// Whether a notification went to the user `id`.
     pub fn told_user(request: &NotifyRequest, id: i64) -> bool {
-        request
-            .recipients
-            .iter()
-            .any(|r| matches!(r, wl_kernel::notify::NotifyRecipient::User { id: user } if *user == id))
+        request.recipients.iter().any(
+            |r| matches!(r, wl_kernel::notify::NotifyRecipient::User { id: user } if *user == id),
+        )
     }
 
     /// Whether a notification went to the party `id`.
@@ -1143,18 +1147,23 @@ impl PackageLedger for Packages {
         self.asked.lock().unwrap().push(request.source.clone());
         let mut used = self.used.lock().unwrap();
         if used.iter().any(|(source, _, _)| *source == request.source) {
-            return Box::pin(async { Ok(PackageConsumption::Already { package: PackageId(1) }) });
+            return Box::pin(async {
+                Ok(PackageConsumption::Already {
+                    package: PackageId(1),
+                })
+            });
         }
         let mut credits = self.credits.lock().unwrap();
-        let answer = match credits
-            .iter_mut()
-            .rev()
-            .find(|(holder, code, left)| {
-                *holder == request.party.0 && *code == request.item && *left >= request.quantity
-            }) {
+        let answer = match credits.iter_mut().rev().find(|(holder, code, left)| {
+            *holder == request.party.0 && *code == request.item && *left >= request.quantity
+        }) {
             Some((_, _, left)) => {
                 *left -= request.quantity;
-                used.push((request.source.clone(), request.party.0, request.item.clone()));
+                used.push((
+                    request.source.clone(),
+                    request.party.0,
+                    request.item.clone(),
+                ));
                 PackageConsumption::Consumed {
                     package: PackageId(1),
                     remaining: *left,

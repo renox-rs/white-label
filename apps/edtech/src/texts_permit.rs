@@ -15,7 +15,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "edtech.permits.batch_line",
         ":batch · :status · :from to :until",
     ),
-    ("edtech.permits.no_batches", "No batch is open or running under it."),
+    (
+        "edtech.permits.no_batches",
+        "No batch is open or running under it.",
+    ),
     (
         "edtech.permits.expiring_title",
         "The :what of :name expires on :date",

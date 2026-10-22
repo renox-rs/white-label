@@ -19,7 +19,12 @@ use wl_scheduling::Resource;
 
 /// A `scheduled` session of `batch` that started on `date` at 10:00 for an
 /// hour, taught by `tutor`.
-async fn past_session(t: &Centre, batch: &Batch, date: NaiveDate, tutor: &(Resource, i64)) -> Session {
+async fn past_session(
+    t: &Centre,
+    batch: &Batch,
+    date: NaiveDate,
+    tutor: &(Resource, i64),
+) -> Session {
     let mut session = Session {
         batch_id: batch.id,
         number: 1,
@@ -44,8 +49,14 @@ async fn batch_of(t: &Centre, tutor: &(Resource, i64), minors: bool) -> Batch {
     } else {
         t.course().await
     };
-    t.batch_with(&course, (&tutor.0, Some(tutor.1)), &room, next_weekday(day(7), 1), &[1, 3])
-        .await
+    t.batch_with(
+        &course,
+        (&tutor.0, Some(tutor.1)),
+        &room,
+        next_weekday(day(7), 1),
+        &[1, 3],
+    )
+    .await
 }
 
 /// Given T's clearance expired and T's session in a batch for minors on a later
@@ -71,10 +82,20 @@ async fn edu_11_the_attendance_is_accepted_and_the_session_is_flagged() {
 
     assert_eq!(held.status, SessionStatus::Held);
     assert!(held.held_at.is_some());
-    let flags = sessions::document_flags(t.state(), session.id).await.unwrap();
+    let flags = sessions::document_flags(t.state(), session.id)
+        .await
+        .unwrap();
     assert_eq!(flags.len(), 1);
-    assert!(flags[0].label.contains("Police clearance expired on"), "{}", flags[0].label);
-    assert!(flags[0].label.contains(&day(-5).to_string()), "{}", flags[0].label);
+    assert!(
+        flags[0].label.contains("Police clearance expired on"),
+        "{}",
+        flags[0].label
+    );
+    assert!(
+        flags[0].label.contains(&day(-5).to_string()),
+        "{}",
+        flags[0].label
+    );
     assert!(!flags[0].is_reviewed());
     assert_eq!(flags[0].on_date, day(-3));
 
@@ -108,7 +129,10 @@ async fn edu_11_the_centre_manager_closes_the_flag_with_a_note() {
     sessions::submit_attendance(t.state(), &tariq, session.id)
         .await
         .unwrap();
-    let flag = sessions::document_flags(t.state(), session.id).await.unwrap().remove(0);
+    let flag = sessions::document_flags(t.state(), session.id)
+        .await
+        .unwrap()
+        .remove(0);
     let url = format!("/edtech/sessions/{}/flag", session.id);
     let flag_id = flag.id.to_string();
 
@@ -142,10 +166,15 @@ async fn edu_11_the_centre_manager_closes_the_flag_with_a_note() {
         .await
         .assert_ok();
 
-    let closed = sessions::document_flags(t.state(), session.id).await.unwrap();
+    let closed = sessions::document_flags(t.state(), session.id)
+        .await
+        .unwrap();
     assert_eq!(closed.len(), 1, "the flag is kept, never removed");
     assert!(closed[0].is_reviewed());
-    assert_eq!(closed[0].review_note.as_deref(), Some("Renewal filed on 12 Dec; seen"));
+    assert_eq!(
+        closed[0].review_note.as_deref(),
+        Some("Renewal filed on 12 Dec; seen")
+    );
     assert_eq!(closed[0].reviewed_by, Some(manager.id));
     // The page shows it in the history.
     t.app
@@ -181,20 +210,36 @@ async fn edu_11_a_tutor_who_holds_the_documents_gives_no_flag() {
     sessions::submit_attendance(t.state(), &tariq, covered.id)
         .await
         .unwrap();
-    assert!(sessions::document_flags(t.state(), covered.id).await.unwrap().is_empty());
+    assert!(
+        sessions::document_flags(t.state(), covered.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     // An adult batch of a tutor with no clearance at all.
     let bare = t.employed_tutor("Nour Saleh", false).await;
     let room = t.room("Room 2", 14).await;
     let course = t.course().await;
     let adults = t
-        .batch_with(&course, (&bare.0, Some(bare.1)), &room, next_weekday(day(7), 1), &[1, 3])
+        .batch_with(
+            &course,
+            (&bare.0, Some(bare.1)),
+            &room,
+            next_weekday(day(7), 1),
+            &[1, 3],
+        )
         .await;
     let session = past_session(&t, &adults, day(-3), &bare).await;
     sessions::submit_attendance(t.state(), &tariq, session.id)
         .await
         .unwrap();
-    assert!(sessions::document_flags(t.state(), session.id).await.unwrap().is_empty());
+    assert!(
+        sessions::document_flags(t.state(), session.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// A freelance tutor without a valid permit or visa flags the session too (the
@@ -229,9 +274,15 @@ async fn edu_11_a_freelance_permit_flags_too_whoever_submits() {
         .unwrap();
 
     assert_eq!(held.status, SessionStatus::Held);
-    let flags = sessions::document_flags(t.state(), session.id).await.unwrap();
+    let flags = sessions::document_flags(t.state(), session.id)
+        .await
+        .unwrap();
     assert_eq!(flags.len(), 1);
-    assert!(flags[0].label.contains("Tutor permit expired on"), "{}", flags[0].label);
+    assert!(
+        flags[0].label.contains("Tutor permit expired on"),
+        "{}",
+        flags[0].label
+    );
 }
 
 /// The tutor's pay does not depend on the flag: the session counts as taught by
@@ -254,8 +305,14 @@ async fn edu_11_the_flag_does_not_change_the_tutor_pay() {
         .await
         .unwrap();
 
-    let taught = sessions::taught_in(t.db(), tutor.0.id, day(-10), day(0)).await.unwrap();
-    assert_eq!(taught.len(), 1, "the flagged session is paid like any other");
+    let taught = sessions::taught_in(t.db(), tutor.0.id, day(-10), day(0))
+        .await
+        .unwrap();
+    assert_eq!(
+        taught.len(),
+        1,
+        "the flagged session is paid like any other"
+    );
     assert_eq!(taught[0].id, session.id);
 }
 
@@ -274,7 +331,9 @@ async fn edu_11_a_flagged_session_still_uses_the_credit_of_a_student_who_came() 
     let batch = batch_of(&t, &tutor, true).await;
     let session = past_session(&t, &batch, day(-3), &tutor).await;
     let child = t.person(7, "Omar Child");
-    let enrolment = t.package_in(child, "pack10", 10, edtech::EnrolmentStatus::Active).await;
+    let enrolment = t
+        .package_in(child, "pack10", 10, edtech::EnrolmentStatus::Active)
+        .await;
     let desk = t.desk().await;
     edtech::roster::add_student(t.state(), &desk, session.id, enrolment.id)
         .await
@@ -292,7 +351,13 @@ async fn edu_11_a_flagged_session_still_uses_the_credit_of_a_student_who_came() 
     .unwrap();
 
     assert_eq!(held.status, SessionStatus::Held);
-    assert_eq!(sessions::document_flags(t.state(), session.id).await.unwrap().len(), 1);
+    assert_eq!(
+        sessions::document_flags(t.state(), session.id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
     assert_eq!(
         t.packages.left(wl_kernel::PartyId(child), "pack10"),
         9,

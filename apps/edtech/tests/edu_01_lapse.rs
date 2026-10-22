@@ -14,8 +14,8 @@ mod support;
 
 use std::time::Duration;
 
-use edtech::enrolments::{self, NewEnrolment};
 use edtech::enrolment_machine::{LapseFacts, lapse_problem};
+use edtech::enrolments::{self, NewEnrolment};
 use edtech::lapse;
 use edtech::notices::{FAMILY_NOTICE, NOTICE};
 use edtech::{Batch, Enrolment, EnrolmentStatus, seats};
@@ -90,9 +90,16 @@ async fn edu_01_an_unpaid_hold_lapses_after_48_hours() {
     assert_eq!(seats::available(t.db(), batch.id).await.unwrap(), 11);
     let links = t.cash.links();
     assert_eq!(links.len(), 1, "a payment link for the first invoice");
-    assert_eq!(links[0].request.expires_at, hold_end(&e), "it expires with the hold");
+    assert_eq!(
+        links[0].request.expires_at,
+        hold_end(&e),
+        "it expires with the hold"
+    );
     assert_eq!(links[0].request.amount, PRICE);
-    assert_eq!(reload(&t, &e).await.payment_link_path.as_deref(), Some("/pay/link-900"));
+    assert_eq!(
+        reload(&t, &e).await.payment_link_path.as_deref(),
+        Some("/pay/link-900")
+    );
 
     let early = hold_end(&e) - TimeDelta::minutes(1);
     assert!(lapse::lapse_due(t.state(), early).await.unwrap().is_empty());
@@ -107,16 +114,27 @@ async fn edu_01_an_unpaid_hold_lapses_after_48_hours() {
     assert!(t.cash.links()[0].cancelled, "the old link takes no payment");
     let family = t.messages.of_type(FAMILY_NOTICE);
     assert_eq!(family.len(), 1);
-    assert!(Messages::told_party(&family[0], mother), "the guardian is told");
+    assert!(
+        Messages::told_party(&family[0], mother),
+        "the guardian is told"
+    );
     let text = Messages::text(&family[0]);
     assert!(text.contains("seat was released"), "{text}");
     assert!(text.contains(&e.number()), "{text}");
     let staff = t.messages.of_type(NOTICE);
     assert_eq!(staff.len(), 1);
-    assert!(Messages::told_user(&staff[0], desk_user.id), "the counsellor is told");
+    assert!(
+        Messages::told_user(&staff[0], desk_user.id),
+        "the counsellor is told"
+    );
     assert!(Messages::text(&staff[0]).contains("lapsed"));
     // A second run finds nothing to do.
-    assert!(lapse::lapse_due(t.state(), hold_end(&e)).await.unwrap().is_empty());
+    assert!(
+        lapse::lapse_due(t.state(), hold_end(&e))
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// A gateway payment `pending` at the end of the hold keeps the enrolment
@@ -165,18 +183,28 @@ async fn edu_01_a_failed_payment_gives_a_new_link_and_does_not_extend_the_hold()
 
     let now = reload(&t, &e).await;
     assert_eq!(now.status, EnrolmentStatus::PendingPayment);
-    assert_eq!(now.seat_hold_until, e.seat_hold_until, "the hold is not extended");
+    assert_eq!(
+        now.seat_hold_until, e.seat_hold_until,
+        "the hold is not extended"
+    );
     let links = t.cash.links();
     assert_eq!(links.len(), 2);
     assert!(links[0].cancelled, "the failed link is replaced");
     assert!(!links[1].cancelled);
-    assert_eq!(links[1].request.expires_at, hold_end(&e), "it ends with the hold");
+    assert_eq!(
+        links[1].request.expires_at,
+        hold_end(&e),
+        "it ends with the hold"
+    );
     assert_eq!(now.payment_link_path.as_deref(), Some("/pay/link-901"));
     let family = t.messages.of_type(FAMILY_NOTICE);
     assert_eq!(family.len(), 1);
     let text = Messages::text(&family[0]);
     assert!(text.contains("payment did not go through"), "{text}");
-    assert!(text.contains("/pay/link-901"), "the new link is in the message: {text}");
+    assert!(
+        text.contains("/pay/link-901"),
+        "the new link is in the message: {text}"
+    );
 
     let lapsed = lapse::lapse_due(t.state(), hold_end(&e)).await.unwrap();
     assert_eq!(lapsed, [e.id], "it still lapses when the hold ends");
@@ -239,7 +267,9 @@ async fn edu_01_a_late_payment_is_refunded_and_the_counsellor_told() {
         source: RefundSource::Payment(PaymentId(payment)),
         approved_by: None,
     };
-    lapse::on_refund_approved(t.state(), &approved).await.unwrap();
+    lapse::on_refund_approved(t.state(), &approved)
+        .await
+        .unwrap();
 
     let notices = t.messages.of_type(NOTICE);
     let refund = notices
@@ -256,7 +286,8 @@ async fn edu_01_a_late_payment_is_refunded_and_the_counsellor_told() {
     let second = reload(&t, &e2).await;
     assert_eq!(second.status, EnrolmentStatus::PendingPayment);
     assert!(
-        second.payment_link_path.is_some() && second.payment_link_path != reload(&t, &e1).await.payment_link_path,
+        second.payment_link_path.is_some()
+            && second.payment_link_path != reload(&t, &e1).await.payment_link_path,
         "E2 is paid through its own link"
     );
 }
@@ -280,7 +311,9 @@ async fn edu_01_a_refund_approved_by_a_person_is_left_alone() {
     };
     let before = t.messages.sent().len();
 
-    lapse::on_refund_approved(t.state(), &approved).await.unwrap();
+    lapse::on_refund_approved(t.state(), &approved)
+        .await
+        .unwrap();
 
     assert_eq!(t.messages.sent().len(), before);
 }
@@ -292,7 +325,8 @@ async fn edu_01_a_lapsed_student_cannot_take_a_seat_of_a_full_batch() {
     let t = boot().await;
     let batch = open_batch(&t).await;
     for n in 0..11 {
-        t.enrolment_in(&batch, 100 + n, EnrolmentStatus::Active).await;
+        t.enrolment_in(&batch, 100 + n, EnrolmentStatus::Active)
+            .await;
     }
     let e1 = sara_in(&t, &batch).await;
     t.lapse(&e1).await;

@@ -101,7 +101,10 @@ async fn edu_base_enrolling_holds_a_seat_and_raises_the_first_invoice() {
     assert_eq!((plan[0].amount, plan[1].amount), (126_000, 126_000));
     assert_eq!(plan[0].status, InstalmentStatus::Invoiced);
     assert_eq!(plan[1].status, InstalmentStatus::Scheduled);
-    assert_eq!(plan[1].due_date, edtech::fees::due_date(plan[0].due_date, 2));
+    assert_eq!(
+        plan[1].due_date,
+        edtech::fees::due_date(plan[0].due_date, 2)
+    );
 }
 
 /// The later instalments are invoiced on their due dates, for the active
@@ -149,12 +152,8 @@ async fn edu_base_the_student_guardian_and_payer_are_parties() {
     let company = t.person(4, "Gulf Logistics LLC");
     t.people.guardian(child, mother);
 
-    let unknown = enrolments::create(
-        t.state(),
-        &desk,
-        NewEnrolment::course(99, batch.id, PRICE),
-    )
-    .await;
+    let unknown =
+        enrolments::create(t.state(), &desk, NewEnrolment::course(99, batch.id, PRICE)).await;
     assert!(unknown.is_err());
 
     let wrong = enrolments::create(
@@ -238,17 +237,28 @@ async fn edu_base_the_seats_of_a_batch_are_taken_up_to_the_capacity() {
         .unwrap_err();
     assert!(full.to_string().contains("no free seat"));
     assert_eq!(
-        Batch::find_or_404(t.db(), batch.id).await.unwrap().seats_taken,
+        Batch::find_or_404(t.db(), batch.id)
+            .await
+            .unwrap()
+            .seats_taken,
         1
     );
 
     let manager = t.manager().await;
-    enrolments::create(t.state(), &manager, NewEnrolment::course(b, batch.id, PRICE))
-        .await
-        .unwrap();
-    let over = enrolments::create(t.state(), &manager, NewEnrolment::course(c, batch.id, PRICE))
-        .await
-        .unwrap_err();
+    enrolments::create(
+        t.state(),
+        &manager,
+        NewEnrolment::course(b, batch.id, PRICE),
+    )
+    .await
+    .unwrap();
+    let over = enrolments::create(
+        t.state(),
+        &manager,
+        NewEnrolment::course(c, batch.id, PRICE),
+    )
+    .await
+    .unwrap_err();
     assert!(over.to_string().contains("no free seat"));
 }
 
@@ -275,12 +285,18 @@ async fn edu_base_activation_needs_the_terms_and_an_approved_discount() {
         .unwrap_err();
     assert!(refused.to_string().contains("terms"));
 
-    enrolments::accept_terms(t.state(), &desk, e.id).await.unwrap();
+    enrolments::accept_terms(t.state(), &desk, e.id)
+        .await
+        .unwrap();
     let still = enrolments::activate(t.state(), Some(&desk), e.id)
         .await
         .unwrap_err();
     assert!(still.to_string().contains("discount"));
-    assert!(enrolments::approve_discount(t.state(), &desk, e.id).await.is_err());
+    assert!(
+        enrolments::approve_discount(t.state(), &desk, e.id)
+            .await
+            .is_err()
+    );
 
     enrolments::approve_discount(t.state(), &manager, e.id)
         .await
@@ -292,7 +308,10 @@ async fn edu_base_activation_needs_the_terms_and_an_approved_discount() {
     assert!(active.seat_hold_until.is_none());
     assert!(active.seat_held);
     assert_eq!(
-        Batch::find_or_404(t.db(), batch.id).await.unwrap().seats_taken,
+        Batch::find_or_404(t.db(), batch.id)
+            .await
+            .unwrap()
+            .seats_taken,
         1
     );
     // The fee is the price less the discount.
@@ -312,8 +331,13 @@ async fn edu_base_the_first_payment_activates_the_enrolment() {
     pay_first(&t, &accepted).await;
     let active = Enrolment::find_or_404(t.db(), accepted.id).await.unwrap();
     assert_eq!(active.status, EnrolmentStatus::Active);
-    let rows = history(t.db(), "edtech_enrolments", active.id).await.unwrap();
-    assert_eq!(rows.last().map(|r| r.transition.as_str()), Some(ACTIVATE_SYSTEM));
+    let rows = history(t.db(), "edtech_enrolments", active.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        rows.last().map(|r| r.transition.as_str()),
+        Some(ACTIVATE_SYSTEM)
+    );
 
     let no_terms = enrolments::create(t.state(), &desk, NewEnrolment::course(b, batch.id, PRICE))
         .await
@@ -338,18 +362,30 @@ async fn edu_base_a_freeze_keeps_its_causes_within_the_yearly_allowance() {
 
     // A freeze of 10 days (today to the ninth day after).
     let until = day(9);
-    let frozen = enrolments::freeze(t.state(), Some(&desk), e.id, FreezeCause::Student, Some(until))
-        .await
-        .unwrap();
+    let frozen = enrolments::freeze(
+        t.state(),
+        Some(&desk),
+        e.id,
+        FreezeCause::Student,
+        Some(until),
+    )
+    .await
+    .unwrap();
     assert_eq!(frozen.status, EnrolmentStatus::Frozen);
     let rows = EnrolmentFreeze::open_of(t.db(), e.id).await.unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].counted_days, 10);
 
     // The same cause twice is refused; a block only adds its cause.
-    let twice = enrolments::freeze(t.state(), Some(&desk), e.id, FreezeCause::Student, Some(until))
-        .await
-        .unwrap_err();
+    let twice = enrolments::freeze(
+        t.state(),
+        Some(&desk),
+        e.id,
+        FreezeCause::Student,
+        Some(until),
+    )
+    .await
+    .unwrap_err();
     assert!(twice.to_string().contains("already frozen"));
     enrolments::freeze(t.state(), None, e.id, FreezeCause::Block, None)
         .await
@@ -367,10 +403,17 @@ async fn edu_base_a_freeze_keeps_its_causes_within_the_yearly_allowance() {
         .await
         .unwrap();
     assert_eq!(active.status, EnrolmentStatus::Active);
-    assert!(EnrolmentFreeze::open_of(t.db(), e.id).await.unwrap().is_empty());
+    assert!(
+        EnrolmentFreeze::open_of(t.db(), e.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     // 10 days are used: 21 more would pass the 30 of the year.
-    let used = EnrolmentFreeze::counted_in_year(t.db(), student, day(0)).await.unwrap();
+    let used = EnrolmentFreeze::counted_in_year(t.db(), student, day(0))
+        .await
+        .unwrap();
     assert_eq!(used, 10);
     let too_long = enrolments::freeze(
         t.state(),
@@ -404,14 +447,30 @@ async fn edu_base_a_frozen_enrolment_keeps_its_seat_and_only_staff_freeze() {
         .enrolment_in(&batch, student, EnrolmentStatus::Active)
         .await;
     let tutor = t.teacher().await;
-    let denied = enrolments::freeze(t.state(), Some(&tutor), e.id, FreezeCause::Student, Some(day(3))).await;
+    let denied = enrolments::freeze(
+        t.state(),
+        Some(&tutor),
+        e.id,
+        FreezeCause::Student,
+        Some(day(3)),
+    )
+    .await;
     assert!(denied.is_err());
     let desk = t.desk().await;
-    enrolments::freeze(t.state(), Some(&desk), e.id, FreezeCause::Student, Some(day(3)))
-        .await
-        .unwrap();
+    enrolments::freeze(
+        t.state(),
+        Some(&desk),
+        e.id,
+        FreezeCause::Student,
+        Some(day(3)),
+    )
+    .await
+    .unwrap();
     assert_eq!(
-        Batch::find_or_404(t.db(), batch.id).await.unwrap().seats_taken,
+        Batch::find_or_404(t.db(), batch.id)
+            .await
+            .unwrap()
+            .seats_taken,
         1
     );
 }
@@ -450,7 +509,9 @@ async fn edu_base_withdrawing_stores_the_refund_and_frees_the_seat() {
         .await
         .unwrap();
     assert_eq!(asked.enrolment.status, EnrolmentStatus::Active);
-    let request = asked.approval_request.expect("the refund waits for approval");
+    let request = asked
+        .approval_request
+        .expect("the refund waits for approval");
     let manager = t.manager_user().await;
     wl_kernel::approvals::approve(t.state(), request, &manager, "")
         .await
@@ -464,7 +525,10 @@ async fn edu_base_withdrawing_stores_the_refund_and_frees_the_seat() {
     assert_eq!(gone.withdrawal_reason.as_deref(), Some("moved abroad"));
     assert!(!gone.seat_held);
     assert_eq!(
-        Batch::find_or_404(t.db(), batch.id).await.unwrap().seats_taken,
+        Batch::find_or_404(t.db(), batch.id)
+            .await
+            .unwrap()
+            .seats_taken,
         0
     );
     let rows = history(t.db(), "edtech_enrolments", gone.id).await.unwrap();
@@ -472,7 +536,11 @@ async fn edu_base_withdrawing_stores_the_refund_and_frees_the_seat() {
         rows.last().map(|r| r.transition.as_str()),
         Some(WITHDRAW_APPROVED)
     );
-    assert!(enrolments::withdraw(t.state(), Some(&desk), e.id, "again").await.is_err());
+    assert!(
+        enrolments::withdraw(t.state(), Some(&desk), e.id, "again")
+            .await
+            .is_err()
+    );
 }
 
 /// An instalment plan whose second part is not invoiced owes the difference
@@ -523,7 +591,10 @@ async fn edu_base_withdrawing_from_pending_payment_credits_nothing() {
     assert_eq!(gone.status, EnrolmentStatus::Withdrawn);
     assert_eq!((gone.refund_amount, gone.amount_owed), (0, 0));
     assert_eq!(
-        Batch::find_or_404(t.db(), batch.id).await.unwrap().seats_taken,
+        Batch::find_or_404(t.db(), batch.id)
+            .await
+            .unwrap()
+            .seats_taken,
         0
     );
 }
@@ -652,7 +723,10 @@ async fn edu_base_the_enrolment_pages_show_and_enrol() {
 
     t.app
         .htmx()
-        .post(&format!("/edtech/enrolments/{}/activate", e.id), &[("x", "y")])
+        .post(
+            &format!("/edtech/enrolments/{}/activate", e.id),
+            &[("x", "y")],
+        )
         .await
         .assert_ok();
     let active = Enrolment::find_or_404(t.db(), e.id).await.unwrap();

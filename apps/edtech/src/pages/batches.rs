@@ -241,7 +241,14 @@ async fn create(
     let duration = parse_number(&form.duration)?;
     let dates = (parse_date(&form.start_date)?, parse_date(&form.end_date)?);
     let weekdays = parse_weekdays(&form.weekdays)?;
-    let mut new = NewBatch::new(course, capacity, dates, &weekdays, &form.start_time, duration);
+    let mut new = NewBatch::new(
+        course,
+        capacity,
+        dates,
+        &weekdays,
+        &form.start_time,
+        duration,
+    );
     new.tutor_resource_id = parse_optional_id(&form.tutor)?;
     new.tutor_employee_id = parse_optional_id(&form.employee)?;
     new.room_resource_id = parse_optional_id(&form.room)?;
@@ -373,7 +380,8 @@ async fn show(
     }
     let manage_enrolments = user.has_permission(permissions::ENROLMENTS_MANAGE);
     let manage_batches = user.has_permission(permissions::BATCHES_MANAGE);
-    let can_cancel = manage_batches && matches!(batch.status, BatchStatus::Planned | BatchStatus::Open);
+    let can_cancel =
+        manage_batches && matches!(batch.status, BatchStatus::Planned | BatchStatus::Open);
     let can_terminate = manage_batches && batch.status == BatchStatus::Running;
     let mut exit_rows = Vec::new();
     let mut exit_options = Vec::new();
@@ -410,10 +418,17 @@ async fn show(
     }
     let reason_options = batches::TERMINATION_REASONS
         .iter()
-        .map(|(code, _)| [(*code).to_owned(), text(&lang, &format!("batches.termination.{code}"))])
+        .map(|(code, _)| {
+            [
+                (*code).to_owned(),
+                text(&lang, &format!("batches.termination.{code}")),
+            ]
+        })
         .collect();
     let subject = batch.subject();
-    let pending = !approvals::pending_for(&state.db, &subject).await?.is_empty();
+    let pending = !approvals::pending_for(&state.db, &subject)
+        .await?
+        .is_empty();
     let approval_cards = approvals::cards_for(&state.db, &subject, &user, &lang).await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),

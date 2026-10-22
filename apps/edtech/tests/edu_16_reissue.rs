@@ -30,7 +30,9 @@ async fn draft_for(t: &Centre, batch: &Batch, id: i64, name: &str) -> (Certifica
     let student = t.person(id, name);
     let desk = t.desk().await;
     let e = t.enrol(student, batch).await;
-    enrolments::activate(t.state(), Some(&desk), e.id).await.unwrap();
+    enrolments::activate(t.state(), Some(&desk), e.id)
+        .await
+        .unwrap();
     enrolments::complete(t.state(), e.id).await.unwrap();
     let draft = Certificate::of_enrolment(t.db(), e.id)
         .await
@@ -84,7 +86,10 @@ async fn edu_16_a_reissue_supersedes_the_certificate_and_links_a_corrected_draft
     let old = Certificate::find_or_404(t.db(), issued.id).await.unwrap();
     assert_eq!(old.status, CertificateStatus::Superseded);
     assert_eq!(old.reissue_reason.as_deref(), Some("name correction"));
-    assert_eq!(old.student_name, "Ahmad Yusuf", "the issued certificate is never edited");
+    assert_eq!(
+        old.student_name, "Ahmad Yusuf",
+        "the issued certificate is never edited"
+    );
     assert_eq!(old.number.as_deref(), Some("CRT-0001"));
     assert_eq!(draft.status, CertificateStatus::Draft);
     assert_eq!(draft.supersedes_id, Some(old.id));
@@ -93,7 +98,9 @@ async fn edu_16_a_reissue_supersedes_the_certificate_and_links_a_corrected_draft
     assert!(draft.number.is_none(), "numbered when it is issued");
     assert_ne!(draft.verification_code, old.verification_code);
     // The history of the old one says what happened.
-    let rows = history(t.db(), "edtech_certificates", old.id).await.unwrap();
+    let rows = history(t.db(), "edtech_certificates", old.id)
+        .await
+        .unwrap();
     assert_eq!(rows.last().map(|r| r.transition.as_str()), Some("reissue"));
 }
 
@@ -124,14 +131,21 @@ async fn edu_16_the_old_page_points_to_the_new_number_and_the_student_is_told() 
         .assert_ok()
         .assert_see("Superseded")
         .assert_see("replacement pending");
-    assert_eq!(t.messages.of_type(FAMILY_NOTICE).len(), told, "nobody is told of a draft");
+    assert_eq!(
+        t.messages.of_type(FAMILY_NOTICE).len(),
+        told,
+        "nobody is told of a draft"
+    );
 
     let numbered = certificates::issue(t.state(), &registrar, draft.id)
         .await
         .unwrap();
 
     assert_eq!(numbered.number.as_deref(), Some("CRT-0002"));
-    assert_ne!(numbered.number, issued.number, "the old number is not reused");
+    assert_ne!(
+        numbered.number, issued.number,
+        "the old number is not reused"
+    );
     let old = Certificate::find_or_404(t.db(), issued.id).await.unwrap();
     assert_eq!(old.superseded_by_id, Some(numbered.id));
     t.app
@@ -165,19 +179,16 @@ async fn edu_16_a_reissue_needs_a_reason_and_an_issued_certificate() {
     let registrar = t.registrar().await;
 
     for reason in ["", "   "] {
-        let refused = certificates::reissue(
-            t.state(),
-            &registrar,
-            issued.id,
-            reason,
-            corrected_name(),
-        )
-        .await;
+        let refused =
+            certificates::reissue(t.state(), &registrar, issued.id, reason, corrected_name()).await;
         assert!(refused.is_err(), "no reason: {reason:?}");
     }
     let still = Certificate::find_or_404(t.db(), issued.id).await.unwrap();
     assert_eq!(still.status, CertificateStatus::Issued);
-    assert_eq!(Certificate::of_enrolment(t.db(), e.id).await.unwrap().len(), 1);
+    assert_eq!(
+        Certificate::of_enrolment(t.db(), e.id).await.unwrap().len(),
+        1
+    );
 
     // The page offers it for an issued certificate to the one who may issue.
     let registrar_user = t.registrar_user().await;
@@ -206,7 +217,9 @@ async fn edu_16_a_reissue_needs_a_reason_and_an_issued_certificate() {
 
     // Revoked: the same, for another certificate.
     let (second, _) = draft_for(&t, &batch, 2, "Omar Khan").await;
-    let second = certificates::issue(t.state(), &registrar, second.id).await.unwrap();
+    let second = certificates::issue(t.state(), &registrar, second.id)
+        .await
+        .unwrap();
     let admin = t.company_admin().await;
     certificates::revoke(t.state(), &admin, second.id, "given in error")
         .await
@@ -216,7 +229,10 @@ async fn edu_16_a_reissue_needs_a_reason_and_an_issued_certificate() {
             .await
             .is_err()
     );
-    let revoked = t.app.get(&format!("/edtech/certificates/{}", second.id)).await;
+    let revoked = t
+        .app
+        .get(&format!("/edtech/certificates/{}", second.id))
+        .await;
     revoked.assert_ok();
     assert!(!revoked.text().contains("A certificate is never edited."));
 }
@@ -246,7 +262,9 @@ async fn edu_16_a_copy_changes_nothing_and_is_logged_in_the_history() {
     assert_eq!(first.copies_printed, 1);
     assert_eq!(second.copies_printed, 2);
     assert_eq!(second.last_copy_on, Some(day(0)));
-    let rows = history(t.db(), "edtech_certificates", issued.id).await.unwrap();
+    let rows = history(t.db(), "edtech_certificates", issued.id)
+        .await
+        .unwrap();
     let copies = rows.iter().filter(|r| r.transition == "print_copy").count();
     assert_eq!(copies, 2, "each copy is in the history");
 
@@ -255,7 +273,10 @@ async fn edu_16_a_copy_changes_nothing_and_is_logged_in_the_history() {
     t.app.acting_as(&registrar_user);
     t.app
         .htmx()
-        .post(&format!("/edtech/certificates/{}/copy", issued.id), &[("x", "y")])
+        .post(
+            &format!("/edtech/certificates/{}/copy", issued.id),
+            &[("x", "y")],
+        )
         .await
         .assert_ok();
     t.app
@@ -267,7 +288,10 @@ async fn edu_16_a_copy_changes_nothing_and_is_logged_in_the_history() {
         .assert_see(&issued.verification_code)
         .assert_see("IELTS preparation");
     assert_eq!(
-        Certificate::find_or_404(t.db(), issued.id).await.unwrap().copies_printed,
+        Certificate::find_or_404(t.db(), issued.id)
+            .await
+            .unwrap()
+            .copies_printed,
         3
     );
 }
@@ -280,7 +304,11 @@ async fn edu_16_only_an_issued_certificate_has_a_copy() {
     let (draft, _) = draft_for(&t, &batch, 1, "Ahmad Yusuf").await;
     let registrar = t.registrar().await;
 
-    assert!(certificates::print_copy(t.state(), &registrar, draft.id).await.is_err());
+    assert!(
+        certificates::print_copy(t.state(), &registrar, draft.id)
+            .await
+            .is_err()
+    );
     let registrar_user = t.registrar_user().await;
     t.app.acting_as(&registrar_user);
     t.app
@@ -288,16 +316,28 @@ async fn edu_16_only_an_issued_certificate_has_a_copy() {
         .await
         .assert_status(422);
 
-    let issued = certificates::issue(t.state(), &registrar, draft.id).await.unwrap();
+    let issued = certificates::issue(t.state(), &registrar, draft.id)
+        .await
+        .unwrap();
     certificates::reissue(t.state(), &registrar, issued.id, "name", corrected_name())
         .await
         .unwrap();
-    assert!(certificates::print_copy(t.state(), &registrar, issued.id).await.is_err());
+    assert!(
+        certificates::print_copy(t.state(), &registrar, issued.id)
+            .await
+            .is_err()
+    );
     // A user without `certificates.issue` cannot print one.
     let desk = t.desk().await;
     let (other, _) = draft_for(&t, &batch, 2, "Omar Khan").await;
-    let other = certificates::issue(t.state(), &registrar, other.id).await.unwrap();
-    assert!(certificates::print_copy(t.state(), &desk, other.id).await.is_err());
+    let other = certificates::issue(t.state(), &registrar, other.id)
+        .await
+        .unwrap();
+    assert!(
+        certificates::print_copy(t.state(), &desk, other.id)
+            .await
+            .is_err()
+    );
 }
 
 /// The reissued draft is judged on the enrolment's completion date: a correct
@@ -308,32 +348,43 @@ async fn edu_16_the_reissued_draft_is_judged_on_the_completion_date() {
     let t = boot().await;
     t.documents.edtech_blocks();
     let amal = t.coordinator().await;
-    let mut new = NewCourse::new("IELTS-B2", "IELTS preparation", "English language", 40).level("B2");
+    let mut new =
+        NewCourse::new("IELTS-B2", "IELTS preparation", "English language", 40).level("B2");
     new.approval_required = true;
     new.approval_no = Some("KHDA-2026-77".to_owned());
     let course: Course = courses::create(t.state(), &amal, new).await.unwrap();
-    let entity = wl_kernel::LegalEntity::default_entity(t.db()).await.unwrap();
+    let entity = wl_kernel::LegalEntity::default_entity(t.db())
+        .await
+        .unwrap();
     t.documents.set(
         &Subject::new("kernel.legal_entity", entity.id),
         "centre_permit",
         Some(day(400)),
     );
-    t.documents.set(&course.subject(), "course_approval", Some(day(400)));
+    t.documents
+        .set(&course.subject(), "course_approval", Some(day(400)));
     let batch = open_batch(&t).await;
     let (issued, e) = issued_for_ahmad(&t, &batch).await;
     assert!(issued.states_approval);
     let registrar = t.registrar().await;
 
     // The approval expired yesterday; the course was completed a month ago.
-    t.documents.set(&course.subject(), "course_approval", Some(day(-1)));
+    t.documents
+        .set(&course.subject(), "course_approval", Some(day(-1)));
     Enrolment::query()
         .where_(Enrolment::ID.eq(e.id))
         .update(t.db(), &[("completed_on", &Some(day(-30)))])
         .await
         .unwrap();
-    let draft = certificates::reissue(t.state(), &registrar, issued.id, "name correction", corrected_name())
-        .await
-        .unwrap();
+    let draft = certificates::reissue(
+        t.state(),
+        &registrar,
+        issued.id,
+        "name correction",
+        corrected_name(),
+    )
+    .await
+    .unwrap();
     let numbered = certificates::issue(t.state(), &registrar, draft.id)
         .await
         .expect("judged on the completion date, the approval was valid");
@@ -344,8 +395,11 @@ async fn edu_16_the_reissued_draft_is_judged_on_the_completion_date() {
     let error = certificates::issue(t.state(), &registrar, fresh.id)
         .await
         .unwrap_err();
-    assert!(matches!(&error, Error::Status(StatusCode::UNPROCESSABLE_ENTITY, m)
-        if m.contains("Course approval")), "{error:?}");
+    assert!(
+        matches!(&error, Error::Status(StatusCode::UNPROCESSABLE_ENTITY, m)
+        if m.contains("Course approval")),
+        "{error:?}"
+    );
 }
 
 /// The reissue form on the page: it needs a reason, takes the corrected name and
@@ -368,12 +422,19 @@ async fn edu_16_the_page_reissues_with_the_corrected_data() {
         .htmx()
         .post(
             &path,
-            &[("reason", ""), ("student_name", "Ahmed Yusuf"), ("completion_date", "")],
+            &[
+                ("reason", ""),
+                ("student_name", "Ahmed Yusuf"),
+                ("completion_date", ""),
+            ],
         )
         .await
         .assert_status(422);
     assert_eq!(
-        Certificate::find_or_404(t.db(), issued.id).await.unwrap().status,
+        Certificate::find_or_404(t.db(), issued.id)
+            .await
+            .unwrap()
+            .status,
         CertificateStatus::Issued
     );
 

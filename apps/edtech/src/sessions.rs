@@ -33,9 +33,7 @@ use crate::permissions;
 use crate::plan::{self, PlannedSession};
 use crate::roster;
 use crate::session::{Session, SessionStatus};
-use crate::session_machine::{
-    CANCEL, CHANGE_TUTOR, RESCHEDULE, SUBMIT_ATTENDANCE, SessionInput,
-};
+use crate::session_machine::{CANCEL, CHANGE_TUTOR, RESCHEDULE, SUBMIT_ATTENDANCE, SessionInput};
 use crate::texts::english;
 use crate::tutors::{self, Tutor};
 
@@ -135,7 +133,10 @@ fn clash_error(clashes: &[Clash]) -> Error {
         .map(NaiveDate::to_string)
         .collect::<Vec<_>>()
         .join(", ");
-    refused(english("edtech.sessions.problem.clash", &[("dates", &list)]))
+    refused(english(
+        "edtech.sessions.problem.clash",
+        &[("dates", &list)],
+    ))
 }
 
 /// Refuses with the days of `clashes` when there are any.
@@ -660,9 +661,13 @@ pub async fn cancel(
     let make_up = match make_up_on {
         Some(date) => {
             if date < today() {
-                return Err(refused(english("edtech.sessions.problem.make_up_past", &[])));
+                return Err(refused(english(
+                    "edtech.sessions.problem.make_up_past",
+                    &[],
+                )));
             }
-            let starts_at = calendar.from_local(date.and_time(calendar.local(session.starts_at).time()));
+            let starts_at =
+                calendar.from_local(date.and_time(calendar.local(session.starts_at).time()));
             let ends_at = starts_at + (session.ends_at - session.starts_at);
             let clashes = conflicts(
                 &state.db,
@@ -745,24 +750,22 @@ pub async fn on_closed(state: &AppState, session_id: i64) -> Result {
 pub(crate) fn register(app: &mut Registry) {
     crate::session_machine::register();
     provide_availability_source(app, SessionBlocks);
-    app.listen(
-        |event: Transitioned<Session>, state: AppState| async move {
-            if event.transition == SUBMIT_ATTENDANCE || event.transition == CANCEL {
-                on_closed(&state, event.key).await?;
-            }
-            if event.transition == SUBMIT_ATTENDANCE {
-                // After the commit: the credits the marks cost are taken from the
-                // packages (a row the ledger could not serve is kept and tried
-                // again by `edtech:credits`) and the absences are evaluated.
-                let _kept_for_the_job = credits::settle_session(&state, event.key).await;
-                absences::evaluate(&state, event.key).await?;
-            }
-            if event.transition == CHANGE_TUTOR {
-                tutors::tell_session_change(&state, event.key).await?;
-            }
-            Ok(())
-        },
-    );
+    app.listen(|event: Transitioned<Session>, state: AppState| async move {
+        if event.transition == SUBMIT_ATTENDANCE || event.transition == CANCEL {
+            on_closed(&state, event.key).await?;
+        }
+        if event.transition == SUBMIT_ATTENDANCE {
+            // After the commit: the credits the marks cost are taken from the
+            // packages (a row the ledger could not serve is kept and tried
+            // again by `edtech:credits`) and the absences are evaluated.
+            let _kept_for_the_job = credits::settle_session(&state, event.key).await;
+            absences::evaluate(&state, event.key).await?;
+        }
+        if event.transition == CHANGE_TUTOR {
+            tutors::tell_session_change(&state, event.key).await?;
+        }
+        Ok(())
+    });
 }
 
 /// The time a day's session starts, for the pages: `18:00`.

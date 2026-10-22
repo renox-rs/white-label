@@ -75,9 +75,7 @@ use crate::permits::campus_scope;
 use crate::seed::{POLICE_CLEARANCE_KIND, TUTOR_PERMIT_KIND};
 use crate::session::{SESSION_SUBJECT_TYPE, Session, SessionStatus};
 use crate::texts::english;
-use crate::tutor_alert::{
-    KIND_BLOCK, KIND_DOCUMENT, KIND_LEAVE, KIND_NOTICE, TutorAlert,
-};
+use crate::tutor_alert::{KIND_BLOCK, KIND_DOCUMENT, KIND_LEAVE, KIND_NOTICE, TutorAlert};
 
 /// The rule id.
 pub const RULE: &str = "EDU.RUL.12";
@@ -222,13 +220,11 @@ pub async fn affected_sessions(
                 Some((_, needed)) => *needed,
                 None => {
                     let needed = match Batch::find(&state.db, session.batch_id).await? {
-                        Some(batch) => eligibility::required_kinds(
-                            state,
-                            Some(alert.employee_id),
-                            &batch,
-                        )
-                        .await?
-                        .contains(&kind.as_str()),
+                        Some(batch) => {
+                            eligibility::required_kinds(state, Some(alert.employee_id), &batch)
+                                .await?
+                                .contains(&kind.as_str())
+                        }
                         None => false,
                     };
                     needs.push((session.batch_id, needed));
@@ -451,10 +447,7 @@ async fn task(
     if let Some(found) = creator.find_open(state, &alert.task_key).await? {
         if !fresh.is_empty() {
             let lines = session_lines(state, fresh).await?;
-            let text = english(
-                "edtech.alerts.task_update",
-                &[("lines", &lines.join("\n"))],
-            );
+            let text = english("edtech.alerts.task_update", &[("lines", &lines.join("\n"))]);
             creator
                 .comment(state, found.id, TaskComment::internal(&text))
                 .await?;
@@ -701,8 +694,8 @@ pub async fn on_renewal(state: &AppState, event: &DocumentAccepted) -> Result {
 ///
 /// The database's errors; a failed run is tried again by [`retry`].
 pub async fn run_daily(state: &AppState, on: NaiveDate) -> Result {
-    let spec = RuleRunSpec::new(RULE, schedule_subject(), occurrence_key(RULE, on))
-        .compliance_critical();
+    let spec =
+        RuleRunSpec::new(RULE, schedule_subject(), occurrence_key(RULE, on)).compliance_critical();
     run_rule(state, spec, move |state: AppState| async move {
         recompute_all(&state, on).await
     })
@@ -769,8 +762,7 @@ async fn escalate_one(state: &AppState, session_id: i64, at: DateTime) -> Result
             english("edtech.alerts.escalation_body", &params),
         )
     };
-    let told = notices::tell_users(state, session.subject(), &label, &users, &title, &body)
-    .await?;
+    let told = notices::tell_users(state, session.subject(), &label, &users, &title, &body).await?;
     if told {
         Session::query()
             .where_(Session::ID.eq(session.id))
@@ -835,8 +827,8 @@ pub async fn retry(state: &AppState) -> Result {
         .await?;
     let mut failure = None;
     for run in waiting {
-        let spec = RuleRunSpec::new(RULE, run.subject(), run.occurrence_key.clone())
-            .compliance_critical();
+        let spec =
+            RuleRunSpec::new(RULE, run.subject(), run.occurrence_key.clone()).compliance_critical();
         let outcome = if run.subject_type == SESSION_SUBJECT_TYPE {
             let id = run.subject_id;
             run_rule(state, spec, move |state: AppState| async move {
@@ -889,10 +881,24 @@ pub(crate) fn register() {
 /// Registers the listeners, the daily run and the job.
 pub(crate) fn listen(app: &mut Registry) {
     app.listen(|event: DocumentExpiring, state: AppState| async move {
-        on_document(&state, &event.subject, &event.kind, event.expires_on, "expiring").await
+        on_document(
+            &state,
+            &event.subject,
+            &event.kind,
+            event.expires_on,
+            "expiring",
+        )
+        .await
     });
     app.listen(|event: DocumentExpired, state: AppState| async move {
-        on_document(&state, &event.subject, &event.kind, event.expires_on, "expired").await
+        on_document(
+            &state,
+            &event.subject,
+            &event.kind,
+            event.expires_on,
+            "expired",
+        )
+        .await
     });
     app.listen(|event: QualificationExpired, state: AppState| async move {
         on_document(
@@ -907,9 +913,11 @@ pub(crate) fn listen(app: &mut Registry) {
     app.listen(|event: EmployeeNoticeGiven, state: AppState| async move {
         on_notice(&state, &event).await
     });
-    app.listen(|event: EmployeeNoticeWithdrawn, state: AppState| async move {
-        on_notice_withdrawn(&state, &event).await
-    });
+    app.listen(
+        |event: EmployeeNoticeWithdrawn, state: AppState| async move {
+            on_notice_withdrawn(&state, &event).await
+        },
+    );
     app.listen(|event: AvailabilityBlockAdded, state: AppState| async move {
         on_block(&state, &event).await
     });
@@ -967,7 +975,10 @@ mod tests {
         let clearance = alert((2026, 12, 16), None);
         let day = |m, d| NaiveDate::from_ymd_opt(2026, m, d).unwrap();
         // Before the date: the date to the date plus 30.
-        assert_eq!(window_end(&clearance, day(11, 20)), day(12, 16) + Duration::days(30));
+        assert_eq!(
+            window_end(&clearance, day(11, 20)),
+            day(12, 16) + Duration::days(30)
+        );
         // After it the window moves with the run: the run on 2026-12-21 covers
         // 2026-12-16 to 2027-01-20.
         assert_eq!(

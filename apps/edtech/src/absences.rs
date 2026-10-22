@@ -80,14 +80,22 @@ pub async fn absence_streak(db: &Db, enrolment_id: i64) -> Result<i64> {
         .map(|(_, session)| session.starts_at)
         .max();
     match latest {
-        Some(until) => Ok(i64::try_from(run_of_absences(db, enrolment_id, until).await?.len())
-            .unwrap_or(i64::MAX)),
+        Some(until) => Ok(
+            i64::try_from(run_of_absences(db, enrolment_id, until).await?.len())
+                .unwrap_or(i64::MAX),
+        ),
         None => Ok(0),
     }
 }
 
 /// Tells the coordinator and the guardian of `row`'s run of absences, once.
-async fn alert(state: &AppState, enrolment: &Enrolment, row: &Attendance, count: i64, on: NaiveDate) -> Result {
+async fn alert(
+    state: &AppState,
+    enrolment: &Enrolment,
+    row: &Attendance,
+    count: i64,
+    on: NaiveDate,
+) -> Result {
     let student = party_name(state, "en", enrolment.student_party_id).await;
     let title = english(
         "edtech.absences.title",

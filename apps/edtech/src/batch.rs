@@ -50,7 +50,12 @@ impl BatchStatus {
 
 /// A batch.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "edtech_batches", state_machine, index(course_id), index(status))]
+#[model(
+    table = "edtech_batches",
+    state_machine,
+    index(course_id),
+    index(status)
+)]
 pub struct Batch {
     /// The primary key.
     pub id: i64,

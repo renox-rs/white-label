@@ -183,7 +183,9 @@ async fn invoices_text(state: &AppState, rows: &[Chargeback]) -> Result<String> 
         let summary = books.find(&state.db, InvoiceId(row.invoice_id)).await?;
         let (number, balance) = match summary {
             Some(found) => (
-                found.number.unwrap_or_else(|| format!("#{}", row.invoice_id)),
+                found
+                    .number
+                    .unwrap_or_else(|| format!("#{}", row.invoice_id)),
                 found.balance.max(0),
             ),
             None => (format!("#{}", row.invoice_id), row.amount),
@@ -245,8 +247,15 @@ async fn raise_task(state: &AppState, enrolment: &Enrolment) -> Result<()> {
     creator.open(state, ticket).await?;
     // The other counsellors of the campus are told; the task is the first's.
     if users.len() > 1 {
-        notices::tell_users(state, enrolment.subject(), &number, &users, &title, &description)
-            .await?;
+        notices::tell_users(
+            state,
+            enrolment.subject(),
+            &number,
+            &users,
+            &title,
+            &description,
+        )
+        .await?;
     }
     Ok(())
 }
@@ -361,7 +370,10 @@ async fn close_task(state: &AppState, enrolment: &Enrolment, key: &str) -> Resul
 ///
 /// The database's and the ticketing contract's errors.
 pub async fn on_withdrawn(state: &AppState, enrolment: &Enrolment) -> Result {
-    if Chargeback::outstanding_of(&state.db, enrolment.id).await?.is_empty() {
+    if Chargeback::outstanding_of(&state.db, enrolment.id)
+        .await?
+        .is_empty()
+    {
         return Ok(());
     }
     Chargeback::query()

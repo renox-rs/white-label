@@ -33,10 +33,7 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "edtech.chargeback.problem.no_link",
         "Online payment is not available. Ask the payer to pay at the centre.",
     ),
-    (
-        "edtech.chargeback.link_title",
-        "Payment for :enrolment",
-    ),
+    ("edtech.chargeback.link_title", "Payment for :enrolment"),
     (
         "edtech.chargeback.link_body",
         "A payment for :enrolment was reversed by the bank. Please pay :amount again: :link",
@@ -61,7 +58,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ),
     ("edtech.chargeback.link_sent", "The payment link was sent."),
     ("edtech.chargeback.withdraw", "Withdraw the student"),
-    ("edtech.chargeback.empty", "Nothing is waiting to be collected"),
+    (
+        "edtech.chargeback.empty",
+        "Nothing is waiting to be collected",
+    ),
     (
         "edtech.chargeback.alert",
         "A payment for this enrolment was charged back. The money is waiting to be collected.",

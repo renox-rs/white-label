@@ -39,8 +39,7 @@ use wl_kernel::subscriptions::{
 };
 
 use crate::enrolment::{
-    ENROLMENT_SUBJECT_TYPE, Enrolment, EnrolmentFreeze, EnrolmentKind, EnrolmentStatus,
-    FreezeCause,
+    ENROLMENT_SUBJECT_TYPE, Enrolment, EnrolmentFreeze, EnrolmentKind, EnrolmentStatus, FreezeCause,
 };
 use crate::enrolments;
 use crate::texts::english;
@@ -161,7 +160,10 @@ async fn pause_membership(state: &AppState, enrolment: &Enrolment, on: NaiveDate
     {
         return Ok(());
     }
-    let reason = english("edtech.linked.pause_reason", &[("enrolment", &enrolment.number())]);
+    let reason = english(
+        "edtech.linked.pause_reason",
+        &[("enrolment", &enrolment.number())],
+    );
     let _paused = subscriptions(state)
         .pause(
             state,

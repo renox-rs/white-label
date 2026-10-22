@@ -101,7 +101,14 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
                 delivery: delivery_text(&lang, c.delivery),
                 approval,
                 approval_kind,
-                for_minors: text(&lang, if c.for_minors { "courses.yes" } else { "courses.no" }),
+                for_minors: text(
+                    &lang,
+                    if c.for_minors {
+                        "courses.yes"
+                    } else {
+                        "courses.no"
+                    },
+                ),
             }
         })
         .collect();
@@ -171,8 +178,8 @@ async fn create(
     };
     let delivery = DeliveryMode::parse(&form.delivery)
         .ok_or_else(|| invalid("delivery: in_person, online or hybrid"))?;
-    let mut new = NewCourse::new(&form.code, &form.name_en, &form.programme, hours)
-        .delivery(delivery);
+    let mut new =
+        NewCourse::new(&form.code, &form.name_en, &form.programme, hours).delivery(delivery);
     new.name_ar = Some(form.name_ar.clone());
     new.level = Some(form.level.clone());
     new.for_minors = ticked(&form.for_minors);

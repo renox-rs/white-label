@@ -25,7 +25,9 @@ async fn edu_base_the_records_are_named_for_documents_and_bills() {
     let student = t.person(1, "Sara Ali");
     let desk = t.desk().await;
     let e: Enrolment = t.enrol(student, &batch).await;
-    enrolments::activate(t.state(), Some(&desk), e.id).await.unwrap();
+    enrolments::activate(t.state(), Some(&desk), e.id)
+        .await
+        .unwrap();
     enrolments::complete(t.state(), e.id).await.unwrap();
     let certificate: Certificate = Certificate::of_enrolment(t.db(), e.id)
         .await
@@ -36,13 +38,19 @@ async fn edu_base_the_records_are_named_for_documents_and_bills() {
 
     assert_eq!(label(&t, batch.subject()).await, Some(batch.number()));
     assert_eq!(label(&t, e.subject()).await, Some(e.number()));
-    assert_eq!(label(&t, certificate.subject()).await, Some(certificate.label()));
+    assert_eq!(
+        label(&t, certificate.subject()).await,
+        Some(certificate.label())
+    );
     assert_eq!(label(&t, course.subject()).await, Some(course.title()));
     assert_eq!(
         label(&t, session.subject()).await,
         Some(format!("{} · 1", batch.number()))
     );
-    assert_eq!(label(&t, Subject::new("edtech.enrolment", 9999)).await, None);
+    assert_eq!(
+        label(&t, Subject::new("edtech.enrolment", 9999)).await,
+        None
+    );
 
     let types = labelled_subject_types();
     for kind in [

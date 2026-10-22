@@ -325,15 +325,14 @@ fn cancel(name: &'static str, system: bool) -> Transition<Session> {
     } else {
         transition.permission(permissions::BATCHES_MANAGE)
     };
-    transition
-        .effect(|s: &Session, ctx, tx| {
-            let id = s.id;
-            let reason = ctx.reason().map(str::to_owned);
-            Box::pin(async move {
-                set(tx, id, &[("cancel_reason", &reason)]).await?;
-                flags::clear(tx, &[id]).await
-            })
+    transition.effect(|s: &Session, ctx, tx| {
+        let id = s.id;
+        let reason = ctx.reason().map(str::to_owned);
+        Box::pin(async move {
+            set(tx, id, &[("cancel_reason", &reason)]).await?;
+            flags::clear(tx, &[id]).await
         })
+    })
 }
 
 /// Registers the machine for `rnx state:diagram`.
@@ -393,9 +392,18 @@ mod tests {
         };
         assert_eq!(guards(RESCHEDULE), ["new_time_given"]);
         assert_eq!(guards(CHANGE_TUTOR), ["new_tutor_given"]);
-        assert_eq!(guards(SUBMIT_ATTENDANCE), ["start_passed", "every_student_marked"]);
-        assert_eq!(guards(CORRECT_ATTENDANCE), ["within_window", "something_to_correct"]);
-        assert_eq!(guards(CORRECT_ATTENDANCE_COORDINATOR), ["something_to_correct"]);
+        assert_eq!(
+            guards(SUBMIT_ATTENDANCE),
+            ["start_passed", "every_student_marked"]
+        );
+        assert_eq!(
+            guards(CORRECT_ATTENDANCE),
+            ["within_window", "something_to_correct"]
+        );
+        assert_eq!(
+            guards(CORRECT_ATTENDANCE_COORDINATOR),
+            ["something_to_correct"]
+        );
         assert!(guards(CANCEL).is_empty());
         for name in [
             CANCEL,

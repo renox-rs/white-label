@@ -116,11 +116,19 @@ async fn edu_13_a_withdrawn_student_gets_everything_back_including_the_registrat
     let notes = t.books.notes();
     assert_eq!(notes.len(), 1);
     assert_eq!(notes[0].gross, 273_000, "AED 2,730.00");
-    assert_eq!(notes[0].lines, [(1, 240_000), (2, 20_000)], "the registration fee too");
+    assert_eq!(
+        notes[0].lines,
+        [(1, 240_000), (2, 20_000)],
+        "the registration fee too"
+    );
     let refunds = t.cash.refunds();
     assert_eq!(refunds.len(), 1);
     assert_eq!(refunds[0].0.amount, 273_000);
-    assert_eq!(refunds[0].1, Some(amal_user.id), "recorded by the coordinator, decided by another");
+    assert_eq!(
+        refunds[0].1,
+        Some(amal_user.id),
+        "recorded by the coordinator, decided by another"
+    );
     let family = t.messages.of_type(FAMILY_NOTICE);
     let told = family
         .iter()
@@ -169,13 +177,16 @@ async fn edu_13_a_transfer_creates_an_active_enrolment_in_the_other_batch() {
     assert!(next.seat_held);
     assert_eq!(seats::count_in(t.db(), b.id).await.unwrap(), 0);
     assert_eq!(seats::count_in(t.db(), b2.id).await.unwrap(), 1);
-    assert!(t.books.notes().is_empty(), "nothing is credited for a transfer");
+    assert!(
+        t.books.notes().is_empty(),
+        "nothing is credited for a transfer"
+    );
     assert!(t.cash.refunds().is_empty());
     let family = t.messages.of_type(FAMILY_NOTICE);
     assert!(
-        family
-            .iter()
-            .any(|n| Messages::text(n).contains(&b2.number()) && Messages::text(n).contains("moved")),
+        family.iter().any(
+            |n| Messages::text(n).contains(&b2.number()) && Messages::text(n).contains("moved")
+        ),
         "the student is told where they go"
     );
 }
@@ -209,7 +220,11 @@ async fn edu_13_a_transfer_whose_seat_is_gone_falls_back_to_a_withdrawal() {
     assert_eq!(gone.refund_amount, 273_000, "a full refund instead");
     assert_eq!(done.exit_log.0.len(), 1);
     assert_eq!(done.exit_log.0[0].action, ExitAction::FellBack);
-    assert_eq!(seats::count_in(t.db(), b2.id).await.unwrap(), 12, "B2 took nobody");
+    assert_eq!(
+        seats::count_in(t.db(), b2.id).await.unwrap(),
+        12,
+        "B2 took nobody"
+    );
     let staff = t.messages.of_type(NOTICE);
     let told = staff
         .iter()
@@ -240,9 +255,17 @@ async fn edu_13_an_unpaid_student_is_withdrawn_with_nothing_to_refund() {
     assert_eq!((unpaid.refund_amount, unpaid.amount_owed), (0, 0));
     assert!(t.cash.links()[0].cancelled, "the payment link is cancelled");
     let other = reload(&t, &paid).await;
-    assert_eq!(other.status, EnrolmentStatus::Withdrawn, "withdraw is the default");
+    assert_eq!(
+        other.status,
+        EnrolmentStatus::Withdrawn,
+        "withdraw is the default"
+    );
     assert_eq!(other.refund_amount, 273_000);
-    assert_eq!(t.books.notes().len(), 1, "a credit note for the paid one only");
+    assert_eq!(
+        t.books.notes().len(),
+        1,
+        "a credit note for the paid one only"
+    );
 }
 
 /// `cancel` without a reason is refused, from `running` it is not offered, and a
@@ -287,7 +310,10 @@ async fn edu_13_a_cancel_needs_a_reason_a_batch_that_has_not_started_and_possibl
     )
     .await
     .unwrap_err();
-    assert!(stranger.to_string().contains("does not hold a seat"), "{stranger}");
+    assert!(
+        stranger.to_string().contains("does not hold a seat"),
+        "{stranger}"
+    );
     assert_eq!(
         Batch::find_or_404(t.db(), b.id).await.unwrap().status,
         BatchStatus::Open,
@@ -296,7 +322,9 @@ async fn edu_13_a_cancel_needs_a_reason_a_batch_that_has_not_started_and_possibl
 
     let running = {
         let batch = Batch::find_or_404(t.db(), b2.id).await.unwrap();
-        batches::start_due(t.state(), batch.start_date).await.unwrap();
+        batches::start_due(t.state(), batch.start_date)
+            .await
+            .unwrap();
         Batch::find_or_404(t.db(), b2.id).await.unwrap()
     };
     assert_eq!(running.status, BatchStatus::Running);

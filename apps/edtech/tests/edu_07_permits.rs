@@ -35,7 +35,8 @@ use wl_kernel::{COMPANY_ADMIN_ROLE, LegalEntity, Subject};
 /// The course the tests teach, which the regulator must approve.
 async fn approved_course(t: &Centre) -> Course {
     let amal = t.coordinator().await;
-    let mut new = NewCourse::new("IELTS-B2", "IELTS preparation", "English language", 40).level("B2");
+    let mut new =
+        NewCourse::new("IELTS-B2", "IELTS preparation", "English language", 40).level("B2");
     new.approval_required = true;
     new.approval_no = Some("KHDA-2026-77".to_owned());
     courses::create(t.state(), &amal, new).await.unwrap()
@@ -92,7 +93,10 @@ async fn edu_07_open_is_refused_when_the_approval_ends_before_the_last_session()
     let message = refusal(&error);
     assert!(message.contains("Course approval"), "{message}");
     assert!(message.contains(&day(20).to_string()), "{message}");
-    assert!(message.contains("override: not allowed"), "no override: {message}");
+    assert!(
+        message.contains("override: not allowed"),
+        "no override: {message}"
+    );
     assert_eq!(
         Batch::find_or_404(t.db(), batch.id).await.unwrap().status,
         BatchStatus::Planned
@@ -154,7 +158,9 @@ async fn draft_in(t: &Centre, batch: &Batch) -> Certificate {
     let student = t.person(1, "Sara Ali");
     let desk = t.desk().await;
     let e = t.enrol(student, batch).await;
-    enrolments::activate(t.state(), Some(&desk), e.id).await.unwrap();
+    enrolments::activate(t.state(), Some(&desk), e.id)
+        .await
+        .unwrap();
     enrolments::complete(t.state(), e.id).await.unwrap();
     Certificate::of_enrolment(t.db(), e.id)
         .await
@@ -212,7 +218,8 @@ async fn edu_07_the_approval_blocks_issue_only_when_the_certificate_states_it() 
     let batch = t.open_batch(&tutor, &room, next_weekday(day(7), 1)).await;
     let stated = draft_in(&t, &batch).await;
     assert!(stated.states_approval);
-    t.documents.set(&course.subject(), "course_approval", Some(day(-1)));
+    t.documents
+        .set(&course.subject(), "course_approval", Some(day(-1)));
     let registrar = t.registrar().await;
 
     let error = certificates::issue(t.state(), &registrar, stated.id)
@@ -235,7 +242,12 @@ async fn edu_07_the_approval_blocks_issue_only_when_the_certificate_states_it() 
 }
 
 /// A `DocumentExpiring` as wl-documents emits it, `left` days before `expires_on`.
-fn expiring(subject: &Subject, kind: &str, expires_on: renox::chrono::NaiveDate, left: i64) -> DocumentExpiring {
+fn expiring(
+    subject: &Subject,
+    kind: &str,
+    expires_on: renox::chrono::NaiveDate,
+    left: i64,
+) -> DocumentExpiring {
     DocumentExpiring {
         document_id: DocumentId(1),
         subject: subject.clone(),
@@ -268,8 +280,12 @@ async fn edu_07_sixty_days_ahead_one_message_and_the_renewal_task() {
     let t = boot().await;
     let course = approved_course(&t).await;
     documents_until(&t, &course, day(60)).await;
-    let coordinator = t.holder("Cora Coordinator", perm::COORDINATOR_ROLE, None).await;
-    let manager = t.holder("Mona Manager", perm::CENTRE_MANAGER_ROLE, None).await;
+    let coordinator = t
+        .holder("Cora Coordinator", perm::COORDINATOR_ROLE, None)
+        .await;
+    let manager = t
+        .holder("Mona Manager", perm::CENTRE_MANAGER_ROLE, None)
+        .await;
     let owner = t.holder("Omar Owner", perm::OWNER_ROLE, None).await;
     let outsider = t.holder("Tariq Tutor", perm::TUTOR_ROLE, None).await;
     let tutor = t.tutor("Layla").await;
@@ -277,7 +293,9 @@ async fn edu_07_sixty_days_ahead_one_message_and_the_renewal_task() {
     let upcoming = t.open_batch(&tutor, &room, next_weekday(day(7), 1)).await;
     let tutor2 = t.tutor("Hana").await;
     let room2 = t.room("Room 2", 14).await;
-    let started = t.open_batch(&tutor2, &room2, next_weekday(day(-14), 1)).await;
+    let started = t
+        .open_batch(&tutor2, &room2, next_weekday(day(-14), 1))
+        .await;
     batches::start_due(t.state(), day(0)).await.unwrap();
     assert_eq!(
         Batch::find_or_404(t.db(), started.id).await.unwrap().status,
@@ -312,7 +330,11 @@ async fn edu_07_sixty_days_ahead_one_message_and_the_renewal_task() {
     assert!(text.contains(&day(60).to_string()), "{text}");
     let tasks = t.tasks.with_key("edtech.permit_renewal");
     assert_eq!(tasks.len(), 1);
-    assert_eq!(tasks[0].assignee_user(), Some(coordinator.id), "the academic coordinator");
+    assert_eq!(
+        tasks[0].assignee_user(),
+        Some(coordinator.id),
+        "the academic coordinator"
+    );
     let due = wl_kernel::calendar::BusinessCalendar::default()
         .from_local(day(60).and_hms_opt(9, 0, 0).unwrap());
     assert_eq!(tasks[0].ticket.due_at, Some(due), "due on the expiry date");
@@ -369,10 +391,18 @@ async fn edu_07_the_campus_centre_manager_renews_the_campus_permit() {
     let permit = Subject::new("kernel.legal_entity", entity.id);
     t.documents.set(&permit, "centre_permit", Some(day(80)));
     let north = t
-        .holder("Mona North", perm::CENTRE_MANAGER_ROLE, Some(&Scope::new("test.campus", 3)))
+        .holder(
+            "Mona North",
+            perm::CENTRE_MANAGER_ROLE,
+            Some(&Scope::new("test.campus", 3)),
+        )
         .await;
     let south = t
-        .holder("Mira South", perm::CENTRE_MANAGER_ROLE, Some(&Scope::new("test.campus", 4)))
+        .holder(
+            "Mira South",
+            perm::CENTRE_MANAGER_ROLE,
+            Some(&Scope::new("test.campus", 4)),
+        )
         .await;
     let tutor = t.tutor("Layla").await;
     let room = t.room("Room 1", 14).await;
@@ -425,7 +455,8 @@ async fn edu_07_a_failed_run_alerts_the_owner_and_the_admin() {
     let owner = t.holder("Omar Owner", perm::OWNER_ROLE, None).await;
     let admin = t.holder("Aisha Admin", COMPANY_ADMIN_ROLE, None).await;
     t.messages.fail(true);
-    t.messages.always_works(wl_kernel::compliance::service::NOTIFICATION_TYPE);
+    t.messages
+        .always_works(wl_kernel::compliance::service::NOTIFICATION_TYPE);
 
     t.state()
         .emit(expiring(&course.subject(), "course_approval", day(60), 60))

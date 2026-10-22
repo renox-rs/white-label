@@ -273,11 +273,21 @@ async fn announce(
     let lines = if batches.is_empty() {
         english("edtech.permits.no_batches", &[])
     } else {
-        batches.iter().map(batch_line).collect::<Vec<_>>().join("\n")
+        batches
+            .iter()
+            .map(batch_line)
+            .collect::<Vec<_>>()
+            .join("\n")
     };
     let (title_key, body_key) = match phase {
-        Phase::Expiring => ("edtech.permits.expiring_title", "edtech.permits.expiring_body"),
-        Phase::Expired => ("edtech.permits.expired_title", "edtech.permits.expired_body"),
+        Phase::Expiring => (
+            "edtech.permits.expiring_title",
+            "edtech.permits.expiring_body",
+        ),
+        Phase::Expired => (
+            "edtech.permits.expired_title",
+            "edtech.permits.expired_body",
+        ),
     };
     // The borrowed parameters are dropped before the await (they are not `Send`).
     let (title, body) = {
@@ -289,8 +299,7 @@ async fn announce(
         ];
         (english(title_key, &params), english(body_key, &params))
     };
-    notices::tell_users(state, subject.clone(), &name, &users, &title, &body)
-    .await?;
+    notices::tell_users(state, subject.clone(), &name, &users, &title, &body).await?;
     // The renewal task, due on the expiry date, for the kind's responsible role.
     let role = responsible_role(kind);
     let creator = task_creator(state);
@@ -334,8 +343,8 @@ async fn run(
     expires_on: NaiveDate,
     phase: Phase,
 ) -> Result {
-    let spec = RuleRunSpec::new(RULE, subject.clone(), key(kind, expires_on, phase))
-        .compliance_critical();
+    let spec =
+        RuleRunSpec::new(RULE, subject.clone(), key(kind, expires_on, phase)).compliance_critical();
     let (subject, kind) = (subject.clone(), kind.to_owned());
     run_rule(state, spec, move |state: AppState| async move {
         announce(&state, &subject, &kind, expires_on, phase).await
@@ -354,7 +363,14 @@ pub async fn on_expiring(state: &AppState, event: &DocumentExpiring) -> Result {
     if !watched(&event.kind) || event.days_left > LOOK_AHEAD_DAYS {
         return Ok(());
     }
-    run(state, &event.subject, &event.kind, event.expires_on, Phase::Expiring).await
+    run(
+        state,
+        &event.subject,
+        &event.kind,
+        event.expires_on,
+        Phase::Expiring,
+    )
+    .await
 }
 
 /// `DocumentExpired` for a centre permit or a course approval: the same on the
@@ -367,7 +383,14 @@ pub async fn on_expired(state: &AppState, event: &DocumentExpired) -> Result {
     if !watched(&event.kind) {
         return Ok(());
     }
-    run(state, &event.subject, &event.kind, event.expires_on, Phase::Expired).await
+    run(
+        state,
+        &event.subject,
+        &event.kind,
+        event.expires_on,
+        Phase::Expired,
+    )
+    .await
 }
 
 /// Tries again the runs that failed and wait (the scheduled 02:00 run): five

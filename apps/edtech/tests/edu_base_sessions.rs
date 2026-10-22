@@ -6,9 +6,9 @@
 
 mod support;
 
+use edtech::attendance::Mark;
 use edtech::batch_machine::{BatchInput, CHANGE_TUTOR};
 use edtech::batches;
-use edtech::attendance::Mark;
 use edtech::corrections;
 use edtech::session_machine::{CANCEL, CORRECT_ATTENDANCE};
 use edtech::sessions;
@@ -63,7 +63,11 @@ async fn edu_base_opening_a_batch_generates_its_sessions() {
     assert_eq!(planned[0].starts_at, at(monday(), 18, 0));
     assert_eq!(planned[0].ends_at, at(monday(), 19, 30));
     assert!(planned.iter().all(|s| s.status == SessionStatus::Scheduled));
-    assert!(planned.iter().all(|s| s.tutor_resource_id == Some(tutor.id)));
+    assert!(
+        planned
+            .iter()
+            .all(|s| s.tutor_resource_id == Some(tutor.id))
+    );
     assert!(planned.iter().all(|s| s.room_resource_id == Some(room.id)));
 }
 
@@ -115,8 +119,12 @@ async fn edu_base_a_tutor_or_room_cannot_be_in_two_places_at_once() {
         assert!(t.sessions_of(batch).await.is_empty());
     }
     // Another tutor in another room opens.
-    let free = t.batch_of(&other_tutor, &other_room, monday(), &[1, 3]).await;
-    batches::open(t.state(), &amal, free.id).await.expect("it opens");
+    let free = t
+        .batch_of(&other_tutor, &other_room, monday(), &[1, 3])
+        .await;
+    batches::open(t.state(), &amal, free.id)
+        .await
+        .expect("it opens");
 }
 
 /// The sessions are blocks of their tutor and room for wl-scheduling, with
@@ -143,7 +151,10 @@ async fn edu_base_the_sessions_block_their_tutor_and_room_in_scheduling() {
         assert_eq!(blocks[0].starts_at, planned[0].starts_at);
         assert_eq!(blocks[0].ends_at, planned[0].ends_at);
         assert_eq!(blocks[0].source, "session");
-        assert_eq!(blocks[0].reference, format!("edtech.session:{}", planned[0].id));
+        assert_eq!(
+            blocks[0].reference,
+            format!("edtech.session:{}", planned[0].id)
+        );
     }
     let none = source
         .blocks(t.state(), elsewhere.id, None, from, until)
@@ -186,7 +197,10 @@ async fn edu_base_a_session_is_rescheduled_when_the_tutor_and_room_are_free() {
     // The Wednesday session at 18:00 holds the tutor.
     let wednesday = monday() + TimeDelta::days(2);
     let taken = sessions::reschedule(t.state(), &amal, planned[0].id, wednesday, "18:30").await;
-    assert!(matches!(taken, Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))));
+    assert!(matches!(
+        taken,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
     let bad = sessions::reschedule(t.state(), &amal, planned[0].id, wednesday, "evening").await;
     assert!(bad.is_err());
     let unchanged = Session::find_or_404(t.db(), planned[0].id).await.unwrap();
@@ -210,11 +224,17 @@ async fn edu_base_one_session_changes_tutor() {
         .expect("Omar is free");
     assert_eq!(moved.tutor_resource_id, Some(omar.id));
     let rest = t.sessions_of(&batch).await;
-    assert!(rest[1..].iter().all(|s| s.tutor_resource_id == Some(tutor.id)));
+    assert!(
+        rest[1..]
+            .iter()
+            .all(|s| s.tutor_resource_id == Some(tutor.id))
+    );
 
     // Omar teaches elsewhere on the first Wednesday.
     let other_room = t.room("Room 2", 10).await;
-    let elsewhere = t.batch_of(&omar, &other_room, monday() + TimeDelta::days(2), &[3]).await;
+    let elsewhere = t
+        .batch_of(&omar, &other_room, monday() + TimeDelta::days(2), &[3])
+        .await;
     batches::open(t.state(), &amal, elsewhere.id).await.unwrap();
     let clash = sessions::change_tutor(t.state(), &amal, planned[1].id, omar.id, None).await;
     assert!(clash.is_err());
@@ -265,7 +285,12 @@ async fn edu_base_the_batch_changes_tutor_from_a_date() {
         } else {
             tutor.id
         };
-        assert_eq!(session.tutor_resource_id, Some(expected), "session {}", session.number);
+        assert_eq!(
+            session.tutor_resource_id,
+            Some(expected),
+            "session {}",
+            session.number
+        );
     }
 }
 
@@ -300,7 +325,10 @@ async fn edu_base_a_tutor_submits_the_attendance_of_a_session_that_started() {
     later.attendance_by = None;
     later.save(t.db()).await.unwrap();
     let early = sessions::submit_attendance(t.state(), &tariq, later.id).await;
-    assert!(matches!(early, Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))));
+    assert!(matches!(
+        early,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
 
     // A counsellor does not teach.
     let cara = t.counsellor().await;
@@ -317,10 +345,14 @@ async fn edu_base_correcting_attendance_needs_a_reason() {
     let batch = running(&t).await;
     let past = t.past_session(&batch, 1, 1).await;
     let student = t.person(1, "Sara Ali");
-    let enrolment = t.enrolment_in(&batch, student, edtech::EnrolmentStatus::Active).await;
+    let enrolment = t
+        .enrolment_in(&batch, student, edtech::EnrolmentStatus::Active)
+        .await;
     let tariq = t.teacher().await;
     let amal = t.coordinator().await;
-    sessions::submit_attendance(t.state(), &tariq, past.id).await.unwrap();
+    sessions::submit_attendance(t.state(), &tariq, past.id)
+        .await
+        .unwrap();
 
     let bare = corrections::correct_attendance(
         t.state(),
@@ -363,11 +395,17 @@ async fn edu_base_the_batch_completes_after_its_last_session() {
     let tariq = t.teacher().await;
     let amal = t.coordinator().await;
 
-    sessions::submit_attendance(t.state(), &tariq, first.id).await.unwrap();
+    sessions::submit_attendance(t.state(), &tariq, first.id)
+        .await
+        .unwrap();
     let still = Batch::find_or_404(t.db(), batch.id).await.unwrap();
     assert_eq!(still.status, BatchStatus::Running);
     // The coordinator cannot complete it by hand while a session is open.
-    assert!(batches::complete(t.state(), Some(&amal), batch.id).await.is_err());
+    assert!(
+        batches::complete(t.state(), Some(&amal), batch.id)
+            .await
+            .is_err()
+    );
 
     sessions::cancel(t.state(), &amal, second.id, "tutor sick", None)
         .await
@@ -388,14 +426,22 @@ async fn edu_base_a_batch_is_completed_by_hand_or_by_the_daily_run() {
     let amal = t.coordinator().await;
     // Two sessions: the second keeps the batch running after the first is held.
     let open = t.past_session(&batch, 2, 1).await;
-    sessions::submit_attendance(t.state(), &tariq, held.id).await.unwrap();
+    sessions::submit_attendance(t.state(), &tariq, held.id)
+        .await
+        .unwrap();
     assert!(matches!(
         batches::complete(t.state(), Some(&tariq), batch.id).await,
         Err(Error::Forbidden)
     ));
-    assert!(batches::complete(t.state(), Some(&amal), batch.id).await.is_err());
+    assert!(
+        batches::complete(t.state(), Some(&amal), batch.id)
+            .await
+            .is_err()
+    );
 
-    sessions::submit_attendance(t.state(), &tariq, open.id).await.unwrap();
+    sessions::submit_attendance(t.state(), &tariq, open.id)
+        .await
+        .unwrap();
     let done = Batch::find_or_404(t.db(), batch.id).await.unwrap();
     assert_eq!(done.status, BatchStatus::Completed);
 
@@ -447,9 +493,15 @@ async fn edu_base_a_cancelled_session_can_have_a_make_up() {
 
     // A Friday is free.
     let friday = monday() + TimeDelta::days(4);
-    let cancelled = sessions::cancel(t.state(), &amal, planned[0].id, "room flooded", Some(friday))
-        .await
-        .expect("it is cancelled");
+    let cancelled = sessions::cancel(
+        t.state(),
+        &amal,
+        planned[0].id,
+        "room flooded",
+        Some(friday),
+    )
+    .await
+    .expect("it is cancelled");
     assert_eq!(cancelled.status, SessionStatus::Cancelled);
     assert_eq!(cancelled.cancel_reason.as_deref(), Some("room flooded"));
     let all = t.sessions_of(&batch).await;
@@ -477,7 +529,12 @@ async fn edu_base_a_cancelled_session_cannot_be_cancelled_again() {
         .await
         .unwrap();
     let cancelled = Session::find_or_404(t.db(), planned[0].id).await.unwrap();
-    let again = cancelled.transition(CANCEL).by(&amal).reason("again").run(t.state()).await;
+    let again = cancelled
+        .transition(CANCEL)
+        .by(&amal)
+        .reason("again")
+        .run(t.state())
+        .await;
     assert!(matches!(again, Err(TransitionError::NotFrom(_))));
 }
 
@@ -571,7 +628,10 @@ async fn edu_base_the_tutor_submits_attendance_from_the_session_page() {
         .assert_see("Submit attendance");
     t.app
         .htmx()
-        .post(&format!("/edtech/sessions/{}/attendance", past.id), &[("x", "y")])
+        .post(
+            &format!("/edtech/sessions/{}/attendance", past.id),
+            &[("x", "y")],
+        )
         .await
         .assert_ok();
     let held = Session::find_or_404(t.db(), past.id).await.unwrap();

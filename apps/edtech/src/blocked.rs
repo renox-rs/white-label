@@ -32,9 +32,9 @@
 use std::collections::BTreeSet;
 
 use renox::prelude::*;
+use wl_kernel::PartyId;
 use wl_kernel::block_effects::{AgreementKind, BlockEffect};
 use wl_kernel::parties::{PartyBlocked, PartyStatus, PartyUnblocked, directory};
-use wl_kernel::PartyId;
 
 use crate::db::refused;
 use crate::enrolment::{Enrolment, EnrolmentFreeze, EnrolmentStatus, FreezeCause};
@@ -139,7 +139,10 @@ pub async fn freeze_for_block(state: &AppState, party: PartyId) -> Result<Vec<i6
         match enrolments::freeze(state, None, enrolment.id, FreezeCause::Block, None).await {
             Ok(_) => frozen.push(enrolment.id),
             Err(error) => {
-                eprintln!("edtech: enrolment {} is not frozen for the block: {error:?}", enrolment.id);
+                eprintln!(
+                    "edtech: enrolment {} is not frozen for the block: {error:?}",
+                    enrolment.id
+                );
                 failure.get_or_insert(error);
             }
         }
@@ -172,7 +175,10 @@ pub async fn unfreeze_for_unblock(state: &AppState, party: PartyId) -> Result<Ve
         match enrolments::unfreeze(state, None, enrolment.id, FreezeCause::Block).await {
             Ok(_) => released.push(enrolment.id),
             Err(error) => {
-                eprintln!("edtech: enrolment {} keeps its block freeze: {error:?}", enrolment.id);
+                eprintln!(
+                    "edtech: enrolment {} keeps its block freeze: {error:?}",
+                    enrolment.id
+                );
                 failure.get_or_insert(error);
             }
         }

@@ -149,10 +149,7 @@ pub async fn failures(
                 None => false,
             };
             if !valid {
-                found.push(Failure {
-                    date: *date,
-                    kind,
-                });
+                found.push(Failure { date: *date, kind });
             }
         }
     }
@@ -240,12 +237,7 @@ pub fn refusal(tutor: &str, failures: &[Failure], no_employee: bool) -> Error {
 /// # Errors
 ///
 /// A 422 naming the missing kind and the first failing date; the guards' errors.
-pub async fn check(
-    state: &AppState,
-    tutor: &Tutor,
-    batch: &Batch,
-    dates: &[NaiveDate],
-) -> Result {
+pub async fn check(state: &AppState, tutor: &Tutor, batch: &Batch, dates: &[NaiveDate]) -> Result {
     let kinds = required_kinds(state, tutor.employee_id, batch).await?;
     if kinds.is_empty() || dates.is_empty() {
         return Ok(());

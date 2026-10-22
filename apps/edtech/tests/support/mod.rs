@@ -32,8 +32,8 @@ pub mod tasks;
 /// The stand-in of the documents module's guard.
 pub mod documents;
 
-pub use money::{Books, Cash, Messages, Packages, People, Subs};
 pub use documents::Documents;
+pub use money::{Books, Cash, Messages, Packages, People, Subs};
 pub use tasks::Tasks;
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -278,7 +278,9 @@ impl Centre {
         };
         // A role that exists keeps its permissions; a new one grants none.
         if permissions::grant(self.db(), role, &[]).await.is_err() {
-            permissions::define_role(self.db(), role, &[]).await.unwrap();
+            permissions::define_role(self.db(), role, &[])
+                .await
+                .unwrap();
         }
         match scope {
             Some(scope) => user.assign_role_in(self.db(), role, scope).await.unwrap(),
@@ -588,9 +590,13 @@ impl Centre {
         };
         let mut tx = self.db().begin().await.unwrap();
         if status.takes_a_seat() {
-            seats::take(&mut tx, batch.id, 1, Limit::Room).await.unwrap();
+            seats::take(&mut tx, batch.id, 1, Limit::Room)
+                .await
+                .unwrap();
         }
-        row.insert_in_state(&mut tx, status, "fixture").await.unwrap();
+        row.insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
         tx.commit().await.unwrap();
         Enrolment::find_or_404(self.db(), row.id).await.unwrap()
     }
@@ -833,7 +839,9 @@ impl Centre {
             ..Enrolment::default()
         };
         let mut tx = self.db().begin().await.unwrap();
-        row.insert_in_state(&mut tx, status, "fixture").await.unwrap();
+        row.insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
         tx.commit().await.unwrap();
         self.packages.give(PartyId(student), item, credits);
         Enrolment::find_or_404(self.db(), row.id).await.unwrap()
@@ -846,7 +854,10 @@ impl Centre {
             .where_(Enrolment::ID.eq(enrolment.id))
             .update(
                 self.db(),
-                &[("absence_consumes", &consumes), ("excuse_notice_hours", &hours)],
+                &[
+                    ("absence_consumes", &consumes),
+                    ("excuse_notice_hours", &hours),
+                ],
             )
             .await
             .unwrap();

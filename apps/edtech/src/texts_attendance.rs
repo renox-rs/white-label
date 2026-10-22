@@ -68,16 +68,16 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("edtech.attendance.credit_used", "Used"),
     ("edtech.attendance.credit_not_used", "Not used"),
     ("edtech.attendance.credit_waiting", "Waiting for a credit"),
-    ("edtech.attendance.empty", "No student is expected in this session."),
+    (
+        "edtech.attendance.empty",
+        "No student is expected in this session.",
+    ),
     ("edtech.attendance.submit", "Submit attendance"),
     (
         "edtech.attendance.submit_description",
         "Mark each student. A student excused by a notice stays excused unless you mark them present.",
     ),
-    (
-        "edtech.attendance.field",
-        "Mark of :student",
-    ),
+    ("edtech.attendance.field", "Mark of :student"),
     ("edtech.attendance.add", "Add a student"),
     (
         "edtech.attendance.add_description",
@@ -85,7 +85,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ),
     ("edtech.attendance.added", "Student added."),
     ("edtech.attendance.enrolment_number", "Enrolment"),
-    ("edtech.attendance.record_notice", "Record a notice of absence"),
+    (
+        "edtech.attendance.record_notice",
+        "Record a notice of absence",
+    ),
     (
         "edtech.attendance.record_notice_description",
         "The notice and its time. 24 hours or more before the session the student is excused; later the absence stays unexcused unless the coordinator excuses it.",
@@ -110,7 +113,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         ":student (:enrolment) attended a session and the package of :item has no credit left to use (:reason). The attendance is saved. Sell a new package; the credit is taken from it when it is paid.",
     ),
     ("edtech.credits.note.no_credit", "no credit left"),
-    ("edtech.credits.note.unpaid", "the package has an unpaid balance"),
+    (
+        "edtech.credits.note.unpaid",
+        "the package has an unpaid balance",
+    ),
     (
         "edtech.credits.task_done",
         "The credit was taken from a package.",

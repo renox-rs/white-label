@@ -66,15 +66,17 @@ async fn edu_base_the_document_kinds_carry_their_blocks() {
     let app = edtech_booted().await;
     let documents = guard(app.state());
 
-    let open = documents
-        .blocks_for(app.db(), "batch.open")
-        .await
-        .unwrap();
+    let open = documents.blocks_for(app.db(), "batch.open").await.unwrap();
     let mut kinds: Vec<&str> = open.iter().map(|e| e.kind.as_str()).collect();
     kinds.sort_unstable();
     assert_eq!(
         kinds,
-        ["centre_permit", "course_approval", "police_clearance", "tutor_permit"]
+        [
+            "centre_permit",
+            "course_approval",
+            "police_clearance",
+            "tutor_permit"
+        ]
     );
     assert!(open.iter().all(|e| e.mode == BlockMode::Block));
     assert!(open.iter().all(|e| e.override_mode == OverrideMode::Never));
@@ -104,7 +106,12 @@ async fn edu_08_the_tutor_transitions_have_providers_in_the_host() {
         assert!(provided.iter().any(|g| g == guarded), "{guarded}");
     }
     let outcome = guard(app.state())
-        .check(app.state(), "session.reschedule", 999, wl_kernel::documents::today())
+        .check(
+            app.state(),
+            "session.reschedule",
+            999,
+            wl_kernel::documents::today(),
+        )
         .await
         .unwrap();
     assert!(outcome.is_ok());
@@ -180,7 +187,10 @@ async fn edu_12_the_termination_policy_is_the_centre_managers_and_in_words() {
         .unwrap();
     assert_eq!(policies.len(), 1);
     assert!(policies[0].sod, "the requester never approves");
-    assert_eq!(policies[0].steps.0, [Step::holders_of(edu::BATCHES_APPROVE)]);
+    assert_eq!(
+        policies[0].steps.0,
+        [Step::holders_of(edu::BATCHES_APPROVE)]
+    );
     assert!(action_is_labelled("edtech.terminate"));
     assert_eq!(
         subject_url("edtech.batch", 9).as_deref(),
@@ -250,7 +260,10 @@ async fn edu_07_the_real_guard_needs_the_centre_permit_and_the_course_approval()
     let message = refused.message();
     assert!(message.contains("Centre permit"), "{message}");
     assert!(message.contains("Course approval"), "{message}");
-    assert!(refused.override_links().is_empty(), "no override is offered");
+    assert!(
+        refused.override_links().is_empty(),
+        "no override is offered"
+    );
 
     let entity = LegalEntity::default_entity(app.db()).await.unwrap();
     let permit = record_document(

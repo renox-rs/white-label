@@ -31,8 +31,8 @@ use renox::chrono::{Duration, NaiveDate};
 use renox::db::{Json, now};
 use renox::prelude::*;
 use renox::state_machine::{Outcome, StateMachine, TransitionError, Transitioned};
-use wl_kernel::approvals::{announce, submit::REQUEST_KEY};
 use wl_kernel::PartyId;
+use wl_kernel::approvals::{announce, submit::REQUEST_KEY};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{InvoiceId, InvoicePaid, invoicer};
 use wl_kernel::parties::directory;
@@ -256,7 +256,10 @@ fn check_amounts(new: &NewEnrolment) -> Result {
         return Err(refused(english("edtech.enrolments.problem.amounts", &[])));
     }
     if new.kind == EnrolmentKind::Course && !(1..=MAX_INSTALMENTS).contains(&new.instalments) {
-        return Err(refused(english("edtech.enrolments.problem.instalments", &[])));
+        return Err(refused(english(
+            "edtech.enrolments.problem.instalments",
+            &[],
+        )));
     }
     match new.kind {
         EnrolmentKind::Course if new.batch_id.is_none() => {
@@ -265,9 +268,10 @@ fn check_amounts(new: &NewEnrolment) -> Result {
         EnrolmentKind::Package if new.item_code.is_none() || new.sessions < 1 => {
             Err(refused(english("edtech.enrolments.problem.package", &[])))
         }
-        EnrolmentKind::Membership if new.item_code.is_none() => {
-            Err(refused(english("edtech.enrolments.problem.membership", &[])))
-        }
+        EnrolmentKind::Membership if new.item_code.is_none() => Err(refused(english(
+            "edtech.enrolments.problem.membership",
+            &[],
+        ))),
         _ => Ok(()),
     }
 }
@@ -291,7 +295,10 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewEnrolment) -> Resul
             .guardians(&state.db, PartyId(new.student))
             .await?;
         if !guardians.contains(&PartyId(guardian)) {
-            return Err(refused(english("edtech.enrolments.problem.not_guardian", &[])));
+            return Err(refused(english(
+                "edtech.enrolments.problem.not_guardian",
+                &[],
+            )));
         }
     }
     let payer = new.payer.or(new.guardian).unwrap_or(new.student);
@@ -307,7 +314,10 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewEnrolment) -> Resul
     if let Some(batch) = &batch
         && batch.status != BatchStatus::Open
     {
-        return Err(refused(english("edtech.enrolments.problem.batch_not_open", &[])));
+        return Err(refused(english(
+            "edtech.enrolments.problem.batch_not_open",
+            &[],
+        )));
     }
     let sessions_total = match &batch {
         Some(batch) => {
@@ -384,7 +394,10 @@ pub async fn accept_terms(state: &AppState, by: &AuthUser, id: i64) -> Result<En
     require(by, permissions::ENROLMENTS_MANAGE)?;
     let enrolment = Enrolment::find_or_404(&state.db, id).await?;
     if enrolment.status != EnrolmentStatus::PendingPayment {
-        return Err(refused(english("edtech.enrolments.problem.not_pending", &[])));
+        return Err(refused(english(
+            "edtech.enrolments.problem.not_pending",
+            &[],
+        )));
     }
     Enrolment::query()
         .where_(Enrolment::ID.eq(id))
@@ -406,7 +419,10 @@ pub async fn approve_discount(state: &AppState, by: &AuthUser, id: i64) -> Resul
     require(by, permissions::ENROLMENTS_APPROVE)?;
     let enrolment = Enrolment::find_or_404(&state.db, id).await?;
     if enrolment.status != EnrolmentStatus::PendingPayment {
-        return Err(refused(english("edtech.enrolments.problem.not_pending", &[])));
+        return Err(refused(english(
+            "edtech.enrolments.problem.not_pending",
+            &[],
+        )));
     }
     Enrolment::query()
         .where_(Enrolment::ID.eq(id))
@@ -501,7 +517,10 @@ pub async fn freeze(
     };
     let open = EnrolmentFreeze::open_of(&state.db, id).await?;
     if open.iter().any(|row| row.cause == cause) {
-        return Err(refused(english("edtech.enrolments.problem.already_frozen", &[])));
+        return Err(refused(english(
+            "edtech.enrolments.problem.already_frozen",
+            &[],
+        )));
     }
     let used_days =
         EnrolmentFreeze::counted_in_year(&state.db, enrolment.student_party_id, on).await?;
@@ -532,7 +551,10 @@ pub async fn unfreeze(
     let enrolment = Enrolment::find_or_404(&state.db, id).await?;
     let open = EnrolmentFreeze::open_of(&state.db, id).await?;
     if enrolment.status != EnrolmentStatus::Frozen || !open.iter().any(|row| row.cause == cause) {
-        return Err(refused(english("edtech.enrolments.problem.not_frozen", &[])));
+        return Err(refused(english(
+            "edtech.enrolments.problem.not_frozen",
+            &[],
+        )));
     }
     let left = open.iter().filter(|row| row.cause != cause).count();
     let on = today();
@@ -782,8 +804,13 @@ async fn after(state: &AppState, event: &Transitioned<Enrolment>) -> Result {
         }
         FREEZE | FREEZE_SYSTEM => {
             // The membership follows a freeze of the student's (`EDU.RUL.14`).
-            crate::linked::after_freeze(state, &enrolment, cause_of(&event.meta), day_of(&event.meta))
-                .await;
+            crate::linked::after_freeze(
+                state,
+                &enrolment,
+                cause_of(&event.meta),
+                day_of(&event.meta),
+            )
+            .await;
         }
         UNFREEZE | UNFREEZE_SYSTEM => {
             // The last cause ended: the package gets the frozen days back and

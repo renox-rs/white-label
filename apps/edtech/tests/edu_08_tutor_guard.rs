@@ -79,7 +79,10 @@ async fn edu_08_open_is_refused_naming_the_clearance_and_the_first_failing_date(
         "the guard looked at every date, not only the first: {message}"
     );
     assert!(message.contains("Layla Hassan"), "{message}");
-    assert!(!message.to_lowercase().contains("minor"), "no minors' data: {message}");
+    assert!(
+        !message.to_lowercase().contains("minor"),
+        "no minors' data: {message}"
+    );
     let same = Batch::find_or_404(t.db(), batch.id).await.unwrap();
     assert_eq!(same.status, BatchStatus::Planned);
     assert!(t.sessions_of(&batch).await.is_empty());
@@ -133,20 +136,35 @@ async fn edu_08_a_freelance_tutor_passes_with_either_the_permit_or_the_visa() {
     let subject = |employee| Centre::employee_subject(employee);
 
     // Fiona: the permit ran out, the visa did not.
-    t.documents.set(&subject(fiona_employee), "tutor_permit", Some(day(-30)));
-    t.documents.also(&subject(fiona_employee), "tutor_permit", day(300));
+    t.documents
+        .set(&subject(fiona_employee), "tutor_permit", Some(day(-30)));
+    t.documents
+        .also(&subject(fiona_employee), "tutor_permit", day(300));
     let room1 = t.room("Room 1", 14).await;
     let batch = t
-        .batch_with(&course, (&fiona, Some(fiona_employee)), &room1, monday(), &[1, 3])
+        .batch_with(
+            &course,
+            (&fiona, Some(fiona_employee)),
+            &room1,
+            monday(),
+            &[1, 3],
+        )
         .await;
     let opened = batches::open(t.state(), &amal, batch.id).await.unwrap();
     assert_eq!(opened.status, BatchStatus::Open);
 
     // Gina: only the expired permit.
-    t.documents.set(&subject(gina_employee), "tutor_permit", Some(day(-30)));
+    t.documents
+        .set(&subject(gina_employee), "tutor_permit", Some(day(-30)));
     let room2 = t.room("Room 2", 14).await;
     let other = t
-        .batch_with(&course, (&gina, Some(gina_employee)), &room2, monday(), &[1, 3])
+        .batch_with(
+            &course,
+            (&gina, Some(gina_employee)),
+            &room2,
+            monday(),
+            &[1, 3],
+        )
         .await;
     let error = batches::open(t.state(), &amal, other.id).await.unwrap_err();
     let message = refusal(&error);
@@ -159,7 +177,13 @@ async fn edu_08_a_freelance_tutor_passes_with_either_the_permit_or_the_visa() {
     // Hana: no document at all.
     let room3 = t.room("Room 3", 14).await;
     let third = t
-        .batch_with(&course, (&hana, Some(hana_employee)), &room3, monday(), &[1, 3])
+        .batch_with(
+            &course,
+            (&hana, Some(hana_employee)),
+            &room3,
+            monday(),
+            &[1, 3],
+        )
         .await;
     assert!(batches::open(t.state(), &amal, third.id).await.is_err());
 }
@@ -185,7 +209,9 @@ async fn edu_08_a_session_moves_only_to_a_date_the_clearance_covers() {
     let message = refusal(&error);
     assert!(message.contains("police clearance"), "{message}");
     assert!(message.contains(&late.to_string()), "{message}");
-    let unchanged = edtech::Session::find_or_404(t.db(), session.id).await.unwrap();
+    let unchanged = edtech::Session::find_or_404(t.db(), session.id)
+        .await
+        .unwrap();
     assert_eq!(unchanged.session_date, session.session_date);
 
     let early = monday() + TimeDelta::days(4);
@@ -222,13 +248,20 @@ async fn edu_08_a_new_tutor_must_be_valid_on_every_remaining_date() {
     .await
     .unwrap_err();
     let message = refusal(&error);
-    assert!(message.contains(&(monday() + TimeDelta::days(21)).to_string()), "{message}");
-    assert!(message.contains(&(monday() + TimeDelta::days(23)).to_string()), "{message}");
-    assert!(t
-        .sessions_of(&batch)
-        .await
-        .iter()
-        .all(|s| s.tutor_resource_id == Some(layla.id)));
+    assert!(
+        message.contains(&(monday() + TimeDelta::days(21)).to_string()),
+        "{message}"
+    );
+    assert!(
+        message.contains(&(monday() + TimeDelta::days(23)).to_string()),
+        "{message}"
+    );
+    assert!(
+        t.sessions_of(&batch)
+            .await
+            .iter()
+            .all(|s| s.tutor_resource_id == Some(layla.id))
+    );
 
     // One session inside Nour's clearance goes to her; one outside it does not.
     let sessions_of = t.sessions_of(&batch).await;
@@ -244,9 +277,10 @@ async fn edu_08_a_new_tutor_must_be_valid_on_every_remaining_date() {
         .await
         .unwrap();
     assert_eq!(moved.tutor_resource_id, Some(nour.id));
-    let refused = sessions::change_tutor(t.state(), &amal, outside.id, nour.id, Some(nour_employee))
-        .await
-        .unwrap_err();
+    let refused =
+        sessions::change_tutor(t.state(), &amal, outside.id, nour.id, Some(nour_employee))
+            .await
+            .unwrap_err();
     assert!(refusal(&refused).contains("police clearance"));
 }
 
@@ -311,7 +345,9 @@ async fn edu_08_future_work_lists_the_sessions_and_the_bookings_after_the_expiry
     let mut service_type = ServiceType::new("one_to_one_maths", "One-to-one maths", 60);
     service_type.required_qualifications = "police_clearance".to_owned();
     service_type.save(t.db()).await.unwrap();
-    resource::offer(t.db(), service_type.id, layla.id).await.unwrap();
+    resource::offer(t.db(), service_type.id, layla.id)
+        .await
+        .unwrap();
     for weekday in 1..=7 {
         AvailabilityRule::new(layla.id, weekday, 0, 1440)
             .save(t.db())
@@ -322,7 +358,12 @@ async fn edu_08_future_work_lists_the_sessions_and_the_bookings_after_the_expiry
     let lesson_day = monday() + TimeDelta::days(12);
     let booking: Booking = service::book(
         t.state(),
-        wl_scheduling::NewBooking::new(PartyId(parent), service_type.id, &[layla.id], support::at(lesson_day, 10, 0)),
+        wl_scheduling::NewBooking::new(
+            PartyId(parent),
+            service_type.id,
+            &[layla.id],
+            support::at(lesson_day, 10, 0),
+        ),
         wl_scheduling::Actor::staff(1),
         renox::db::now(),
     )

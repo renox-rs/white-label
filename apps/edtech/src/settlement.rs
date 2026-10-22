@@ -241,10 +241,7 @@ async fn close_unpaid(state: &AppState, e: &Enrolment, plan: &mut Settlement) ->
             InvoiceStatus::Issued | InvoiceStatus::Overdue
                 if !plan.from_pending && summary.balance == summary.gross_total =>
             {
-                let reason = english(
-                    "edtech.settle.unpaid_reason",
-                    &[("enrolment", &e.number())],
-                );
+                let reason = english("edtech.settle.unpaid_reason", &[("enrolment", &e.number())]);
                 books
                     .credit_in_full(state, InvoiceId(id), reason, plan.requested_by)
                     .await?;
@@ -428,9 +425,7 @@ mod tests {
     fn nets(plan: &[(i64, Vec<CreditLine>)]) -> Vec<(i64, i64, i64)> {
         plan.iter()
             .flat_map(|(invoice, lines)| {
-                lines
-                    .iter()
-                    .map(move |l| (*invoice, l.invoice_line, l.net))
+                lines.iter().map(move |l| (*invoice, l.invoice_line, l.net))
             })
             .collect()
     }

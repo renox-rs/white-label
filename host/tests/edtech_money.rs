@@ -19,8 +19,8 @@ use std::time::Duration;
 use host::roles::{ACCOUNTANT, ADMIN, CENTRE_MANAGER, COUNSELLOR, OWNER, RECEIVABLES};
 use renox::chrono::{Datelike, Days, NaiveDate, Weekday};
 use renox::prelude::*;
-use renox::testing::TestApp;
 use renox::state_machine::StateMachine;
+use renox::testing::TestApp;
 use support::{
     company, count_messages, day, edtech_booted, edtech_booted_with_gateway, entity,
     issued_invoice, messages_to, person, reload, tenant,
@@ -88,7 +88,11 @@ async fn edu_18_a_refund_recorded_by_a_needs_bs_approval() {
         .htmx()
         .post(&format!("/probe/refunds/{id}/approve"), &[])
         .await;
-    assert!(own.status.as_u16() >= 400, "the recorder cannot approve: {}", own.status);
+    assert!(
+        own.status.as_u16() >= 400,
+        "the recorder cannot approve: {}",
+        own.status
+    );
     let refund = Refund::find_or_404(app.db(), id).await.unwrap();
     assert_eq!(refund.status, RefundStatus::Requested);
 
@@ -172,7 +176,11 @@ async fn edu_18_a_failed_refund_is_retried_after_24_hours_then_the_accountant_ha
     .unwrap();
     app.travel(Duration::from_secs(200 * 3600));
     app.run_scheduled(refund_retry::TASK).await.unwrap();
-    assert_eq!(retries_of(app.db(), id).await.unwrap(), 1, "no third attempt");
+    assert_eq!(
+        retries_of(app.db(), id).await.unwrap(),
+        1,
+        "no third attempt"
+    );
     let tasks = wl_payments::FollowupTask::open_for(app.db(), "accountant")
         .await
         .unwrap();
@@ -306,14 +314,18 @@ async fn edu_18_a_desk_shortage_of_aed_20_needs_approval_and_no_salary_recovery(
         .state()
         .provided::<wl_payments::config::PaymentsConfig>()
         .expect("payments");
-    assert!(!payments.cash_salary_deduction, "L-20: salary recovery is off");
+    assert!(
+        !payments.cash_salary_deduction,
+        "L-20: salary recovery is off"
+    );
     assert_eq!(payments.cash_manager_role, CENTRE_MANAGER);
 
-    let holds = |role: &str, permission: &str| {
-        host::roles::grants_of(role).contains(&permission)
-    };
+    let holds = |role: &str, permission: &str| host::roles::grants_of(role).contains(&permission);
     assert!(holds(ACCOUNTANT, wl_payments::permissions::CASH_COUNT));
-    assert!(holds(CENTRE_MANAGER, wl_payments::permissions::CASH_WRITE_OFF));
+    assert!(holds(
+        CENTRE_MANAGER,
+        wl_payments::permissions::CASH_WRITE_OFF
+    ));
     assert!(!holds(COUNSELLOR, wl_payments::permissions::CASH_COUNT));
     assert!(!holds(COUNSELLOR, wl_payments::permissions::CASH_WRITE_OFF));
 }
@@ -329,7 +341,10 @@ async fn edu_18_corporate_contacts_cannot_dispute_and_a_write_off_of_aed_100_nee
         .state()
         .provided::<InvoicingConfig>()
         .expect("invoicing");
-    assert!(!invoicing.portal_disputes, "off until the corporate portal ships");
+    assert!(
+        !invoicing.portal_disputes,
+        "off until the corporate portal ships"
+    );
     assert_eq!(invoicing.dispute_escalation_days, 14);
     assert_eq!(invoicing.write_off_approvers, ["centre_manager", "admin"]);
 
@@ -355,7 +370,10 @@ async fn edu_18_corporate_contacts_cannot_dispute_and_a_write_off_of_aed_100_nee
     approvals::approve(app.state(), pending[0].id, &mona, "agreed")
         .await
         .unwrap();
-    assert_eq!(reload(&app, &invoice).await.status, InvoiceStatus::WrittenOff);
+    assert_eq!(
+        reload(&app, &invoice).await.status,
+        InvoiceStatus::WrittenOff
+    );
 }
 
 // ---- Cash-flow forecast ---------------------------------------------------------------------------
@@ -433,7 +451,11 @@ async fn edu_18_the_forecast_alerts_the_owner_and_the_accountant_below_25000() {
     assert_eq!(notice.data.0["week"], 5);
     assert_eq!(notice.data.0["balance"], "AED 24,999.00");
     assert_eq!(notice.data.0["threshold"], "AED 25,000.00");
-    assert_eq!(cash_alert::run(app.state(), today()).await.unwrap(), 0, "once");
+    assert_eq!(
+        cash_alert::run(app.state(), today()).await.unwrap(),
+        0,
+        "once"
+    );
 
     let config = app
         .state()
@@ -602,7 +624,12 @@ async fn edu_18_the_accountant_owns_the_categories_and_the_owner_approves_the_bu
     }
     for category in BudgetCategory::listed(app.db(), true).await.unwrap() {
         if !category.is_drawings() {
-            assert_eq!(category.owner_role.as_deref(), Some(ACCOUNTANT), "{}", category.code);
+            assert_eq!(
+                category.owner_role.as_deref(),
+                Some(ACCOUNTANT),
+                "{}",
+                category.code
+            );
         }
     }
 

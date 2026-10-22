@@ -30,8 +30,7 @@ pub enum SessionStatus {
     Cancelled,
 }
 
-impl SessionStatus {
-}
+impl SessionStatus {}
 
 /// A session.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]

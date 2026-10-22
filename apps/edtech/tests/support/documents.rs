@@ -106,10 +106,10 @@ impl Documents {
 
     /// The kind `kind` is attached to subjects of `types`.
     pub fn attached(&self, kind: &str, types: &[&str]) {
-        self.types
-            .lock()
-            .unwrap()
-            .insert(kind.to_owned(), types.iter().map(|t| (*t).to_owned()).collect());
+        self.types.lock().unwrap().insert(
+            kind.to_owned(),
+            types.iter().map(|t| (*t).to_owned()).collect(),
+        );
     }
 
     /// `subject` has a document of `kind` valid through `expires` (`None`: it
@@ -205,7 +205,13 @@ impl DocumentGuard for Documents {
         _db: &'a Db,
         kind: &'a str,
     ) -> DocumentFuture<'a, Vec<String>> {
-        let found = self.types.lock().unwrap().get(kind).cloned().unwrap_or_default();
+        let found = self
+            .types
+            .lock()
+            .unwrap()
+            .get(kind)
+            .cloned()
+            .unwrap_or_default();
         Box::pin(async move { Ok(found) })
     }
 
@@ -302,7 +308,10 @@ impl DocumentGuard for Documents {
             }
             let row = RecordFlag {
                 id: i64::try_from(all.len()).unwrap() + 1,
-                record_type: guarded.split_once('.').map_or(guarded, |(entity, _)| entity).to_owned(),
+                record_type: guarded
+                    .split_once('.')
+                    .map_or(guarded, |(entity, _)| entity)
+                    .to_owned(),
                 record_id,
                 guarded: guarded.to_owned(),
                 kind: flag.entry.kind.clone(),

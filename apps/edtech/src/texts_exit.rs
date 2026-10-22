@@ -19,14 +19,23 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("edtech.enrolments.not_settled", "Not finished:"),
     ("edtech.enrolments.credit_notes", "Credit notes"),
     ("edtech.enrolments.refunds_asked", "Refunds asked"),
-    ("edtech.enrolments.owed_invoice", "Invoice for the amount owed"),
+    (
+        "edtech.enrolments.owed_invoice",
+        "Invoice for the amount owed",
+    ),
     ("edtech.enrolments.settle", "Finish the money steps"),
     (
         "edtech.enrolments.settle_message",
         "Repeat the steps of the withdrawal that did not finish: the credit note, the refund request and the invoice for the amount owed.",
     ),
-    ("edtech.enrolments.settled_now", "The money of the withdrawal is settled."),
-    ("edtech.fees.owed", "Sessions used and fees owed for :enrolment"),
+    (
+        "edtech.enrolments.settled_now",
+        "The money of the withdrawal is settled.",
+    ),
+    (
+        "edtech.fees.owed",
+        "Sessions used and fees owed for :enrolment",
+    ),
     (
         "edtech.settle.credit_reason",
         "Withdrawal of :enrolment: :reason",
@@ -52,11 +61,23 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "edtech.batches.problem.terminate_reason",
         "Pick the reason the batch is terminated: the tutor is unavailable, the approval expired or was revoked, the venue, or too few students.",
     ),
-    ("edtech.batches.termination.tutor_unavailable", "The tutor is unavailable"),
-    ("edtech.batches.termination.approval_expired", "The approval expired"),
-    ("edtech.batches.termination.approval_revoked", "The approval was revoked"),
+    (
+        "edtech.batches.termination.tutor_unavailable",
+        "The tutor is unavailable",
+    ),
+    (
+        "edtech.batches.termination.approval_expired",
+        "The approval expired",
+    ),
+    (
+        "edtech.batches.termination.approval_revoked",
+        "The approval was revoked",
+    ),
     ("edtech.batches.termination.venue", "The venue is lost"),
-    ("edtech.batches.termination.too_few_students", "Too few students"),
+    (
+        "edtech.batches.termination.too_few_students",
+        "Too few students",
+    ),
     (
         "edtech.exit.problem.choices",
         "Say for every enrolment whether the student moves to another batch or is withdrawn before the batch ends.",
@@ -88,7 +109,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "edtech.exit.family_body",
         "The centre :ended batch :batch: :reason. :what",
     ),
-    ("edtech.exit.family_moved", "You were moved to batch :target and keep what you paid for the sessions not yet used."),
+    (
+        "edtech.exit.family_moved",
+        "You were moved to batch :target and keep what you paid for the sessions not yet used.",
+    ),
     (
         "edtech.exit.family_refund",
         "Your enrolment is withdrawn and a refund of :amount is on its way once it is approved.",
@@ -125,7 +149,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ),
     ("edtech.batches.reason", "Reason"),
     ("edtech.batches.termination_note", "Note (optional)"),
-    ("edtech.batches.cancelled", "Batch cancelled; the students were moved or withdrawn."),
+    (
+        "edtech.batches.cancelled",
+        "Batch cancelled; the students were moved or withdrawn.",
+    ),
     (
         "edtech.batches.termination_sent",
         "The termination waits for the centre manager's approval.",

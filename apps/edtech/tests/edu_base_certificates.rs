@@ -24,7 +24,9 @@ async fn draft_for(t: &Centre, batch: &Batch, id: i64, name: &str) -> Certificat
     let student = t.person(id, name);
     let desk = t.desk().await;
     let e = t.enrol(student, batch).await;
-    enrolments::activate(t.state(), Some(&desk), e.id).await.unwrap();
+    enrolments::activate(t.state(), Some(&desk), e.id)
+        .await
+        .unwrap();
     enrolments::complete(t.state(), e.id).await.unwrap();
     Certificate::of_enrolment(t.db(), e.id)
         .await
@@ -56,11 +58,19 @@ async fn edu_base_completing_an_enrolment_drafts_its_certificate() {
     assert_eq!(e.completed_on, Some(day(0)));
     assert!(!e.seat_held);
     assert_eq!(
-        Batch::find_or_404(t.db(), batch.id).await.unwrap().seats_taken,
+        Batch::find_or_404(t.db(), batch.id)
+            .await
+            .unwrap()
+            .seats_taken,
         0
     );
     // Evaluating again makes no second draft.
-    assert!(certificates::evaluate(t.state(), &e).await.unwrap().is_none());
+    assert!(
+        certificates::evaluate(t.state(), &e)
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 /// `issue` numbers the certificate from a gapless series; the public page
@@ -145,10 +155,22 @@ async fn edu_base_only_a_completed_enrolment_gets_its_certificate_issued() {
     assert!(refused.to_string().contains("criteria"));
 
     let finished = draft_for(&t, &batch, 2, "Omar Khan").await;
-    assert!(certificates::issue(t.state(), &desk, finished.id).await.is_err());
-    assert!(certificates::issue(t.state(), &registrar, finished.id).await.is_ok());
+    assert!(
+        certificates::issue(t.state(), &desk, finished.id)
+            .await
+            .is_err()
+    );
+    assert!(
+        certificates::issue(t.state(), &registrar, finished.id)
+            .await
+            .is_ok()
+    );
     // A certificate that was issued is not issued again.
-    assert!(certificates::issue(t.state(), &registrar, finished.id).await.is_err());
+    assert!(
+        certificates::issue(t.state(), &registrar, finished.id)
+            .await
+            .is_err()
+    );
 }
 
 /// `revoke` is the company admin's, needs a reason, and the public page then
@@ -164,8 +186,16 @@ async fn edu_base_a_revoked_certificate_says_so_on_the_public_page() {
         .await
         .unwrap();
 
-    assert!(certificates::revoke(t.state(), &registrar, issued.id, "error").await.is_err());
-    assert!(certificates::revoke(t.state(), &admin, issued.id, " ").await.is_err());
+    assert!(
+        certificates::revoke(t.state(), &registrar, issued.id, "error")
+            .await
+            .is_err()
+    );
+    assert!(
+        certificates::revoke(t.state(), &admin, issued.id, " ")
+            .await
+            .is_err()
+    );
     let revoked = certificates::revoke(t.state(), &admin, issued.id, "issued in error")
         .await
         .unwrap();
@@ -182,9 +212,15 @@ async fn edu_base_a_revoked_certificate_says_so_on_the_public_page() {
         .assert_see("CRT-0001");
     // A revoked certificate is not reissued.
     assert!(
-        certificates::reissue(t.state(), &registrar, issued.id, "name", Corrections::default())
-            .await
-            .is_err()
+        certificates::reissue(
+            t.state(),
+            &registrar,
+            issued.id,
+            "name",
+            Corrections::default()
+        )
+        .await
+        .is_err()
     );
 }
 
@@ -264,9 +300,15 @@ async fn edu_base_a_reissue_supersedes_the_certificate_and_links_a_corrected_dra
 
     // A superseded certificate is not reissued again.
     assert!(
-        certificates::reissue(t.state(), &registrar, issued.id, "again", Corrections::default())
-            .await
-            .is_err()
+        certificates::reissue(
+            t.state(),
+            &registrar,
+            issued.id,
+            "again",
+            Corrections::default()
+        )
+        .await
+        .is_err()
     );
 }
 
@@ -326,7 +368,10 @@ async fn edu_base_the_certificate_pages_show_issue_and_revoke() {
         .assert_see(&draft.verification_code);
     t.app
         .htmx()
-        .post(&format!("/edtech/certificates/{}/issue", draft.id), &[("x", "y")])
+        .post(
+            &format!("/edtech/certificates/{}/issue", draft.id),
+            &[("x", "y")],
+        )
         .await
         .assert_ok();
     let issued = Certificate::find_or_404(t.db(), draft.id).await.unwrap();

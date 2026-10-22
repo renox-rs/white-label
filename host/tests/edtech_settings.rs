@@ -23,7 +23,9 @@ use edtech::seed::{
     CENTRE_PERMIT_KIND, COURSE_APPROVAL_KIND, ONE_TO_ONE_SERVICE, POLICE_CLEARANCE_KIND,
     TUTOR_PERMIT_KIND,
 };
-use host::roles::{self, ACADEMIC_COORDINATOR, ACCOUNTANT, ADMIN, CENTRE_MANAGER, COUNSELLOR, OWNER};
+use host::roles::{
+    self, ACADEMIC_COORDINATOR, ACCOUNTANT, ADMIN, CENTRE_MANAGER, COUNSELLOR, OWNER,
+};
 use renox::auth::permissions::Scope;
 use renox::prelude::*;
 use support::{
@@ -51,7 +53,10 @@ use wl_scheduling::ServiceType;
 use wl_ticketing::Ticket;
 
 /// The (guarded, mode) entries of the kind `key`, sorted.
-async fn blocks_of(app: &renox::testing::TestApp, key: &str) -> (DocumentKind, Vec<(String, BlockMode)>) {
+async fn blocks_of(
+    app: &renox::testing::TestApp,
+    key: &str,
+) -> (DocumentKind, Vec<(String, BlockMode)>) {
     let kind = DocumentKind::by_key(app.db(), key)
         .await
         .unwrap()
@@ -143,10 +148,11 @@ async fn edu_17_the_four_kinds_carry_their_entries_and_only_the_clearance_may_be
         .assert_status(422);
 
     // The police clearance may be switched, and back.
-    let switched = kinds::set_override_mode(app.db(), POLICE_CLEARANCE_KIND, OverrideMode::WithApproval)
-        .await
-        .unwrap()
-        .expect("the client may switch the police clearance");
+    let switched =
+        kinds::set_override_mode(app.db(), POLICE_CLEARANCE_KIND, OverrideMode::WithApproval)
+            .await
+            .unwrap()
+            .expect("the client may switch the police clearance");
     assert_eq!(switched.override_mode, OverrideMode::WithApproval);
     kinds::set_override_mode(app.db(), POLICE_CLEARANCE_KIND, OverrideMode::Never)
         .await
@@ -209,7 +215,13 @@ async fn edu_17_a_course_approval_at_60_days_and_a_clearance_at_30_days_are_told
     .unwrap();
     for (subject_type, subject_id, kind_id, title, days) in [
         ("edtech.course", course.id, approval.id, "KHDA approval", 60),
-        ("hr.employee", tutor.id, clearance.id, "Police clearance", 30),
+        (
+            "hr.employee",
+            tutor.id,
+            clearance.id,
+            "Police clearance",
+            30,
+        ),
     ] {
         Document::create(
             app.db(),
@@ -286,7 +298,9 @@ async fn edu_17_a_centre_permit_expiring_notifies_the_centre_manager() {
     expiry::run(app.state(), today()).await.unwrap();
 
     assert_eq!(
-        messages_to(&app, "documents.expiring", &manager).await.len(),
+        messages_to(&app, "documents.expiring", &manager)
+            .await
+            .len(),
         1
     );
     assert!(
@@ -362,7 +376,10 @@ async fn edu_17_the_registered_types_carry_their_groups_and_reactions() {
     assert_eq!(family.group_key, GROUP_GUARDIAN);
     assert_eq!(
         family.give_up.0,
-        [GiveUpReaction::AlternativeRecipient, GiveUpReaction::StaffTask]
+        [
+            GiveUpReaction::AlternativeRecipient,
+            GiveUpReaction::StaffTask
+        ]
     );
     assert_eq!(family.staff_role.as_deref(), Some(COUNSELLOR));
 
@@ -370,7 +387,10 @@ async fn edu_17_the_registered_types_carry_their_groups_and_reactions() {
     assert_eq!(request.group_key, GROUP_SIGNATURES);
     assert_eq!(
         request.give_up.0,
-        [GiveUpReaction::MarkContactInvalid, GiveUpReaction::StaffTask]
+        [
+            GiveUpReaction::MarkContactInvalid,
+            GiveUpReaction::StaffTask
+        ]
     );
     assert_eq!(request.staff_role.as_deref(), Some(COUNSELLOR));
 
@@ -407,8 +427,13 @@ async fn edu_17_the_registered_types_carry_their_groups_and_reactions() {
         }
     }
     assert_eq!(
-        notification_type(FAMILY_NOTICE).expect("registered").channels,
-        [notify::NotifyChannel::Whatsapp, notify::NotifyChannel::Email]
+        notification_type(FAMILY_NOTICE)
+            .expect("registered")
+            .channels,
+        [
+            notify::NotifyChannel::Whatsapp,
+            notify::NotifyChannel::Email
+        ]
     );
 }
 
@@ -464,7 +489,13 @@ async fn edu_17_a_message_that_gives_up_ends_in_a_task_for_the_counsellor_or_the
     let student = tenant(&app, "Sam Student").await;
     let payer = tenant(&app, "Pat Payer").await;
 
-    let message = bounce(&app, FAMILY_NOTICE, Subject::new("edtech.enrolment", 1), student).await;
+    let message = bounce(
+        &app,
+        FAMILY_NOTICE,
+        Subject::new("edtech.enrolment", 1),
+        student,
+    )
+    .await;
     assert!(!mail.attempts().is_empty(), "the notice was e-mailed");
     assert_eq!(message.status, MessageStatus::Abandoned);
     let tasks = give_up_tasks(&app, "edtech.enrolment").await;
@@ -498,7 +529,8 @@ async fn edu_17_a_failed_tutor_alert_run_alerts_the_owner_and_the_admin() {
     let admin = person(&app, "Ada", ADMIN).await;
     let manager = person(&app, "Mona", CENTRE_MANAGER).await;
 
-    let spec = RuleRunSpec::new("EDU.RUL.12", Subject::new("hr.employee", 99), "stopped").chain_depth(4);
+    let spec =
+        RuleRunSpec::new("EDU.RUL.12", Subject::new("hr.employee", 99), "stopped").chain_depth(4);
     let outcome = run_rule(app.state(), spec, |_state| async { Ok(()) })
         .await
         .unwrap();
@@ -516,7 +548,11 @@ async fn edu_17_the_connections_have_their_fallbacks_and_the_desk_shows_the_term
     let app = edtech_booted().await;
     let expected = [
         (integrations::PAYMENT_GATEWAY, ACCOUNTANT, "card terminal"),
-        (integrations::WHATSAPP, CENTRE_MANAGER, "e-mail instead of WhatsApp"),
+        (
+            integrations::WHATSAPP,
+            CENTRE_MANAGER,
+            "e-mail instead of WhatsApp",
+        ),
         (integrations::EMAIL, ADMIN, "printed copy"),
         (
             edtech::defaults::ATTENDANCE_CONNECTION,
@@ -540,10 +576,11 @@ async fn edu_17_the_connections_have_their_fallbacks_and_the_desk_shows_the_term
         );
         assert_eq!(connection.status, ConnectionStatus::Up, "{key}");
     }
-    let attendance = IntegrationConnection::by_key(app.db(), edtech::defaults::ATTENDANCE_CONNECTION)
-        .await
-        .unwrap()
-        .unwrap();
+    let attendance =
+        IntegrationConnection::by_key(app.db(), edtech::defaults::ATTENDANCE_CONNECTION)
+            .await
+            .unwrap()
+            .unwrap();
     assert!(attendance.affects(edtech::defaults::SESSION_SCREEN));
 
     // Up: the desk shows no banner. Down: it shows the terminal and the links.
@@ -610,9 +647,17 @@ async fn edu_17_the_loyalty_programme_earns_and_redeems_as_the_spec_says() {
         .await
         .unwrap()
         .expect("the seeded programme");
-    assert_eq!(programme.points_for(100_000), 100, "AED 1,000 earns 100 points");
+    assert_eq!(
+        programme.points_for(100_000),
+        100,
+        "AED 1,000 earns 100 points"
+    );
     assert_eq!(programme.points_for(99_999), 99);
-    assert_eq!(programme.min_redeem_points * programme.point_value, 1_000, "AED 10");
+    assert_eq!(
+        programme.min_redeem_points * programme.point_value,
+        1_000,
+        "AED 10"
+    );
     assert_eq!(programme.max_share_bps, 1_000, "at most 10% of the fee");
     assert_eq!(programme.validity_months, 12);
 
@@ -646,10 +691,17 @@ async fn edu_17_the_checklists_and_the_sop_library_are_seeded() {
         .await
         .unwrap();
     let owners: Vec<&str> = steps.iter().map(|s| s.owner.as_str()).collect();
-    for owner in ["role:centre_manager", "role:academic_coordinator", "employee"] {
+    for owner in [
+        "role:centre_manager",
+        "role:academic_coordinator",
+        "employee",
+    ] {
         assert!(owners.contains(&owner), "{owner}");
     }
-    for name in ["Admissions counsellor onboarding", "Academic coordinator onboarding"] {
+    for name in [
+        "Admissions counsellor onboarding",
+        "Academic coordinator onboarding",
+    ] {
         assert_eq!(
             wl_hr::OnboardingTemplate::query()
                 .where_(wl_hr::OnboardingTemplate::NAME_EN.eq(name))
@@ -692,8 +744,14 @@ async fn edu_17_the_registration_kinds_are_on_and_a_trademark_at_90_days_tells_t
         assert_eq!(kind.responsible_role.as_deref(), Some(OWNER), "{key}");
         assert!(kind.blocks(app.db()).await.unwrap().is_empty(), "{key}");
     }
-    let trademark = DocumentKind::by_key(app.db(), TRADEMARK).await.unwrap().unwrap();
-    let other = DocumentKind::by_key(app.db(), OTHER).await.unwrap().unwrap();
+    let trademark = DocumentKind::by_key(app.db(), TRADEMARK)
+        .await
+        .unwrap()
+        .unwrap();
+    let other = DocumentKind::by_key(app.db(), OTHER)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(trademark.reminder_offsets.0, [180, 90, 30]);
     assert_eq!(other.reminder_offsets.0, [90, 30, 7]);
 
@@ -762,7 +820,10 @@ async fn edu_17_seeding_twice_changes_nothing_and_keeps_what_the_client_changed(
             (
                 wl_hr::OnboardingTemplate::query().count(&db).await.unwrap(),
                 wl_documents::Sop::query().count(&db).await.unwrap(),
-                wl_sales::LoyaltyProgramme::query().count(&db).await.unwrap(),
+                wl_sales::LoyaltyProgramme::query()
+                    .count(&db)
+                    .await
+                    .unwrap(),
                 count_rows(&db).await,
             )
         }

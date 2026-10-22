@@ -21,7 +21,9 @@ use renox::chrono::TimeDelta;
 use renox::prelude::*;
 use support::{Centre, Messages, at, boot, day, next_weekday};
 use wl_kernel::PartyId;
-use wl_scheduling::{Actor, AvailabilityRule, CancelRequest, NewBooking, ServiceType, resource, service};
+use wl_scheduling::{
+    Actor, AvailabilityRule, CancelRequest, NewBooking, ServiceType, resource, service,
+};
 
 const ITEM: &str = "pack10";
 
@@ -30,7 +32,8 @@ const ITEM: &str = "pack10";
 async fn batch(t: &Centre) -> Batch {
     let tutor = t.tutor("Layla").await;
     let room = t.room("Room 1", 14).await;
-    t.batch_of(&tutor, &room, next_weekday(day(7), 1), &[1, 3]).await
+    t.batch_of(&tutor, &room, next_weekday(day(7), 1), &[1, 3])
+        .await
 }
 
 /// The row of `enrolment` in `session`.
@@ -55,8 +58,12 @@ async fn edu_15_an_unexcused_absence_uses_a_credit_by_default() {
         t.package_in(q, ITEM, 10, EnrolmentStatus::Active).await,
     );
     let desk = t.desk().await;
-    roster::add_student(t.state(), &desk, session.id, ep.id).await.unwrap();
-    roster::add_student(t.state(), &desk, session.id, eq.id).await.unwrap();
+    roster::add_student(t.state(), &desk, session.id, ep.id)
+        .await
+        .unwrap();
+    roster::add_student(t.state(), &desk, session.id, eq.id)
+        .await
+        .unwrap();
     let tariq = t.teacher().await;
 
     let held = sessions::submit_attendance_marked(
@@ -78,7 +85,10 @@ async fn edu_15_an_unexcused_absence_uses_a_credit_by_default() {
     assert_eq!(late.mark, Mark::Late);
     assert!(late.consumed, "late arrival counts as present");
     assert_eq!(t.packages.left(PartyId(q), ITEM), 9);
-    assert_eq!(t.packages.consumed_by(), vec![absent.subject(), late.subject()]);
+    assert_eq!(
+        t.packages.consumed_by(),
+        vec![absent.subject(), late.subject()]
+    );
 }
 
 /// A notice on the day before at 09:00 for a session at 10:00 the next day
@@ -94,7 +104,9 @@ async fn edu_15_a_notice_a_day_ahead_excuses_and_a_later_one_does_not() {
     let ep = t.package_in(p, ITEM, 10, EnrolmentStatus::Active).await;
     let desk = t.desk().await;
     for session in [&early, &late] {
-        roster::add_student(t.state(), &desk, session.id, ep.id).await.unwrap();
+        roster::add_student(t.state(), &desk, session.id, ep.id)
+            .await
+            .unwrap();
     }
 
     // 09:00 the day before the first session: 25 hours ahead.
@@ -109,9 +121,15 @@ async fn edu_15_a_notice_a_day_ahead_excuses_and_a_later_one_does_not() {
     .unwrap();
     assert_eq!(noticed.mark, Mark::Excused, "pre-marked for the tutor");
     // 08:00 on the day of the second session: two hours ahead.
-    let tardy = roster::record_notice(t.state(), &desk, late.id, ep.id, at(late.session_date, 8, 0))
-        .await
-        .unwrap();
+    let tardy = roster::record_notice(
+        t.state(),
+        &desk,
+        late.id,
+        ep.id,
+        at(late.session_date, 8, 0),
+    )
+    .await
+    .unwrap();
     assert_eq!(tardy.mark, Mark::Pending, "too late to excuse");
     assert!(tardy.notice_at.is_some());
 
@@ -128,8 +146,15 @@ async fn edu_15_a_notice_a_day_ahead_excuses_and_a_later_one_does_not() {
     assert!(!excused.credit_due && !excused.consumed);
     let unexcused = row(&t, &late, &ep).await;
     assert_eq!(unexcused.mark, Mark::Absent);
-    assert!(unexcused.consumed, "the late notice is an unexcused absence");
-    assert_eq!(t.packages.left(PartyId(p), ITEM), 9, "one credit, for the second session only");
+    assert!(
+        unexcused.consumed,
+        "the late notice is an unexcused absence"
+    );
+    assert_eq!(
+        t.packages.left(PartyId(p), ITEM),
+        9,
+        "one credit, for the second session only"
+    );
     let rights = make_up::open_rights(t.db(), &ep).await.unwrap();
     assert_eq!(rights.len(), 1, "one right for the one excused absence");
     assert_eq!(rights[0].session_id, early.id);
@@ -147,13 +172,25 @@ async fn edu_15_the_coordinator_excuses_a_late_notice_with_a_reason() {
     let ep = t.package_in(p, ITEM, 10, EnrolmentStatus::Active).await;
     let desk = t.desk().await;
     let amal = t.coordinator().await;
-    roster::add_student(t.state(), &desk, session.id, ep.id).await.unwrap();
-    roster::record_notice(t.state(), &desk, session.id, ep.id, at(session.session_date, 8, 0))
+    roster::add_student(t.state(), &desk, session.id, ep.id)
         .await
         .unwrap();
+    roster::record_notice(
+        t.state(),
+        &desk,
+        session.id,
+        ep.id,
+        at(session.session_date, 8, 0),
+    )
+    .await
+    .unwrap();
 
     // Not without a reason, not by the counsellor.
-    assert!(roster::excuse_late(t.state(), &amal, session.id, ep.id, " ").await.is_err());
+    assert!(
+        roster::excuse_late(t.state(), &amal, session.id, ep.id, " ")
+            .await
+            .is_err()
+    );
     assert!(matches!(
         roster::excuse_late(t.state(), &desk, session.id, ep.id, "Illness").await,
         Err(Error::Forbidden)
@@ -171,7 +208,14 @@ async fn edu_15_the_coordinator_excuses_a_late_notice_with_a_reason() {
     .unwrap_err();
     assert!(refused.to_string().contains("24 hours"), "{refused}");
     // A notice after the start is an absence.
-    let after = roster::record_notice(t.state(), &desk, session.id, ep.id, at(session.session_date, 12, 0)).await;
+    let after = roster::record_notice(
+        t.state(),
+        &desk,
+        session.id,
+        ep.id,
+        at(session.session_date, 12, 0),
+    )
+    .await;
     assert!(after.is_err());
 
     let excused = roster::excuse_late(t.state(), &amal, session.id, ep.id, "Hospital visit")
@@ -200,19 +244,36 @@ async fn edu_15_the_policy_of_the_enrolment_decides() {
     let desk = t.desk().await;
     let tariq = t.teacher().await;
     for session in [&first, &second] {
-        roster::add_student(t.state(), &desk, session.id, ep.id).await.unwrap();
+        roster::add_student(t.state(), &desk, session.id, ep.id)
+            .await
+            .unwrap();
     }
 
-    sessions::submit_attendance_marked(t.state(), &tariq, first.id, &[(ep.id, Mark::Absent)], false)
-        .await
-        .unwrap();
-    assert!(t.packages.asked().is_empty(), "the policy says an absence is free");
+    sessions::submit_attendance_marked(
+        t.state(),
+        &tariq,
+        first.id,
+        &[(ep.id, Mark::Absent)],
+        false,
+    )
+    .await
+    .unwrap();
+    assert!(
+        t.packages.asked().is_empty(),
+        "the policy says an absence is free"
+    );
     assert_eq!(t.packages.left(PartyId(p), ITEM), 10);
     assert!(!row(&t, &first, &ep).await.credit_due);
 
-    sessions::submit_attendance_marked(t.state(), &tariq, second.id, &[(ep.id, Mark::Present)], false)
-        .await
-        .unwrap();
+    sessions::submit_attendance_marked(
+        t.state(),
+        &tariq,
+        second.id,
+        &[(ep.id, Mark::Present)],
+        false,
+    )
+    .await
+    .unwrap();
     assert_eq!(t.packages.left(PartyId(p), ITEM), 9);
 }
 
@@ -228,25 +289,36 @@ async fn edu_15_a_cancelled_session_a_membership_and_a_course_fee_consume_nothin
     let p = t.person(1, "Sara Ali");
     let (member, learner) = (t.person(2, "Mona Member"), t.person(3, "Cara Course"));
     let package = t.package_in(p, ITEM, 10, EnrolmentStatus::Active).await;
-    let membership = t.package_in(member, "monthly", 0, EnrolmentStatus::Active).await;
+    let membership = t
+        .package_in(member, "monthly", 0, EnrolmentStatus::Active)
+        .await;
     Enrolment::query()
         .where_(Enrolment::ID.eq(membership.id))
         .update(t.db(), &[("kind", &EnrolmentKind::Membership)])
         .await
         .unwrap();
-    let course = t.enrolment_in(&batch, learner, EnrolmentStatus::Active).await;
+    let course = t
+        .enrolment_in(&batch, learner, EnrolmentStatus::Active)
+        .await;
     let desk = t.desk().await;
     let amal = t.coordinator().await;
     let tariq = t.teacher().await;
-    roster::add_student(t.state(), &desk, cancelled.id, package.id).await.unwrap();
+    roster::add_student(t.state(), &desk, cancelled.id, package.id)
+        .await
+        .unwrap();
     sessions::cancel(t.state(), &amal, cancelled.id, "The room is closed", None)
         .await
         .unwrap();
-    assert!(t.packages.asked().is_empty(), "a cancelled session consumes nothing");
+    assert!(
+        t.packages.asked().is_empty(),
+        "a cancelled session consumes nothing"
+    );
     assert_eq!(t.packages.left(PartyId(p), ITEM), 10);
 
     // The membership attends the held session; the course student is excused.
-    roster::add_student(t.state(), &desk, held.id, membership.id).await.unwrap();
+    roster::add_student(t.state(), &desk, held.id, membership.id)
+        .await
+        .unwrap();
     roster::record_notice(
         t.state(),
         &desk,
@@ -266,12 +338,18 @@ async fn edu_15_a_cancelled_session_a_membership_and_a_course_fee_consume_nothin
     .await
     .unwrap();
 
-    assert!(t.packages.asked().is_empty(), "no credit for a membership or a course fee");
+    assert!(
+        t.packages.asked().is_empty(),
+        "no credit for a membership or a course fee"
+    );
     assert!(!row(&t, &held, &membership).await.credit_due);
     let learner_row = row(&t, &held, &course).await;
     assert_eq!(learner_row.mark, Mark::Excused);
     assert_eq!(
-        MakeUpRight::of_enrolment(t.db(), course.id).await.unwrap().len(),
+        MakeUpRight::of_enrolment(t.db(), course.id)
+            .await
+            .unwrap()
+            .len(),
         1,
         "an excused absence of a course fee gives a make-up right"
     );
@@ -291,7 +369,9 @@ async fn edu_15_with_no_credit_left_the_counsellor_gets_a_task() {
     let desk = t.desk().await;
     let tariq = t.teacher().await;
     for session in [&first, &second] {
-        roster::add_student(t.state(), &desk, session.id, ep.id).await.unwrap();
+        roster::add_student(t.state(), &desk, session.id, ep.id)
+            .await
+            .unwrap();
     }
 
     for session in [&first, &second] {
@@ -312,7 +392,11 @@ async fn edu_15_with_no_credit_left_the_counsellor_gets_a_task() {
     assert_eq!(waiting.credit_note.as_deref(), Some("no_credit"));
     let tasks = t.tasks.with_key("edtech.credits");
     assert_eq!(tasks.len(), 1, "one task however many sessions");
-    assert!(tasks[0].ticket.title.contains("Sara Ali"), "{}", tasks[0].ticket.title);
+    assert!(
+        tasks[0].ticket.title.contains("Sara Ali"),
+        "{}",
+        tasks[0].ticket.title
+    );
     assert!(tasks[0].is_open());
 
     // A package is sold: the job takes both credits and the task closes.
@@ -373,7 +457,13 @@ async fn edu_15_a_booking_the_centre_cancels_consumes_nothing() {
 async fn edu_15_two_absences_in_a_row_tell_the_coordinator_and_the_guardian() {
     let t = boot().await;
     let batch = batch(&t).await;
-    let coordinator = t.holder("Cora Coordinator", edtech::permissions::COORDINATOR_ROLE, None).await;
+    let coordinator = t
+        .holder(
+            "Cora Coordinator",
+            edtech::permissions::COORDINATOR_ROLE,
+            None,
+        )
+        .await;
     let child = t.person(1, "Omar Child");
     let mother = t.person(2, "Mother");
     t.people.guardian(child, mother);
@@ -388,17 +478,34 @@ async fn edu_15_two_absences_in_a_row_tell_the_coordinator_and_the_guardian() {
     let mut all = Vec::new();
     for (number, ago) in [(1, 5), (2, 4), (3, 3), (4, 2)] {
         let session = t.past_session(&batch, number, ago).await;
-        roster::add_student(t.state(), &desk, session.id, e.id).await.unwrap();
+        roster::add_student(t.state(), &desk, session.id, e.id)
+            .await
+            .unwrap();
         all.push(session);
     }
 
-    sessions::submit_attendance_marked(t.state(), &tariq, all[0].id, &[(e.id, Mark::Absent)], false)
-        .await
-        .unwrap();
-    assert!(t.messages.of_type(FAMILY_NOTICE).is_empty(), "one absence is not a run");
-    sessions::submit_attendance_marked(t.state(), &tariq, all[1].id, &[(e.id, Mark::Absent)], false)
-        .await
-        .unwrap();
+    sessions::submit_attendance_marked(
+        t.state(),
+        &tariq,
+        all[0].id,
+        &[(e.id, Mark::Absent)],
+        false,
+    )
+    .await
+    .unwrap();
+    assert!(
+        t.messages.of_type(FAMILY_NOTICE).is_empty(),
+        "one absence is not a run"
+    );
+    sessions::submit_attendance_marked(
+        t.state(),
+        &tariq,
+        all[1].id,
+        &[(e.id, Mark::Absent)],
+        false,
+    )
+    .await
+    .unwrap();
 
     let family = t.messages.of_type(FAMILY_NOTICE);
     assert_eq!(family.len(), 1);
@@ -409,15 +516,41 @@ async fn edu_15_two_absences_in_a_row_tell_the_coordinator_and_the_guardian() {
     assert!(Messages::text(&family[0]).contains("2 sessions in a row"));
     assert!(row(&t, &all[1], &e).await.alert_sent_at.is_some());
 
-    sessions::submit_attendance_marked(t.state(), &tariq, all[2].id, &[(e.id, Mark::Absent)], false)
-        .await
-        .unwrap();
-    assert_eq!(t.messages.of_type(FAMILY_NOTICE).len(), 1, "the same run is told once");
-    assert_eq!(edtech::absences::absence_streak(t.db(), e.id).await.unwrap(), 3);
-    sessions::submit_attendance_marked(t.state(), &tariq, all[3].id, &[(e.id, Mark::Present)], false)
-        .await
-        .unwrap();
-    assert_eq!(edtech::absences::absence_streak(t.db(), e.id).await.unwrap(), 0);
+    sessions::submit_attendance_marked(
+        t.state(),
+        &tariq,
+        all[2].id,
+        &[(e.id, Mark::Absent)],
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        t.messages.of_type(FAMILY_NOTICE).len(),
+        1,
+        "the same run is told once"
+    );
+    assert_eq!(
+        edtech::absences::absence_streak(t.db(), e.id)
+            .await
+            .unwrap(),
+        3
+    );
+    sessions::submit_attendance_marked(
+        t.state(),
+        &tariq,
+        all[3].id,
+        &[(e.id, Mark::Present)],
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        edtech::absences::absence_streak(t.db(), e.id)
+            .await
+            .unwrap(),
+        0
+    );
 }
 
 /// Every student must be marked when the tutor marks them one by one; the page
@@ -433,8 +566,12 @@ async fn edu_15_every_student_is_marked_and_the_page_posts_the_marks() {
         t.package_in(q, ITEM, 10, EnrolmentStatus::Active).await,
     );
     let desk = t.desk().await;
-    roster::add_student(t.state(), &desk, session.id, ep.id).await.unwrap();
-    roster::add_student(t.state(), &desk, session.id, eq.id).await.unwrap();
+    roster::add_student(t.state(), &desk, session.id, ep.id)
+        .await
+        .unwrap();
+    roster::add_student(t.state(), &desk, session.id, eq.id)
+        .await
+        .unwrap();
     let tariq = t.teacher().await;
 
     let error = sessions::submit_attendance_marked(
@@ -448,7 +585,10 @@ async fn edu_15_every_student_is_marked_and_the_page_posts_the_marks() {
     .unwrap_err();
     assert!(error.to_string().contains("Omar Khan"), "{error}");
     assert_eq!(
-        Session::find_or_404(t.db(), session.id).await.unwrap().status,
+        Session::find_or_404(t.db(), session.id)
+            .await
+            .unwrap()
+            .status,
         SessionStatus::Scheduled
     );
 
@@ -474,7 +614,10 @@ async fn edu_15_every_student_is_marked_and_the_page_posts_the_marks() {
         .assert_ok();
     assert_eq!(row(&t, &session, &ep).await.mark, Mark::Present);
     assert_eq!(row(&t, &session, &eq).await.mark, Mark::Absent);
-    assert_eq!(t.packages.left(PartyId(p), ITEM) + t.packages.left(PartyId(q), ITEM), 18);
+    assert_eq!(
+        t.packages.left(PartyId(p), ITEM) + t.packages.left(PartyId(q), ITEM),
+        18
+    );
 }
 
 /// The counsellor records a notice from the session page and the coordinator
@@ -488,7 +631,9 @@ async fn edu_15_the_notice_is_recorded_from_the_session_page() {
     let ep = t.package_in(p, ITEM, 10, EnrolmentStatus::Active).await;
     let desk_user = t.desk_user().await;
     let desk = t.auth(&desk_user).await;
-    roster::add_student(t.state(), &desk, session.id, ep.id).await.unwrap();
+    roster::add_student(t.state(), &desk, session.id, ep.id)
+        .await
+        .unwrap();
     t.app.acting_as(&desk_user);
     let given = format!("{} 09:00", session.session_date - TimeDelta::days(1));
 
@@ -496,7 +641,10 @@ async fn edu_15_the_notice_is_recorded_from_the_session_page() {
         .htmx()
         .post(
             &format!("/edtech/sessions/{}/notice", session.id),
-            &[("enrolment", ep.id.to_string().as_str()), ("given_at", given.as_str())],
+            &[
+                ("enrolment", ep.id.to_string().as_str()),
+                ("given_at", given.as_str()),
+            ],
         )
         .await
         .assert_ok();
@@ -513,7 +661,10 @@ async fn edu_15_the_notice_is_recorded_from_the_session_page() {
         .htmx()
         .post(
             &format!("/edtech/sessions/{}/notice", session.id),
-            &[("enrolment", ep.id.to_string().as_str()), ("given_at", "yesterday")],
+            &[
+                ("enrolment", ep.id.to_string().as_str()),
+                ("given_at", "yesterday"),
+            ],
         )
         .await
         .assert_status(422);

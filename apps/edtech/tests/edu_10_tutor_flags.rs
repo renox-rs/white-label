@@ -14,8 +14,8 @@ mod support;
 
 use std::time::Duration;
 
-use edtech::permissions as perm;
 use edtech::notices::NOTICE;
+use edtech::permissions as perm;
 use edtech::sessions;
 use edtech::tutor_alerts;
 use edtech::{Batch, Session, SessionStatus, TutorAlert};
@@ -53,7 +53,13 @@ struct Scene {
 }
 
 /// A `scheduled` session of `batch` on `date` at 10:00 taught by `tutor`.
-async fn session_on(t: &Centre, batch: &Batch, number: i64, date: NaiveDate, tutor: &(Resource, i64)) -> Session {
+async fn session_on(
+    t: &Centre,
+    batch: &Batch,
+    number: i64,
+    date: NaiveDate,
+    tutor: &(Resource, i64),
+) -> Session {
     let mut session = Session {
         batch_id: batch.id,
         number,
@@ -87,7 +93,13 @@ async fn scene() -> Scene {
     let room = t.room("Room 1", 14).await;
     let course = t.minors_course().await;
     let batch = t
-        .batch_with(&course, (&tutor.0, Some(tutor.1)), &room, next_weekday(day(7), 1), &[1, 3])
+        .batch_with(
+            &course,
+            (&tutor.0, Some(tutor.1)),
+            &room,
+            next_weekday(day(7), 1),
+            &[1, 3],
+        )
         .await;
     let first = session_on(&t, &batch, 1, expiry() + TimeDelta::days(1), &tutor).await;
     let second = session_on(&t, &batch, 2, expiry() + TimeDelta::days(3), &tutor).await;
@@ -134,7 +146,9 @@ impl Scene {
 #[renox::test]
 async fn edu_10_a_clearance_expiring_flags_the_sessions_in_the_window_and_gives_one_task() {
     let s = scene().await;
-    let coordinator = s.t.holder("Cora Coordinator", perm::COORDINATOR_ROLE, None).await;
+    let coordinator =
+        s.t.holder("Cora Coordinator", perm::COORDINATOR_ROLE, None)
+            .await;
 
     s.t.state().emit(s.expiring()).await.unwrap();
 
@@ -144,10 +158,17 @@ async fn edu_10_a_clearance_expiring_flags_the_sessions_in_the_window_and_gives_
         s.session(&s.third).await,
     );
     assert!(first.is_flagged() && second.is_flagged());
-    assert_eq!(first.flag_reason.as_deref(), Some("document:police_clearance"));
+    assert_eq!(
+        first.flag_reason.as_deref(),
+        Some("document:police_clearance")
+    );
     assert!(!third.is_flagged(), "36 days is beyond the window");
     for session in [&first, &second, &third] {
-        assert_eq!(session.tutor_resource_id, Some(s.tutor.0.id), "no tutor is changed by itself");
+        assert_eq!(
+            session.tutor_resource_id,
+            Some(s.tutor.0.id),
+            "no tutor is changed by itself"
+        );
         assert_eq!(session.status, SessionStatus::Scheduled);
     }
     let tasks = s.tasks();
@@ -184,7 +205,13 @@ async fn edu_10_a_clearance_expiring_flags_the_sessions_in_the_window_and_gives_
         .await
         .unwrap();
     assert_eq!(s.tasks().len(), 1);
-    assert_eq!(TutorAlert::of_employee(s.t.db(), s.tutor.1).await.unwrap().len(), 1);
+    assert_eq!(
+        TutorAlert::of_employee(s.t.db(), s.tutor.1)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
     // A document of another kind or another subject is none of its business.
     s.t.state()
         .emit(DocumentExpiring {
@@ -208,7 +235,10 @@ async fn edu_10_the_daily_run_moves_the_window_one_day_at_a_time() {
     tutor_alerts::run_daily(s.t.state(), expiry() + TimeDelta::days(5))
         .await
         .unwrap();
-    assert!(!s.session(&s.third).await.is_flagged(), "the window ends a day short");
+    assert!(
+        !s.session(&s.third).await.is_flagged(),
+        "the window ends a day short"
+    );
     assert!(s.tasks()[0].comments.is_empty());
 
     tutor_alerts::run_daily(s.t.state(), expiry() + TimeDelta::days(6))
@@ -228,7 +258,9 @@ async fn edu_10_the_daily_run_moves_the_window_one_day_at_a_time() {
 #[renox::test]
 async fn edu_10_the_centre_manager_is_told_a_day_before_a_flagged_session() {
     let s = scene().await;
-    let manager = s.t.holder("Mona Manager", perm::CENTRE_MANAGER_ROLE, None).await;
+    let manager =
+        s.t.holder("Mona Manager", perm::CENTRE_MANAGER_ROLE, None)
+            .await;
     s.t.state().emit(s.expiring()).await.unwrap();
     let day_before = s.first.starts_at - TimeDelta::hours(24);
 
@@ -236,9 +268,14 @@ async fn edu_10_the_centre_manager_is_told_a_day_before_a_flagged_session() {
         .await
         .unwrap();
     assert_eq!(early, 0);
-    assert!(s.t.messages.of_type(NOTICE).is_empty(), "not before the 24 hours");
+    assert!(
+        s.t.messages.of_type(NOTICE).is_empty(),
+        "not before the 24 hours"
+    );
 
-    let told = tutor_alerts::escalate(s.t.state(), day_before).await.unwrap();
+    let told = tutor_alerts::escalate(s.t.state(), day_before)
+        .await
+        .unwrap();
 
     assert_eq!(told, 1);
     let sent = s.t.messages.of_type(NOTICE);
@@ -263,7 +300,9 @@ async fn edu_10_the_centre_manager_is_told_a_day_before_a_flagged_session() {
 #[renox::test]
 async fn edu_10_a_resolved_session_is_not_escalated() {
     let s = scene().await;
-    let _manager = s.t.holder("Mona Manager", perm::CENTRE_MANAGER_ROLE, None).await;
+    let _manager =
+        s.t.holder("Mona Manager", perm::CENTRE_MANAGER_ROLE, None)
+            .await;
     s.t.state().emit(s.expiring()).await.unwrap();
     let uma = s.t.employed_tutor("Uma Nasser", false).await;
     clearance_until(&s.t, uma.1, day(400));
@@ -274,7 +313,10 @@ async fn edu_10_a_resolved_session_is_not_escalated() {
         .unwrap();
 
     assert!(!moved.is_flagged(), "the flag clears with the new tutor");
-    assert!(s.session(&s.second).await.is_flagged(), "the other one stays flagged");
+    assert!(
+        s.session(&s.second).await.is_flagged(),
+        "the other one stays flagged"
+    );
     let told = tutor_alerts::escalate(s.t.state(), s.first.starts_at - TimeDelta::hours(24))
         .await
         .unwrap();
@@ -312,7 +354,13 @@ async fn edu_10_a_renewal_clears_the_flags_and_completes_the_task() {
     assert!(!s.session(&s.second).await.is_flagged());
     let tasks = s.tasks();
     assert!(!tasks[0].is_open(), "the task is completed");
-    assert!(tasks[0].completed.as_deref().unwrap_or("").contains("Nothing is left"));
+    assert!(
+        tasks[0]
+            .completed
+            .as_deref()
+            .unwrap_or("")
+            .contains("Nothing is left")
+    );
     let alert = &TutorAlert::of_employee(s.t.db(), s.tutor.1).await.unwrap()[0];
     assert!(alert.closed_at.is_some());
 }
@@ -327,7 +375,13 @@ async fn edu_10_a_batch_without_minors_is_not_flagged_for_the_clearance() {
     let room = t.room("Room 1", 14).await;
     let course = t.course().await;
     let batch = t
-        .batch_with(&course, (&tutor.0, Some(tutor.1)), &room, next_weekday(day(7), 1), &[1, 3])
+        .batch_with(
+            &course,
+            (&tutor.0, Some(tutor.1)),
+            &room,
+            next_weekday(day(7), 1),
+            &[1, 3],
+        )
         .await;
     let session = session_on(&t, &batch, 1, expiry() + TimeDelta::days(1), &tutor).await;
 
@@ -344,7 +398,12 @@ async fn edu_10_a_batch_without_minors_is_not_flagged_for_the_clearance() {
         .await
         .unwrap();
 
-    assert!(!Session::find_or_404(t.db(), session.id).await.unwrap().is_flagged());
+    assert!(
+        !Session::find_or_404(t.db(), session.id)
+            .await
+            .unwrap()
+            .is_flagged()
+    );
     assert!(t.tasks.with_key(TASK_KEY).is_empty());
 }
 
@@ -353,12 +412,21 @@ async fn edu_10_a_batch_without_minors_is_not_flagged_for_the_clearance() {
 #[renox::test]
 async fn edu_10_a_manual_block_flags_only_the_sessions_inside_it() {
     let s = scene().await;
-    let coordinator = s.t.holder("Cora Coordinator", perm::COORDINATOR_ROLE, None).await;
+    let coordinator =
+        s.t.holder("Cora Coordinator", perm::COORDINATOR_ROLE, None)
+            .await;
     let start = day(10);
     let mut sessions = Vec::new();
     for offset in 0..5 {
         sessions.push(
-            session_on(&s.t, &s.batch, 10 + offset, start + TimeDelta::days(offset - 1), &s.tutor).await,
+            session_on(
+                &s.t,
+                &s.batch,
+                10 + offset,
+                start + TimeDelta::days(offset - 1),
+                &s.tutor,
+            )
+            .await,
         );
     }
     // The block runs from the start of day 10 to the end of day 12.
@@ -401,7 +469,13 @@ async fn edu_10_a_manual_block_flags_only_the_sessions_inside_it() {
     wl_scheduling::conflict::add_block(s.t.state(), roster, renox::db::now())
         .await
         .unwrap();
-    assert_eq!(TutorAlert::of_employee(s.t.db(), s.tutor.1).await.unwrap().len(), 1);
+    assert_eq!(
+        TutorAlert::of_employee(s.t.db(), s.tutor.1)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
 }
 
 /// Notice given: the sessions from the day after the last working day are
@@ -454,10 +528,15 @@ async fn edu_10_leave_is_built_but_inactive() {
     };
 
     s.t.state().emit(leave.clone()).await.unwrap();
-    assert!(!s.session(&s.second).await.is_flagged(), "inactive until tutor leave is enabled");
+    assert!(
+        !s.session(&s.second).await.is_flagged(),
+        "inactive until tutor leave is enabled"
+    );
     assert!(s.tasks().is_empty());
 
-    tutor_alerts::on_leave(s.t.state(), &leave, true).await.unwrap();
+    tutor_alerts::on_leave(s.t.state(), &leave, true)
+        .await
+        .unwrap();
 
     assert!(s.session(&s.second).await.is_flagged(), "inside the leave");
     assert!(!s.session(&s.first).await.is_flagged(), "before the leave");
@@ -485,7 +564,8 @@ async fn edu_10_a_failed_run_alerts_the_owner_and_the_admin() {
     let owner = s.t.holder("Omar Owner", perm::OWNER_ROLE, None).await;
     let admin = s.t.holder("Aisha Admin", COMPANY_ADMIN_ROLE, None).await;
     s.t.tasks.fail_for(Some(TASK_KEY));
-    s.t.messages.always_works(wl_kernel::compliance::service::NOTIFICATION_TYPE);
+    s.t.messages
+        .always_works(wl_kernel::compliance::service::NOTIFICATION_TYPE);
 
     s.t.state().emit(s.expiring()).await.unwrap();
     assert!(s.tasks().is_empty(), "the task could not be opened");
@@ -514,10 +594,9 @@ async fn edu_10_a_failed_run_alerts_the_owner_and_the_admin() {
         .unwrap();
     assert_eq!(alerts.len(), 1, "the owner is alerted once");
     assert_eq!(alerts[0].owner_role, perm::OWNER_ROLE);
-    let told = s
-        .t
-        .messages
-        .of_type(wl_kernel::compliance::service::NOTIFICATION_TYPE);
+    let told =
+        s.t.messages
+            .of_type(wl_kernel::compliance::service::NOTIFICATION_TYPE);
     assert_eq!(told.len(), 1);
     let mut recipients = users_of(&told[0]);
     recipients.sort_unstable();

@@ -31,8 +31,8 @@ use crate::batch::Batch;
 use crate::defaults;
 use crate::enrolment::EnrolmentKind;
 use crate::enrolments::party_name;
-use crate::roster;
 use crate::permissions;
+use crate::roster;
 use crate::session::{Session, SessionStatus};
 use crate::sessions;
 use crate::texts;
@@ -361,7 +361,11 @@ async fn show(
                     "sessions.flag_open"
                 },
             ),
-            status_kind: if flag.is_reviewed() { "success" } else { "warning" },
+            status_kind: if flag.is_reviewed() {
+                "success"
+            } else {
+                "warning"
+            },
             reviewed_by: flag.reviewer_name.clone().unwrap_or_else(|| none.clone()),
             note: flag.review_note.clone().unwrap_or_else(|| none.clone()),
         })
@@ -440,8 +444,8 @@ async fn attendance(
         if value.trim().is_empty() {
             continue;
         }
-        let mark = Mark::parse(value)
-            .ok_or_else(|| invalid(&text(&lang, "attendance.problem.mark")))?;
+        let mark =
+            Mark::parse(value).ok_or_else(|| invalid(&text(&lang, "attendance.problem.mark")))?;
         given.push((parse_number(enrolment)?, mark));
     }
     sessions::submit_attendance_marked(&state, &user, id, &given, true).await?;
@@ -465,8 +469,8 @@ async fn correct_attendance(
         if value.trim().is_empty() {
             continue;
         }
-        let mark = Mark::parse(value)
-            .ok_or_else(|| invalid(&text(&lang, "attendance.problem.mark")))?;
+        let mark =
+            Mark::parse(value).ok_or_else(|| invalid(&text(&lang, "attendance.problem.mark")))?;
         given.push((parse_number(enrolment)?, mark));
     }
     let reason = form.get("reason").map_or("", String::as_str);
@@ -500,8 +504,8 @@ async fn record_notice(
     Path(id): Path<i64>,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
-    let given_at = parse_local_time(form.get("given_at").map_or("", String::as_str))?
-        .unwrap_or_else(now);
+    let given_at =
+        parse_local_time(form.get("given_at").map_or("", String::as_str))?.unwrap_or_else(now);
     roster::record_notice(&state, &user, id, number_of(&form, "enrolment")?, given_at).await?;
     done(&lang, "attendance.notice_recorded")
 }

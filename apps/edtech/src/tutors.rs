@@ -206,8 +206,8 @@ pub async fn change_batch_tutor(
         )
     };
     tutor_eligible(state, &tutor, &batch, &dates).await?;
-    let clashes = sessions::conflicts(&state.db, Some(resource), None, &slots, Except::default())
-        .await?;
+    let clashes =
+        sessions::conflicts(&state.db, Some(resource), None, &slots, Except::default()).await?;
     sessions::no_clash(&clashes)?;
     if batch.status == BatchStatus::Planned {
         let mut tx = state.db.begin().await?;

@@ -278,7 +278,9 @@ pub async fn install(state: &AppState) -> Result<Installed> {
     if on("ticketing") {
         installed.categories = install_categories(&state.db).await?;
     }
-    installed.settings = super::edtech_settings::install_for(state, &on).await?.total();
+    installed.settings = super::edtech_settings::install_for(state, &on)
+        .await?
+        .total();
     Ok(installed)
 }
 
@@ -389,7 +391,10 @@ mod tests {
         assert_eq!(kind.blocks.len(), 2);
         assert!(kind.blocks[0].condition.is_none());
         assert!(kind.blocks[1].condition.is_some());
-        assert_eq!(kind.responsible_role.as_deref(), Some("academic_coordinator"));
+        assert_eq!(
+            kind.responsible_role.as_deref(),
+            Some("academic_coordinator")
+        );
         assert_eq!(kind.subject_types, ["edtech.course"]);
     }
 

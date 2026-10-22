@@ -53,7 +53,10 @@ impl Student {
 
 /// `Forbidden` unless `user` holds one of `permissions`.
 fn require_any(user: &AuthUser, wanted: &[&str]) -> Result {
-    if wanted.iter().any(|permission| user.has_permission(permission)) {
+    if wanted
+        .iter()
+        .any(|permission| user.has_permission(permission))
+    {
         Ok(())
     } else {
         Err(Error::Forbidden)
@@ -75,7 +78,10 @@ pub async fn roster(db: &Db, session: &Session) -> Result<Vec<Student>> {
         .get(db)
         .await?;
     for enrolment in seated {
-        let row = rows.iter().find(|row| row.enrolment_id == enrolment.id).cloned();
+        let row = rows
+            .iter()
+            .find(|row| row.enrolment_id == enrolment.id)
+            .cloned();
         students.push(Student { enrolment, row });
     }
     for row in &rows {
@@ -97,7 +103,10 @@ pub async fn roster(db: &Db, session: &Session) -> Result<Vec<Student>> {
 async fn open_session(state: &AppState, id: i64) -> Result<Session> {
     let session = Session::find_or_404(&state.db, id).await?;
     if session.status != SessionStatus::Scheduled {
-        return Err(refused(english("edtech.attendance.problem.session_over", &[])));
+        return Err(refused(english(
+            "edtech.attendance.problem.session_over",
+            &[],
+        )));
     }
     Ok(session)
 }
@@ -124,11 +133,17 @@ pub async fn add_student(
     let session = open_session(state, session_id).await?;
     let enrolment = Enrolment::find_or_404(&state.db, enrolment_id).await?;
     if enrolment.status != EnrolmentStatus::Active {
-        return Err(refused(english("edtech.attendance.problem.not_active", &[])));
+        return Err(refused(english(
+            "edtech.attendance.problem.not_active",
+            &[],
+        )));
     }
     let present = roster(&state.db, &session).await?;
     if present.iter().any(|s| s.enrolment.id == enrolment.id) {
-        return Err(refused(english("edtech.attendance.problem.already_on", &[])));
+        return Err(refused(english(
+            "edtech.attendance.problem.already_on",
+            &[],
+        )));
     }
     let mut row = Attendance {
         session_id: session.id,
@@ -203,7 +218,11 @@ pub async fn record_notice(
                 session_id: session.id,
                 enrolment_id: student.enrolment.id,
                 student_party_id: student.enrolment.student_party_id,
-                mark: if excused { Mark::Excused } else { Mark::Pending },
+                mark: if excused {
+                    Mark::Excused
+                } else {
+                    Mark::Pending
+                },
                 notice_at: Some(given_at),
                 notice_by: Some(by.id),
                 ..Attendance::default()
@@ -273,7 +292,10 @@ pub async fn prepare(
     let students = roster(&state.db, session).await?;
     let known: BTreeSet<i64> = students.iter().map(|s| s.enrolment.id).collect();
     if given.iter().any(|(id, _)| !known.contains(id)) {
-        return Err(refused(english("edtech.attendance.problem.not_on_roster", &[])));
+        return Err(refused(english(
+            "edtech.attendance.problem.not_on_roster",
+            &[],
+        )));
     }
     let mut marks = Vec::new();
     let mut missing = Vec::new();

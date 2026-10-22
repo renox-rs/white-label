@@ -36,7 +36,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("edtech.courses.delivery.hybrid", "In person and online"),
     ("edtech.courses.for_minors", "For minors"),
     ("edtech.courses.approval", "Regulator approval"),
-    ("edtech.courses.approval_required", "The regulator must approve this course"),
+    (
+        "edtech.courses.approval_required",
+        "The regulator must approve this course",
+    ),
     ("edtech.courses.approval_no", "Approval number"),
     ("edtech.courses.approval_missing", "Not recorded"),
     ("edtech.courses.approval_not_needed", "Not needed"),
@@ -82,7 +85,10 @@ const TEXTS: &[(&str, &str)] = &[
         "1 = Monday ... 7 = Sunday, for example 1,3",
     ),
     ("edtech.batches.start_time", "Start time"),
-    ("edtech.batches.start_time_hint", "For example 18:00, Dubai time"),
+    (
+        "edtech.batches.start_time_hint",
+        "For example 18:00, Dubai time",
+    ),
     ("edtech.batches.duration", "Minutes per session"),
     ("edtech.batches.tutor_resource", "Tutor (resource number)"),
     ("edtech.batches.tutor_employee", "Tutor (employee number)"),
@@ -160,7 +166,10 @@ const TEXTS: &[(&str, &str)] = &[
         "A batch needs at least one seat.",
     ),
     ("edtech.batches.sessions", "Sessions"),
-    ("edtech.batches.no_sessions", "No sessions yet: they are generated when the batch opens"),
+    (
+        "edtech.batches.no_sessions",
+        "No sessions yet: they are generated when the batch opens",
+    ),
     // The sessions.
     ("edtech.sessions.title", "Sessions"),
     (
@@ -213,10 +222,7 @@ const TEXTS: &[(&str, &str)] = &[
         "edtech.sessions.problem.new_time",
         "Give the new start time; the session must end after it starts.",
     ),
-    (
-        "edtech.sessions.problem.new_tutor",
-        "Name the new tutor.",
-    ),
+    ("edtech.sessions.problem.new_tutor", "Name the new tutor."),
     (
         "edtech.sessions.problem.not_started",
         "The session has not started yet: attendance is submitted after the start.",
@@ -230,10 +236,7 @@ const TEXTS: &[(&str, &str)] = &[
         "A make-up session cannot be on a day that has passed.",
     ),
     // The seats.
-    (
-        "edtech.seats.problem.full",
-        "The batch has no free seat.",
-    ),
+    ("edtech.seats.problem.full", "The batch has no free seat."),
 ];
 
 /// Every text of the app: this file's and those of the enrolments, the
@@ -293,7 +296,7 @@ pub(crate) fn english(key: &str, params: &[(&str, &dyn Display)]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{entries, english};
+    use super::{english, entries};
 
     #[test]
     fn keys_are_unique_and_prefixed() {

@@ -82,7 +82,10 @@ async fn edu_base_a_course_is_defined_once_by_the_coordinator() {
     assert_eq!(course.code, "CMA-1");
     assert_eq!(course.hours, 60);
     assert!(course.for_minors && course.active);
-    assert_eq!(course.subject().to_string(), format!("edtech.course:{}", course.id));
+    assert_eq!(
+        course.subject().to_string(),
+        format!("edtech.course:{}", course.id)
+    );
 
     let again = courses::create(
         t.state(),
@@ -90,7 +93,10 @@ async fn edu_base_a_course_is_defined_once_by_the_coordinator() {
         NewCourse::new("CMA-1", "Another", "Finance", 10),
     )
     .await;
-    assert!(matches!(again, Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))));
+    assert!(matches!(
+        again,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
 
     let tariq = t.teacher().await;
     let refused = courses::create(
@@ -119,7 +125,11 @@ async fn edu_base_the_regulator_approval_is_recorded_on_the_course() {
         .await
         .unwrap();
     assert_eq!(course.approval_no.as_deref(), Some("KHDA/2026/117"));
-    assert!(courses::record_approval(t.state(), &amal, course.id, " ").await.is_err());
+    assert!(
+        courses::record_approval(t.state(), &amal, course.id, " ")
+            .await
+            .is_err()
+    );
 }
 
 /// A batch is planned: it starts `planned` with no seat taken, and its weekly
@@ -154,7 +164,14 @@ async fn edu_base_a_batch_without_a_session_is_not_planned() {
     let seatless = batches::create(
         t.state(),
         &amal,
-        NewBatch::new(course.id, 0, (first, first + renox::chrono::TimeDelta::days(7)), &[1], "18:00", 60),
+        NewBatch::new(
+            course.id,
+            0,
+            (first, first + renox::chrono::TimeDelta::days(7)),
+            &[1],
+            "18:00",
+            60,
+        ),
     )
     .await;
     assert!(seatless.is_err());
@@ -168,12 +185,17 @@ async fn edu_base_the_coordinator_opens_a_planned_batch() {
     let (_course, batch) = planned(&t).await;
     let amal = t.coordinator().await;
 
-    let opened = batches::open(t.state(), &amal, batch.id).await.expect("it opens");
+    let opened = batches::open(t.state(), &amal, batch.id)
+        .await
+        .expect("it opens");
     assert_eq!(opened.status, BatchStatus::Open);
     let history = renox::state_machine::history(t.db(), "edtech_batches", batch.id)
         .await
         .unwrap();
-    assert_eq!(history.last().map(|row| row.transition.as_str()), Some(OPEN));
+    assert_eq!(
+        history.last().map(|row| row.transition.as_str()),
+        Some(OPEN)
+    );
 
     assert!(batches::open(t.state(), &amal, batch.id).await.is_err());
 }
@@ -188,12 +210,22 @@ async fn edu_base_a_batch_without_a_tutor_does_not_open() {
     let batch = batches::create(
         t.state(),
         &amal,
-        NewBatch::new(course.id, 8, (first, first + renox::chrono::TimeDelta::days(13)), &[1], "10:00", 60),
+        NewBatch::new(
+            course.id,
+            8,
+            (first, first + renox::chrono::TimeDelta::days(13)),
+            &[1],
+            "10:00",
+            60,
+        ),
     )
     .await
     .unwrap();
     let refused = batches::open(t.state(), &amal, batch.id).await;
-    assert!(matches!(refused, Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))));
+    assert!(matches!(
+        refused,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
     let still = Batch::find_or_404(t.db(), batch.id).await.unwrap();
     assert_eq!(still.status, BatchStatus::Planned);
 }
@@ -217,20 +249,33 @@ async fn edu_base_an_open_batch_starts_on_its_first_session_date() {
     let amal = t.coordinator().await;
     batches::open(t.state(), &amal, batch.id).await.unwrap();
 
-    let before = batches::start_due(t.state(), batch.start_date - renox::chrono::TimeDelta::days(1))
+    let before = batches::start_due(
+        t.state(),
+        batch.start_date - renox::chrono::TimeDelta::days(1),
+    )
+    .await
+    .unwrap();
+    assert!(before.is_empty());
+    let started = batches::start_due(t.state(), batch.start_date)
         .await
         .unwrap();
-    assert!(before.is_empty());
-    let started = batches::start_due(t.state(), batch.start_date).await.unwrap();
     assert_eq!(started, [batch.id]);
     let running = Batch::find_or_404(t.db(), batch.id).await.unwrap();
     assert_eq!(running.status, BatchStatus::Running);
     // A second run changes nothing.
-    assert!(batches::start_due(t.state(), batch.start_date).await.unwrap().is_empty());
+    assert!(
+        batches::start_due(t.state(), batch.start_date)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     let history = renox::state_machine::history(t.db(), "edtech_batches", batch.id)
         .await
         .unwrap();
-    assert_eq!(history.last().map(|row| row.transition.as_str()), Some(START));
+    assert_eq!(
+        history.last().map(|row| row.transition.as_str()),
+        Some(START)
+    );
 }
 
 /// `cancel` is for a planned or open batch and needs a reason and the choice
@@ -252,9 +297,15 @@ async fn edu_base_cancel_and_terminate_are_declared_with_their_reason() {
     assert!(matches!(unchecked, Err(TransitionError::Guard(_))));
     let missing = batches::cancel(t.state(), &amal, planned_batch.id, " ", Vec::new()).await;
     assert!(missing.is_err());
-    batches::cancel(t.state(), &amal, planned_batch.id, "too few students", Vec::new())
-        .await
-        .expect("a planned batch is cancelled");
+    batches::cancel(
+        t.state(),
+        &amal,
+        planned_batch.id,
+        "too few students",
+        Vec::new(),
+    )
+    .await
+    .expect("a planned batch is cancelled");
     let cancelled = Batch::find_or_404(t.db(), planned_batch.id).await.unwrap();
     assert_eq!(cancelled.status, BatchStatus::Cancelled);
     assert_eq!(cancelled.cancel_reason.as_deref(), Some("too few students"));
@@ -290,7 +341,8 @@ async fn edu_base_seats_are_taken_up_to_the_capacity() {
     let t = boot().await;
     let (_course, batch) = planned(&t).await;
     for n in 0..11 {
-        t.enrolment_in(&batch, 100 + n, EnrolmentStatus::Active).await;
+        t.enrolment_in(&batch, 100 + n, EnrolmentStatus::Active)
+            .await;
     }
     let held = t
         .enrolment_in(&batch, 200, EnrolmentStatus::PendingPayment)
@@ -299,7 +351,10 @@ async fn edu_base_seats_are_taken_up_to_the_capacity() {
 
     let mut tx = t.db().begin_immediate().await.unwrap();
     let full = seats::take(&mut tx, batch.id, 1, Limit::Capacity).await;
-    assert!(matches!(full, Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))));
+    assert!(matches!(
+        full,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
     tx.rollback().await.unwrap();
 
     t.lapse(&held).await;
@@ -317,17 +372,27 @@ async fn edu_base_the_room_limit_is_the_only_way_past_the_capacity() {
     let t = boot().await;
     let (_course, batch) = planned(&t).await;
     for n in 0..12 {
-        t.enrolment_in(&batch, 100 + n, EnrolmentStatus::Active).await;
+        t.enrolment_in(&batch, 100 + n, EnrolmentStatus::Active)
+            .await;
     }
 
     let mut tx = t.db().begin_immediate().await.unwrap();
-    assert!(seats::take(&mut tx, batch.id, 1, Limit::Capacity).await.is_err());
+    assert!(
+        seats::take(&mut tx, batch.id, 1, Limit::Capacity)
+            .await
+            .is_err()
+    );
     tx.rollback().await.unwrap();
     for n in 0..2 {
-        t.enrolment_in(&batch, 300 + n, EnrolmentStatus::Active).await;
+        t.enrolment_in(&batch, 300 + n, EnrolmentStatus::Active)
+            .await;
     }
     let mut tx = t.db().begin_immediate().await.unwrap();
-    assert!(seats::take(&mut tx, batch.id, 1, Limit::Room).await.is_err());
+    assert!(
+        seats::take(&mut tx, batch.id, 1, Limit::Room)
+            .await
+            .is_err()
+    );
     tx.rollback().await.unwrap();
 }
 
@@ -364,7 +429,11 @@ async fn edu_base_the_batch_pages_show_the_batch_and_its_actions() {
 
     let cara = t.counsellor_user().await;
     t.app.acting_as(&cara);
-    t.app.get("/edtech/batches").await.assert_ok().assert_see("Open");
+    t.app
+        .get("/edtech/batches")
+        .await
+        .assert_ok()
+        .assert_see("Open");
     t.app
         .htmx()
         .post(&format!("/edtech/batches/{}/open", batch.id), &[("x", "y")])

@@ -165,9 +165,8 @@ async fn show(
     require(&user, permissions::CERTIFICATES_VIEW)?;
     let c = Certificate::find_or_404(&state.db, id).await?;
     let none = text(&lang, "none");
-    let label_of = |other: Option<Certificate>| {
-        other.map_or_else(|| none.clone(), |found| found.label())
-    };
+    let label_of =
+        |other: Option<Certificate>| other.map_or_else(|| none.clone(), |found| found.label());
     let replaces = match c.supersedes_id {
         Some(old) => label_of(Certificate::find(&state.db, old).await?),
         None => none.clone(),
@@ -309,7 +308,9 @@ async fn verify(
     page.student = shown.student_name;
     page.course = shown.course_title;
     page.completed = shown.completion_date.to_string();
-    page.issued = shown.issued_on.map_or_else(|| none.clone(), |d| d.to_string());
+    page.issued = shown
+        .issued_on
+        .map_or_else(|| none.clone(), |d| d.to_string());
     page.revoked = shown.revoked_on.map_or(none, |d| d.to_string());
     Ok(View::typed(page))
 }
@@ -404,7 +405,10 @@ async fn print(
     require(&user, permissions::CERTIFICATES_VIEW)?;
     let c = Certificate::find_or_404(&state.db, id).await?;
     if c.status != CertificateStatus::Issued {
-        return Err(super::invalid(&text(&lang, "certificates.problem.not_printable")));
+        return Err(super::invalid(&text(
+            &lang,
+            "certificates.problem.not_printable",
+        )));
     }
     let none = text(&lang, "none");
     Ok(View::typed(PrintPage {
