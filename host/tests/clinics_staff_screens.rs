@@ -3,7 +3,7 @@
 
 mod support;
 
-use host::roles::{MEMBER, RECEPTIONIST};
+use host::roles::{MEMBER, RECEPTIONIST, STOREKEEPER};
 use support::{clinics_booted, person};
 
 /// The receptionist books through the picker and works the waiting list, and
@@ -28,4 +28,54 @@ async fn the_receptionist_books_and_keeps_the_waiting_list_and_a_member_cannot()
     app.acting_as(&nobody);
     app.get("/scheduling/bookings/new").await.assert_forbidden();
     app.get("/scheduling/waiting-list").await.assert_forbidden();
+}
+
+/// The storekeeper reaches the stock screens and the sidebar links each of
+/// them; the receptionist, who holds no stock permission, reaches none.
+#[renox::test]
+async fn the_storekeeper_reaches_the_stock_screens_and_the_receptionist_does_not() {
+    let app = clinics_booted().await;
+    let kim = person(&app, "Kim", STOREKEEPER).await;
+    let rita = person(&app, "Rita", RECEPTIONIST).await;
+
+    app.acting_as(&kim);
+    for path in [
+        "/stock",
+        "/stock/holds",
+        "/stock/transfers",
+        "/purchase-orders",
+        "/goods-receipts",
+    ] {
+        app.get(path).await.assert_ok();
+    }
+    app.request()
+        .header("accept", "text/html")
+        .get("/pending-issues")
+        .await
+        .assert_ok()
+        .assert_see("Pending issues");
+    let sidebar = app.get("/dashboard").await;
+    for link in [
+        "Stock",
+        "Receive stock",
+        "Transfers",
+        "Stock holds",
+        "Pending issues",
+    ] {
+        sidebar.assert_see(link);
+    }
+
+    app.acting_as(&rita);
+    for path in [
+        "/stock",
+        "/stock/holds",
+        "/stock/transfers",
+        "/purchase-orders",
+    ] {
+        app.get(path).await.assert_forbidden();
+    }
+    app.get("/dashboard")
+        .await
+        .assert_ok()
+        .assert_dont_see("Receive stock");
 }

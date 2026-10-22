@@ -419,6 +419,7 @@ impl Seed {
         self.authorisations().await?;
         self.claims().await?;
         self.recall().await?;
+        self.orders().await?;
         self.trade().await?;
         self.money().await?;
         self.notes().await?;
