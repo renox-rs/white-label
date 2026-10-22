@@ -1,0 +1,24 @@
+[package]
+name = "fnb"
+description = "F&B: the vertical app for cloud kitchens and local chains (orders from every channel, kitchen tickets, own-rider delivery, failed deliveries)."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../../crates/wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"
+# The real modules in the integration tests: the order is a sales order, its
+# delivery is a wl-delivery delivery on a run, the refund is a wl-payments
+# refund and the wastage a wl-inventory movement.
+wl-delivery = { path = "../../crates/wl-delivery" }
+wl-sales = { path = "../../crates/wl-sales" }
+wl-payments = { path = "../../crates/wl-payments" }
+wl-inventory = { path = "../../crates/wl-inventory" }
+wl-parties = { path = "../../crates/wl-parties" }

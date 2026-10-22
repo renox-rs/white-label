@@ -1,0 +1,107 @@
+{#- fnb: an order's page: where it is, its lines and kitchen tickets, its delivery,
+    what happened when the delivery failed and how it was closed, the refunds
+    asked for it, and the actions the person may run (accept, reject, set the
+    delivery details, dispatch, complete, close a failed delivery, change the
+    responsible party, ask for a refund). What an action cannot do yet is said
+    in the notes. Replace it with resources/views/fnb/order.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="order.number">
+  <rx-stack>
+    <rx-page-header :title="order.number" :subtitle="order.recipient_name" :back="route('fnb.orders')" :back-label="tx['title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-confirm rx-if="can_accept" :id="'accept-' ~ order.id" :label="tx['accept']" :action="route('fnb.order_accept', order.id)" method="POST"
+                  :title="tx['accept_title']" :message="tx['accept_message']" :confirm-label="tx['accept']"/>
+      <rx-action-sheet rx-if="can_accept" :id="'reject-' ~ order.id" :label="tx['reject']" :action="route('fnb.order_reject', order.id)"
+                       :title="tx['reject_title']" :description="tx['reject_description']" :submit-label="tx['reject']" icon="ban" variant="danger" danger>
+        <rx-textarea name="reason" :label="tx['reason']" :id="'reject-reason-' ~ order.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_details" :id="'details-' ~ order.id" :label="tx['details_action']" :action="route('fnb.order_details', order.id)"
+                       :title="tx['details_title']" :description="tx['details_description']" :submit-label="tx['details_save']" icon="map-pin">
+        <rx-select name="kind" :label="tx['kind']" :id="'details-kind-' ~ order.id" :selected="order.kind" :options="kinds"/>
+        <rx-input name="recipient_name" :label="tx['customer']" :id="'details-name-' ~ order.id" :value="order.recipient_name"/>
+        <rx-input name="recipient_phone" :label="tx['phone']" :id="'details-phone-' ~ order.id" :value="order.recipient_phone"/>
+        <rx-textarea name="address" :label="tx['address']" :id="'details-address-' ~ order.id" :value="order.address"/>
+        <rx-input name="area" :label="tx['area']" :id="'details-area-' ~ order.id" :value="order.area"/>
+      </rx-action-sheet>
+      <rx-confirm rx-if="can_dispatch" :id="'dispatch-' ~ order.id" :label="tx['dispatch']" :action="route('fnb.order_dispatch', order.id)" method="POST"
+                  :title="tx['dispatch_title']" :message="tx['dispatch_message']" :confirm-label="tx['dispatch']"/>
+      <rx-confirm rx-if="can_complete" :id="'complete-' ~ order.id" :label="tx['complete']" :action="route('fnb.order_complete', order.id)" method="POST"
+                  :title="tx['complete_title']" :message="tx['complete_message']" :confirm-label="tx['complete']"/>
+      <rx-confirm rx-if="can_close" :id="'close-' ~ order.id" :label="tx['close']" :action="route('fnb.order_close', order.id)" method="POST"
+                  :title="tx['close_title']" :message="tx['close_message']" :confirm-label="tx['close']"/>
+      <rx-action-sheet rx-if="can_party" :id="'party-' ~ order.id" :label="tx['party_action']" :action="route('fnb.order_responsible', order.id)"
+                       :title="tx['party_title']" :description="tx['party_description']" :submit-label="tx['party_save']" icon="user-round">
+        <rx-select name="party" :label="tx['party']" :id="'party-party-' ~ order.id" :selected="order.responsible_party" :options="parties"/>
+        <rx-textarea name="note" :label="tx['note']" :id="'party-note-' ~ order.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_refund" :id="'refund-' ~ order.id" :label="tx['refund_action']" :action="route('fnb.order_refund', order.id)"
+                       :title="tx['refund_title']" :description="tx['refund_description']" :submit-label="tx['refund_ask']" icon="banknote">
+        <rx-input name="amount" :label="tx['refund_amount']" :id="'refund-amount-' ~ order.id" required/>
+        <rx-textarea name="reason" :label="tx['reason']" :id="'refund-reason-' ~ order.id" required/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-card rx-if="notes" :title="tx['notes']">
+      <rx-stack>
+        <p rx-for="note in notes">{{ note }}</p>
+      </rx-stack>
+    </rx-card>
+    <rx-card :title="tx['details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['number']" :value="order.number" copyable/>
+        <rx-entry :label="tx['channel']" :value="order.channel"/>
+        <rx-entry :label="tx['kind']" :value="kind_label"/>
+        <rx-entry :label="tx['payment']" :value="payment_label"/>
+        <rx-entry :label="tx['total']" :value="order.total" format="money"/>
+        <rx-entry :label="tx['paid']" :value="order.paid_amount" format="money"/>
+        <rx-entry :label="tx['customer']" :value="order.recipient_name" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['phone']" :value="order.recipient_phone" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['address']" :value="order.address" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['area']" :value="order.area" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['delivery']" rx-if="delivery_url" :value="delivery_url" :url="delivery_url"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card rx-if="order.failure_reason" :title="tx['failure']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['failure_reason']" :value="failure_label"/>
+        <rx-entry :label="tx['delivery_reason']" :value="delivery_reason_label"/>
+        <rx-entry :label="tx['side']" :value="side_label"/>
+        <rx-entry :label="tx['party']" :value="party_label"/>
+        <rx-entry :label="tx['attempt']" :value="order.failure_attempt"/>
+        <rx-entry :label="tx['failed_at']" :value="order.failed_at"/>
+        <rx-entry :label="tx['party_note']" rx-if="order.responsible_note" :value="order.responsible_note" span="full"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card rx-if="order.refund_decision" :title="tx['closing']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['decision']" :value="decision_label"/>
+        <rx-entry :label="tx['refunded']" :value="order.refund_amount" format="money"/>
+        <rx-entry :label="tx['closed_at']" :value="order.closed_at"/>
+        <rx-entry :label="tx['wastage']" :value="order.wastage_ref" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['refund_left']" rx-if="can_refund" :value="refund_left" format="money"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="lines" as="line" :key="line.description" :caption="tx['lines']" card>
+      <rx-column :label="tx['item']">{{ line.description }}</rx-column>
+      <rx-column :label="tx['quantity']" align="num">{{ line.quantity }}</rx-column>
+      <rx-column :label="tx['amount']" align="num">{{ line.gross | money(currency='AED') }}</rx-column>
+    </rx-table>
+    <rx-table :rows="tickets" as="ticket" :key="ticket.description" :caption="tx['tickets']" card>
+      <rx-column :label="tx['item']">{{ ticket.description }}</rx-column>
+      <rx-column :label="tx['station']">{{ ticket.station }}</rx-column>
+      <rx-column :label="tx['state']">{{ ticket.status }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_tickets']" icon="chef-hat"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="refunds" as="ask" :key="ask.at" :caption="tx['refunds']" card>
+      <rx-column :label="tx['when']">{{ ask.at }}</rx-column>
+      <rx-column :label="tx['amount']" align="num">{{ ask.amount | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['reason']" hide-narrow>{{ ask.reason }}</rx-column>
+      <rx-column :label="tx['approved']">{% if ask.approved %}{{ tx['yes'] }}{% else %}{{ tx['waiting'] }}{% endif %}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_refunds']" icon="banknote"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="history" as="row" :key="row.at" :caption="tx['history']" card>
+      <rx-column :label="tx['when']">{{ row.at }}</rx-column>
+      <rx-column :label="tx['what']">{{ row.what }}</rx-column>
+      <rx-column :label="tx['state']">{{ row.to }}</rx-column>
+      <rx-column :label="tx['reason']" hide-narrow>{{ row.reason }}</rx-column>
+    </rx-table>
+  </rx-stack>
+</rx-page>
