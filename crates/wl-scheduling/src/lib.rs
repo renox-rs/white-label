@@ -20,8 +20,10 @@ pub mod resource;
 pub mod rules;
 pub mod service;
 pub mod slots;
+pub mod staff_pages;
 mod texts;
 pub mod waiting;
+pub mod waiting_pages;
 
 use renox::db::Migration;
 use renox::nav::NavLink;
@@ -51,6 +53,18 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-scheduling/booking.html",
         include_str!("../views/wl-scheduling/booking.html"),
+    ),
+    (
+        "wl-scheduling/booking_new.html",
+        include_str!("../views/wl-scheduling/booking_new.html"),
+    ),
+    (
+        "wl-scheduling/waiting.html",
+        include_str!("../views/wl-scheduling/waiting.html"),
+    ),
+    (
+        "wl-scheduling/waiting_entry.html",
+        include_str!("../views/wl-scheduling/waiting_entry.html"),
     ),
     (
         "wl-scheduling/conflicts.html",
@@ -211,6 +225,8 @@ impl Module for WlScheduling {
 
     fn routes(&self) -> Routes {
         pages::routes()
+            .merge(staff_pages::routes())
+            .merge(waiting_pages::routes())
             .merge(conflict_pages::routes())
             .merge(links::routes())
     }
@@ -246,6 +262,9 @@ impl Module for WlScheduling {
         renox::state_machine::register::<WaitingEntry>();
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::ShowPage>()
+            .view_data::<staff_pages::NewPage>()
+            .view_data::<waiting_pages::ListPage>()
+            .view_data::<waiting_pages::EntryPage>()
             .view_data::<conflict_pages::ConflictsPage>()
             .view_data::<links::LinkPage>()
             .view_data::<links::SlotsPage>();
@@ -318,6 +337,14 @@ impl Module for WlScheduling {
                 .icon("calendar-check")
                 .group("nav.app")
                 .order(62)
+                .permission(permissions::VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_scheduling.waiting_list", "nav.waiting_list")
+                .icon("clock")
+                .group("nav.app")
+                .order(63)
                 .permission(permissions::VIEW),
         );
     }
