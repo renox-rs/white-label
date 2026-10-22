@@ -491,7 +491,12 @@ async fn amend_in(tx: &mut Transaction, order: SalesOrder, run: &AmendInput) -> 
         let held = if hold {
             (line.held_milli + increase).min(room)
         } else {
-            line.held_milli.min(room)
+            // A smaller quantity takes away the held part first: what was
+            // released to the kitchen stays released.
+            let released = line.quantity_milli - line.held_milli;
+            line.held_milli
+                .min(room)
+                .min((change.quantity_milli - released).max(0))
         };
         SaleLine::query()
             .where_(SaleLine::ID.eq(line.id))
