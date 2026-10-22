@@ -14,7 +14,9 @@ use renox::testing::TestApp;
 use wl_kernel::calendar::BusinessCalendar;
 use wl_kernel::documents::dubai_date;
 use wl_kernel::invoicing::provide_invoicer;
+use wl_kernel::notify::provide_notifier;
 use wl_kernel::parties::provide_directory;
+use wl_kernel::payments::{provide_payment_links, provide_payment_recorder};
 use wl_kernel::sales::{provide_package_ledger, provide_package_sales};
 use wl_kernel::subscriptions::provide_subscriptions;
 use wl_scheduling::{Resource, ResourceType, WlScheduling};
@@ -23,7 +25,7 @@ use wl_scheduling::{Resource, ResourceType, WlScheduling};
 /// packages the enrolments talk to.
 pub mod money;
 
-pub use money::{Books, Packages, People, Subs};
+pub use money::{Books, Cash, Messages, Packages, People, Subs};
 
 /// The pages extend the app's layout; a package test has no app, so it
 /// brings the smallest one.
@@ -80,6 +82,8 @@ struct Harness {
     books: Books,
     subs: Subs,
     packages: Packages,
+    cash: Cash,
+    messages: Messages,
 }
 
 impl Module for Harness {
@@ -93,6 +97,9 @@ impl Module for Harness {
         provide_subscriptions(app, self.subs.clone());
         provide_package_ledger(app, self.packages.clone());
         provide_package_sales(app, self.packages.clone());
+        provide_payment_recorder(app, self.cash.clone());
+        provide_payment_links(app, self.cash.clone());
+        provide_notifier(app, self.messages.clone());
     }
 
     fn routes(&self) -> Routes {
@@ -119,6 +126,10 @@ pub struct Centre {
     pub subs: Subs,
     /// The packages sold.
     pub packages: Packages,
+    /// The payments the centre asked about and the refunds and links it asked.
+    pub cash: Cash,
+    /// The notifications asked of the notifier.
+    pub messages: Messages,
     who: Arc<Mutex<Option<renox::AuthUser>>>,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
@@ -142,6 +153,7 @@ pub async fn boot_with_holidays(holidays: &[NaiveDate]) -> Centre {
         Subs::default(),
         Packages::default(),
     );
+    let (cash, messages) = (Cash::default(), Messages::default());
     let mut scheduling_module = WlScheduling::new();
     for (code, initiated_by) in edtech::reasons::SCHEDULING_REASON_CODES {
         scheduling_module = scheduling_module.reason_code(code, *initiated_by);
@@ -159,6 +171,8 @@ pub async fn boot_with_holidays(holidays: &[NaiveDate]) -> Centre {
             books: books.clone(),
             subs: subs.clone(),
             packages: packages.clone(),
+            cash: cash.clone(),
+            messages: messages.clone(),
         });
     let listed: Vec<String> = holidays.iter().map(|d| format!("\"{d}\"")).collect();
     let client = CLIENT.replace("{holidays}", &listed.join(", "));
@@ -176,6 +190,8 @@ pub async fn boot_with_holidays(holidays: &[NaiveDate]) -> Centre {
         books,
         subs,
         packages,
+        cash,
+        messages,
         who,
         _views: views,
     }

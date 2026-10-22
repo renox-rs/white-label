@@ -9,7 +9,16 @@ use std::sync::{Arc, Mutex};
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_kernel::invoicing::{
-    InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
+    CreditLine, CreditNoteId, CreditNoteStatus, CreditNoteSummary, InvoiceDraft, InvoiceFuture,
+    InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
+};
+use wl_kernel::notify::{
+    MessageId, NotificationTypeDef, Notifier, NotifyChannel, NotifyFuture, NotifyRequest,
+};
+use wl_kernel::payments::{
+    AllocationTarget, PaymentFuture, PaymentId, PaymentLinkRef, PaymentLinkRequest, PaymentLinks,
+    PaymentRecorder, PaymentStatus, PaymentSummary, RecordPayment, RefundId, RefundRequest,
+    ReversalReason,
 };
 use wl_kernel::parties::{
     PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary,
@@ -141,11 +150,36 @@ impl Invoiced {
     }
 }
 
-/// The invoice book: the invoices drafted and what was paid on them.
+/// One credit note the book issued.
+#[derive(Debug, Clone)]
+pub struct Noted {
+    /// The id it answered with.
+    pub id: i64,
+    /// The invoice it credits.
+    pub invoice: i64,
+    /// The lines credited: position and net.
+    pub lines: Vec<(i64, i64)>,
+    /// The reason given.
+    pub reason: String,
+    /// The total with VAT, in fils.
+    pub gross: i64,
+    /// Whether the invoice was credited in full.
+    pub in_full: bool,
+}
+
+/// The VAT of a net amount at 5%, half-up.
+fn vat_of(net: i64) -> i64 {
+    edtech::refund::ratio(net, 500, 10_000)
+}
+
+/// The invoice book: the invoices drafted, what was paid on them and the
+/// credit notes issued.
 #[derive(Clone, Default)]
 pub struct Books {
     invoices: Arc<Mutex<Vec<Invoiced>>>,
     payments: Arc<Mutex<Vec<(i64, i64)>>>,
+    notes: Arc<Mutex<Vec<Noted>>>,
+    discarded: Arc<Mutex<Vec<i64>>>,
 }
 
 impl Books {
@@ -169,6 +203,64 @@ impl Books {
     pub fn all(&self) -> Vec<Invoiced> {
         self.invoices.lock().unwrap().clone()
     }
+
+    /// The credit notes issued, oldest first.
+    pub fn notes(&self) -> Vec<Noted> {
+        self.notes.lock().unwrap().clone()
+    }
+
+    /// The drafts discarded, by invoice id.
+    pub fn discarded(&self) -> Vec<i64> {
+        self.discarded.lock().unwrap().clone()
+    }
+
+    /// Whether invoice `id` was credited in full.
+    pub fn credited_in_full(&self, id: i64) -> bool {
+        self.notes
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|n| n.invoice == id && n.in_full)
+    }
+
+    /// The summary of credit note `note`.
+    fn note_summary(&self, note: &Noted) -> CreditNoteSummary {
+        let party = self
+            .invoices
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|i| i.id == note.invoice)
+            .map(|i| i.draft.party)
+            .unwrap_or(PartyId(0));
+        CreditNoteSummary {
+            id: CreditNoteId(note.id),
+            number: Some(format!("CN-{}", note.id)),
+            status: CreditNoteStatus::Issued,
+            invoice: InvoiceId(note.invoice),
+            party,
+            legal_entity_id: Some(1),
+            currency: "AED".to_owned(),
+            gross_total: note.gross,
+            remaining: note.gross,
+        }
+    }
+
+    /// Records a credit note of `lines` (position, net) on `invoice`.
+    fn credit(&self, invoice: i64, lines: Vec<(i64, i64)>, reason: &str, in_full: bool) -> i64 {
+        let gross = lines.iter().map(|(_, net)| net + vat_of(*net)).sum();
+        let mut notes = self.notes.lock().unwrap();
+        let id = 500 + i64::try_from(notes.len()).unwrap();
+        notes.push(Noted {
+            id,
+            invoice,
+            lines,
+            reason: reason.to_owned(),
+            gross,
+            in_full,
+        });
+        id
+    }
 }
 
 impl Invoicer for Books {
@@ -187,6 +279,19 @@ impl Invoicer for Books {
         Box::pin(async move { Ok(Some(InvoiceId(id))) })
     }
 
+    fn discard_draft<'a>(&'a self, _db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, bool> {
+        let is_draft = self
+            .invoices
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|i| i.id == id.0 && !i.issued);
+        if is_draft {
+            self.discarded.lock().unwrap().push(id.0);
+        }
+        Box::pin(async move { Ok(is_draft) })
+    }
+
     fn find<'a>(&'a self, _db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
         let found = self
             .invoices
@@ -194,22 +299,38 @@ impl Invoicer for Books {
             .unwrap()
             .iter()
             .find(|i| i.id == id.0)
-            .map(|i| InvoiceSummary {
-                id,
-                number: i.issued.then(|| format!("INV-{}", i.id)),
-                status: if i.issued {
-                    InvoiceStatus::Issued
+            .map(|i| {
+                let credited = self.credited_in_full(i.id);
+                let discarded = self.discarded.lock().unwrap().contains(&i.id);
+                let balance = if credited || discarded {
+                    0
                 } else {
+                    i.gross() - self.paid_of(i.id)
+                };
+                let status = if credited {
+                    InvoiceStatus::Credited
+                } else if !i.issued {
                     InvoiceStatus::Draft
-                },
-                party: i.draft.party,
-                legal_entity_id: None,
-                currency: i.draft.currency.clone(),
-                gross_total: i.gross(),
-                balance: i.gross() - self.paid_of(i.id),
-                due_date: None,
-                disputed: false,
-                chasing_paused_until: None,
+                } else if balance == 0 && i.gross() > 0 {
+                    InvoiceStatus::Paid
+                } else if balance < i.gross() {
+                    InvoiceStatus::PartiallyPaid
+                } else {
+                    InvoiceStatus::Issued
+                };
+                InvoiceSummary {
+                    id,
+                    number: i.issued.then(|| format!("INV-{}", i.id)),
+                    status,
+                    party: i.draft.party,
+                    legal_entity_id: Some(1),
+                    currency: i.draft.currency.clone(),
+                    gross_total: i.gross(),
+                    balance,
+                    due_date: None,
+                    disputed: false,
+                    chasing_paused_until: None,
+                }
             });
         Box::pin(async move { Ok(found) })
     }
@@ -236,6 +357,343 @@ impl Invoicer for Books {
             }
         }
         Box::pin(async { Ok(()) })
+    }
+
+    fn credit_in_full<'a>(
+        &'a self,
+        _state: &'a AppState,
+        invoice: InvoiceId,
+        reason: String,
+        _by: Option<i64>,
+    ) -> InvoiceFuture<'a, CreditNoteId> {
+        let lines: Vec<(i64, i64)> = self
+            .invoices
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|i| i.id == invoice.0)
+            .map(|i| {
+                i.draft
+                    .lines
+                    .iter()
+                    .enumerate()
+                    .map(|(n, line)| (i64::try_from(n).unwrap() + 1, line.net()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let id = self.credit(invoice.0, lines, &reason, true);
+        Box::pin(async move { Ok(CreditNoteId(id)) })
+    }
+
+    fn credit_partly<'a>(
+        &'a self,
+        _state: &'a AppState,
+        invoice: InvoiceId,
+        lines: Vec<CreditLine>,
+        reason: String,
+        _by: Option<i64>,
+    ) -> InvoiceFuture<'a, CreditNoteId> {
+        let lines = lines.iter().map(|l| (l.invoice_line, l.net)).collect();
+        let id = self.credit(invoice.0, lines, &reason, false);
+        Box::pin(async move { Ok(CreditNoteId(id)) })
+    }
+
+    fn find_credit_note<'a>(
+        &'a self,
+        _db: &'a Db,
+        id: CreditNoteId,
+    ) -> InvoiceFuture<'a, Option<CreditNoteSummary>> {
+        let found = self
+            .notes
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|n| n.id == id.0)
+            .map(|n| self.note_summary(n));
+        Box::pin(async move { Ok(found) })
+    }
+
+    fn credit_notes_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        invoice: InvoiceId,
+    ) -> InvoiceFuture<'a, Vec<CreditNoteSummary>> {
+        let found: Vec<CreditNoteSummary> = self
+            .notes
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|n| n.invoice == invoice.0)
+            .map(|n| self.note_summary(n))
+            .collect();
+        Box::pin(async move { Ok(found) })
+    }
+}
+
+/// A payment a test puts in front of the payment recorder.
+#[derive(Debug, Clone)]
+pub struct Paid {
+    /// What it is for.
+    pub prepaid: Subject,
+    /// Where it stands.
+    pub status: PaymentStatus,
+    /// The amount, in fils.
+    pub amount: i64,
+    /// The id it answers with.
+    pub id: i64,
+}
+
+/// A payment link the centre asked for.
+#[derive(Debug, Clone)]
+pub struct Linked {
+    /// What was asked.
+    pub request: PaymentLinkRequest,
+    /// The id it answered with.
+    pub id: i64,
+    /// Whether it was cancelled.
+    pub cancelled: bool,
+}
+
+/// The payments module as the enrolments see it: the payments made for a
+/// record, the refunds asked, the payment links made and cancelled.
+#[derive(Clone, Default)]
+pub struct Cash {
+    payments: Arc<Mutex<Vec<Paid>>>,
+    refunds: Arc<Mutex<Vec<(RefundRequest, Option<i64>)>>>,
+    links: Arc<Mutex<Vec<Linked>>>,
+    no_links: Arc<Mutex<bool>>,
+}
+
+impl Cash {
+    /// A payment of `amount` fils for `prepaid`, in `status`.
+    pub fn add(&self, prepaid: Subject, status: PaymentStatus, amount: i64) -> i64 {
+        let mut all = self.payments.lock().unwrap();
+        let id = 700 + i64::try_from(all.len()).unwrap();
+        all.push(Paid {
+            prepaid,
+            status,
+            amount,
+            id,
+        });
+        id
+    }
+
+    /// Payment `id` is now in `status`.
+    pub fn set_status(&self, id: i64, status: PaymentStatus) {
+        for payment in self.payments.lock().unwrap().iter_mut() {
+            if payment.id == id {
+                payment.status = status;
+            }
+        }
+    }
+
+    /// The refunds asked, with the user who asked (`None`: the system).
+    pub fn refunds(&self) -> Vec<(RefundRequest, Option<i64>)> {
+        self.refunds.lock().unwrap().clone()
+    }
+
+    /// The payment links made, oldest first.
+    pub fn links(&self) -> Vec<Linked> {
+        self.links.lock().unwrap().clone()
+    }
+
+    /// From now on no link can be made (no gateway).
+    pub fn without_gateway(&self) {
+        *self.no_links.lock().unwrap() = true;
+    }
+}
+
+impl PaymentRecorder for Cash {
+    fn record<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _payment: RecordPayment,
+        _by: Option<i64>,
+    ) -> PaymentFuture<'a, PaymentSummary> {
+        Box::pin(async {
+            Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "not part of these tests".to_owned(),
+            ))
+        })
+    }
+
+    fn allocate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _payment: PaymentId,
+        _target: AllocationTarget,
+        _amount: i64,
+    ) -> PaymentFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
+    fn reverse<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _payment: PaymentId,
+        _reason: ReversalReason,
+        _note: Option<String>,
+        _by: Option<i64>,
+    ) -> PaymentFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
+    fn find<'a>(
+        &'a self,
+        _db: &'a Db,
+        _id: PaymentId,
+    ) -> PaymentFuture<'a, Option<PaymentSummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn credit_balance<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _currency: &'a str,
+    ) -> PaymentFuture<'a, i64> {
+        Box::pin(async { Ok(0) })
+    }
+
+    fn payments_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        prepaid: &'a Subject,
+    ) -> PaymentFuture<'a, Vec<PaymentSummary>> {
+        let found: Vec<PaymentSummary> = self
+            .payments
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|p| p.prepaid == *prepaid)
+            .map(|p| PaymentSummary {
+                id: PaymentId(p.id),
+                number: None,
+                party: PartyId(0),
+                legal_entity_id: 1,
+                direction: wl_kernel::payments::Direction::In,
+                method: wl_kernel::payments::PaymentMethod::Gateway,
+                amount: p.amount,
+                allocated: 0,
+                unallocated: p.amount,
+                currency: "AED".to_owned(),
+                status: p.status,
+                date: wl_kernel::documents::today(),
+            })
+            .collect();
+        Box::pin(async move { Ok(found) })
+    }
+
+    fn request_refund<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: RefundRequest,
+        by: Option<i64>,
+    ) -> PaymentFuture<'a, RefundId> {
+        let mut all = self.refunds.lock().unwrap();
+        all.push((request, by));
+        let id = i64::try_from(all.len()).unwrap();
+        Box::pin(async move { Ok(RefundId(id)) })
+    }
+}
+
+impl PaymentLinks for Cash {
+    fn create<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: PaymentLinkRequest,
+    ) -> PaymentFuture<'a, Option<PaymentLinkRef>> {
+        if *self.no_links.lock().unwrap() {
+            return Box::pin(async { Ok(None) });
+        }
+        let mut all = self.links.lock().unwrap();
+        let id = 900 + i64::try_from(all.len()).unwrap();
+        all.push(Linked {
+            request,
+            id,
+            cancelled: false,
+        });
+        let link = PaymentLinkRef {
+            link: Subject::new(wl_kernel::payments::PAYMENT_LINK_SUBJECT_TYPE, id),
+            path: format!("/pay/link-{id}"),
+        };
+        Box::pin(async move { Ok(Some(link)) })
+    }
+
+    fn cancel<'a>(&'a self, _state: &'a AppState, link: &'a Subject) -> PaymentFuture<'a, bool> {
+        let mut open = false;
+        for made in self.links.lock().unwrap().iter_mut() {
+            if made.id == link.subject_id && !made.cancelled {
+                made.cancelled = true;
+                open = true;
+            }
+        }
+        Box::pin(async move { Ok(open) })
+    }
+}
+
+/// The notifier: the notifications asked of it.
+#[derive(Clone, Default)]
+pub struct Messages(Arc<Mutex<Vec<NotifyRequest>>>);
+
+impl Messages {
+    /// The notifications sent so far, oldest first.
+    pub fn sent(&self) -> Vec<NotifyRequest> {
+        self.0.lock().unwrap().clone()
+    }
+
+    /// The notifications of `type_key` sent so far.
+    pub fn of_type(&self, type_key: &str) -> Vec<NotifyRequest> {
+        self.sent()
+            .into_iter()
+            .filter(|n| n.type_key == type_key)
+            .collect()
+    }
+
+    /// The English title and body of `request`, joined: what a person reads.
+    pub fn text(request: &NotifyRequest) -> String {
+        let def: Arc<NotificationTypeDef> =
+            wl_kernel::notify::notification_type(&request.type_key)
+                .expect("the type is registered");
+        let template = def
+            .template_for(NotifyChannel::Email, "en")
+            .expect("an English e-mail text");
+        let subject = template
+            .subject
+            .as_deref()
+            .map(|s| wl_kernel::notify::fill(s, &request.data))
+            .unwrap_or_default();
+        format!("{subject} {}", wl_kernel::notify::fill(&template.body, &request.data))
+    }
+
+    /// Whether a notification went to the user `id`.
+    pub fn told_user(request: &NotifyRequest, id: i64) -> bool {
+        request
+            .recipients
+            .iter()
+            .any(|r| matches!(r, wl_kernel::notify::NotifyRecipient::User { id: user } if *user == id))
+    }
+
+    /// Whether a notification went to the party `id`.
+    pub fn told_party(request: &NotifyRequest, id: i64) -> bool {
+        request
+            .recipients
+            .iter()
+            .any(|r| matches!(r, wl_kernel::notify::NotifyRecipient::Party { id: party } if party.0 == id))
+    }
+}
+
+impl Notifier for Messages {
+    fn notify<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: NotifyRequest,
+    ) -> NotifyFuture<'a, Vec<MessageId>> {
+        let mut sent = self.0.lock().unwrap();
+        sent.push(request);
+        let id = i64::try_from(sent.len()).unwrap();
+        Box::pin(async move { Ok(vec![MessageId(id)]) })
     }
 }
 
