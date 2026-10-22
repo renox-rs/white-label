@@ -775,13 +775,7 @@ async fn amend_order(
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
     let get = |key: &str| form.get(key).map_or("", |v| v.trim());
-    if get("reason").is_empty() {
-        return Err(invalid(
-            "reason",
-            text(&lang, "amend.problem.reason"),
-            &form,
-        ));
-    }
+    // A blank reason is refused by the amendment itself (422).
     let mut input = AmendInput::new(get("reason")).seen_at(get("revision").parse().unwrap_or(0));
     let lines = SaleLine::of(&state.db, &order.subject()).await?;
     for line in lines.iter().filter(|l| l.kind == KIND_ITEM) {

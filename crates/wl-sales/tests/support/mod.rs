@@ -3,6 +3,7 @@
 
 #![allow(dead_code)]
 
+pub mod changes;
 pub mod floor;
 pub mod online;
 pub mod retention;

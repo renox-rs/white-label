@@ -187,6 +187,321 @@ pub async fn demo_online_orders(db: &Db, party: i64) -> Result<usize> {
     Ok(made)
 }
 
+/// Stores three demo orders for the customer `party` so a person can click
+/// through the stories of changing a placed order (BL-SAL-05, BL-SAL-06,
+/// BL-SAL-08, BL-SAL-09). Each is found by its external number, so a re-run
+/// adds nothing. Returns how many it made.
+///
+/// - `AMD-1001`: a `confirmed` order on account at revision 2 (10 → 12 meals),
+///   revision 1 kept read-only, with its change record.
+/// - `AMD-1002`: a prepaid website order at revision 2 whose payment link for
+///   the added side dish expired unpaid: the side dish is held, the owner has
+///   *resend the link* and *amend back*.
+/// - `AMD-1003`: a prepaid order `fulfilled` after its remaining line was
+///   cancelled with the outcome *scrap* and a fee, with the refund requested.
+///
+/// A change that waits for a manager is made by clicking: it needs the
+/// approval policies of the running app.
+pub async fn demo_order_changes(db: &Db, party: i64) -> Result<usize> {
+    use renox::db::now;
+    use wl_kernel::documents::today;
+
+    use crate::amend::AmendDetail;
+    use crate::cancel_lines::{CancelDetail, CancelledLine};
+    use crate::order_change::{
+        KIND_AMEND, KIND_CANCEL_REMAINING, OrderChange, OrderRevision, OrderSettlement,
+        RevisionLine, SETTLE_LINK, SETTLE_REFUND, STATUS_EXPIRED, STATUS_REQUESTED,
+    };
+    use crate::sale_line::{NewLine, SaleLine, totals};
+    use crate::sales_order::{
+        ORDER_SERIES, OrderPaymentStatus, PAYMENT_ONLINE, SalesOrder, SalesOrderStatus,
+    };
+    use crate::sales_orders::external_key;
+    use wl_kernel::sales::{AmendedLine, LineOutcomeKind};
+
+    /// The demo order `external` on `channel`, with `lines` (code, quantity
+    /// in thousandths, price), in `status`; `None` when it exists already.
+    #[allow(clippy::too_many_arguments)]
+    async fn order(
+        db: &Db,
+        party: i64,
+        channel: &str,
+        external: &str,
+        mode: &str,
+        paid: OrderPaymentStatus,
+        status: SalesOrderStatus,
+        revision: i64,
+        lines: &[(&str, i64, i64)],
+    ) -> Result<Option<SalesOrder>> {
+        let key = external_key(external);
+        if let Some(key) = &key
+            && SalesOrder::of_external(db, channel, key).await?.is_some()
+        {
+            return Ok(None);
+        }
+        let number = ORDER_SERIES
+            .next_allowing_gaps(db, None, None, today())
+            .await?;
+        let mut order = SalesOrder {
+            number,
+            party_id: party,
+            channel: channel.to_owned(),
+            payment_mode: mode.to_owned(),
+            currency: "AED".to_owned(),
+            revision,
+            external_number: Some(external.to_owned()),
+            external_key: key,
+            payment_status: paid,
+            confirmed_at: Some(now()),
+            ..SalesOrder::default()
+        };
+        let mut tx = db.begin().await?;
+        order.insert_in_state(&mut tx, status, "demo").await?;
+        tx.commit().await?;
+        let order = SalesOrder::find_or_404(db, order.id).await?;
+        for (code, quantity, price) in lines {
+            SaleLine::add(
+                db,
+                &order.subject(),
+                NewLine::new(code, *price).quantity_milli(*quantity),
+            )
+            .await?;
+        }
+        Ok(Some(order))
+    }
+
+    /// Stores the totals of the order's lines on the order.
+    async fn total(db: &Db, order: &SalesOrder) -> Result<SalesOrder> {
+        let lines = SaleLine::of(db, &order.subject()).await?;
+        let t = totals(&lines);
+        SalesOrder::query()
+            .where_(SalesOrder::ID.eq(order.id))
+            .update(
+                db,
+                &[
+                    ("net_total", &t.net),
+                    ("vat_total", &t.vat),
+                    ("gross_total", &t.gross),
+                ],
+            )
+            .await?;
+        SalesOrder::find_or_404(db, order.id).await
+    }
+
+    /// The revision `revision` of `order` kept as `lines` (code, quantity,
+    /// price) were.
+    async fn keep(
+        db: &Db,
+        order: &SalesOrder,
+        revision: i64,
+        reason: &str,
+        lines: &[SaleLine],
+        quantities: &[(i64, i64)],
+    ) -> Result {
+        let mut kept = Vec::new();
+        let mut net = 0;
+        let mut gross = 0;
+        for (line, quantity) in lines.iter().zip(quantities.iter().map(|q| q.1)) {
+            let as_was = SaleLine {
+                quantity_milli: quantity,
+                ..line.clone()
+            };
+            net += as_was.net();
+            gross += as_was.gross();
+            kept.push(RevisionLine {
+                line: line.id,
+                line_no: line.line_no,
+                item_code: line.item_code.clone(),
+                description: line.description.clone(),
+                quantity_milli: quantity,
+                unit_price: line.unit_price,
+                discount: line.discount,
+                gross: as_was.gross(),
+            });
+        }
+        OrderRevision::create(
+            db,
+            OrderRevision {
+                order_id: order.id,
+                revision,
+                reason: reason.to_owned(),
+                net_total: net,
+                vat_total: gross - net,
+                gross_total: gross,
+                lines: renox::serde_json::to_string(&kept).unwrap_or_default(),
+                created_at: Some(now()),
+                ..OrderRevision::default()
+            },
+        )
+        .await?;
+        Ok(())
+    }
+
+    let mut made = 0;
+
+    // AMD-1001: 10 meals became 12 on an order on account.
+    if let Some(placed) = order(
+        db,
+        party,
+        "phone",
+        "AMD-1001",
+        "on_account",
+        OrderPaymentStatus::NotRequired,
+        SalesOrderStatus::Confirmed,
+        2,
+        &[("MEAL", 12_000, 40_000)],
+    )
+    .await?
+    {
+        let placed = total(db, &placed).await?;
+        let lines = SaleLine::of(db, &placed.subject()).await?;
+        keep(db, &placed, 1, "Two more meals for the guests", &lines, &[(lines[0].id, 10_000)]).await?;
+        let detail = AmendDetail {
+            revision_before: 1,
+            revision_after: 2,
+            value_before: 420_000,
+            value_after: placed.gross_total,
+            lines: vec![AmendedLine {
+                line: lines[0].id,
+                quantity_before_milli: 10_000,
+                quantity_after_milli: 12_000,
+                unit_price_before: 40_000,
+                unit_price_after: 40_000,
+                held_milli: 0,
+            }],
+            no_money: false,
+        };
+        OrderChange {
+            order_id: placed.id,
+            kind: KIND_AMEND.to_owned(),
+            reason: "Two more meals for the guests".to_owned(),
+            detail: renox::serde_json::to_string(&detail).unwrap_or_default(),
+            announced_at: Some(now()),
+            ..OrderChange::default()
+        }
+        .insert(db)
+        .await?;
+        made += 1;
+    }
+
+    // AMD-1002: a prepaid increase whose payment link expired unpaid.
+    if let Some(placed) = order(
+        db,
+        party,
+        "website",
+        "AMD-1002",
+        PAYMENT_ONLINE,
+        OrderPaymentStatus::Received,
+        SalesOrderStatus::Confirmed,
+        2,
+        &[("MEAL", 4_000, 5_000), ("SIDE", 2_000, 1_000)],
+    )
+    .await?
+    {
+        let placed = total(db, &placed).await?;
+        let lines = SaleLine::of(db, &placed.subject()).await?;
+        keep(
+            db,
+            &placed,
+            1,
+            "Add two side dishes",
+            &lines,
+            &[(lines[0].id, 4_000), (lines[1].id, 0)],
+        )
+        .await?;
+        SaleLine::query()
+            .where_(SaleLine::ID.eq(lines[1].id))
+            .update(db, &[("held_milli", &2_000_i64)])
+            .await?;
+        OrderSettlement::create(
+            db,
+            OrderSettlement {
+                order_id: placed.id,
+                revision: 2,
+                kind: SETTLE_LINK.to_owned(),
+                amount: 2_100,
+                status: STATUS_EXPIRED.to_owned(),
+                due_at: Some(now() - renox::chrono::TimeDelta::minutes(5)),
+                ..OrderSettlement::default()
+            },
+        )
+        .await?;
+        made += 1;
+    }
+
+    // AMD-1003: the remaining line cancelled as scrap with a fee.
+    if let Some(placed) = order(
+        db,
+        party,
+        "website",
+        "AMD-1003",
+        PAYMENT_ONLINE,
+        OrderPaymentStatus::Received,
+        SalesOrderStatus::Fulfilled,
+        1,
+        &[("MEAL", 2_000, 4_000), ("DESSERT", 3_000, 2_000)],
+    )
+    .await?
+    {
+        let placed = total(db, &placed).await?;
+        let lines = SaleLine::of(db, &placed.subject()).await?;
+        SaleLine::query()
+            .where_(SaleLine::ID.eq(lines[0].id))
+            .update(db, &[("fulfilled_milli", &2_000_i64)])
+            .await?;
+        let share = lines[1].share_of(3_000);
+        let fee = share / 10;
+        SaleLine::query()
+            .where_(SaleLine::ID.eq(lines[1].id))
+            .update(
+                db,
+                &[
+                    ("cancelled_milli", &3_000_i64),
+                    ("cancel_outcome", &Some(LineOutcomeKind::Scrap.as_str().to_owned())),
+                    ("cancel_fee", &fee),
+                    ("cancel_reason", &Some("The dessert was prepared and the guests left".to_owned())),
+                ],
+            )
+            .await?;
+        let detail = CancelDetail {
+            lines: vec![CancelledLine {
+                line: lines[1].id,
+                quantity_milli: 3_000,
+                started: true,
+                outcome: Some(LineOutcomeKind::Scrap),
+                fee,
+                fee_waived: false,
+                share,
+            }],
+            complete: true,
+        };
+        OrderChange {
+            order_id: placed.id,
+            kind: KIND_CANCEL_REMAINING.to_owned(),
+            reason: "The dessert was prepared and the guests left".to_owned(),
+            detail: renox::serde_json::to_string(&detail).unwrap_or_default(),
+            announced_at: Some(now()),
+            ..OrderChange::default()
+        }
+        .insert(db)
+        .await?;
+        OrderSettlement::create(
+            db,
+            OrderSettlement {
+                order_id: placed.id,
+                revision: 1,
+                kind: SETTLE_REFUND.to_owned(),
+                amount: share - fee,
+                status: STATUS_REQUESTED.to_owned(),
+                ..OrderSettlement::default()
+            },
+        )
+        .await?;
+        made += 1;
+    }
+    Ok(made)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
