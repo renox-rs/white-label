@@ -99,12 +99,23 @@ pub async fn open(
     let brand_id = brand_of(&state.db, &view).await?;
     let (name, phone) = recipient_of(state, view.party).await?;
     let now = renox::db::now();
+    // The trading day of the order by the outlet's cut-off: an order at 01:30
+    // belongs to the day before and to that day's closing (BL-FNB-15).
+    let business_date = match &outlet {
+        Some(outlet) => {
+            let date = outlet.business_date(now);
+            crate::closings::ensure(&state.db, outlet.id, date).await?;
+            Some(date)
+        }
+        None => None,
+    };
     let mut order = FnbOrder {
         number: view.number.clone(),
         sales_order_id: id.0,
         party_id: view.party.0,
         brand_id,
         outlet_id: outlet.map(|outlet| outlet.id),
+        business_date,
         channel: view.channel.clone(),
         kind: kind_for(&view.channel).to_owned(),
         payment_mode: view.payment_mode.clone(),

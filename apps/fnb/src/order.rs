@@ -11,6 +11,7 @@
 //! for acceptance is `placed`) or confirmed (an aggregator order starts in
 //! `accepted`): see [`crate::placing`].
 
+use renox::chrono::NaiveDate;
 use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -249,6 +250,9 @@ pub struct FnbOrder {
     pub brand_id: Option<i64>,
     /// The outlet that cooks it.
     pub outlet_id: Option<i64>,
+    /// The trading day it belongs to by the outlet's cut-off (an order at
+    /// 01:30 belongs to the day before, BL-FNB-15).
+    pub business_date: Option<NaiveDate>,
     /// The channel it came through.
     pub channel: String,
     /// `delivery` or `pickup`, one of [`kind`].

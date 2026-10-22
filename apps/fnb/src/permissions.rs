@@ -79,8 +79,42 @@ pub const RECALL_TRACE_VIEW: &str = "fnb_recalls.view";
 /// chef (§7.2 settings *Recall owner*).
 pub const RECALL_TRACE_DECIDE: &str = "fnb_recalls.decide";
 
+/// See the outlets' channels, the outages and the paper orders (`FNB.RUL.15`).
+pub const OUTLET_CHANNELS_VIEW: &str = "outlet_channels.view";
+/// Pause and resume an outlet's channels and resume them after an outage
+/// (`FNB.RUL.15`): the kitchen manager and the area manager. The system never
+/// resumes by itself.
+pub const OUTLET_CHANNELS_MANAGE: &str = "outlet_channels.manage";
+/// Enter the paper orders of an outage as late entries with their business
+/// time (`PLT.ACL.10`): the cashier and the kitchen manager.
+pub const PAPER_ORDERS_ENTER: &str = "paper_orders.enter";
+/// See the daily closings of the outlets (`SAL.POS.01`).
+pub const CLOSING_VIEW: &str = "closing.view";
+/// Submit the daily closing after the cut-off: the kitchen manager (`FNB.ACL.05`).
+pub const CLOSING_SUBMIT: &str = "closing.submit";
+/// Approve a submitted closing: the area manager and the accountant.
+pub const CLOSING_APPROVE: &str = "closing.approve";
+/// Reopen a submitted closing for correction: the area manager only
+/// (`FNB.ACL.05`). The spec gives it to the holders of `closing.approve`; it is
+/// a permission of its own so the accountant, who approves, cannot reopen.
+pub const CLOSING_REOPEN: &str = "closing.reopen";
+/// Change an outlet's business-day cut-off (applies from the next business
+/// day): the area manager.
+pub const CLOSING_CUTOFF: &str = "closing.cutoff";
+/// wl-sales' `pos.sell`: the users a till shortage can be recovered from. The
+/// name is the sales module's; the closing page only lists its holders.
+pub const POS_SELL: &str = "pos.sell";
+
 /// Every permission of the app.
 pub const ALL: &[&str] = &[
+    OUTLET_CHANNELS_VIEW,
+    OUTLET_CHANNELS_MANAGE,
+    PAPER_ORDERS_ENTER,
+    CLOSING_VIEW,
+    CLOSING_SUBMIT,
+    CLOSING_APPROVE,
+    CLOSING_REOPEN,
+    CLOSING_CUTOFF,
     PRODUCTION_VIEW,
     PRODUCTION_MANAGE,
     TEMPERATURE_VIEW,

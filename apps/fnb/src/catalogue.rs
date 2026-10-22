@@ -7,10 +7,13 @@
 //! Menu management (prices per channel, availability, promotions) is the menu
 //! manager's work and comes with its own issues; this is the base they extend.
 
+use renox::chrono::NaiveDate;
 use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
+
+use crate::business_day::{DEFAULT_CUTOFF_MINUTES, business_date_at, closes_at};
 
 /// The subject type of a brand.
 pub const BRAND_SUBJECT_TYPE: &str = "fnb.brand";
@@ -68,6 +71,13 @@ pub struct Outlet {
     pub legal_entity_id: Option<i64>,
     /// Whether the outlet takes orders.
     pub active: bool,
+    /// The business-day cut-off in minutes after midnight, Asia/Dubai (04:00
+    /// when none is set): orders before it belong to the previous day.
+    pub cutoff_minutes: Option<i64>,
+    /// A cut-off that applies from [`Outlet::pending_cutoff_from`] only.
+    pub pending_cutoff_minutes: Option<i64>,
+    /// The first business date the pending cut-off applies to.
+    pub pending_cutoff_from: Option<NaiveDate>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -75,6 +85,41 @@ pub struct Outlet {
 }
 
 impl Outlet {
+    /// The cut-off in force for the business date `date`, in minutes after
+    /// midnight: a change applies from the next business day only.
+    pub fn cutoff_for(&self, date: NaiveDate) -> i64 {
+        match (self.pending_cutoff_minutes, self.pending_cutoff_from) {
+            (Some(minutes), Some(from)) if date >= from => minutes,
+            _ => self.cutoff_minutes.unwrap_or(DEFAULT_CUTOFF_MINUTES),
+        }
+    }
+
+    /// The business date of an order created at `at`: the date after the
+    /// outlet's cut-off (an order at 01:30 belongs to the day before).
+    pub fn business_date(&self, at: DateTime) -> NaiveDate {
+        let current = business_date_at(at, self.cutoff_minutes.unwrap_or(DEFAULT_CUTOFF_MINUTES));
+        if let (Some(minutes), Some(from)) =
+            (self.pending_cutoff_minutes, self.pending_cutoff_from)
+        {
+            let next = business_date_at(at, minutes);
+            if next >= from {
+                return next;
+            }
+        }
+        current
+    }
+
+    /// The instant the closing of `date` may be submitted: the cut-off on the
+    /// next morning.
+    pub fn opens_closing_at(&self, date: NaiveDate) -> DateTime {
+        closes_at(date, self.cutoff_for(date))
+    }
+
+    /// The till (register) of the outlet's daily closing.
+    pub fn till_key(&self) -> String {
+        format!("{}-till", self.code)
+    }
+
     /// The outlet `code`, if there is one.
     ///
     /// # Errors
