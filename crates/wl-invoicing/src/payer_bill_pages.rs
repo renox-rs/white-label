@@ -29,6 +29,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use serde::Serialize;
+use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::payer_bills::{
     PayerAnswer, PayerBillStatus, Recoupment, Remittance, RemittanceLine,
 };
@@ -271,6 +272,9 @@ pub(crate) struct ShowPage {
     recoupments: Vec<RecoupmentRow>,
     credit: String,
     credit_movements: Vec<CreditRow>,
+    /// The approval cards of the requests about the bill (a remittance above
+    /// what is open, a write-off, a void): where the second person decides.
+    approvals: Vec<ApprovalCard>,
     can_issue: bool,
     can_resubmit: bool,
     can_reject: bool,
@@ -386,6 +390,7 @@ async fn show(
     }
     let can_reconcile = user.has_permission(permissions::PAYER_BILLS_RECONCILE);
     let can_issue = user.has_permission(permissions::PAYER_BILLS_ISSUE);
+    let approval_cards = approvals::cards_for(&state.db, &bill.subject(), &user, &lang).await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         title: number_text(&lang, &bill),
@@ -414,6 +419,7 @@ async fn show(
         recoupments,
         credit: amount_text(&bill.currency, credit),
         credit_movements,
+        approvals: approval_cards,
         can_close: user.has_permission(permissions::PAYER_BILLS_WRITE_OFF)
             && matches!(
                 bill.status,

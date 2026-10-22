@@ -28,6 +28,7 @@ use renox::state_machine::TransitionError;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use wl_kernel::PartyId;
+use wl_kernel::approvals::{self, ApprovalCard, ApprovalRequest};
 use wl_kernel::documents::today;
 use wl_kernel::integrations::web::banner_for;
 use wl_kernel::payer_bills::payer_bills;
@@ -363,6 +364,9 @@ pub(crate) struct ShowPage {
     held: bool,
     held_text: String,
     held_result: String,
+    /// The approval cards of the requests the claim waits for, where the
+    /// second person decides.
+    approvals: Vec<ApprovalCard>,
     written_off: String,
     closed: String,
     lines: Vec<LineRow>,
@@ -606,6 +610,17 @@ async fn show(
     let held_result = claim.held_result.as_deref().map_or_else(String::new, |r| {
         text_with(&lang, "claim.held.ended", &[("result", &r)])
     });
+    let mut approval_cards =
+        approvals::cards_for(&state.db, &claim.subject(), &user, &lang).await?;
+    // A remittance or recoupment above what is open waits on the payer bill's
+    // own request: its card shows here too, so the claim's page decides it.
+    if let Some(request_id) = claim.held_request_id
+        && !approval_cards.iter().any(|card| card.id == request_id)
+        && let Some(request) = ApprovalRequest::find(&state.db, request_id).await?
+        && request.is_pending()
+    {
+        approval_cards.push(approvals::card(&state.db, &request, &user, &lang).await?);
+    }
     Ok(View::typed(ShowPage {
         integration_banner: banner_for(&state.db, CLAIM_SCREEN, &lang).await?,
         tx: texts::all(&lang),
@@ -638,6 +653,7 @@ async fn show(
         held,
         held_text,
         held_result,
+        approvals: approval_cards,
         written_off,
         closed: closed_text(&lang, &claim).unwrap_or_else(|| dash.clone()),
         lines,
