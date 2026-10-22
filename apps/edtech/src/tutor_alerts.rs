@@ -132,16 +132,6 @@ struct Trigger {
     detail: String,
 }
 
-impl Trigger {
-    /// The code stored on a flag it raises.
-    fn reason(&self) -> String {
-        match (&self.document_kind, self.kind) {
-            (Some(kind), _) => document_reason(kind),
-            (None, kind) => kind.to_owned(),
-        }
-    }
-}
-
 /// The reason a flag reads as: `police clearance expires`, `on notice`.
 pub fn reason_text(code: &str) -> String {
     if let Some(kind) = code.strip_prefix("document:") {

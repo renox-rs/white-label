@@ -14,7 +14,7 @@ use renox::chrono::NaiveDate;
 use renox::db::{DateTime, now};
 use renox::prelude::*;
 
-use crate::attendance::{Attendance, Mark};
+use crate::attendance::Attendance;
 use crate::enrolment::Enrolment;
 use crate::enrolments::party_name;
 use crate::notices;
@@ -154,6 +154,7 @@ pub async fn evaluate(state: &AppState, session_id: i64) -> Result<Vec<i64>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::attendance::Mark;
 
     #[test]
     fn two_absences_in_a_row_make_the_rule_fire() {
