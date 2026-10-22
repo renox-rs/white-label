@@ -217,6 +217,8 @@ impl Module for EdTech {
         // The centre permit and the course approval block `batch.open` and
         // `certificate.issue`; their expiry tells the centre (`EDU.RUL.13`).
         documents::register();
+        // The owner approves the one-use override of a police clearance block.
+        defaults::override_policy().register();
         permits::register();
         permits::listen(app);
         notices::register_types();

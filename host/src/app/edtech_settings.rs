@@ -78,6 +78,24 @@ pub fn register_critical(client_app: &str) {
         .register();
 }
 
+/// Gives the company owner of an EdTech deployment what deciding an override
+/// needs besides the role: reading the approvals and the documents. The
+/// approval policy itself is the app's ([`edtech::defaults::override_policy`]).
+/// The roles table is shared by every vertical, so this is a grant of this
+/// client only.
+pub fn grant_roles(client_app: &str) {
+    if client_app != EDTECH {
+        return;
+    }
+    super::roles::grant_extra(
+        super::roles::OWNER,
+        &[
+            wl_kernel::permissions::APPROVALS_VIEW,
+            wl_documents::permissions::VIEW,
+        ],
+    );
+}
+
 /// The notification module with the EdTech client's values (`NTF.RUL.02`,
 /// `NTF.ACL.03`): at most 2 marketing messages per recipient in 7 days, and a
 /// broadcast to more than 200 recipients needs a second approver. The send

@@ -185,6 +185,9 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // HR and the accountant see the confidential labour cases and grievances
     // of a manpower agency (BL-MPW-20); the accountant of 04 does not.
     app::manpower_seed::grant_roles(&client_app);
+    // The owner of an EdTech centre decides the override of a document block
+    // (BL-EDU-17).
+    app::edtech_settings::grant_roles(&client_app);
     app::logistics_seed::register_integrations(&client_app);
     app::logistics_rules::register_critical(&client_app);
     app::negative_flow::register_approvals(&client_app);

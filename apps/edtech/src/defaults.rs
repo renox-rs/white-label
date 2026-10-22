@@ -16,6 +16,8 @@
 //! ([`crate::blocked`]) and the two compliance-critical rules the app owns
 //! (`EDU.RUL.12`, `EDU.RUL.13`).
 
+use wl_kernel::COMPANY_ADMIN_ROLE;
+use wl_kernel::approvals::PolicyDefault;
 use wl_kernel::notify::{
     GROUP_GUARDIAN, GROUP_INVOICES, GROUP_SIGNATURES, GiveUpReaction, NotifyChannel,
 };
@@ -24,6 +26,25 @@ use crate::permissions::{
     ACCOUNTANT_ROLE, CENTRE_MANAGER_ROLE, COORDINATOR_ROLE, COUNSELLOR_ROLE, OWNER_ROLE,
     TUTOR_ROLE,
 };
+
+// ---- Documents (10 §9) ----
+
+/// The approval action of a one-use override of a document block
+/// (`DOC.ACL.02`, wl-documents).
+pub const OVERRIDE_ACTION: &str = "documents.block_override";
+
+/// Hours an override request may wait before it can expire (`DOC.ACL.02`).
+pub const OVERRIDE_REQUEST_HOURS: i64 = 72;
+
+/// The approval of an override in 10: the company owner decides, never the
+/// requester, with the company admin as the fallback. Only the police
+/// clearance can be switched to `with_approval`: the centre permit, the course
+/// approval and the tutor permit or freelance visa are fixed to `never`.
+pub fn override_policy() -> PolicyDefault {
+    PolicyDefault::new(OVERRIDE_ACTION)
+        .step([OWNER_ROLE, COMPANY_ADMIN_ROLE])
+        .expiry_hours(Some(OVERRIDE_REQUEST_HOURS))
+}
 
 // ---- Notifications (10 §7.2 *Notification types*, `NTF.RUL.01`) ----
 
