@@ -12,7 +12,7 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_kernel::calendar::BusinessCalendar;
-use wl_kernel::documents::dubai_date;
+use wl_kernel::documents::{dubai_date, provide_guard};
 use wl_kernel::invoicing::provide_invoicer;
 use wl_kernel::notify::provide_notifier;
 use wl_kernel::parties::provide_directory;
@@ -29,7 +29,11 @@ pub mod money;
 /// The stand-in of the ticketing module's task creator.
 pub mod tasks;
 
+/// The stand-in of the documents module's guard.
+pub mod documents;
+
 pub use money::{Books, Cash, Messages, Packages, People, Subs};
+pub use documents::Documents;
 pub use tasks::Tasks;
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -90,6 +94,7 @@ struct Harness {
     cash: Cash,
     messages: Messages,
     tasks: Tasks,
+    documents: Documents,
 }
 
 impl Module for Harness {
@@ -107,6 +112,7 @@ impl Module for Harness {
         provide_payment_links(app, self.cash.clone());
         provide_notifier(app, self.messages.clone());
         provide_task_creator(app, self.tasks.clone());
+        provide_guard(app, self.documents.clone());
     }
 
     fn routes(&self) -> Routes {
@@ -139,6 +145,9 @@ pub struct Centre {
     pub messages: Messages,
     /// The tickets opened through the task creator.
     pub tasks: Tasks,
+    /// The documents the guard knows: empty until a test gives it the kinds'
+    /// `blocks` ([`Documents::edtech_blocks`]).
+    pub documents: Documents,
     who: Arc<Mutex<Option<renox::AuthUser>>>,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
@@ -164,6 +173,7 @@ pub async fn boot_with_holidays(holidays: &[NaiveDate]) -> Centre {
     );
     let (cash, messages) = (Cash::default(), Messages::default());
     let tasks = Tasks::default();
+    let documents = Documents::default();
     let mut scheduling_module = WlScheduling::new();
     for (code, initiated_by) in edtech::reasons::SCHEDULING_REASON_CODES {
         scheduling_module = scheduling_module.reason_code(code, *initiated_by);
@@ -184,6 +194,7 @@ pub async fn boot_with_holidays(holidays: &[NaiveDate]) -> Centre {
             cash: cash.clone(),
             messages: messages.clone(),
             tasks: tasks.clone(),
+            documents: documents.clone(),
         });
     let listed: Vec<String> = holidays.iter().map(|d| format!("\"{d}\"")).collect();
     let client = CLIENT.replace("{holidays}", &listed.join(", "));
@@ -204,6 +215,7 @@ pub async fn boot_with_holidays(holidays: &[NaiveDate]) -> Centre {
         cash,
         messages,
         tasks,
+        documents,
         who,
         _views: views,
     }
@@ -246,6 +258,32 @@ impl Centre {
             .await
             .unwrap();
         user.assign_role(self.db(), &role).await.unwrap();
+        user
+    }
+
+    /// A user who holds the role `role` (defined without permissions when it is
+    /// new) everywhere, or only in `scope`. The same name gives the same user.
+    pub async fn holder(
+        &self,
+        name: &str,
+        role: &str,
+        scope: Option<&renox::auth::permissions::Scope>,
+    ) -> User {
+        let email = format!("{}@example.com", name.to_lowercase().replace(' ', "."));
+        let user = match User::find_by_email(self.db(), &email).await.unwrap() {
+            Some(found) => found,
+            None => User::register(self.db(), name, &email, "password123")
+                .await
+                .unwrap(),
+        };
+        // A role that exists keeps its permissions; a new one grants none.
+        if permissions::grant(self.db(), role, &[]).await.is_err() {
+            permissions::define_role(self.db(), role, &[]).await.unwrap();
+        }
+        match scope {
+            Some(scope) => user.assign_role_in(self.db(), role, scope).await.unwrap(),
+            None => user.assign_role(self.db(), role).await.unwrap(),
+        }
         user
     }
 

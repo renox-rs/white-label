@@ -184,3 +184,108 @@ async fn edu_04_the_enrolment_pauses_on_a_block_and_the_centre_manager_decides()
     assert!(grants(roles::CENTRE_MANAGER).contains(&edu::ENROLMENTS_APPROVE));
     assert!(!grants(roles::COUNSELLOR).contains(&edu::ENROLMENTS_APPROVE));
 }
+
+/// The centre permit and the course approval guard `batch.open` and
+/// `certificate.issue` with the real wl-documents (BL-EDU-07, `DOC.ACL.02`): the
+/// app registers the providers; a batch whose centre has no permit and whose
+/// course has no approval is refused naming both, one with both valid on the
+/// day is not, and an expired permit refuses again. The approval counts for a
+/// certificate only when it states it.
+#[renox::test]
+async fn edu_07_the_real_guard_needs_the_centre_permit_and_the_course_approval() {
+    use support::day;
+    use wl_documents::Document;
+    use wl_kernel::documents::guarded_transitions;
+    use wl_kernel::{LegalEntity, Subject};
+
+    let app = edtech_booted().await;
+    let registered = guarded_transitions();
+    assert!(registered.iter().any(|g| g == "batch.open"));
+    assert!(registered.iter().any(|g| g == "certificate.issue"));
+
+    let mut course = edtech::Course {
+        code: "ENG-1".to_owned(),
+        name_en: "English".to_owned(),
+        approval_required: true,
+        ..edtech::Course::default()
+    };
+    course.save(app.db()).await.unwrap();
+    let mut batch = edtech::Batch {
+        course_id: course.id,
+        capacity: 10,
+        ..edtech::Batch::default()
+    };
+    batch.save(app.db()).await.unwrap();
+    let documents = guard(app.state());
+    let on = day(30);
+
+    let refused = documents
+        .check(app.state(), "batch.open", batch.id, on)
+        .await
+        .unwrap()
+        .unwrap_err();
+    let message = refused.message();
+    assert!(message.contains("Centre permit"), "{message}");
+    assert!(message.contains("Course approval"), "{message}");
+    assert!(refused.override_links().is_empty(), "no override is offered");
+
+    let entity = LegalEntity::default_entity(app.db()).await.unwrap();
+    let permit = record_document(
+        &app,
+        "centre_permit",
+        Subject::new("kernel.legal_entity", entity.id),
+        day(90),
+    )
+    .await;
+    record_document(&app, "course_approval", course.subject(), day(90)).await;
+    assert!(
+        documents
+            .check(app.state(), "batch.open", batch.id, on)
+            .await
+            .unwrap()
+            .is_ok()
+    );
+
+    // The permit ends before the last session: refused naming it.
+    Document::query()
+        .where_(Document::ID.eq(permit.id))
+        .update(app.db(), &[("expiry_date", &Some(day(10)))])
+        .await
+        .unwrap();
+    let expired = documents
+        .check(app.state(), "batch.open", batch.id, on)
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert!(expired.message().contains("Centre permit"));
+    assert!(!expired.message().contains("Course approval"));
+}
+
+/// An accepted document of `kind_key` for `subject`, valid through `until`.
+async fn record_document(
+    app: &renox::testing::TestApp,
+    kind_key: &str,
+    subject: wl_kernel::Subject,
+    until: renox::chrono::NaiveDate,
+) -> wl_documents::Document {
+    use wl_documents::{Document, DocumentKind, DocumentStatus};
+    let kind = DocumentKind::by_key(app.db(), kind_key)
+        .await
+        .unwrap()
+        .unwrap();
+    Document::create(
+        app.db(),
+        Document {
+            subject_type: subject.subject_type,
+            subject_id: subject.subject_id,
+            kind_id: kind.id,
+            title: kind.key.clone(),
+            expiry_date: Some(until),
+            current_version: 1,
+            status: DocumentStatus::Accepted,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+}

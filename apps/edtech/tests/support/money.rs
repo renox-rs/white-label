@@ -674,11 +674,27 @@ impl PaymentLinks for Cash {
     }
 }
 
-/// The notifier: the notifications asked of it.
+/// The notifier: the notifications asked of it. It can be made to fail, except
+/// for the types a test says always work (the kernel's alert to the owner is a
+/// different channel from the centre's).
 #[derive(Clone, Default)]
-pub struct Messages(Arc<Mutex<Vec<NotifyRequest>>>);
+pub struct Messages(
+    Arc<Mutex<Vec<NotifyRequest>>>,
+    Arc<Mutex<bool>>,
+    Arc<Mutex<Vec<String>>>,
+);
 
 impl Messages {
+    /// Makes every further notification fail (or work again).
+    pub fn fail(&self, failing: bool) {
+        *self.1.lock().unwrap() = failing;
+    }
+
+    /// Notifications of the type `key` work even while the notifier fails.
+    pub fn always_works(&self, key: &str) {
+        self.2.lock().unwrap().push(key.to_owned());
+    }
+
     /// The notifications sent so far, oldest first.
     pub fn sent(&self) -> Vec<NotifyRequest> {
         self.0.lock().unwrap().clone()
@@ -731,6 +747,10 @@ impl Notifier for Messages {
         _state: &'a AppState,
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>> {
+        let exempt = self.2.lock().unwrap().contains(&request.type_key);
+        if *self.1.lock().unwrap() && !exempt {
+            return Box::pin(async { Err(Error::permanent_message("the notifier is down")) });
+        }
         let mut sent = self.0.lock().unwrap();
         sent.push(request);
         let id = i64::try_from(sent.len()).unwrap();
