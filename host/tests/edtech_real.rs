@@ -1154,3 +1154,184 @@ async fn edu_03_a_failed_refund_reopens_the_credit_note_balance() {
         "no second credit note"
     );
 }
+
+// ---- #446: the attendance of a session whose tutor lacks the documents, the real wl-documents ---
+
+/// The first session of `batch`, moved to `date` (a day already passed) with its
+/// start and end, as a fixture of a class that has been given.
+async fn session_moved_to(w: &World, batch: &Batch, date: NaiveDate) -> edtech::Session {
+    let mut session = edtech::Session::of_batch(w.db(), batch.id)
+        .await
+        .unwrap()
+        .remove(0);
+    let shift = TimeDelta::days((session.session_date - date).num_days());
+    session.session_date = date;
+    session.starts_at -= shift;
+    session.ends_at -= shift;
+    session.save(w.db()).await.unwrap();
+    session
+}
+
+/// A batch for minors taught by the tutor `name` (an employee), opened while
+/// the police clearance ran to `day(400)`; the clearance is the document answered.
+async fn minors_batch_of(
+    w: &World,
+    coordinator: &AuthUser,
+    name: &str,
+) -> (Batch, wl_documents::Document) {
+    w.permit_until(day(400)).await;
+    let (tutor, employee) = employed(w, name).await;
+    let clearance = record_document(
+        &w.app,
+        "police_clearance",
+        wl_kernel::workforce::EmployeeId(employee).subject(),
+        day(400),
+    )
+    .await;
+    // A class of the past is judged by the documents accepted by its day.
+    wl_documents::Document::query()
+        .where_(wl_documents::Document::ID.eq(clearance.id))
+        .update(
+            w.db(),
+            &[("accepted_at", &Some(renox::db::now() - TimeDelta::days(400)))],
+        )
+        .await
+        .unwrap();
+    let kids = match Course::by_code(w.db(), "KIDS-1").await.unwrap() {
+        Some(course) => course,
+        None => courses::create(
+            w.state(),
+            coordinator,
+            NewCourse::new("KIDS-1", "Kids mathematics", "Mathematics", 30).for_minors(),
+        )
+        .await
+        .unwrap(),
+    };
+    let planned = planned_of(w, coordinator, &kids, name, (tutor.id, Some(employee))).await;
+    let batch = batches::open(w.state(), coordinator, planned.id)
+        .await
+        .expect("the batch opens while the clearance is valid");
+    (batch, clearance)
+}
+
+/// Sets the end of `document`.
+async fn expires(document: &wl_documents::Document, on: NaiveDate, w: &World) {
+    wl_documents::Document::query()
+        .where_(wl_documents::Document::ID.eq(document.id))
+        .update(w.db(), &[("expiry_date", &Some(on))])
+        .await
+        .unwrap();
+}
+
+/// #446 points 1 and 2 with the real wl-documents: the tutor's police clearance
+/// ended five days ago; the tutor submits the attendance of the class of three
+/// days ago: it is accepted (`held`), the guard records ONE flag naming the
+/// clearance and its date, and the centre manager closes it with a note from the
+/// session page (the coordinator and a missing note are refused); the history
+/// keeps the flag, the note and who closed it.
+#[renox::test]
+async fn edu_11_an_expired_clearance_flags_the_attendance_and_the_manager_closes_it() {
+    let w = boot().await;
+    let (_, coordinator) = w.staff("Amal", ACADEMIC_COORDINATOR).await;
+    let (batch, clearance) = minors_batch_of(&w, &coordinator, "Layla Hassan").await;
+    let session = session_moved_to(&w, &batch, day(-3)).await;
+    expires(&clearance, day(-5), &w).await;
+    let (_, tariq) = w.staff("Tariq", host::roles::TUTOR).await;
+
+    let held = edtech::sessions::submit_attendance(w.state(), &tariq, session.id)
+        .await
+        .expect("the attendance is always accepted");
+    assert_eq!(held.status, edtech::SessionStatus::Held);
+    let flags = edtech::sessions::document_flags(w.state(), session.id)
+        .await
+        .unwrap();
+    assert_eq!(flags.len(), 1, "one flag");
+    assert!(
+        flags[0].label.contains("Police clearance expired")
+            && flags[0].label.contains(&day(-5).to_string()),
+        "{}",
+        flags[0].label
+    );
+    assert!(!flags[0].is_reviewed());
+    assert_eq!(flags[0].on_date, day(-3));
+
+    let (manager, _) = w.staff("Mona", host::roles::CENTRE_MANAGER).await;
+    w.app.acting_as(&manager);
+    w.app
+        .get(&format!("/edtech/sessions/{}", session.id))
+        .await
+        .assert_ok()
+        .assert_see("Documents flagged")
+        .assert_see("Police clearance expired")
+        .assert_see("Close the flag");
+
+    let url = format!("/edtech/sessions/{}/flag", session.id);
+    let flag_id = flags[0].id.to_string();
+    w.app
+        .htmx()
+        .post(&url, &[("flag", flag_id.as_str()), ("note", " ")])
+        .await
+        .assert_status(422);
+    let (coordinator_user, _) = w.staff("Cora", ACADEMIC_COORDINATOR).await;
+    w.app.acting_as(&coordinator_user);
+    w.app
+        .htmx()
+        .post(&url, &[("flag", flag_id.as_str()), ("note", "Seen")])
+        .await
+        .assert_forbidden();
+    w.app.acting_as(&manager);
+    w.app
+        .htmx()
+        .post(
+            &url,
+            &[("flag", flag_id.as_str()), ("note", "Renewal filed; seen")],
+        )
+        .await
+        .assert_ok();
+
+    let closed = edtech::sessions::document_flags(w.state(), session.id)
+        .await
+        .unwrap();
+    assert_eq!(closed.len(), 1, "the flag is kept");
+    assert!(closed[0].is_reviewed());
+    assert_eq!(
+        closed[0].review_note.as_deref(),
+        Some("Renewal filed; seen")
+    );
+    assert_eq!(closed[0].reviewed_by, Some(manager.id));
+    w.app
+        .get(&format!("/edtech/sessions/{}", session.id))
+        .await
+        .assert_ok()
+        .assert_see("Renewal filed; seen")
+        .assert_see("Closed");
+    w.app
+        .htmx()
+        .post(&url, &[("flag", flag_id.as_str()), ("note", "Again")])
+        .await
+        .assert_status(422);
+}
+
+/// #446 point 3 with the real wl-documents: the clearance ended yesterday at
+/// the earliest day of the class (valid through the class day): no flag.
+#[renox::test]
+async fn edu_11_a_valid_clearance_gives_no_flag_in_the_real_guard() {
+    let w = boot().await;
+    let (_, coordinator) = w.staff("Amal", ACADEMIC_COORDINATOR).await;
+    let (batch, clearance) = minors_batch_of(&w, &coordinator, "Layla Hassan").await;
+    let session = session_moved_to(&w, &batch, day(-3)).await;
+    expires(&clearance, day(-3), &w).await;
+    let (_, tariq) = w.staff("Tariq", host::roles::TUTOR).await;
+
+    let held = edtech::sessions::submit_attendance(w.state(), &tariq, session.id)
+        .await
+        .unwrap();
+    assert_eq!(held.status, edtech::SessionStatus::Held);
+    assert!(
+        edtech::sessions::document_flags(w.state(), session.id)
+            .await
+            .unwrap()
+            .is_empty(),
+        "valid through the class day"
+    );
+}
