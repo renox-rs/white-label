@@ -498,7 +498,12 @@ async fn edu_base_withdrawing_stores_the_refund_and_frees_the_seat() {
         t.held_session(&batch, number, days_ago).await;
     }
 
-    let preview = enrolments::refund_for(t.state(), &e, day(0)).await.unwrap();
+    // The row as it is after the payment: `active`, not `pending_payment`.
+    let paid = Enrolment::find_or_404(t.db(), e.id).await.unwrap();
+    assert_eq!(paid.status, EnrolmentStatus::Active);
+    let preview = enrolments::refund_for(t.state(), &paid, day(0))
+        .await
+        .unwrap();
     assert_eq!(preview.outcome, RefundOutcome::AfterStart);
 
     let blank = enrolments::withdraw(t.state(), Some(&desk), e.id, " ").await;
