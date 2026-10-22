@@ -462,6 +462,7 @@ pub struct Cash {
     refunds: Arc<Mutex<Vec<(RefundRequest, Option<i64>)>>>,
     links: Arc<Mutex<Vec<Linked>>>,
     no_links: Arc<Mutex<bool>>,
+    refusing: Arc<Mutex<bool>>,
 }
 
 impl Cash {
@@ -500,6 +501,11 @@ impl Cash {
     /// From now on no link can be made (no gateway).
     pub fn without_gateway(&self) {
         *self.no_links.lock().unwrap() = true;
+    }
+
+    /// From now on a refund is refused (`true`), or taken again (`false`).
+    pub fn refuse_refunds(&self, refuse: bool) {
+        *self.refusing.lock().unwrap() = refuse;
     }
 }
 
@@ -591,6 +597,14 @@ impl PaymentRecorder for Cash {
         request: RefundRequest,
         by: Option<i64>,
     ) -> PaymentFuture<'a, RefundId> {
+        if *self.refusing.lock().unwrap() {
+            return Box::pin(async {
+                Err(Error::Status(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "a refund cannot be requested: payments is not enabled".to_owned(),
+                ))
+            });
+        }
         let mut all = self.refunds.lock().unwrap();
         all.push((request, by));
         let id = i64::try_from(all.len()).unwrap();

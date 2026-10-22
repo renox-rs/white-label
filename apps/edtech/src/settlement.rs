@@ -142,6 +142,18 @@ async fn store(state: &AppState, id: i64, plan: &Settlement) -> Result {
     Ok(())
 }
 
+/// Whether an invoice in `status` can take a credit note of money that was paid
+/// on it: not a draft, and not one that was credited or written off already.
+fn can_credit(status: InvoiceStatus) -> bool {
+    matches!(
+        status,
+        InvoiceStatus::Issued
+            | InvoiceStatus::PartiallyPaid
+            | InvoiceStatus::Paid
+            | InvoiceStatus::Overdue
+    )
+}
+
 /// The invoices of `enrolment` that may be credited, newest first: the later
 /// instalments, then the first invoice. The lines are those `fees::raise`
 /// drafted: the course fee (or the instalment, or the package), then the
@@ -161,7 +173,9 @@ async fn creditable(
         if row.status == InstalmentStatus::Cancelled {
             continue;
         }
-        if let Some(summary) = books.find(&state.db, InvoiceId(invoice)).await? {
+        if let Some(summary) = books.find(&state.db, InvoiceId(invoice)).await?
+            && can_credit(summary.status)
+        {
             items.push(Creditable {
                 invoice,
                 paid: (summary.gross_total - summary.balance).max(0),
@@ -171,6 +185,7 @@ async fn creditable(
     }
     if let Some(invoice) = enrolment.first_invoice_id
         && let Some(summary) = books.find(&state.db, InvoiceId(invoice)).await?
+        && can_credit(summary.status)
     {
         let course = match enrolment.kind {
             EnrolmentKind::Course => rows.first().map_or(enrolment.fee(), |r| r.amount),
