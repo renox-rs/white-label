@@ -710,6 +710,18 @@ told once per session when it is still flagged 24 hours before it starts (the jo
 15 minutes). Each run is compliance-critical: one that fails is tried again with a backoff
 and the owner and the company admin are alerted after the fifth failure.
 
+**Attendance and the absence policy in the app.** The roster of a session is the `active`
+course enrolments of its batch and the guests added to it (a package student takes a
+session as a guest); a student whose seat is only held or who is frozen is not expected. A
+notice of absence is kept on the student's row of the session with its time; the policy used
+is the one stored on the enrolment (`unexcused absence consumes a credit`, default yes;
+`notice for an excused absence`, default 24 hours). A late arrival counts as present. A
+tutor cannot excuse an absence: only a notice in time or the coordinator (with a reason)
+does. The credit a mark costs is worked out when the attendance is stored and taken from
+the package after the commit, once per attendance row; when none is left the attendance and
+a correction are saved and the counsellor has one task to sell credits, and the credit is
+taken when a package is sold. `EDU.RUL.02` counts absences (excused or not) in a row.
+
 **Notification types.** Each type 10 registers names its group (the row of the wl-notify
 §5.4 default table) in `register_type`, which sets its give-up reaction (`NTF.RUL.01`).
 10 marks no type statutory.
