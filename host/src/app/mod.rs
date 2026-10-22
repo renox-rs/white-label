@@ -1,6 +1,7 @@
 pub mod accounting_portal;
 pub mod accounting_seed;
 pub mod activity;
+pub mod approvals_inbox;
 pub mod clinics_money;
 pub mod clinics_seed;
 pub mod compliance_settings;

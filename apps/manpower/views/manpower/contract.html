@@ -163,6 +163,7 @@
           <rx-column :label="tx['approval.requester']" hide-narrow>{{ approval.requester }}</rx-column>
           <rx-column :label="tx['approval.requested']" hide-narrow>{{ approval.requested }}</rx-column>
           <rx-column :label="tx['approval.decided']" hide-narrow>{{ approval.decided }}</rx-column>
+          <rx-column :label="tx['approval.note']">{{ approval.note }}</rx-column>
           <rx-column :label="tx['approval.decision']">
             <template rx-if="approval.can_decide">
               <rx-action-sheet :id="'approve-' ~ approval.id" :label="tx['approval.approve']" :action="route('wl_kernel.approvals.approve', approval.id)"
@@ -172,6 +173,10 @@
               <rx-action-sheet :id="'reject-' ~ approval.id" :label="tx['approval.reject']" :action="route('wl_kernel.approvals.reject', approval.id)"
                                :title="tx['approval.reject']" :submit-label="tx['approval.reject']" icon="circle-x" danger>
                 <rx-textarea name="comment" :label="tx['approval.comment']" :hint="tx['approval.comment_required']" :id="'reject-comment-' ~ approval.id" required/>
+              </rx-action-sheet>
+              <rx-action-sheet :id="'return-' ~ approval.id" :label="tx['approval.return']" :action="route('wl_kernel.approvals.return', approval.id)"
+                               :title="tx['approval.return']" :submit-label="tx['approval.return']" icon="undo-2">
+                <rx-textarea name="comment" :label="tx['approval.comment']" :hint="tx['approval.comment_required']" :id="'return-comment-' ~ approval.id" required/>
               </rx-action-sheet>
             </template>
           </rx-column>

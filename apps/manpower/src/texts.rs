@@ -1015,6 +1015,8 @@ const TEXTS: &[(&str, &str)] = &[
         "Say why. Required.",
     ),
     ("manpower.screen.approval.waiting", "Waiting for the MD"),
+    ("manpower.screen.approval.note", "Note"),
+    ("manpower.screen.approval.return", "Return for changes"),
     (
         "manpower.screen.approval.waiting_for",
         "Waiting for the MD: {{ action }}.",

@@ -116,6 +116,8 @@ pub(crate) struct ApprovalLine {
     decided: String,
     waiting: bool,
     can_decide: bool,
+    /// The note of the approver who rejected or returned the request.
+    note: String,
 }
 
 /// A client site in the *Sites* block.
@@ -530,6 +532,17 @@ async fn build(
                 request.decided_at.map(wl_kernel::documents::dubai_date),
                 &not_set,
             ),
+            note: if is_waiting {
+                String::new()
+            } else {
+                request
+                    .decisions(&state.db)
+                    .await?
+                    .into_iter()
+                    .rev()
+                    .find_map(|decision| decision.comment.filter(|note| !note.trim().is_empty()))
+                    .unwrap_or_default()
+            },
             waiting: is_waiting,
             can_decide: is_waiting
                 && decide::ensure_approver(&state.db, request, user)

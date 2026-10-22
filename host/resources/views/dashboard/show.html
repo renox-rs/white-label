@@ -28,7 +28,7 @@
     <app-section-head :title="t('dashboard.needs_action.title')" id="awaiting-title" :compact="true">
       <rx-list label="{{ t('dashboard.needs_action.title') }}">
         <li><app-icon-circle icon="clipboard-list" :size="18"/><div class="rx-list__main">
-          <span>{{ t('dashboard.needs_action.awaiting_one') if awaiting_count == 1 else t('dashboard.needs_action.awaiting_many', count=awaiting_count) }}</span>
+          <a href="{{ route('approvals.inbox') }}">{{ t('dashboard.needs_action.awaiting_one') if awaiting_count == 1 else t('dashboard.needs_action.awaiting_many', count=awaiting_count) }}</a>
         </div></li>
         <li rx-for="item in awaiting"><app-icon-circle icon="circle-check" :size="18"/><div class="rx-list__main">
           <template rx-if="item.url"><a href="{{ item.url }}">{{ item.title }}</a></template>

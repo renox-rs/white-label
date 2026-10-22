@@ -3,6 +3,7 @@
 
 pub mod absence;
 mod access;
+pub mod approvals_text;
 pub mod approvers;
 mod attendance;
 pub mod bench;

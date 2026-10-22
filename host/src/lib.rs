@@ -399,6 +399,7 @@ fn base() -> renox::App {
         .module(Audit)
         .module(app::home::Home)
         .module(app::dashboard::Dashboard)
+        .module(app::approvals_inbox::ApprovalsInbox)
         .module(app::users::Users)
         .module(app::activity::Activity)
         .module(app::menu::Menu)

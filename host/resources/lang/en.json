@@ -42,10 +42,12 @@
     "projects": "Projects",
     "contracts": "Client contracts",
     "requests": "Manpower requests",
+    "approvals": "Approvals",
     "portal_requests": "Requests",
     "portal_deployments": "Workers on site",
     "portal_timesheets": "Timesheets",
     "deployments": "Deployments",
+    "absence": "Absence cases",
     "shipments": "Shipments",
     "remittances": "COD remittances",
     "crew": "Crew list",
@@ -237,6 +239,24 @@
   "menu": {
     "title": "Menu",
     "subtitle": "Everything you can open."
+  },
+  "approvals": {
+    "title": "Approvals",
+    "subtitle": "The decisions that wait for you, and the requests you made.",
+    "tab_waiting": "Waiting for you",
+    "tab_mine": "My requests",
+    "reason": "Reason",
+    "open_record": "Open the record",
+    "requested": "Requested by :name on :date",
+    "waiting_for": "Waiting for :who",
+    "waiting_other": "Waiting for another user",
+    "rate_card_of": "Rate card of :client, from :date",
+    "returned": "Returned to you for changes",
+    "returned_with": "Returned to you: :note",
+    "empty": "Nothing needs your action",
+    "empty_text": "Decisions that wait for you appear here.",
+    "empty_mine": "No open requests",
+    "empty_mine_text": "What you ask others to approve appears here."
   },
   "activity": {
     "title": "Activity",

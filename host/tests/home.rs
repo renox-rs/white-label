@@ -345,7 +345,7 @@ async fn the_dashboard_counts_the_approvals_waiting_for_the_person_who_may_decid
         .assert_ok()
         .assert_see("Needs your action")
         .assert_see("1 approval waiting for you")
-        .assert_see("Decide: invoicing.void")
+        .assert_see("Decide: Void an invoice")
         .assert_see(r#"href="/invoices/42""#);
 
     // The requester decides nothing of their own.
@@ -372,7 +372,7 @@ async fn the_dashboard_lists_the_returned_requests_of_the_person_who_must_fix_th
         .await
         .assert_ok()
         .assert_see("Needs your action")
-        .assert_see("Fix and resubmit: invoicing.void")
+        .assert_see("Fix and resubmit: Void an invoice")
         .assert_see(r#"href="/invoices/42""#);
 
     app.acting_as(&bilal);
