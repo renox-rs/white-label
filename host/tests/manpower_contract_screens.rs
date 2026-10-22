@@ -11,8 +11,9 @@ mod support;
 use manpower::ContractStatus;
 use manpower_screens_support::{
     ADMIN, AMAL, MD, SUPERVISOR, accepted_rate_card, browse, client, contract, day, demo,
-    draft_contract, no_raw_words, page, person, post, says, scalar, stored, words,
+    draft_contract, no_raw_words, page, person, post, says, scalar, stored, words, worker_of,
 };
+use renox::prelude::*;
 
 /// AC1: the account manager opens `/manpower/contracts`: *New contract* is
 /// there and every row links to its page.
@@ -64,16 +65,35 @@ async fn a_new_contract_with_the_end_before_the_start_is_refused_in_words() {
         "{}",
         refused.text()
     );
+    // The refusal is carried as the page's error detail, which forms.js shows at
+    // the top of the sheet that sent it: the sheet is not swapped or reloaded, so
+    // the browser keeps what was typed (the answer is the error page, not the
+    // form again).
+    let body = refused.text();
+    assert!(
+        body.contains("data-error-detail=\"The end date must be after the start date"),
+        "{body}"
+    );
     assert_eq!(
         scalar(&app, "select count(*) from manpower_client_contracts").await,
         3,
         "nothing was made"
     );
-    // The sheet that sends it is on the list page, with the fields to refill.
+    // The sheet that sends it is on the list page, with the fields to refill,
+    // and posts to the same route.
     let html = page(&app, AMAL, "/manpower/contracts").await;
     says(
         &html,
-        &["new-contract", "First day", "Last day", "Notice days"],
+        &[
+            "new-contract",
+            "First day",
+            "Last day",
+            "Notice days",
+            "name=\"reference\"",
+            "name=\"start_date\"",
+            "name=\"end_date\"",
+            "action=\"/manpower/contracts\"",
+        ],
     );
 
     let id = draft_contract(&app, "CC-NEW-1").await;
@@ -446,6 +466,11 @@ async fn the_deployments_tab_lists_the_workers_with_links() {
         ),
     )
     .await;
+    let worker = worker_of(&app, deployment).await;
+    let start = manpower::Deployment::find_or_404(app.db(), deployment)
+        .await
+        .unwrap()
+        .start_date;
     says(
         &html,
         &[
@@ -453,6 +478,8 @@ async fn the_deployments_tab_lists_the_workers_with_links() {
             "Security guard",
             "Tower A, lobby and security desk",
             "Active",
+            &worker,
+            &words(start),
         ],
     );
     no_raw_words(&html);
