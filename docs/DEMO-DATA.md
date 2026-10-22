@@ -426,6 +426,12 @@ ready but not collected for 5 days.
 free-zone IT arm. **Two legal entities** (mainland LLC and free-zone FZ-LLC). 650 employees,
 45 client companies.
 
+**Implemented as** `clients/demo-manpower/client.toml` and `host/src/app/manpower_demo.rs`
+(*Desert Star Manpower Services LLC*, three clients, 14 workers; the story is the one of the
+table below at a smaller size). `APP_ENV=local CLIENT_CONFIG=clients/demo-manpower/client.toml
+cargo run -p host -- migrate`, then `-- manpower:demo` (or `-- db:seed`), then `-- serve`; the
+logins are on the login page, password `password123`. Every date is relative to today.
+
 **Demo users.** MD · Account manager · PRO · HR/payroll officer · Site supervisor ·
 Accountant · Worker (PWA) · Client approver (portal) · Client viewer.
 

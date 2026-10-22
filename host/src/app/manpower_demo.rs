@@ -778,7 +778,8 @@ impl Seed {
             let mut new = NewEmployee::new(party, worker.role, day(worker.hired)).status(status);
             new.employee_number = format!("DSM-{:04}", index + 1);
             new.legal_entity_id = Some(self.entity);
-            new.job_title = worker.role.replace('_', " ");
+            let title = worker.role.replace('_', " ");
+            new.job_title = title[..1].to_uppercase() + &title[1..];
             let employee = employees::create(&self.state, new).await?;
             if worker.status == EmployeeStatus::Notice {
                 // Serving notice: no path from `active` without an exit
