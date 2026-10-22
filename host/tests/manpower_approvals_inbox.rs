@@ -141,8 +141,9 @@ async fn reject_and_return_need_a_note_and_the_requester_sees_it() {
         .await;
         refused.assert_status(422);
         assert!(
-            refused.text().to_lowercase().contains("comment")
-                || refused.text().to_lowercase().contains("note"),
+            refused
+                .text()
+                .contains("A comment is required to reject or return."),
             "{action}: {}",
             refused.text()
         );
@@ -310,6 +311,13 @@ async fn each_kind_of_request_reads_in_its_own_words_with_its_subject_name() {
     .await
     .assert_ok();
 
+    let number = manpower_screens_support::text(
+        &app,
+        &format!("select number from wl_invoicing_invoices where id = {invoice}"),
+    )
+    .await;
+    assert!(number.starts_with("INV"), "the invoice number: {number}");
+
     // The MD decides the termination, the death and the rate card; the waiver
     // of the cooling goes to the owner role of this deployment, which HR is
     // configured with (`md_role`), and the write-off to whoever the policy
@@ -331,6 +339,7 @@ async fn each_kind_of_request_reads_in_its_own_words_with_its_subject_name() {
         "Approve a past-dated rate card",
         "Rate card of Gulf Tower Facilities LLC",
         "Write off an invoice",
+        number.as_str(),
     ] {
         assert!(
             text.contains(words),
