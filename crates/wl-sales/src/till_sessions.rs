@@ -270,6 +270,20 @@ impl TillDesk for Desk {
         })
     }
 
+    fn of_day<'a>(
+        &'a self,
+        state: &'a AppState,
+        till: &'a str,
+        date: renox::chrono::NaiveDate,
+    ) -> SalesFuture<'a, Option<TillView>> {
+        Box::pin(async move {
+            match TillSession::of_day(&state.db, till, date).await? {
+                Some(session) => Ok(Some(view_of(&state.db, &session).await?)),
+                None => Ok(None),
+            }
+        })
+    }
+
     fn submit_count<'a>(
         &'a self,
         state: &'a AppState,

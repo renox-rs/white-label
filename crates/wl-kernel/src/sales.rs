@@ -877,6 +877,16 @@ pub trait TillDesk: Send + Sync + 'static {
         Box::pin(async { Ok(None) })
     }
 
+    /// The session of `till` for the trading day `date`, or `None`.
+    fn of_day<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _till: &'a str,
+        _date: NaiveDate,
+    ) -> SalesFuture<'a, Option<TillView>> {
+        Box::pin(async { Ok(None) })
+    }
+
     /// Counts the session `id` and closes it with the `counted` cash
     /// (`start_count` and `close`); emits [`TillSessionClosed`] after the
     /// commit.
