@@ -54,6 +54,17 @@ async fn every_approval_action_has_words() {
     assert!(raw.is_empty(), "approvals shown as a key: {raw:?}");
 }
 
+/// What waits for a second person's decision on a claim opens the claim from
+/// the dashboard.
+#[renox::test]
+async fn an_approval_about_a_claim_opens_the_claim() {
+    let _app = clinics_booted().await;
+    assert_eq!(
+        wl_kernel::approvals::subject_url("clinics.claim", 4).as_deref(),
+        Some("/clinics/claims/4")
+    );
+}
+
 /// A payer bill's write-off above the limit is the owner's to approve
 /// (`FIN.ACL.14`): the Clinics client builds wl-invoicing with the owner and the
 /// company administrators as approvers, so a new database stores that. A
