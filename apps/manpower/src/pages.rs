@@ -3,6 +3,7 @@
 //! | Route | Name | Needs |
 //! |---|---|---|
 //! | `GET /manpower/contracts` | `manpower.contracts` | `contracts.view` or `contracts.manage` for the client |
+//! | `GET /manpower/contracts/{id}` | `manpower.contract` | `contracts.view` or `contracts.manage` for the client (BL-MPW-22) |
 //! | `POST /manpower/contracts` | `manpower.contract_create` | `contracts.manage` for the client |
 //! | `POST /manpower/contracts/{id}/signed` | `manpower.contract_signed` | `contracts.manage` for the client |
 //! | `POST /manpower/contracts/{id}/activate` | `manpower.contract_activate` | `contracts.manage` for the client |
@@ -12,6 +13,9 @@
 //! | `POST /manpower/contracts/{id}/renew` | `manpower.contract_renew` | `contracts.manage` for the client |
 //! | `POST /manpower/contracts/{id}/release` | `manpower.contract_release` | `contracts.manage` for the client (the MD approves while a hold condition remains) |
 //! | `POST /manpower/sites` | `manpower.site_create` | `sites.manage` for the client |
+//! | `POST /manpower/sites/{id}` | `manpower.site_update` | `sites.manage` for the client |
+//! | `GET /manpower/parties/options` | `manpower.party_options` | `contracts.manage` for some client (the picker of the forms) |
+//! | `GET /manpower/requests/{id}` | `manpower.request` | as the list (BL-MPW-23) |
 //! | `GET /manpower/requests` | `manpower.requests` | `requests.view`, `requests.create` or `requests.manage` for the client, or the client's portal access |
 //! | `POST /manpower/requests` | `manpower.request_create` | `requests.create` for the client, or the client's approver |
 //! | `POST /manpower/requests/{id}/submit` | `manpower.request_submit` | `requests.create` for the client, or the client's approver |
@@ -26,9 +30,10 @@
 //! | `POST /manpower/deployments/{id}/end` | `manpower.deployment_end` | `deployments.manage` for the client |
 //! | `POST /manpower/deployments/{id}/cancel` | `manpower.deployment_cancel` | `deployments.manage` for the client |
 //!
-//! The list answers a page when the request names `text/html` and JSON
-//! otherwise ([`wl_kernel::negotiate`]); the actions answer 303 back to the
-//! list for a form post and a refusal as its status.
+//! The lists and the record pages answer a page when the request names
+//! `text/html` and JSON otherwise ([`wl_kernel::negotiate`]); the actions answer
+//! 303 back to the page of the record with a toast ([`crate::screens::done`]) and
+//! a refusal as its 422 with the words the sheet shows.
 
 use std::collections::BTreeMap;
 
@@ -51,9 +56,10 @@ use crate::ends;
 use crate::hold::ContractHold;
 use crate::permissions;
 use crate::renewal::RenewAsk;
-use crate::request::{ManpowerRequest, RequestKind, RequestStatus};
+use crate::request::{ManpowerRequest, RequestKind};
 use crate::requests::{self, NewRequest};
 use crate::resumption;
+use crate::screens::{self, contract_page, done, request_page};
 use crate::site::{self, Site};
 use crate::suspension::{self, DeploymentSuspension};
 use crate::termination::TerminateAsk;
@@ -68,6 +74,8 @@ pub fn routes() -> Routes {
         .name("manpower.contracts")
         .post("/manpower/contracts", create_contract)
         .name("manpower.contract_create")
+        .get("/manpower/contracts/{id}", screens::contract_page::show)
+        .name("manpower.contract")
         .post("/manpower/contracts/{id}/signed", sign_contract)
         .name("manpower.contract_signed")
         .post("/manpower/contracts/{id}/activate", activate_contract)
@@ -86,10 +94,16 @@ pub fn routes() -> Routes {
         .name("manpower.contract_release")
         .post("/manpower/sites", create_site)
         .name("manpower.site_create")
+        .post("/manpower/sites/{id}", update_site)
+        .name("manpower.site_update")
+        .get("/manpower/parties/options", party_options)
+        .name("manpower.party_options")
         .get("/manpower/requests", requests_index)
         .name("manpower.requests")
         .post("/manpower/requests", create_request)
         .name("manpower.request_create")
+        .get("/manpower/requests/{id}", screens::request_page::show)
+        .name("manpower.request")
         .post("/manpower/requests/{id}/submit", submit_request)
         .name("manpower.request_submit")
         .post("/manpower/requests/{id}/cancel", cancel_request)
@@ -176,7 +190,11 @@ pub(crate) fn flag(form: &BTreeMap<String, String>, name: &str) -> bool {
 #[derive(Debug, Serialize, Clone)]
 pub(crate) struct ContractRow {
     id: i64,
+    /// The contract's page.
+    url: String,
     reference: String,
+    /// `01 Jan 2026 - 31 Dec 2026`.
+    period: String,
     client_party_id: i64,
     client: String,
     status: String,
@@ -205,6 +223,11 @@ pub(crate) struct HoldRow {
 pub(crate) struct ContractsPage {
     tx: BTreeMap<&'static str, String>,
     contracts: Vec<ContractRow>,
+    /// Whether the person may start a contract for some client.
+    can_create: bool,
+    billing_cycles: Vec<(String, String)>,
+    billing_selected: String,
+    today: String,
 }
 
 /// The badge colour of a contract.
@@ -260,7 +283,9 @@ async fn contracts_index(
         };
         rows.push(ContractRow {
             id: contract.id,
+            url: contract_page::url(contract.id),
             reference: contract.reference.clone(),
+            period: screens::period_text(&lang, contract.start_date, Some(contract.end_date)),
             client_party_id: contract.client_party_id,
             client: party_name(&state, &lang, contract.client_party_id).await,
             status: word(&lang, "status", contract.status.as_str()),
@@ -282,6 +307,14 @@ async fn contracts_index(
         return Ok(View::typed(ContractsPage {
             tx: screen_texts(&lang),
             contracts: rows,
+            can_create: user.has_permission_anywhere(permissions::CONTRACTS_MANAGE),
+            billing_cycles: screens::options(
+                &lang,
+                "billing",
+                &["monthly", "fortnightly", "weekly"],
+            ),
+            billing_selected: "monthly".to_owned(),
+            today: today().to_string(),
         })
         .into_response());
     }
@@ -299,11 +332,11 @@ async fn create_contract(
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
     let client = number(&lang, &form, "client_party_id")?
-        .ok_or_else(|| refused(t(&lang, "manpower.bad_input")))?;
-    let start =
-        date(&lang, &form, "start_date")?.ok_or_else(|| refused(t(&lang, "manpower.bad_input")))?;
-    let end =
-        date(&lang, &form, "end_date")?.ok_or_else(|| refused(t(&lang, "manpower.bad_input")))?;
+        .ok_or_else(|| refused(t(&lang, "manpower.problems.client_missing")))?;
+    let start = date(&lang, &form, "start_date")?
+        .ok_or_else(|| refused(t(&lang, "manpower.problems.dates_missing")))?;
+    let end = date(&lang, &form, "end_date")?
+        .ok_or_else(|| refused(t(&lang, "manpower.problems.dates_missing")))?;
     let mut new = NewContract::new(&field(&form, "reference"), PartyId(client), start, end);
     new.billing_cycle = match field(&form, "billing_cycle").as_str() {
         "" | "monthly" => BillingCycle::Monthly,
@@ -321,8 +354,12 @@ async fn create_contract(
     new.deemed_approval_days = number(&lang, &form, "deemed_approval_days")?;
     new.escalation_contact = number(&lang, &form, "escalation_contact_party_id")?.map(PartyId);
     new.account_manager_user_id = number(&lang, &form, "account_manager_user_id")?;
-    contracts::create(&state, &user, new).await?;
-    Ok(back("/manpower/contracts"))
+    let created = contracts::create(&state, &user, new).await?;
+    Ok(done(
+        &lang,
+        &contract_page::url(created.id),
+        "manpower.screen.done.created",
+    ))
 }
 
 /// `POST /manpower/contracts/{id}/signed`: `signed_on` (`2027-01-05`) and
@@ -334,31 +371,45 @@ async fn sign_contract(
     Path(id): Path<i64>,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
-    let on =
-        date(&lang, &form, "signed_on")?.ok_or_else(|| refused(t(&lang, "manpower.bad_input")))?;
+    let on = date(&lang, &form, "signed_on")?
+        .ok_or_else(|| refused(t(&lang, "manpower.problems.signed_date_missing")))?;
     contracts::record_signed(&state, &user, id, on, &field(&form, "document")).await?;
-    Ok(back("/manpower/contracts"))
+    Ok(done(
+        &lang,
+        &contract_page::url(id),
+        "manpower.screen.done.signed",
+    ))
 }
 
 /// `POST /manpower/contracts/{id}/activate`.
 async fn activate_contract(
     State(state): State<AppState>,
     user: AuthUser,
+    lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<Response> {
     contracts::activate(&state, &user, id).await?;
-    Ok(back("/manpower/contracts"))
+    Ok(done(
+        &lang,
+        &contract_page::url(id),
+        "manpower.screen.done.activated",
+    ))
 }
 
 /// `POST /manpower/contracts/{id}/cancel`: `reason`.
 async fn cancel_contract(
     State(state): State<AppState>,
     user: AuthUser,
+    lang: Lang,
     Path(id): Path<i64>,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
     contracts::cancel(&state, &user, id, &field(&form, "reason")).await?;
-    Ok(back("/manpower/contracts"))
+    Ok(done(
+        &lang,
+        &contract_page::url(id),
+        "manpower.screen.done.cancelled",
+    ))
 }
 
 /// `POST /manpower/contracts/{id}/hold`: `reason` (`overdue`,
@@ -366,6 +417,7 @@ async fn cancel_contract(
 async fn hold_contract(
     State(state): State<AppState>,
     user: AuthUser,
+    lang: Lang,
     Path(id): Path<i64>,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
@@ -378,7 +430,11 @@ async fn hold_contract(
         Some(text.as_str()).filter(|text| !text.is_empty()),
     )
     .await?;
-    Ok(back("/manpower/contracts"))
+    Ok(done(
+        &lang,
+        &contract_page::url(id),
+        "manpower.screen.done.held",
+    ))
 }
 
 /// `POST /manpower/contracts/{id}/timesheet-terms`: `deemed_approval_days`
@@ -394,7 +450,11 @@ async fn timesheet_terms(
     let days = number(&lang, &form, "deemed_approval_days")?;
     let contact = number(&lang, &form, "escalation_contact_party_id")?.map(PartyId);
     approvers::set_terms(&state, &user, id, days, contact).await?;
-    Ok(back("/manpower/contracts"))
+    Ok(done(
+        &lang,
+        &contract_page::url(id),
+        "manpower.screen.done.terms",
+    ))
 }
 
 /// `POST /manpower/contracts/{id}/terminate`: `initiated_by` (`client` or
@@ -415,8 +475,13 @@ async fn terminate_contract(
         end_date: date(&lang, &form, "end_date")?.ok_or_else(bad)?,
         waiver: Some(field(&form, "waiver")).filter(|waiver| !waiver.is_empty()),
     };
-    contracts::terminate(&state, &user, id, ask).await?;
-    Ok(back("/manpower/contracts"))
+    let requested = contracts::terminate(&state, &user, id, ask).await?;
+    let key = if requested.approval_request.is_some() {
+        "manpower.screen.done.terminate_asked"
+    } else {
+        "manpower.screen.done.terminated"
+    };
+    Ok(done(&lang, &contract_page::url(id), key))
 }
 
 /// `POST /manpower/contracts/{id}/renew`: the new `end_date`, the day the
@@ -438,44 +503,129 @@ async fn renew_contract(
         rates_from: date(&lang, &form, "rates_from")?,
     };
     contracts::renew(&state, &user, id, ask).await?;
-    Ok(back("/manpower/contracts"))
+    Ok(done(
+        &lang,
+        &contract_page::url(id),
+        "manpower.screen.done.renewed",
+    ))
 }
 
 /// `POST /manpower/contracts/{id}/release`.
 async fn release_contract(
     State(state): State<AppState>,
     user: AuthUser,
+    lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    contracts::release(&state, &user, id).await?;
-    Ok(back("/manpower/contracts"))
+    let released = contracts::release(&state, &user, id).await?;
+    let key = if released.approval_request.is_some() {
+        "manpower.screen.done.release_asked"
+    } else {
+        "manpower.screen.done.released"
+    };
+    Ok(done(&lang, &contract_page::url(id), key))
 }
 
-/// `POST /manpower/sites`: `client_party_id`, `name` and `address`.
+/// `POST /manpower/sites`: `client_party_id`, `name`, `address` and
+/// `required_licences`. Answers 303 back to the page the form was on (the
+/// client's contract page).
 async fn create_site(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
+    back_to: renox::Back,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
     let client = number(&lang, &form, "client_party_id")?
-        .ok_or_else(|| refused(t(&lang, "manpower.bad_input")))?;
-    let address = field(&form, "address");
-    site::create(
+        .ok_or_else(|| refused(t(&lang, "manpower.problems.client_missing")))?;
+    site::create_with(
         &state,
         &user,
         PartyId(client),
-        &field(&form, "name"),
-        Some(&address),
+        site::SiteInput {
+            name: field(&form, "name"),
+            address: Some(field(&form, "address")),
+            required_licences: Some(field(&form, "required_licences")),
+        },
     )
     .await?;
-    Ok(back("/manpower/contracts"))
+    Ok((
+        Toast::success(t(&lang, "manpower.screen.done.site_created")),
+        back_to,
+    )
+        .into_response())
+}
+
+/// `POST /manpower/sites/{id}`: `name`, `address` and `required_licences` of
+/// a site; the deployments stay linked to it.
+async fn update_site(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    back_to: renox::Back,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    site::update(
+        &state,
+        &user,
+        id,
+        site::SiteInput {
+            name: field(&form, "name"),
+            address: Some(field(&form, "address")),
+            required_licences: Some(field(&form, "required_licences")),
+        },
+    )
+    .await?;
+    Ok((
+        Toast::success(t(&lang, "manpower.screen.done.site_updated")),
+        back_to,
+    )
+        .into_response())
+}
+
+/// `GET /manpower/parties/options`: the client companies a contract form's
+/// picker offers as the person types (`?q=`), or the labels of the values it
+/// already holds (`?values=`), as `number, name`. For those who manage
+/// contracts, sites or terms.
+async fn party_options(
+    State(state): State<AppState>,
+    user: AuthUser,
+    query: renox::select::OptionQuery,
+) -> Result<Json<Vec<renox::select::SelectOption>>> {
+    if !user.has_permission_anywhere(permissions::CONTRACTS_MANAGE) {
+        return Err(Error::Forbidden);
+    }
+    let directory = wl_kernel::parties::directory(&state);
+    let mut parties = Vec::new();
+    if query.is_lookup() {
+        for id in query.values_as::<i64>() {
+            parties.extend(directory.find(&state.db, PartyId(id)).await?);
+        }
+    } else {
+        parties = directory.search(&state.db, &query.q, 20).await?;
+    }
+    Ok(Json(
+        parties
+            .into_iter()
+            .map(|party| {
+                renox::select::SelectOption::new(
+                    party.id.0,
+                    format!("{}, {}", party.code, party.display_name),
+                )
+            })
+            .collect(),
+    ))
 }
 
 /// A request as the list shows it.
 #[derive(Debug, Serialize, Clone)]
 pub(crate) struct RequestRow {
     id: i64,
+    /// The request's page.
+    url: String,
+    /// `15 Nov 2026 - Open-ended`.
+    period: String,
     client_contract_id: i64,
     client_party_id: i64,
     client: String,
@@ -486,6 +636,8 @@ pub(crate) struct RequestRow {
     filled_count: i64,
     shift_type: String,
     status: String,
+    /// The status as the pages word it (`open` is *Submitted*).
+    status_label: String,
     status_kind: &'static str,
     start_date: NaiveDate,
     end_date: Option<NaiveDate>,
@@ -500,15 +652,10 @@ pub(crate) struct RequestRow {
 pub(crate) struct RequestsPage {
     tx: BTreeMap<&'static str, String>,
     requests: Vec<RequestRow>,
-}
-
-/// The badge colour of a request.
-fn request_kind(status: RequestStatus) -> &'static str {
-    match status {
-        RequestStatus::Filled => "success",
-        RequestStatus::Open | RequestStatus::PartiallyFilled => "warning",
-        RequestStatus::Draft | RequestStatus::Cancelled => "info",
-    }
+    /// Whether the person may write a request for some client; then the
+    /// sheet of *New request* has its options.
+    can_create: bool,
+    form: request_page::NewRequestForm,
 }
 
 /// `GET /manpower/requests`: the requests of the client companies the person
@@ -547,6 +694,8 @@ async fn requests_index(
             .unwrap_or_default();
         rows.push(RequestRow {
             id: request.id,
+            url: request_page::url(request.id),
+            period: screens::period_text(&lang, request.start_date, request.end_date),
             client_contract_id: request.client_contract_id,
             client_party_id: request.client_party_id,
             client: party_name(&state, &lang, request.client_party_id).await,
@@ -557,7 +706,8 @@ async fn requests_index(
             filled_count: request.filled_count,
             shift_type: request.shift_type.clone(),
             status: word(&lang, "status", request.status.as_str()),
-            status_kind: request_kind(request.status),
+            status_label: request_page::status_text(&lang, request.status),
+            status_kind: request_page::status_kind(request.status),
             start_date: request.start_date,
             end_date: request.end_date,
             replacement: request.kind == RequestKind::Replacement,
@@ -573,9 +723,12 @@ async fn requests_index(
         return Err(Error::Forbidden);
     }
     if wl_kernel::negotiate::wants_html(&headers) {
+        let form = request_page::new_request_form(&state, &user, &lang).await?;
         return Ok(View::typed(RequestsPage {
             tx: screen_texts(&lang),
             requests: rows,
+            can_create: !form.contracts.is_empty(),
+            form,
         })
         .into_response());
     }
@@ -591,41 +744,80 @@ async fn create_request(
     lang: Lang,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
-    let bad = || refused(t(&lang, "manpower.bad_input"));
     let new = NewRequest {
-        contract_id: number(&lang, &form, "client_contract_id")?.ok_or_else(bad)?,
-        site_id: number(&lang, &form, "site_id")?.ok_or_else(bad)?,
-        role: field(&form, "role"),
-        headcount: number(&lang, &form, "headcount")?.ok_or_else(bad)?,
+        contract_id: number(&lang, &form, "client_contract_id")?
+            .ok_or_else(|| refused(t(&lang, "manpower.problems.contract_missing")))?,
+        site_id: number(&lang, &form, "site_id")?
+            .ok_or_else(|| refused(t(&lang, "manpower.problems.site_missing")))?,
+        role: request_page::role_key(&field(&form, "role")),
+        headcount: number(&lang, &form, "headcount")?
+            .ok_or_else(|| refused(t(&lang, "manpower.problems.headcount_missing")))?,
         shift_type: field(&form, "shift_type"),
         shift_start: Some(field(&form, "shift_start")),
         shift_end: Some(field(&form, "shift_end")),
-        start_date: date(&lang, &form, "start_date")?.ok_or_else(bad)?,
+        start_date: date(&lang, &form, "start_date")?
+            .ok_or_else(|| refused(t(&lang, "manpower.problems.start_missing")))?,
         end_date: date(&lang, &form, "end_date")?,
     };
-    requests::create(&state, &user, new).await?;
-    Ok(back("/manpower/requests"))
+    let created = requests::create(&state, &user, new).await?;
+    Ok(done(
+        &lang,
+        &request_page::url(created.id),
+        "manpower.screen.done.request_created",
+    ))
 }
 
-/// `POST /manpower/requests/{id}/submit`.
+/// `POST /manpower/requests/{id}/submit`. A contract on credit hold refuses it
+/// (`MPW.ACL.14`): the page says so in words, then the service's line with the
+/// date and the reason.
 async fn submit_request(
     State(state): State<AppState>,
     user: AuthUser,
+    lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    requests::submit(&state, &user, id).await?;
-    Ok(back("/manpower/requests"))
+    match requests::submit(&state, &user, id).await {
+        Ok(_) => Ok(done(
+            &lang,
+            &request_page::url(id),
+            "manpower.screen.done.request_submitted",
+        )),
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message))
+            if message.starts_with("Contract on credit hold") =>
+        {
+            Err(refused(format!(
+                "{} {message}",
+                t(&lang, "manpower.screen.requests.on_hold_blocked")
+            )))
+        }
+        Err(other) => Err(other),
+    }
 }
 
-/// `POST /manpower/requests/{id}/cancel`: `reason`.
+/// `POST /manpower/requests/{id}/cancel`: `reason`. The sheet of the page also
+/// sends `check_active`: then a request with a deployment still `active` is
+/// refused with their count (BL-MPW-23); without it the service cancels the
+/// planned deployments and leaves the active ones on site, as it always did.
 async fn cancel_request(
     State(state): State<AppState>,
     user: AuthUser,
+    lang: Lang,
     Path(id): Path<i64>,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
+    if flag(&form, "check_active") {
+        let request = ManpowerRequest::find_or_404(&state.db, id).await?;
+        let active = request_page::active_count(&state, id).await?;
+        if active > 0 && user.has_permission_in(permissions::REQUESTS_MANAGE, &request.scope()) {
+            return Err(refused(request_page::active_text(&lang, active)));
+        }
+    }
     requests::cancel(&state, &user, id, &field(&form, "reason")).await?;
-    Ok(back("/manpower/requests"))
+    Ok(done(
+        &lang,
+        &request_page::url(id),
+        "manpower.screen.done.request_cancelled",
+    ))
 }
 
 /// A deployment as staff see it.
@@ -994,8 +1186,12 @@ async fn cover_deployment(
     let from =
         date(&lang, &form, "from")?.ok_or_else(|| refused(t(&lang, "manpower.bad_input")))?;
     let to = date(&lang, &form, "to")?;
-    crate::cover::open_by_hand(&state, &user, id, from, to).await?;
-    Ok(back("/manpower/requests"))
+    let opened = crate::cover::open_by_hand(&state, &user, id, from, to).await?;
+    Ok(done(
+        &lang,
+        &request_page::url(opened.id),
+        "manpower.screen.done.cover_asked",
+    ))
 }
 
 /// An absence case as the list shows it (JSON).

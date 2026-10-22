@@ -4,17 +4,32 @@
 <rx-page layout="layouts/app.html" :title="tx['contracts.title']">
   <rx-stack>
     <rx-page-header :title="tx['contracts.title']" :subtitle="tx['contracts.subtitle']"/>
-    <rx-table :rows="contracts" as="contract" :key="contract.id" :caption="tx['contracts.title']">
+    <rx-row rx-if="can_create">
+      <rx-action-sheet id="new-contract" :label="tx['contracts.new']" :action="route('manpower.contract_create')"
+                       :title="tx['contracts.new']" :description="tx['contracts.new_hint']" :submit-label="tx['contracts.new_save']" variant="primary" icon="plus">
+        <rx-select name="client_party_id" :label="tx['form.client']" :options="[]" :placeholder="tx['form.client_placeholder']" options-url="{{ route('manpower.party_options') }}" id="new-contract-client" required/>
+        <rx-input name="reference" :label="tx['form.reference']" :hint="tx['form.reference_hint']" id="new-contract-reference" required/>
+        <rx-input name="start_date" type="date" :label="tx['form.start_date']" :value="today" id="new-contract-start" required/>
+        <rx-input name="end_date" type="date" :label="tx['form.end_date']" id="new-contract-end" required/>
+        <rx-select name="billing_cycle" :label="tx['form.billing']" :options="billing_cycles" :selected="billing_selected"/>
+        <rx-input name="payment_terms_days" type="number" :label="tx['form.payment_terms']" value="30" id="new-contract-payment"/>
+        <rx-input name="notice_period_days" type="number" :label="tx['form.notice_days']" value="30" id="new-contract-notice"/>
+        <rx-checkbox name="cover_required" :label="tx['form.cover_required']"/>
+        <rx-input name="deemed_approval_days" type="number" :label="tx['form.deemed_days']" :hint="tx['form.deemed_days_hint']" id="new-contract-deemed"/>
+        <rx-select name="escalation_contact_party_id" :label="tx['form.escalation']" :options="[]" :placeholder="tx['form.escalation_placeholder']" options-url="{{ route('manpower.party_options') }}" id="new-contract-escalation"/>
+      </rx-action-sheet>
+    </rx-row>
+    <rx-table :rows="contracts" as="contract" :key="contract.id" :caption="tx['contracts.title']" card>
       <rx-column :label="tx['contracts.reference']">
         <rx-stack>
-          <span>{{ contract.reference }}</span>
+          <span><a href="{{ contract.url }}">{{ contract.reference }}</a></span>
           <span class="rx-subtitle">{{ contract.client }}</span>
           <span><rx-badge :kind="contract.status_kind" :text="contract.status"/></span>
           <span rx-if="contract.hold" class="rx-subtitle">{{ tx['contracts.held_since'] }} {{ contract.hold.held_at }}, {{ tx['contracts.held_before'] }} {{ contract.hold.status_before }}</span>
           <template rx-if="contract.hold"><template rx-for="line in contract.hold.reasons"><span class="rx-subtitle">{{ line }}</span></template></template>
         </rx-stack>
       </rx-column>
-      <rx-column :label="tx['contracts.period']" hide-narrow>{{ contract.start_date }} - {{ contract.end_date }}</rx-column>
+      <rx-column :label="tx['contracts.period']" hide-narrow>{{ contract.period }}</rx-column>
       <rx-column :label="tx['contracts.billing']" hide-narrow>{{ contract.billing_cycle }}</rx-column>
       <rx-column :label="tx['contracts.cover']" hide-narrow>
         <span rx-if="contract.cover_required">{{ tx['contracts.cover_required'] }}</span>

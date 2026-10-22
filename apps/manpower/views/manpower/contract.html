@@ -1,0 +1,182 @@
+{#- manpower: one client contract (docs/UX.md section 2.2): the title and status,
+    the actions this person may run now (a blocked one is disabled and says
+    why), and the tabs Overview, Deployments, Rate cards, Approvals and
+    Activity. The client's sites are a block of the overview. Replace it with
+    resources/views/manpower/contract.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['contract.title'] ~ ' ' ~ reference">
+  <rx-stack>
+    <rx-page-header :title="tx['contract.title'] ~ ' ' ~ reference" :subtitle="subtitle"
+                    :badge="status" :badge-kind="status_kind"
+                    :back="route('manpower.contracts')" :back-label="tx['contracts.title']"/>
+    <rx-form-errors/>
+    <rx-alert rx-if="hold" kind="warning" :message="tx['hold.banner']"/>
+    <rx-alert rx-for="line in waiting" kind="info" :message="line"/>
+    <rx-row>
+      <template rx-if="actions.sign.shown">
+        <rx-action-sheet id="sign-contract" :label="tx['action.sign']" :action="route('manpower.contract_signed', id)"
+                         :title="tx['action.sign']" :description="tx['action.sign_hint']" :submit-label="tx['action.sign']" icon="pen">
+          <rx-input name="signed_on" type="date" :label="tx['form.signed_on']" :value="today" id="sign-contract-date" required/>
+          <rx-input name="document" :label="tx['form.document']" :hint="tx['form.document_hint']" id="sign-contract-document" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="actions.activate.shown">
+        <template rx-if="actions.activate.blocked">
+          <rx-button :label="tx['action.activate']" variant="primary" icon="check" :disabled-reason="actions.activate.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="activate-contract" :label="tx['action.activate']" :action="route('manpower.contract_activate', id)"
+                           :title="tx['action.activate']" :description="tx['action.activate_hint']" :submit-label="tx['action.activate']" variant="primary" icon="check"/>
+        </template>
+      </template>
+      <template rx-if="actions.hold.shown">
+        <rx-action-sheet id="hold-contract" :label="tx['action.hold']" :action="route('manpower.contract_hold', id)"
+                         :title="tx['action.hold']" :description="tx['action.hold_hint']" :submit-label="tx['action.hold']" icon="pause">
+          <rx-select name="reason" :label="tx['form.hold_reason']" :options="hold_reasons" :selected="hold_selected"/>
+          <rx-input name="text" :label="tx['form.hold_text']" :hint="tx['form.hold_text_hint']" id="hold-contract-text"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="actions.release.shown">
+        <rx-action-sheet id="release-contract" :label="tx['action.release']" :action="route('manpower.contract_release', id)"
+                         :title="tx['action.release']" :description="tx['action.release_hint']" :submit-label="tx['action.release']" variant="primary" icon="play"/>
+      </template>
+      <template rx-if="actions.renew.shown">
+        <rx-action-sheet id="renew-contract" :label="tx['action.renew']" :action="route('manpower.contract_renew', id)"
+                         :title="tx['action.renew']" :description="tx['action.renew_hint']" :submit-label="tx['action.renew']" icon="refresh-cw">
+          <rx-input name="end_date" type="date" :label="tx['form.new_end']" id="renew-contract-end" required/>
+          <rx-input name="signed_on" type="date" :label="tx['form.renewal_signed_on']" :value="today" id="renew-contract-signed" required/>
+          <rx-input name="document" :label="tx['form.renewal_document']" :hint="tx['form.document_hint']" id="renew-contract-document" required/>
+          <rx-input name="rates_from" type="date" :label="tx['form.rates_from']" :hint="tx['form.rates_from_hint']" id="renew-contract-rates"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="actions.terminate.shown">
+        <rx-action-sheet id="terminate-contract" :label="tx['action.terminate']" :action="route('manpower.contract_terminate', id)"
+                         :title="tx['action.terminate']" :description="tx['action.terminate_hint']" :submit-label="tx['action.terminate']" icon="circle-x">
+          <rx-select name="initiated_by" :label="tx['form.initiated_by']" :options="initiators" :selected="initiator_selected"/>
+          <rx-textarea name="reason" :label="tx['form.terminate_reason']" id="terminate-contract-reason" required/>
+          <rx-input name="notice_on" type="date" :label="tx['form.notice_on']" :value="today" id="terminate-contract-notice" required/>
+          <rx-input name="end_date" type="date" :label="tx['form.last_day']" id="terminate-contract-end" required/>
+          <rx-input name="waiver" :label="tx['form.waiver']" :hint="tx['form.waiver_hint']" id="terminate-contract-waiver"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="actions.terms.shown">
+        <rx-action-sheet id="contract-terms" :label="tx['action.terms']" :action="route('manpower.contract_terms', id)"
+                         :title="tx['action.terms']" :description="tx['action.terms_hint']" :submit-label="tx['action.terms']" icon="clock">
+          <rx-input name="deemed_approval_days" type="number" :label="tx['form.deemed_days']" :hint="tx['form.deemed_days_hint']" id="contract-terms-days"/>
+          <rx-select name="escalation_contact_party_id" :label="tx['form.escalation']" :options="[]" :placeholder="tx['form.escalation_placeholder']" options-url="{{ route('manpower.party_options') }}" id="contract-terms-contact"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="actions.cancel.shown">
+        <rx-action-sheet id="cancel-contract" :label="tx['action.cancel']" :action="route('manpower.contract_cancel', id)"
+                         :title="tx['action.cancel']" :description="tx['action.cancel_hint']" :submit-label="tx['action.cancel']" variant="plain-danger" icon="ban" danger>
+          <rx-textarea name="reason" :label="tx['form.cancel_reason']" id="cancel-contract-reason" required/>
+        </rx-action-sheet>
+      </template>
+    </rx-row>
+    <rx-tabs id="contract-tabs" selected="overview" :label="tx['contract.title']">
+      <rx-tab key="overview" :label="tx['tab.overview']">
+        <rx-stack>
+          <rx-card :title="tx['contract.title']">
+            <rx-infolist columns="2">
+              <rx-entry rx-for="fact in facts" :label="fact.label" :value="fact.value"/>
+            </rx-infolist>
+          </rx-card>
+          <rx-card rx-if="checks" :title="tx['contract.checks']">
+            <rx-stack>
+              <rx-alert rx-for="check in checks" kind="warning" :message="check"/>
+            </rx-stack>
+          </rx-card>
+          <rx-card rx-if="hold" :title="tx['hold.title']">
+            <rx-stack>
+              <rx-infolist columns="2">
+                <rx-entry :label="tx['hold.since']" :value="hold.since"/>
+                <rx-entry :label="tx['hold.before']" :value="hold.before"/>
+                <rx-entry :label="tx['hold.by']" :value="hold.by"/>
+              </rx-infolist>
+              <rx-simple-table :head="[tx['hold.reasons']]" :caption="tx['hold.reasons']">
+                <tr rx-for="line in hold.reasons"><td>{{ line }}</td></tr>
+              </rx-simple-table>
+            </rx-stack>
+          </rx-card>
+          <rx-card :title="tx['sites.title']">
+            <rx-stack>
+              <rx-row rx-if="can_sites">
+                <rx-action-sheet id="new-site" :label="tx['sites.new']" :action="route('manpower.site_create')"
+                                 :title="tx['sites.new']" :submit-label="tx['sites.save']" icon="plus">
+                  <input type="hidden" name="client_party_id" value="{{ client_party_id }}">
+                  <rx-input name="name" :label="tx['sites.name']" id="new-site-name" required/>
+                  <rx-input name="address" :label="tx['sites.address']" id="new-site-address"/>
+                  <rx-input name="required_licences" :label="tx['sites.licences']" :hint="tx['sites.licences_hint']" id="new-site-licences"/>
+                </rx-action-sheet>
+              </rx-row>
+              <rx-table :rows="sites" as="site" :key="site.id" :caption="tx['sites.title']">
+                <rx-column :label="tx['sites.name']">{{ site.name }}</rx-column>
+                <rx-column :label="tx['sites.address']" hide-narrow>{{ site.address }}</rx-column>
+                <rx-column :label="tx['sites.licences']">{{ site.licences }}</rx-column>
+                <rx-column :label="tx['sites.actions'] if can_sites else ''">
+                  <rx-action-sheet :id="'edit-site-' ~ site.id" :label="tx['sites.edit']" :action="site.action"
+                                   :title="tx['sites.edit']" :submit-label="tx['sites.save']" icon="pencil">
+                    <rx-input name="name" :label="tx['sites.name']" :value="site.name" :id="'edit-site-name-' ~ site.id" required/>
+                    <rx-input name="address" :label="tx['sites.address']" :value="site.address" :id="'edit-site-address-' ~ site.id"/>
+                    <rx-input name="required_licences" :label="tx['sites.licences']" :hint="tx['sites.licences_hint']" :id="'edit-site-licences-' ~ site.id"/>
+                  </rx-action-sheet>
+                </rx-column>
+                <rx-slot name="empty"><rx-empty :title="tx['sites.empty']" icon="map-pin"/></rx-slot>
+              </rx-table>
+            </rx-stack>
+          </rx-card>
+        </rx-stack>
+      </rx-tab>
+      <rx-tab key="deployments" :label="tx['tab.deployments']">
+        <rx-table :rows="deployments" as="deployment" :key="deployment.url" :caption="tx['tab.deployments']" card>
+          <rx-column :label="tx['deployments.worker']"><a href="{{ deployment.url }}">{{ deployment.worker }}</a></rx-column>
+          <rx-column :label="tx['deployments.role']" hide-narrow>{{ deployment.role }}</rx-column>
+          <rx-column :label="tx['deployments.site']" hide-narrow>{{ deployment.site }}</rx-column>
+          <rx-column :label="tx['deployments.period']" hide-narrow>{{ deployment.period }}</rx-column>
+          <rx-column :label="tx['fields.status']"><rx-badge :kind="deployment.status_kind" :text="deployment.status"/></rx-column>
+          <rx-slot name="empty"><rx-empty :title="tx['deployments.empty']" :message="tx['contract.deployments_empty']" icon="users"/></rx-slot>
+        </rx-table>
+      </rx-tab>
+      <rx-tab key="rates" :label="tx['tab.rates']">
+        <rx-table :rows="versions" as="version" :key="version.version" :caption="tx['tab.rates']" card>
+          <rx-column :label="tx['rates.version']">{{ version.version }}</rx-column>
+          <rx-column :label="tx['rates.effective']">{{ version.effective }}</rx-column>
+          <rx-column :label="tx['fields.status']"><rx-badge :kind="version.status_kind" :text="version.status"/></rx-column>
+          <rx-column :label="tx['rates.accepted']" hide-narrow>{{ version.accepted }}</rx-column>
+          <rx-column :label="tx['rates.lines']" align="num" hide-narrow>{{ version.lines }}</rx-column>
+          <rx-slot name="empty"><rx-empty :title="tx['rates.empty']" :message="tx['rates.empty_text']" icon="banknote"/></rx-slot>
+        </rx-table>
+      </rx-tab>
+      <rx-tab key="approvals" :label="tx['tab.approvals']">
+        <rx-table :rows="approvals" as="approval" :key="approval.id" :caption="tx['tab.approvals']" card>
+          <rx-column :label="tx['approval.request']">{{ approval.title }}</rx-column>
+          <rx-column :label="tx['fields.status']"><rx-badge :kind="approval.status_kind" :text="approval.status"/></rx-column>
+          <rx-column :label="tx['approval.requester']" hide-narrow>{{ approval.requester }}</rx-column>
+          <rx-column :label="tx['approval.requested']" hide-narrow>{{ approval.requested }}</rx-column>
+          <rx-column :label="tx['approval.decided']" hide-narrow>{{ approval.decided }}</rx-column>
+          <rx-column :label="tx['approval.decision']">
+            <template rx-if="approval.can_decide">
+              <rx-action-sheet :id="'approve-' ~ approval.id" :label="tx['approval.approve']" :action="route('wl_kernel.approvals.approve', approval.id)"
+                               :title="tx['approval.approve']" :submit-label="tx['approval.approve']" variant="primary" icon="check">
+                <rx-textarea name="comment" :label="tx['approval.comment']" :hint="tx['approval.comment_optional']" :id="'approve-comment-' ~ approval.id"/>
+              </rx-action-sheet>
+              <rx-action-sheet :id="'reject-' ~ approval.id" :label="tx['approval.reject']" :action="route('wl_kernel.approvals.reject', approval.id)"
+                               :title="tx['approval.reject']" :submit-label="tx['approval.reject']" icon="circle-x" danger>
+                <rx-textarea name="comment" :label="tx['approval.comment']" :hint="tx['approval.comment_required']" :id="'reject-comment-' ~ approval.id" required/>
+              </rx-action-sheet>
+            </template>
+          </rx-column>
+          <rx-slot name="empty"><rx-empty :title="tx['approval.empty']" :message="tx['approval.empty_text']" icon="clock"/></rx-slot>
+        </rx-table>
+      </rx-tab>
+      <rx-tab key="activity" :label="tx['tab.activity']">
+        <rx-table :rows="activity" as="row" :key="row.at ~ row.what" :caption="tx['tab.activity']" card>
+          <rx-column :label="tx['activity.when']">{{ row.at }}</rx-column>
+          <rx-column :label="tx['activity.what']">{{ row.what }}</rx-column>
+          <rx-column :label="tx['activity.by']" hide-narrow>{{ row.by }}</rx-column>
+          <rx-column :label="tx['activity.reason']" hide-narrow>{{ row.reason }}</rx-column>
+          <rx-slot name="empty"><rx-empty :title="tx['activity.empty']" icon="clock"/></rx-slot>
+        </rx-table>
+      </rx-tab>
+    </rx-tabs>
+  </rx-stack>
+</rx-page>

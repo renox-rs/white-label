@@ -1,0 +1,75 @@
+{#- manpower: one manpower request (docs/UX.md section 2.2): its status, how many
+    positions are filled and how many are missing, the deployments against it,
+    the cause of a replacement or cover request, and the actions this person may
+    run now (a blocked one is disabled and says why). Replace it with
+    resources/views/manpower/request.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['request.title'] ~ ': ' ~ title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="subtitle" :badge="status" :badge-kind="status_kind"
+                    :back="route('manpower.requests')" :back-label="tx['requests.title']"/>
+    <rx-form-errors/>
+    <rx-alert kind="info" :message="positions"/>
+    <rx-row>
+      <template rx-if="actions.submit.shown">
+        <template rx-if="actions.submit.blocked">
+          <rx-button :label="tx['action.submit']" variant="primary" icon="send" :disabled-reason="actions.submit.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="submit-request" :label="tx['action.submit']" :action="route('manpower.request_submit', id)"
+                           :title="tx['action.submit']" :description="tx['action.submit_hint']" :submit-label="tx['action.submit']" variant="primary" icon="send"/>
+        </template>
+      </template>
+      <template rx-if="actions.plan.shown">
+        <template rx-if="actions.plan.blocked">
+          <rx-button :label="tx['action.plan']" icon="user-plus" :disabled-reason="actions.plan.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="plan-deployment" :label="tx['action.plan']" :action="route('manpower.deployment_plan')"
+                           :title="tx['action.plan']" :description="tx['action.plan_hint']" :submit-label="tx['action.plan']" icon="user-plus">
+            <input type="hidden" name="request_id" value="{{ id }}">
+            <input type="hidden" name="client_contract_id" value="{{ contract_id }}">
+            <input type="hidden" name="site_id" value="{{ site_id }}">
+            <input type="hidden" name="role" value="{{ role }}">
+            <input type="hidden" name="shift_type" value="{{ shift_type }}">
+            <input type="hidden" name="shift_start" value="{{ shift_start }}">
+            <input type="hidden" name="shift_end" value="{{ shift_end }}">
+            <rx-select name="employee_id" :label="tx['form.worker']" :options="workers" :selected="worker_selected" :placeholder="tx['form.worker_placeholder']" required/>
+            <rx-input name="start_date" type="date" :label="tx['form.start_date']" :value="plan_start" id="plan-deployment-start" required/>
+            <rx-input name="end_date" type="date" :label="tx['form.end_date']" :hint="tx['form.end_date_hint']" :value="plan_end" id="plan-deployment-end"/>
+          </rx-action-sheet>
+        </template>
+      </template>
+      <template rx-if="actions.cancel.shown">
+        <template rx-if="actions.cancel.blocked">
+          <rx-button :label="tx['action.cancel']" variant="plain-danger" icon="ban" :disabled-reason="actions.cancel.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="cancel-request" :label="tx['action.cancel']" :action="route('manpower.request_cancel', id)"
+                           :title="tx['action.cancel']" :description="tx['action.cancel_hint']" :submit-label="tx['action.cancel']" variant="plain-danger" icon="ban" danger>
+            <input type="hidden" name="check_active" value="1">
+            <rx-textarea name="reason" :label="tx['form.cancel_reason']" id="cancel-request-reason" required/>
+          </rx-action-sheet>
+        </template>
+      </template>
+    </rx-row>
+    <rx-card rx-if="cause" :title="tx['request.cause']">
+      <rx-stack>
+        <span>{{ cause.text }}</span>
+        <span rx-if="cause.note" class="rx-subtitle">{{ cause.note }}</span>
+        <a rx-if="cause.url" href="{{ cause.url }}">{{ tx['request.cause_link'] }}</a>
+      </rx-stack>
+    </rx-card>
+    <rx-card :title="tx['request.title']">
+      <rx-infolist columns="2">
+        <rx-entry rx-for="fact in facts" :label="fact.label" :value="fact.value"/>
+      </rx-infolist>
+      <a href="{{ contract_url }}">{{ tx['request.contract'] }}: {{ contract }}</a>
+    </rx-card>
+    <rx-table :rows="deployments" as="deployment" :key="deployment.url" :caption="tx['request.deployments']" card>
+      <rx-column :label="tx['deployments.worker']"><a href="{{ deployment.url }}">{{ deployment.worker }}</a></rx-column>
+      <rx-column :label="tx['deployments.period']" hide-narrow>{{ deployment.period }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="deployment.status_kind" :text="deployment.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['request.no_deployments']" :message="tx['request.no_deployments_text']" icon="users"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

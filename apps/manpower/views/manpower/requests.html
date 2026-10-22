@@ -4,19 +4,33 @@
 <rx-page layout="layouts/app.html" :title="tx['requests.title']">
   <rx-stack>
     <rx-page-header :title="tx['requests.title']" :subtitle="tx['requests.subtitle']"/>
-    <rx-table :rows="requests" as="request" :key="request.id" :caption="tx['requests.title']">
+    <rx-row rx-if="can_create">
+      <rx-action-sheet id="new-request" :label="tx['requests.new']" :action="route('manpower.request_create')"
+                       :title="tx['requests.new']" :description="tx['requests.new_hint']" :submit-label="tx['requests.new_save']" variant="primary" icon="plus">
+        <rx-select name="client_contract_id" :label="tx['form.contract']" :options="form.contracts" :selected="form.contract_selected"/>
+        <rx-select name="site_id" :label="tx['form.site']" :options="form.sites" :selected="form.site_selected"/>
+        <rx-select name="role" :label="tx['form.role']" :options="form.roles" :selected="form.role_selected"/>
+        <rx-input name="headcount" type="number" :label="tx['form.positions']" value="1" id="new-request-headcount" required/>
+        <rx-select name="shift_type" :label="tx['form.shift']" :options="form.shifts" :selected="form.shift_selected"/>
+        <rx-input name="shift_start" type="time" :label="tx['form.shift_start']" id="new-request-shift-start"/>
+        <rx-input name="shift_end" type="time" :label="tx['form.shift_end']" id="new-request-shift-end"/>
+        <rx-input name="start_date" type="date" :label="tx['form.start_date']" :value="form.today" id="new-request-start" required/>
+        <rx-input name="end_date" type="date" :label="tx['form.end_date']" :hint="tx['form.end_date_hint']" id="new-request-end"/>
+      </rx-action-sheet>
+    </rx-row>
+    <rx-table :rows="requests" as="request" :key="request.id" :caption="tx['requests.title']" card>
       <rx-column :label="tx['requests.request']">
         <rx-stack>
-          <span>{{ request.role | replace('_', ' ') | capitalize }} - {{ request.site }}</span>
+          <span><a href="{{ request.url }}">{{ request.role | replace('_', ' ') | capitalize }} - {{ request.site }}</a></span>
           <span class="rx-subtitle">{{ request.client }}</span>
           <span>
-            <rx-badge :kind="request.status_kind" :text="request.status"/>
+            <rx-badge :kind="request.status_kind" :text="request.status_label"/>
             <rx-badge rx-if="request.replacement" kind="warning" :text="tx['requests.cover']"/>
           </span>
         </rx-stack>
       </rx-column>
       <rx-column :label="tx['requests.workers']" align="num">{{ request.filled_count }} / {{ request.headcount }}</rx-column>
-      <rx-column :label="tx['requests.period']" hide-narrow>{{ request.start_date }} - {{ request.end_date if request.end_date else tx['open_ended'] }}</rx-column>
+      <rx-column :label="tx['requests.period']" hide-narrow>{{ request.period }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['requests.empty']" :message="tx['requests.empty_text']" icon="users"/></rx-slot>
     </rx-table>
   </rx-stack>
