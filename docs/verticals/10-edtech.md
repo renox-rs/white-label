@@ -474,6 +474,13 @@ stateDiagram-v2
 | `cancel` | planned, open | cancelled | `batches.manage` | reason given; per enrolment the choice *transfer to batch X* or *withdraw* (default withdraw) | enrolments transferred, or withdrawn with a full refund including the registration fee (business-initiated); a transfer whose target seat is gone at that moment falls back to withdraw and the coordinator is told; `pending_payment` enrolments withdrawn with nothing to refund and the link cancelled; parties notified |
 | `terminate` | running | terminated | `batches.manage`, approved by the centre manager (`EDU.ACL.15`) | reason (tutor unavailable, approval expired or revoked, venue, too few students); per enrolment the choice *transfer to batch X* or *withdraw* (default withdraw) | sessions held before the approval count as used; remaining sessions cancelled; each `active` or `frozen` enrolment transferred (seat in the target batch at approval, else withdraw and the coordinator told; the unused value moves to the new enrolment, price differences invoiced or credited there) or withdrawn with the unused sessions refunded pro rata (price paid ÷ sessions × unused, capped at the amount paid) without admin fee or the no-refund tier, the registration fee not refunded; `pending_payment` enrolments withdrawn with nothing to refund; tutor paid only for sessions taught; students and guardians told; centre manager and owner told when the reason is regulatory |
 
+A `terminate` is asked by the coordinator and decided by a holder of `batches.approve` (the centre
+manager) other than the requester; the batch stays `running` and its sessions go on until the
+approval, and the sessions held meanwhile count as used. The choice per enrolment is checked when it
+is asked; the seat in a transfer target is taken at the approval. Both `cancel` and `terminate`
+cancel the sessions still `scheduled`, so the tutor's timesheet counts the sessions `held` only, and
+every refund they give waits for its own approval (`FIN.ACL.04`), recorded by the coordinator.
+
 ```mermaid
 stateDiagram-v2
   [*] --> planned
