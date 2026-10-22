@@ -288,6 +288,24 @@ pub async fn boot_own_riders() -> World {
 
 /// The app booted with the delivery module `delivery` and the vertical `fnb`.
 pub async fn boot_with(delivery: WlDelivery, fnb: Fnb) -> World {
+    boot_full(delivery, fnb, WlPayments::new()).await
+}
+
+/// The app booted with the 06 delivery settings and a fake payment gateway
+/// installed, so a payment link can be made (the price increase of an
+/// amendment is charged through one).
+pub async fn boot_gateway() -> World {
+    boot_full(
+        own_riders(),
+        Fnb::new(),
+        WlPayments::new().gateway(wl_payments::gateway::FakeGateway::new()),
+    )
+    .await
+}
+
+/// The app booted with the delivery module `delivery`, the vertical `fnb` and
+/// the payments module `payments`.
+pub async fn boot_full(delivery: WlDelivery, fnb: Fnb, payments: WlPayments) -> World {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -304,7 +322,7 @@ pub async fn boot_with(delivery: WlDelivery, fnb: Fnb) -> World {
         .module(Permissions)
         .module(delivery)
         .module(wl_parties::WlParties::new().exception_approver(wl_kernel::COMPANY_ADMIN_ROLE))
-        .module(WlPayments::new())
+        .module(payments)
         .module(
             WlSales::new()
                 .cancel_outcomes(&["return_to_stock", "scrap"])
