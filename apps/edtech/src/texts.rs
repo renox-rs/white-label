@@ -239,7 +239,10 @@ const TEXTS: &[(&str, &str)] = &[
 /// Every text of the app: this file's and those of the enrolments, the
 /// certificates and the tutors ([`crate::texts_more`]).
 fn entries() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
-    TEXTS.iter().chain(crate::texts_more::TEXTS.iter())
+    TEXTS
+        .iter()
+        .chain(crate::texts_more::TEXTS.iter())
+        .chain(crate::texts_seats::TEXTS.iter())
 }
 
 /// The text for `key`: the app's translation when it has one, else the

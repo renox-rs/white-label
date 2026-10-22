@@ -221,6 +221,24 @@ pub fn calculate(input: &RefundInput) -> Refund {
     }
 }
 
+/// The value that moves to the new enrolment when a student changes batch
+/// (`transfer`, 10 §7.1): what was paid for the course (the registration fee
+/// stays where it was paid) for the sessions not yet used, half-up, never
+/// more than was paid. Before the start nothing is used and all of it moves.
+pub fn carried_value(
+    paid: i64,
+    registration_fee: i64,
+    sessions_total: i64,
+    sessions_held: i64,
+) -> i64 {
+    let course_paid = (paid - registration_fee.min(paid)).max(0);
+    if sessions_total <= 0 {
+        return course_paid;
+    }
+    let unused = (sessions_total - sessions_held).clamp(0, sessions_total);
+    ratio(course_paid, unused, sessions_total).min(course_paid)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -322,5 +340,18 @@ mod tests {
         let mut input = course(10_000, 1, true);
         input.basis = RefundBasis::Membership;
         assert_eq!(calculate(&input), Refund::zero(RefundOutcome::Membership));
+    }
+
+    #[test]
+    fn what_moves_with_a_transfer_is_the_paid_value_of_the_unused_sessions() {
+        // Nothing used: everything paid for the course moves.
+        assert_eq!(carried_value(262_500, 10_500, 12, 0), 252_000);
+        // Three of twelve used: nine twelfths move.
+        assert_eq!(carried_value(252_000, 0, 12, 3), 189_000);
+        // All used: nothing moves; never more than was paid.
+        assert_eq!(carried_value(252_000, 0, 12, 12), 0);
+        assert_eq!(carried_value(252_000, 0, 12, 20), 0);
+        assert_eq!(carried_value(100, 500, 12, 0), 0);
+        assert_eq!(carried_value(252_000, 0, 0, 0), 252_000);
     }
 }

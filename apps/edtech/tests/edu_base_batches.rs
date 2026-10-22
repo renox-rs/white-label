@@ -9,7 +9,7 @@ use edtech::batch_machine::{CANCEL, OPEN, START, TERMINATE};
 use edtech::batches::{self, NewBatch};
 use edtech::courses::{self, NewCourse};
 use edtech::seats::{self, Limit};
-use edtech::{Batch, BatchStatus, Course};
+use edtech::{Batch, BatchStatus, Course, EnrolmentStatus};
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
 use support::{Centre, boot, day, next_weekday};
@@ -277,28 +277,33 @@ async fn edu_base_cancel_and_terminate_are_declared_with_their_reason() {
     assert_eq!(stopped.termination_reason.as_deref(), Some("tutor unavailable"));
 }
 
-/// Seats are taken one by one up to the capacity; the next is refused, and a
-/// released seat can be taken again.
+/// Seats are counted from the enrolments: twelve holders fill a batch of
+/// twelve, the next taker is refused, and the seat of a lapsed hold can be
+/// taken again.
 #[renox::test]
 async fn edu_base_seats_are_taken_up_to_the_capacity() {
     let t = boot().await;
     let (_course, batch) = planned(&t).await;
-    for _ in 0..12 {
-        let mut tx = t.db().begin().await.unwrap();
-        seats::take(&mut tx, batch.id, 1, Limit::Capacity).await.expect("a seat is free");
-        tx.commit().await.unwrap();
+    for n in 0..11 {
+        t.enrolment_in(&batch, 100 + n, EnrolmentStatus::Active).await;
     }
+    let held = t
+        .enrolment_in(&batch, 200, EnrolmentStatus::PendingPayment)
+        .await;
     assert_eq!(seats::available(t.db(), batch.id).await.unwrap(), 0);
 
-    let mut tx = t.db().begin().await.unwrap();
+    let mut tx = t.db().begin_immediate().await.unwrap();
     let full = seats::take(&mut tx, batch.id, 1, Limit::Capacity).await;
     assert!(matches!(full, Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))));
     tx.rollback().await.unwrap();
 
-    let mut tx = t.db().begin().await.unwrap();
-    seats::release(&mut tx, batch.id, 1).await.unwrap();
-    tx.commit().await.unwrap();
+    edtech::enrolments::lapse(t.state(), held.id).await.unwrap();
     assert_eq!(seats::available(t.db(), batch.id).await.unwrap(), 1);
+    let mut tx = t.db().begin_immediate().await.unwrap();
+    seats::take(&mut tx, batch.id, 1, Limit::Capacity)
+        .await
+        .expect("the freed seat is free");
+    tx.commit().await.unwrap();
 }
 
 /// Only the room limit goes over the capacity (14 here), never beyond it.
@@ -306,19 +311,17 @@ async fn edu_base_seats_are_taken_up_to_the_capacity() {
 async fn edu_base_the_room_limit_is_the_only_way_past_the_capacity() {
     let t = boot().await;
     let (_course, batch) = planned(&t).await;
-    let mut tx = t.db().begin().await.unwrap();
-    seats::take(&mut tx, batch.id, 12, Limit::Capacity).await.unwrap();
-    tx.commit().await.unwrap();
+    for n in 0..12 {
+        t.enrolment_in(&batch, 100 + n, EnrolmentStatus::Active).await;
+    }
 
-    let mut tx = t.db().begin().await.unwrap();
+    let mut tx = t.db().begin_immediate().await.unwrap();
     assert!(seats::take(&mut tx, batch.id, 1, Limit::Capacity).await.is_err());
     tx.rollback().await.unwrap();
-    for _ in 0..2 {
-        let mut tx = t.db().begin().await.unwrap();
-        seats::take(&mut tx, batch.id, 1, Limit::Room).await.expect("up to the room");
-        tx.commit().await.unwrap();
+    for n in 0..2 {
+        t.enrolment_in(&batch, 300 + n, EnrolmentStatus::Active).await;
     }
-    let mut tx = t.db().begin().await.unwrap();
+    let mut tx = t.db().begin_immediate().await.unwrap();
     assert!(seats::take(&mut tx, batch.id, 1, Limit::Room).await.is_err());
     tx.rollback().await.unwrap();
 }

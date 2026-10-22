@@ -176,6 +176,14 @@ pub struct Enrolment {
     pub withdrawal_reason: Option<String>,
     /// The day the enrolment was completed.
     pub completed_on: Option<NaiveDate>,
+    /// What moved here from the enrolment this one replaces, in fils: the
+    /// value of the sessions the student had paid for and not used. It counts
+    /// as paid (`transfer`, `EDU.ACL.17`).
+    pub carried_paid: i64,
+    /// The enrolment this one replaces (`transfer`).
+    pub transferred_from_id: Option<i64>,
+    /// The enrolment that replaces this one (`transfer`).
+    pub transferred_to_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: EnrolmentStatus,
     /// The user who created it.

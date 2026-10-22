@@ -8,7 +8,7 @@
 //! | [`UNFREEZE`] / [`UNFREEZE_SYSTEM`] | frozen | active | `enrolments.manage` / system | `cause_given`, `no_cause_left` |
 //! | [`COMPLETE`] | active | completed | system | — |
 //! | [`WITHDRAW`] / [`WITHDRAW_SYSTEM`] | pending_payment, active, frozen | withdrawn | `enrolments.manage` / system | a reason, `refund_calculated` |
-//! | [`TRANSFER`] / [`TRANSFER_SYSTEM`] | active, frozen | transferred | `enrolments.manage` / system | `target_batch_given`, `target_has_seat` (slot, BL-EDU-02) |
+//! | [`TRANSFER`] / [`TRANSFER_SYSTEM`] | active, frozen | transferred | `enrolments.manage` / system | `target_batch_given`, `target_has_seat` |
 //!
 //! Decisions:
 //!
@@ -26,8 +26,10 @@
 //!   enrolment only adds its cause". Each cause is a row
 //!   ([`EnrolmentFreeze`]); `unfreeze` runs only when the last cause is gone
 //!   (the service ends the other causes without a transition).
-//! - `lapse` and `transfer` are declared with the guard slots BL-EDU-01 and
-//!   BL-EDU-02 fill; they release the seat. The package `extend` by the frozen
+//! - `lapse` is declared with the guard slot BL-EDU-01 fills; it releases the
+//!   seat. `transfer` takes the seat of the target batch atomically in its
+//!   effect and creates the enrolment that replaces the old one (BL-EDU-02,
+//!   [`crate::transfer`]). The package `extend` by the frozen
 //!   days and the membership `pause`/`resume` (`EDU.RUL.14`) are BL-EDU-05's;
 //!   the money documents of `withdraw` (credit note, cancelled instalment
 //!   invoices, refund payment, approval) are BL-EDU-03's. Here `withdraw`
@@ -41,8 +43,10 @@ use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 
 use crate::db::set_enrolment;
+use crate::batch::Batch;
 use crate::enrolment::{
-    Enrolment, EnrolmentFreeze, EnrolmentStatus, FreezeCause, Instalment, InstalmentStatus,
+    Enrolment, EnrolmentFreeze, EnrolmentKind, EnrolmentStatus, FreezeCause, Instalment,
+    InstalmentStatus,
 };
 use crate::permissions;
 use crate::refund::Refund;
@@ -69,6 +73,9 @@ pub const COMPLETE: &str = "complete";
 pub const WITHDRAW: &str = "withdraw";
 /// `pending_payment | active | frozen → withdrawn`: a batch `terminate` or `cancel`.
 pub const WITHDRAW_SYSTEM: &str = "withdraw_system";
+/// `pending_payment | active | frozen → withdrawn`: the refund was approved
+/// (`FIN.ACL.04`); the kernel runs it after the last approval of `withdraw`.
+pub const WITHDRAW_APPROVED: &str = "withdraw_approved";
 /// `active | frozen → transferred`: moved to another batch.
 pub const TRANSFER: &str = "transfer";
 /// `active | frozen → transferred`: moved by a batch `terminate`.
@@ -107,6 +114,20 @@ pub struct EnrolmentInput {
     /// The batch the student moves to ([`TRANSFER`]).
     #[serde(default)]
     pub target_batch_id: Option<i64>,
+    /// Whether the target batch had a seat when the service looked
+    /// ([`TRANSFER`]); the effect takes it atomically all the same.
+    #[serde(default)]
+    pub target_has_seat: Option<bool>,
+    /// Whether the user who transfers may go over the capacity, up to the
+    /// room's limit (`EDU.ACL.17`).
+    #[serde(default)]
+    pub target_room: bool,
+    /// The sessions the target batch holds ([`TRANSFER`]).
+    #[serde(default)]
+    pub target_sessions: i64,
+    /// The value that moves to the new enrolment, in fils ([`TRANSFER`]).
+    #[serde(default)]
+    pub carried: i64,
 }
 
 fn input_of(ctx: &TransitionCtx) -> EnrolmentInput {
@@ -395,8 +416,12 @@ fn withdraw(name: &'static str, system: bool) -> Transition<Enrolment> {
     })
 }
 
-/// `transfer`: the student moves to another batch. The guard slot
-/// `target_has_seat` is where BL-EDU-02 checks the target's seats.
+/// `transfer`: the student moves to another batch. The service looks whether
+/// the target has a seat (`target_has_seat`, `EDU.ACL.17`) and says so in the
+/// input; the effect takes the seat atomically all the same ([`crate::seats`])
+/// and a seat that is gone by then refuses the run. The enrolment gives its
+/// own seat back, a new `active` enrolment holds the one in the target batch
+/// with the value that moved, and the instalments not yet invoiced follow it.
 fn transfer(name: &'static str, system: bool) -> Transition<Enrolment> {
     access(
         Transition::new(name)
@@ -409,13 +434,83 @@ fn transfer(name: &'static str, system: bool) -> Transition<Enrolment> {
         let ok = input_of(ctx).target_batch_id.is_some();
         Box::pin(async move { check(ok, "edtech.enrolments.problem.target") })
     })
-    .guard("target_has_seat", |_e: &Enrolment, _ctx| {
-        Box::pin(async { Ok::<(), String>(()) })
+    .guard("target_has_seat", |_e: &Enrolment, ctx| {
+        let ok = input_of(ctx).target_has_seat == Some(true);
+        Box::pin(async move { check(ok, "edtech.seats.problem.full") })
     })
-    .effect(|e: &Enrolment, _ctx, tx| {
+    .effect(|e: &Enrolment, ctx, tx| {
         let e = e.clone();
-        Box::pin(async move { release_seat(tx, &e).await })
+        let input = input_of(ctx);
+        Box::pin(async move {
+            release_seat(tx, &e).await?;
+            move_to_target(tx, &e, &input).await
+        })
     })
+}
+
+/// Takes the seat in the target batch and creates the enrolment that replaces
+/// `old` there, `active`, with the value that moved; the instalments of `old`
+/// not yet invoiced move to it.
+async fn move_to_target(
+    tx: &mut renox::db::Transaction,
+    old: &Enrolment,
+    input: &EnrolmentInput,
+) -> Result {
+    let Some(target_id) = input.target_batch_id else {
+        return Ok(());
+    };
+    let limit = if input.target_room {
+        seats::Limit::Room
+    } else {
+        seats::Limit::Capacity
+    };
+    seats::take(tx, target_id, 1, limit).await?;
+    let target = Batch::find_or_404(&mut *tx, target_id).await?;
+    let remaining = Instalment::query()
+        .where_(Instalment::ENROLMENT_ID.eq(old.id))
+        .where_(Instalment::STATUS.eq(InstalmentStatus::Scheduled))
+        .order_by(Instalment::NUMBER)
+        .get(&mut *tx)
+        .await?;
+    let scheduled: i64 = remaining.iter().map(|row| row.amount).sum();
+    let mut next = Enrolment {
+        kind: EnrolmentKind::Course,
+        batch_id: Some(target.id),
+        student_party_id: old.student_party_id,
+        guardian_party_id: old.guardian_party_id,
+        payer_party_id: old.payer_party_id,
+        campus_type: target.campus_type.clone(),
+        campus_id: target.campus_id,
+        counsellor_id: old.counsellor_id,
+        item_code: old.item_code.clone(),
+        item_name: old.item_name.clone(),
+        price: input.carried + scheduled,
+        discount: 0,
+        discount_approved: true,
+        registration_fee: 0,
+        admin_fee: old.admin_fee,
+        sessions_total: input.target_sessions,
+        instalments: i64::try_from(remaining.len()).unwrap_or(1).max(1),
+        policy: old.policy.clone(),
+        terms_accepted_at: old.terms_accepted_at,
+        seat_held: true,
+        carried_paid: input.carried,
+        transferred_from_id: Some(old.id),
+        created_by: input.by,
+        status: EnrolmentStatus::Active,
+        ..Enrolment::default()
+    };
+    next.insert_in_state(&mut *tx, EnrolmentStatus::Active, "transfer")
+        .await?;
+    Instalment::query()
+        .where_(Instalment::ENROLMENT_ID.eq(old.id))
+        .where_(Instalment::STATUS.eq(InstalmentStatus::Scheduled))
+        .update(
+            &mut *tx,
+            &[("enrolment_id", &next.id), ("updated_at", &now())],
+        )
+        .await?;
+    set_enrolment(tx, old.id, &[("transferred_to_id", &Some(next.id))]).await
 }
 
 /// Registers the machine for `rnx state:diagram`.

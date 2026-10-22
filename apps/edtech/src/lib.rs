@@ -26,8 +26,11 @@ pub mod session_machine;
 pub mod sessions;
 mod texts;
 mod texts_more;
+mod texts_seats;
+pub mod transfer;
 pub mod tutor_assignment;
 pub mod tutors;
+pub mod waiting;
 
 use renox::db::Migration;
 use renox::nav::NavLink;
@@ -42,6 +45,7 @@ pub use enrolment::{
 };
 pub use session::{Session, SessionStatus};
 pub use tutor_assignment::TutorAssignment;
+pub use waiting::BatchWaiting;
 
 /// The templates of the pages, under the names the pages ask for. An app
 /// replaces one by putting a file of that name in its own views.
@@ -146,7 +150,8 @@ impl Module for EdTech {
             .model::<EnrolmentFreeze>()
             .model::<Instalment>()
             .model::<Certificate>()
-            .model::<TutorAssignment>();
+            .model::<TutorAssignment>()
+            .model::<BatchWaiting>();
         // The batch and its sessions: the machines, the start of a batch on its
         // first session date, its completion after the last session, and the
         // blocks the sessions make in wl-scheduling.

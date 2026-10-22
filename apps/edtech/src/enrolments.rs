@@ -44,7 +44,7 @@ use crate::enrolment::{
     Enrolment, EnrolmentFreeze, EnrolmentKind, EnrolmentStatus, FreezeCause, Instalment,
 };
 use crate::enrolment_machine::{
-    ACTIVATE, ACTIVATE_SYSTEM, COMPLETE, EnrolmentInput, FREEZE, FREEZE_SYSTEM, UNFREEZE,
+    ACTIVATE, ACTIVATE_SYSTEM, COMPLETE, EnrolmentInput, FREEZE, FREEZE_SYSTEM, LAPSE, UNFREEZE,
     UNFREEZE_SYSTEM, WITHDRAW, WITHDRAW_SYSTEM, end_cause,
 };
 use crate::fees;
@@ -52,6 +52,7 @@ use crate::permissions;
 use crate::refund::{self, Refund, RefundBasis, RefundInput, RefundPolicy};
 use crate::seats::{self, Limit};
 use crate::session::{Session, SessionStatus};
+use crate::sessions;
 use crate::texts::english;
 
 /// The hours a seat is held for the first payment (`EDU.RUL.11`, BL-EDU-01
@@ -334,9 +335,14 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewEnrolment) -> Resul
         status: EnrolmentStatus::PendingPayment,
         ..Enrolment::default()
     };
-    let mut tx = state.db.begin().await?;
-    if let Some(batch) = &batch {
-        seats::take(&mut tx, batch.id, 1, limit).await?;
+    // `begin_immediate`: a second taker of the last seat waits here and then
+    // sees the full count (`EDU.ACL.17`).
+    let mut tx = state.db.begin_immediate().await?;
+    if let Some(batch) = &batch
+        && let Err(error) = seats::take(&mut tx, batch.id, 1, limit).await
+    {
+        tx.rollback().await?;
+        return Err(seats::offer(&state.db, batch.id, error).await);
     }
     enrolment
         .insert_in_state(&mut tx, EnrolmentStatus::PendingPayment, "create")
@@ -431,6 +437,21 @@ pub async fn activate(state: &AppState, by: Option<&AuthUser>, id: i64) -> Resul
         ..EnrolmentInput::default()
     };
     run(state, by, id, (ACTIVATE, ACTIVATE_SYSTEM), None, input).await
+}
+
+/// `lapse`, as the system: the seat hold of a `pending_payment` enrolment is
+/// given up and its seat released (`EDU.RUL.11`). BL-EDU-01 puts the hold, the
+/// payment and the gateway checks before it.
+///
+/// # Errors
+///
+/// A 422 unless the enrolment is `pending_payment`.
+pub async fn lapse(state: &AppState, id: i64) -> Result<Enrolment> {
+    let input = EnrolmentInput {
+        on: Some(today()),
+        ..EnrolmentInput::default()
+    };
+    run(state, None, id, (LAPSE, LAPSE), None, input).await
 }
 
 /// The days from `on` to `until`, both counted.
@@ -542,6 +563,7 @@ pub async fn complete(state: &AppState, id: i64) -> Result<Enrolment> {
 /// The database's errors and the contract's.
 pub async fn paid_of(state: &AppState, enrolment: &Enrolment) -> Result<i64> {
     let mut ids: Vec<i64> = enrolment.first_invoice_id.into_iter().collect();
+    // What moved here with a `transfer` counts as paid.
     for row in Instalment::of_enrolment(&state.db, enrolment.id).await? {
         if let Some(id) = row.invoice_id
             && !ids.contains(&id)
@@ -550,7 +572,7 @@ pub async fn paid_of(state: &AppState, enrolment: &Enrolment) -> Result<i64> {
         }
     }
     let books = invoicer(state);
-    let mut paid = 0;
+    let mut paid = enrolment.carried_paid;
     for id in ids {
         if let Some(summary) = books.find(&state.db, InvoiceId(id)).await? {
             paid += (summary.gross_total - summary.balance).max(0);
@@ -570,13 +592,7 @@ pub async fn refund_for(state: &AppState, enrolment: &Enrolment, on: NaiveDate) 
     let (basis, held, started) = match enrolment.kind {
         EnrolmentKind::Course => {
             let held = match enrolment.batch_id {
-                Some(batch) => {
-                    let sessions = Session::of_batch(&state.db, batch).await?;
-                    sessions
-                        .iter()
-                        .filter(|s| s.status == SessionStatus::Held && s.session_date <= on)
-                        .count()
-                }
+                Some(batch) => sessions::held_until(&state.db, batch, on).await?,
                 None => 0,
             };
             let started = match enrolment.batch_id {
@@ -585,11 +601,7 @@ pub async fn refund_for(state: &AppState, enrolment: &Enrolment, on: NaiveDate) 
                     .is_none_or(|b| b.start_date <= on),
                 None => true,
             };
-            (
-                RefundBasis::Course,
-                i64::try_from(held).unwrap_or(i64::MAX),
-                started,
-            )
+            (RefundBasis::Course, held, started)
         }
         EnrolmentKind::Package => {
             let left = match &enrolment.item_code {

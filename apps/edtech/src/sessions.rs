@@ -258,6 +258,37 @@ pub async fn count_scheduled(db: &Db, batch_id: i64) -> Result<i64> {
     Ok(i64::try_from(open.len()).unwrap_or(i64::MAX))
 }
 
+/// The sessions of batch `batch_id` that were `held` on or before `on`: the
+/// sessions the students used (attended or not).
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn held_until<'c, E: Executor<'c>>(db: E, batch_id: i64, on: NaiveDate) -> Result<i64> {
+    let held = Session::query()
+        .where_(Session::BATCH_ID.eq(batch_id))
+        .where_(Session::STATUS.eq(SessionStatus::Held))
+        .where_(Session::SESSION_DATE.lte(on))
+        .count(db)
+        .await?;
+    Ok(i64::try_from(held).unwrap_or(i64::MAX))
+}
+
+/// The sessions of batch `batch_id` that still count for the students: every
+/// one that is not `cancelled`.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn planned_count<'c, E: Executor<'c>>(db: E, batch_id: i64) -> Result<i64> {
+    let planned = Session::query()
+        .where_(Session::BATCH_ID.eq(batch_id))
+        .where_(Session::STATUS.ne(SessionStatus::Cancelled))
+        .count(db)
+        .await?;
+    Ok(i64::try_from(planned).unwrap_or(i64::MAX))
+}
+
 /// The wl-scheduling blocks the `scheduled` sessions make for `resource_id`
 /// between `from` and `until`.
 ///
