@@ -48,8 +48,42 @@ pub const REPORTS_VIEW: &str = "fnb_reports.view";
 /// manager and HR; other riders never see them.
 pub const RIDER_FAULTS_VIEW: &str = "rider_faults.view";
 
+/// See the production batches and their lots (§3.1 head chef: production).
+pub const PRODUCTION_VIEW: &str = "production.view";
+/// Plan, start, finish and discard a production batch (§7.1 *Production
+/// batch*): the head chef and the central kitchen chef. A discard above the
+/// wastage limit still needs a second holder of `stock.approve`
+/// (`STK.ACL.02`).
+pub const PRODUCTION_MANAGE: &str = "production.manage";
+/// wl-inventory's `stock.approve`: the second person of a wastage above the
+/// limit (`STK.ACL.02`), the kitchen manager. The name is the stock module's;
+/// the app only names the approval step of a batch discard with it.
+pub const STOCK_APPROVE: &str = "stock.approve";
+/// See the cold units, their readings and holds (§4.6, `FNB.RUL.05`).
+pub const TEMPERATURE_VIEW: &str = "temperature.view";
+/// Record a temperature reading of a cold unit (`WRK.CHK.01`, `FNB.FSF.01`):
+/// the line cook, the chef and the kitchen manager.
+pub const TEMPERATURE_LOG: &str = "temperature.log";
+/// Set up the cold units of an outlet: their stock location and range
+/// (`FNB.RUL.05`): the kitchen manager.
+pub const COLD_UNITS_MANAGE: &str = "cold_units.manage";
+/// See the recall trace of the ingredient lots: the customers with their
+/// possible orders and the groups without a known customer (§4.4 recall).
+pub const RECALL_TRACE_VIEW: &str = "fnb_recalls.view";
+/// Tell the customers of a recall and record the owner's decision on the public
+/// notice and the aggregators: the owner / operations director with the head
+/// chef (§7.2 settings *Recall owner*).
+pub const RECALL_TRACE_DECIDE: &str = "fnb_recalls.decide";
+
 /// Every permission of the app.
 pub const ALL: &[&str] = &[
+    PRODUCTION_VIEW,
+    PRODUCTION_MANAGE,
+    TEMPERATURE_VIEW,
+    TEMPERATURE_LOG,
+    COLD_UNITS_MANAGE,
+    RECALL_TRACE_VIEW,
+    RECALL_TRACE_DECIDE,
     RECONCILIATION_VIEW,
     RECONCILIATION_MANAGE,
     LATE_ORDERS_ENTER,

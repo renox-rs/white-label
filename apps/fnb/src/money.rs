@@ -21,6 +21,66 @@ pub fn parse_dirhams(text: &str) -> Option<i64> {
     whole.checked_mul(100)?.checked_add(cents)
 }
 
+/// A quantity in thousandths of a unit: `8`, `8.5` and `8.125` are 8000, 8500
+/// and 8125; more than three decimals, a sign or anything but digits is
+/// `None`. An empty text is `None` too: a quantity is always given.
+pub fn parse_milli(text: &str) -> Option<i64> {
+    let text = text.trim();
+    let (whole, parts) = match text.split_once('.') {
+        Some((whole, parts)) => (whole, parts),
+        None => (text, ""),
+    };
+    if whole.is_empty() || parts.len() > 3 || !parts.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let whole: i64 = whole.parse().ok()?;
+    let parts: i64 = format!("{parts:0<3}").parse().ok()?;
+    whole.checked_mul(1_000)?.checked_add(parts)
+}
+
+/// Thousandths as text: `8.5`, `8` for a whole number.
+pub fn milli_text(milli: i64) -> String {
+    let sign = if milli < 0 { "-" } else { "" };
+    let (whole, parts) = (milli.abs() / 1_000, milli.abs() % 1_000);
+    if parts == 0 {
+        return format!("{sign}{whole}");
+    }
+    let fraction = format!("{parts:03}");
+    format!("{sign}{whole}.{}", fraction.trim_end_matches('0'))
+}
+
+/// A temperature in tenths of a degree: `9`, `8.5` and `-18.5` are 90, 85 and
+/// -185; more than one decimal or anything but digits is `None`.
+pub fn parse_tenths(text: &str) -> Option<i64> {
+    let text = text.trim();
+    let (negative, unsigned) = match text.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, text),
+    };
+    let (whole, tenth) = match unsigned.split_once('.') {
+        Some((whole, tenth)) => (whole, tenth),
+        None => (unsigned, ""),
+    };
+    if whole.is_empty() || tenth.len() > 1 || !tenth.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let whole: i64 = whole.parse().ok()?;
+    let tenth: i64 = if tenth.is_empty() { 0 } else { tenth.parse().ok()? };
+    let value = whole.checked_mul(10)?.checked_add(tenth)?;
+    Some(if negative { -value } else { value })
+}
+
+/// Tenths of a degree as text: `9`, `8.5`, `-18.5`.
+pub fn tenths_text(tenths: i64) -> String {
+    let sign = if tenths < 0 { "-" } else { "" };
+    let (whole, tenth) = (tenths.abs() / 10, tenths.abs() % 10);
+    if tenth == 0 {
+        format!("{sign}{whole}")
+    } else {
+        format!("{sign}{whole}.{tenth}")
+    }
+}
+
 /// Fils as text: `AED 25.00`.
 pub fn aed(fils: i64) -> String {
     let sign = if fils < 0 { "-" } else { "" };
@@ -54,6 +114,21 @@ mod tests {
         assert_eq!(parse_dirhams(""), Some(0));
         assert_eq!(parse_dirhams("1.234"), None);
         assert_eq!(parse_dirhams("abc"), None);
+    }
+
+    #[test]
+    fn quantities_and_temperatures_are_read_and_written() {
+        assert_eq!(parse_milli("8"), Some(8_000));
+        assert_eq!(parse_milli("8.125"), Some(8_125));
+        assert_eq!(parse_milli("8.1255"), None);
+        assert_eq!(parse_milli(""), None);
+        assert_eq!(milli_text(8_500), "8.5");
+        assert_eq!(milli_text(8_000), "8");
+        assert_eq!(parse_tenths("9"), Some(90));
+        assert_eq!(parse_tenths("-18.5"), Some(-185));
+        assert_eq!(parse_tenths("5.55"), None);
+        assert_eq!(tenths_text(85), "8.5");
+        assert_eq!(tenths_text(-185), "-18.5");
     }
 
     #[test]

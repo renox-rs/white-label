@@ -1,11 +1,17 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod batch;
+pub mod batch_machine;
+pub mod batch_pages;
+mod batch_texts;
+pub mod batches;
 pub mod cancel;
 pub mod catalogue;
 pub mod changes;
 pub mod close;
 pub mod cod;
+mod cold_texts;
 mod events;
 pub mod failed;
 pub mod fulfilment;
@@ -26,6 +32,7 @@ pub mod pickup;
 pub mod placing;
 pub mod progress;
 pub mod refunds;
+mod recall_texts;
 mod report_pages;
 pub mod reports;
 pub mod reversal;
@@ -39,6 +46,10 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
+pub use batch::{
+    BATCH_SERIES, BatchInput, BatchRecipe, BatchRecipeLine, BatchStatus, BatchWastage,
+    ProductionBatch,
+};
 pub use catalogue::{Brand, MenuItem, Outlet, RecipeLine};
 pub use changes::{ChangeNote, ExpectedRefund};
 pub use cod::{CustomerFlag, PaymentOptions};
@@ -118,6 +129,22 @@ impl Fnb {
         self
     }
 
+    /// The wastage value, in fils, above which discarding a production batch
+    /// needs a second holder of `stock.approve` (`STK.ACL.02`, default AED
+    /// 200).
+    pub fn wastage_approval(mut self, fils: i64) -> Self {
+        self.settings.wastage_approval_fils = fils;
+        self
+    }
+
+    /// Whether a recall gives the owner a task to notify the authority
+    /// (open item AU-20; default off: nothing is built for the authority, the
+    /// recall report is exported and sent by hand).
+    pub fn authority_notice_task(mut self, on: bool) -> Self {
+        self.settings.authority_notice_task = on;
+        self
+    }
+
     /// Turns `FNB.RUL.14` on or off (default on).
     pub fn cod_rule(mut self, on: bool) -> Self {
         self.settings.cod_rule = on;
@@ -134,6 +161,7 @@ impl Module for Fnb {
         pages::routes()
             .merge(payout_pages::routes())
             .merge(report_pages::routes())
+            .merge(batch_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -151,12 +179,15 @@ impl Module for Fnb {
             .view_data::<payout_pages::ShowPayoutPage>()
             .view_data::<report_pages::RefundsPage>()
             .view_data::<report_pages::FailedPage>()
-            .view_data::<report_pages::RiderFaultsPage>();
+            .view_data::<report_pages::RiderFaultsPage>()
+            .view_data::<batch_pages::BatchesPage>()
+            .view_data::<batch_pages::ShowBatchPage>();
         app.templates(|env| {
             for (name, source) in pages::VIEWS
                 .iter()
                 .chain(payout_pages::VIEWS)
                 .chain(report_pages::VIEWS)
+                .chain(batch_pages::VIEWS)
             {
                 // The app's own file of that name wins.
                 if env.get_template(name).is_err() {
@@ -181,10 +212,19 @@ impl Module for Fnb {
             .model::<ImportPreset>()
             .model::<LateOrder>()
             .model::<RefundFact>()
-            .model::<RiderFault>();
+            .model::<RiderFault>()
+            .model::<BatchRecipe>()
+            .model::<BatchRecipeLine>()
+            .model::<ProductionBatch>()
+            .model::<BatchInput>()
+            .model::<BatchWastage>();
         // The order and the ticket have machines of their own.
         renox::state_machine::register::<FnbOrder>();
         renox::state_machine::register::<KitchenTicket>();
+        // The production batch has a machine of its own, and its discard an
+        // approval action above the wastage limit (`STK.ACL.02`).
+        renox::state_machine::register::<ProductionBatch>();
+        batch_machine::register(self.settings.wastage_approval_fils);
         // The payout statement is a voidable subject with its own approval
         // action, and the order a statement names that the kitchen never
         // recorded is a late entry.
@@ -200,6 +240,7 @@ impl Module for Fnb {
         // The order follows the sales order and the delivery.
         events::register(app);
         pickup::register(app);
+        batches::register(app);
         // In the app group of the staff sidebar; the labels are the host's
         // `nav.orders`, `nav.kitchen` and `nav.cod_customers` texts.
         app.nav(
@@ -249,6 +290,14 @@ impl Module for Fnb {
                 .group("nav.app")
                 .order(14)
                 .permission(permissions::RIDER_FAULTS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("fnb.batches", "nav.batches")
+                .icon("chef-hat")
+                .group("nav.app")
+                .order(15)
+                .permission(permissions::PRODUCTION_VIEW),
         );
         app.nav(
             "app",

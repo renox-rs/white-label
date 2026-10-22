@@ -7,7 +7,7 @@ use renox::prelude::*;
 use wl_kernel::notify::{
     self, Category, GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRequest,
 };
-use wl_kernel::PartyId;
+use wl_kernel::{PartyId, Subject};
 
 use crate::catalogue::Outlet;
 use crate::order::FnbOrder;
@@ -102,6 +102,47 @@ pub(crate) async fn tell_managers(
             "title": title,
             "body": body,
             "link": format!("/orders/{}", order.id),
+        }));
+    let mut told = Vec::new();
+    for user in holders {
+        request = request.to_user(user.id);
+        told.push(user.id);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(told)
+}
+
+/// Tells everyone who holds `permission` (in `scope` when given, else
+/// anywhere) about `subject`, with a title, a body and the `link` of the page
+/// to open. Nobody is told when nobody holds it. Returns whom it told.
+///
+/// # Errors
+///
+/// Database errors and the notifier's.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn tell_holders(
+    state: &AppState,
+    subject: Subject,
+    label: &str,
+    permission: &str,
+    scope: Option<renox::auth::permissions::Scope>,
+    title: &str,
+    body: &str,
+    link: &str,
+) -> Result<Vec<i64>> {
+    let holders = match scope {
+        Some(scope) => users_with_permission_in(&state.db, permission, &scope).await?,
+        None => renox::auth::permissions::users_with_permission(&state.db, permission).await?,
+    };
+    if holders.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut request = NotifyRequest::new(STAFF_NOTICE, subject)
+        .subject_label(label)
+        .data(renox::serde_json::json!({
+            "title": title,
+            "body": body,
+            "link": link,
         }));
     let mut told = Vec::new();
     for user in holders {

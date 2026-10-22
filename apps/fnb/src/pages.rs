@@ -55,9 +55,7 @@ use crate::order::{FnbOrder, FnbOrderStatus, cancel_reason, kind, party};
 use crate::permissions;
 use crate::placing::{Details, refused};
 use crate::refunds::{self, RefundAsk};
-use crate::payout_texts::PAYOUT_TEXTS;
-use crate::screen_texts::SCREEN_TEXTS;
-use crate::texts::t;
+use crate::texts::{every, t};
 use crate::ticket::{BUMP, KitchenTicket, START, TicketStatus};
 use crate::{close, failed, fulfilment, pickup, placing};
 
@@ -102,10 +100,7 @@ const DELIVERIES_REVERSE: &str = "deliveries.reverse";
 
 /// Every text of the screens, by the name a template reads.
 pub(crate) fn tx(lang: &Lang) -> Texts {
-    SCREEN_TEXTS
-        .iter()
-        .chain(PAYOUT_TEXTS)
-        .filter_map(|(key, _)| Some((key.strip_prefix(PREFIX)?, t(lang, key))))
+    every().filter_map(|(key, _)| Some((key.strip_prefix(PREFIX)?, t(lang, key))))
         .collect()
 }
 

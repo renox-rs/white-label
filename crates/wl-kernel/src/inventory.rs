@@ -1591,6 +1591,8 @@ pub struct LotInfo {
     pub held_reason: Option<String>,
     /// What is left of it in all locations, in thousandths.
     pub left_milli: i64,
+    /// What is left, at the item's average cost, in fils.
+    pub value: i64,
 }
 
 /// Quantity and value of the wastage posted against a lot.

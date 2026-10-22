@@ -6,6 +6,7 @@
 
 use renox::prelude::*;
 
+use crate::batch::{BatchRecipe, BatchRecipeLine};
 use crate::catalogue::{Brand, MenuItem, Outlet, RecipeLine};
 use crate::payout::{ImportPreset, ReasonMap};
 
@@ -247,4 +248,44 @@ pub async fn install_payouts(db: &Db) -> Result<usize> {
         added += 1;
     }
     Ok(added)
+}
+
+/// Adds the batch recipe `code` making `output_item_id` (a lot-tracked stock
+/// item) with a standard yield of `yield_milli`, and its ingredients as
+/// (stock item, item code, thousandths per standard batch). A recipe whose code
+/// exists is kept as it is. Returns the recipe.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn demo_batch_recipe(
+    db: &Db,
+    code: &str,
+    name: &str,
+    output_item_id: i64,
+    yield_milli: i64,
+    lines: &[(i64, &str, i64)],
+) -> Result<BatchRecipe> {
+    if let Some(found) = BatchRecipe::by_code(db, code).await? {
+        return Ok(found);
+    }
+    let mut recipe = BatchRecipe {
+        code: code.to_owned(),
+        name: name.to_owned(),
+        output_item_id,
+        yield_milli,
+        ..BatchRecipe::default()
+    };
+    recipe.insert(db).await?;
+    for (item_id, item_code, quantity_milli) in lines {
+        let mut line = BatchRecipeLine {
+            recipe_id: recipe.id,
+            item_id: *item_id,
+            item_code: (*item_code).to_owned(),
+            quantity_milli: *quantity_milli,
+            ..BatchRecipeLine::default()
+        };
+        line.insert(db).await?;
+    }
+    Ok(recipe)
 }

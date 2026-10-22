@@ -65,6 +65,8 @@ async fn info(db: &Db, lot_id: i64) -> Result<Option<LotInfo>> {
         return Ok(None);
     };
     let reason = held_reason(db, &lot).await?;
+    let item = Item::find_or_404(db, lot.item_id).await?;
+    let left = balance::lot_left(db, lot.id).await?;
     Ok(Some(LotInfo {
         lot: Subject::new(LOT_SUBJECT_TYPE, lot.id),
         item: Subject::new(ITEM_SUBJECT_TYPE, lot.item_id),
@@ -72,7 +74,8 @@ async fn info(db: &Db, lot_id: i64) -> Result<Option<LotInfo>> {
         expiry_date: lot.expiry_date,
         status: lot.status.as_str().to_owned(),
         held_reason: reason,
-        left_milli: balance::lot_left(db, lot.id).await?,
+        left_milli: left,
+        value: value_of(left, item.average_cost),
     }))
 }
 

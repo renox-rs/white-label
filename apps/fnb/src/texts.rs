@@ -5,7 +5,10 @@ use std::fmt::Display;
 
 use renox::prelude::*;
 
+use crate::batch_texts::BATCH_TEXTS;
+use crate::cold_texts::COLD_TEXTS;
 use crate::payout_texts::PAYOUT_TEXTS;
+use crate::recall_texts::RECALL_TEXTS;
 use crate::screen_texts::SCREEN_TEXTS;
 
 /// Every key the app uses besides the screens', with its English text.
@@ -278,13 +281,22 @@ pub(crate) fn t(lang: &Lang, key: &str) -> String {
     english(key, &[])
 }
 
-/// The English text for `key` with `params` filled in as `{{ name }}`; the
-/// key itself when it has no text.
-pub(crate) fn english(key: &str, params: &[(&str, &(dyn Display + Sync))]) -> String {
-    let text = TEXTS
+/// Every text of the app: the messages, the screens', the payouts', the
+/// batches', the cold units' and the recalls'.
+pub(crate) fn every() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
+    TEXTS
         .iter()
         .chain(SCREEN_TEXTS)
         .chain(PAYOUT_TEXTS)
+        .chain(BATCH_TEXTS)
+        .chain(COLD_TEXTS)
+        .chain(RECALL_TEXTS)
+}
+
+/// The English text for `key` with `params` filled in as `{{ name }}`; the
+/// key itself when it has no text.
+pub(crate) fn english(key: &str, params: &[(&str, &(dyn Display + Sync))]) -> String {
+    let text = every()
         .find(|(k, _)| *k == key)
         .map_or(key, |(_, text)| *text);
     let mut data = renox::serde_json::Map::new();
@@ -299,10 +311,7 @@ pub(crate) fn english(key: &str, params: &[(&str, &(dyn Display + Sync))]) -> St
 
 /// The English text of `key`, unfilled: a notification template.
 pub(crate) fn template(key: &str) -> &'static str {
-    TEXTS
-        .iter()
-        .chain(SCREEN_TEXTS)
-        .chain(PAYOUT_TEXTS)
+    every()
         .find(|(k, _)| *k == key)
         .map_or("", |(_, text)| *text)
 }
@@ -313,12 +322,7 @@ mod tests {
 
     #[test]
     fn keys_are_unique_and_prefixed() {
-        let mut keys: Vec<&str> = TEXTS
-            .iter()
-            .chain(SCREEN_TEXTS)
-        .chain(PAYOUT_TEXTS)
-            .map(|(key, _)| *key)
-            .collect();
+        let mut keys: Vec<&str> = every().map(|(key, _)| *key).collect();
         assert!(keys.iter().all(|key| key.starts_with("fnb.")));
         let count = keys.len();
         keys.sort_unstable();
