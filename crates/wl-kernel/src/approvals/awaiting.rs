@@ -81,6 +81,7 @@ const ACTION_LABELS: &[(&str, &str)] = &[
         "campaigns.cost_over_budget",
         "Approve a campaign cost over its budget",
     ),
+    ("clinics.claim_void", "Void a claim"),
     (
         "construction.deduction_accept",
         "Accept a deduction above the limit",
@@ -96,12 +97,22 @@ const ACTION_LABELS: &[(&str, &str)] = &[
     ),
     ("construction.variation_abandon", "Abandon a variation"),
     ("documents.block_override", "Override a document block"),
+    ("hr.cancel_onboarding", "Cancel an onboarding"),
+    ("hr.record_death", "Record the death of an employee"),
+    ("hr.reinstate", "Reinstate an employee"),
     ("hr.report_absconding", "Report a worker as absconded"),
     ("hr.waive_cooling", "Waive the cooling of a pay account"),
+    ("hr.withdraw_notice", "Withdraw a notice of leaving"),
     ("inventory.goods_receipt_post", "Post an over-receipt"),
+    ("inventory.hold_discard", "Discard stock on hold"),
+    ("inventory.hold_release", "Release stock on hold"),
     (
         "inventory.landed_cost_adjust",
         "Post a landed cost adjustment",
+    ),
+    (
+        "inventory.pending_issue_clear",
+        "Clear a pending stock issue",
     ),
     ("inventory.purchase_order_revise", "Revise a purchase order"),
     (
@@ -115,8 +126,27 @@ const ACTION_LABELS: &[(&str, &str)] = &[
     ("invoicing.budget_approval", "Approve the company budget"),
     ("invoicing.dispute_credit", "Credit a disputed invoice"),
     ("invoicing.owner_drawing", "Approve an owner drawing"),
+    ("invoicing.payer_bill_void", "Void a payer bill"),
+    (
+        "invoicing.payer_money",
+        "Record a payer's remittance or recoupment",
+    ),
+    ("invoicing.payer_write_off", "Write off a payer bill"),
+    (
+        "invoicing.rate_card_past_dated",
+        "Approve a past-dated rate card",
+    ),
     ("invoicing.write_off", "Write off an invoice"),
     ("kernel.late_entry", "Approve a late attendance entry"),
+    (
+        "loyalty.adjustment_over_limit",
+        "Adjust loyalty points above the limit",
+    ),
+    (
+        "manpower.release",
+        "Release a client contract from a credit hold",
+    ),
+    ("manpower.terminate", "Terminate a client contract"),
     (
         "notifications.broadcast_approval",
         "Send a broadcast to its audience",
@@ -129,11 +159,12 @@ const ACTION_LABELS: &[(&str, &str)] = &[
         "parties.confirm_match",
         "Confirm a possible screening match",
     ),
+    ("payments.accept_chargeback", "Accept a chargeback"),
     (
-        "manpower.release",
-        "Release a client contract from a credit hold",
+        "payments.authorise_deduction",
+        "Authorise a deduction from pay",
     ),
-    ("manpower.terminate", "Terminate a client contract"),
+    ("payments.cash_write_off", "Write off a cash shortage"),
     ("payments.pay", "Pay out"),
     ("payments.refund", "Pay a refund"),
     ("payments.reverse", "Reverse a payment"),
@@ -141,6 +172,7 @@ const ACTION_LABELS: &[(&str, &str)] = &[
     ("property.lease_force_terminate", "End a lease by force"),
     ("property.owner_invoice", "Invoice an owner"),
     ("property.owner_payout", "Pay an owner"),
+    ("sales.void", "Void a sale"),
 ];
 
 /// The action key of a request in words: the app's text
@@ -156,6 +188,13 @@ pub fn action_label(lang: &Lang, action: &str) -> String {
         .iter()
         .find(|(known, _)| *known == action)
         .map_or_else(|| action.to_owned(), |(_, label)| (*label).to_owned())
+}
+
+/// Whether the platform has words for the approval action `action` (an app
+/// may have its own, as [`action_label`] reads them first).
+#[must_use]
+pub fn action_is_labelled(action: &str) -> bool {
+    ACTION_LABELS.iter().any(|(known, _)| *known == action)
 }
 
 /// The dashboard's approvals for `user` ([`awaiting`]), with the subject's

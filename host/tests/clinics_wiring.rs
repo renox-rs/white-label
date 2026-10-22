@@ -9,7 +9,7 @@ use clinics::seed::REQUIRED_QUALIFICATIONS;
 use host::roles::RECEPTIONIST;
 use renox::prelude::*;
 use support::{clinics_booted, person};
-use wl_kernel::approvals::{ApprovalPolicy, Step};
+use wl_kernel::approvals::{ApprovalPolicy, Step, action_is_labelled};
 use wl_kernel::documents::{BlockMode, OverrideMode, guard};
 use wl_scheduling::ServiceType;
 
@@ -33,6 +33,25 @@ async fn the_service_types_need_the_licence_and_the_privileges() {
     }
     let again = host::clinics_seed::install(app.state()).await.unwrap();
     assert_eq!(again.total(), 0);
+}
+
+/// Every approval the Clinics client can ask for shows in words on the
+/// dashboard ("Decide: Record a payer's remittance"), never as its key
+/// (`invoicing.payer_money`).
+#[renox::test]
+async fn every_approval_action_has_words() {
+    let app = clinics_booted().await;
+    let policies = ApprovalPolicy::query().get(app.db()).await.unwrap();
+    assert!(
+        policies.len() > 20,
+        "the client stores its approval policies"
+    );
+    let raw: Vec<&str> = policies
+        .iter()
+        .map(|policy| policy.action.as_str())
+        .filter(|action| !action_is_labelled(action))
+        .collect();
+    assert!(raw.is_empty(), "approvals shown as a key: {raw:?}");
 }
 
 /// A payer bill's write-off above the limit is the owner's to approve
