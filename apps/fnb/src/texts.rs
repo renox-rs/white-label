@@ -24,6 +24,8 @@ const TEXTS: &[(&str, &str)] = &[
     ("fnb.ticket_started", "Ticket started."),
     ("fnb.ticket_bumped", "Ticket bumped."),
     ("fnb.cod_on", "Cash on delivery is on again for the customer."),
+    // How an order starts.
+    ("fnb.placing.created", "Order made from the sales order"),
     // Accepting and rejecting.
     ("fnb.accept.not_placed", "Only a placed order is accepted or rejected."),
     ("fnb.reject.reason_needed", "Give the reason for rejecting the order."),

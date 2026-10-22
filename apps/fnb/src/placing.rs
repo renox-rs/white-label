@@ -117,7 +117,12 @@ pub async fn open(
         status,
         ..FnbOrder::default()
     };
-    order.insert(&state.db).await?;
+    // The history starts with the order's first state.
+    let mut tx = state.db.begin().await?;
+    order
+        .insert_in_state(&mut tx, status, &english("fnb.placing.created", &[]))
+        .await?;
+    tx.commit().await?;
     Ok(Some(order))
 }
 
