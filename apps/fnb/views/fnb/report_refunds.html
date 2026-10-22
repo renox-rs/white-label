@@ -1,0 +1,42 @@
+{#- fnb: the refunds after completion by complaint category and responsible
+    party, net of VAT and gross, including the refunds the aggregators deduct
+    from their payouts; filtered by period, brand, outlet and channel. Replace
+    it with resources/views/fnb/report_refunds.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['report.refunds_title']">
+  <rx-stack>
+    <rx-page-header :title="tx['report.refunds_title']" :subtitle="tx['report.refunds_subtitle']"/>
+    <form method="get" action="{{ route('fnb.report_refunds') }}">
+      <rx-toolbar>
+        <rx-input name="from" type="date" :label="tx['report.from']" :value="filter.from" id="filter-from"/>
+        <rx-input name="to" type="date" :label="tx['report.to']" :value="filter.to" id="filter-to"/>
+        <rx-select name="brand" :label="tx['report.brand']" :options="brands" :selected="filter.brand" :placeholder="tx['report.all']" id="filter-brand"/>
+        <rx-select name="outlet" :label="tx['report.outlet']" :options="outlets" :selected="filter.outlet" :placeholder="tx['report.all']" id="filter-outlet"/>
+        <rx-input name="channel" :label="tx['channel']" :value="filter.channel" id="filter-channel"/>
+        <rx-button type="submit" :label="tx['report.show']" icon="search"/>
+      </rx-toolbar>
+    </form>
+    <rx-card :title="tx['report.by_category']">
+      <rx-table :rows="groups" as="group" :key="group.category ~ group.party" :caption="tx['report.by_category']">
+        <rx-column :label="tx['report.category']">{{ group.category }}</rx-column>
+        <rx-column :label="tx['party']">{{ group.party }}</rx-column>
+        <rx-column :label="tx['report.count']" align="num">{{ group.count }}</rx-column>
+        <rx-column :label="tx['report.net']" align="num">{{ group.net | money(currency='AED') }}</rx-column>
+        <rx-column :label="tx['report.gross']" align="num">{{ group.gross | money(currency='AED') }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['report.refunds_empty']" icon="banknote"/></rx-slot>
+      </rx-table>
+      <p>{{ tx['report.total'] }}: {{ net | money(currency='AED') }} / {{ gross | money(currency='AED') }}</p>
+    </rx-card>
+    <rx-card :title="tx['report.refunds_list']">
+      <rx-table :rows="refunds" as="refund" :key="refund.order ~ refund.day ~ refund.gross" :caption="tx['report.refunds_list']">
+        <rx-column :label="tx['number']"><a href="{{ refund.order_url }}">{{ refund.order }}</a></rx-column>
+        <rx-column :label="tx['channel']" hide-narrow>{{ refund.channel }}</rx-column>
+        <rx-column :label="tx['report.category']">{{ refund.category }}</rx-column>
+        <rx-column :label="tx['party']">{{ refund.party }}</rx-column>
+        <rx-column :label="tx['report.how']" hide-narrow>{{ refund.resolution }}</rx-column>
+        <rx-column :label="tx['report.day']" hide-narrow>{{ refund.day }}</rx-column>
+        <rx-column :label="tx['report.net']" align="num" hide-narrow>{{ refund.net | money(currency='AED') }}</rx-column>
+        <rx-column :label="tx['report.gross']" align="num">{{ refund.gross | money(currency='AED') }}</rx-column>
+      </rx-table>
+    </rx-card>
+  </rx-stack>
+</rx-page>

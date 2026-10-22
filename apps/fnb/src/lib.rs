@@ -26,6 +26,8 @@ pub mod pickup;
 pub mod placing;
 pub mod progress;
 pub mod refunds;
+mod report_pages;
+pub mod reports;
 pub mod reversal;
 mod screen_texts;
 pub mod seed;
@@ -48,6 +50,7 @@ pub use payout::{
 };
 pub use payout_machine::PayoutInput;
 pub use refunds::RefundAsk;
+pub use reports::{RefundFact, RiderFault};
 pub use settings::FnbSettings;
 pub use ticket::{KitchenTicket, TicketStatus};
 
@@ -128,7 +131,9 @@ impl Module for Fnb {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes().merge(payout_pages::routes())
+        pages::routes()
+            .merge(payout_pages::routes())
+            .merge(report_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -143,9 +148,16 @@ impl Module for Fnb {
             .view_data::<pages::CheckoutPage>()
             .view_data::<pages::MyOrderPage>()
             .view_data::<payout_pages::PayoutsPage>()
-            .view_data::<payout_pages::ShowPayoutPage>();
+            .view_data::<payout_pages::ShowPayoutPage>()
+            .view_data::<report_pages::RefundsPage>()
+            .view_data::<report_pages::FailedPage>()
+            .view_data::<report_pages::RiderFaultsPage>();
         app.templates(|env| {
-            for (name, source) in pages::VIEWS.iter().chain(payout_pages::VIEWS) {
+            for (name, source) in pages::VIEWS
+                .iter()
+                .chain(payout_pages::VIEWS)
+                .chain(report_pages::VIEWS)
+            {
                 // The app's own file of that name wins.
                 if env.get_template(name).is_err() {
                     renox::view::add_template(env, *name, *source)
@@ -167,7 +179,9 @@ impl Module for Fnb {
             .model::<PayoutLine>()
             .model::<ReasonMap>()
             .model::<ImportPreset>()
-            .model::<LateOrder>();
+            .model::<LateOrder>()
+            .model::<RefundFact>()
+            .model::<RiderFault>();
         // The order and the ticket have machines of their own.
         renox::state_machine::register::<FnbOrder>();
         renox::state_machine::register::<KitchenTicket>();
@@ -211,6 +225,30 @@ impl Module for Fnb {
                 .group("nav.app")
                 .order(11)
                 .permission(permissions::RECONCILIATION_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("fnb.report_refunds", "nav.refunds_report")
+                .icon("banknote")
+                .group("nav.app")
+                .order(12)
+                .permission(permissions::REPORTS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("fnb.report_failed", "nav.failed_report")
+                .icon("truck")
+                .group("nav.app")
+                .order(13)
+                .permission(permissions::REPORTS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("fnb.rider_faults", "nav.rider_faults")
+                .icon("bike")
+                .group("nav.app")
+                .order(14)
+                .permission(permissions::RIDER_FAULTS_VIEW),
         );
         app.nav(
             "app",

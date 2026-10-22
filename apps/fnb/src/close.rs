@@ -189,6 +189,9 @@ pub(crate) async fn after_closed(state: &AppState, id: i64) -> Result {
     if order.status != FnbOrderStatus::Cancelled {
         return Ok(());
     }
+    // A failure the rider is responsible for goes on the rider's record
+    // (BL-FNB-08); it never touches pay.
+    crate::reports::on_closed(state, &order).await?;
     let Some(view) = order_desk(state).find(state, order.sales_order()).await? else {
         return Ok(());
     };

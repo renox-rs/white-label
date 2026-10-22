@@ -27,6 +27,21 @@ pub fn aed(fils: i64) -> String {
     format!("AED {sign}{}.{:02}", fils.abs() / 100, fils.abs() % 100)
 }
 
+/// The VAT rate of the F&B client's sales: 5% (UAE).
+pub const VAT_PERCENT: i64 = 5;
+
+/// `gross` (with VAT) without the VAT, rounded half up to the fil.
+pub fn net_of(gross: i64) -> i64 {
+    let divisor = 100 + VAT_PERCENT;
+    let scaled = i128::from(gross) * 100;
+    let rounded = if scaled >= 0 {
+        (scaled * 2 + i128::from(divisor)) / (2 * i128::from(divisor))
+    } else {
+        -((-scaled * 2 + i128::from(divisor)) / (2 * i128::from(divisor)))
+    };
+    i64::try_from(rounded).unwrap_or(gross)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -45,5 +60,13 @@ mod tests {
     fn fils_are_written_as_dirhams() {
         assert_eq!(aed(8_500), "AED 85.00");
         assert_eq!(aed(-5), "AED -0.05");
+    }
+
+    #[test]
+    fn the_net_is_the_gross_without_five_percent_vat() {
+        assert_eq!(net_of(10_500), 10_000);
+        assert_eq!(net_of(3_000), 2_857);
+        assert_eq!(net_of(0), 0);
+        assert_eq!(net_of(-2_100), -2_000);
     }
 }

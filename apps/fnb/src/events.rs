@@ -15,6 +15,8 @@
 //!   `RunHandedOver`, `DeliveryOutForDelivery`, `DeliveryDelivered`,
 //!   `DeliveryAttemptFailed`, `DeliveryReturned` and `DeliveryDiscarded`;
 //! - `DeliveryReversed` refunds the completed order ([`crate::reversal`]);
+//! - `ReturnResolved` and `ReturnReversed` keep the refunds report and the
+//!   rider faults ([`crate::reports`]);
 //! - `RecordVoided` of a payout statement takes its sales returns back
 //!   ([`crate::payouts`]);
 //! - `RefundApproved` records a manager-approved refund on the order;
@@ -29,7 +31,7 @@ use wl_kernel::delivery::{
 use wl_kernel::payments::RefundApproved;
 use wl_kernel::voids::RecordVoided;
 use wl_kernel::sales::{
-    SalesOrderAmended, SalesOrderCancelled, SalesOrderConfirmed, SalesOrderLineCancelled,
+    ReturnResolved, ReturnReversed, SalesOrderAmended, SalesOrderCancelled, SalesOrderConfirmed, SalesOrderLineCancelled,
     SalesOrderPlaced, SalesOrderRejected,
 };
 
@@ -41,7 +43,7 @@ use crate::order_machine::{
 use crate::ticket::KitchenTicket;
 use crate::{
     cancel, changes, close, failed, fulfilment, kitchen, payouts, pickup, placing, refunds,
-    reversal,
+    reports, reversal,
 };
 
 /// What follows a committed transition of an order.
@@ -122,6 +124,12 @@ pub(crate) fn register(app: &mut Registry) {
     });
     app.listen(|event: RefundApproved, state: AppState| async move {
         refunds::on_refund_approved(&state, event).await
+    });
+    app.listen(|event: ReturnResolved, state: AppState| async move {
+        reports::on_return_resolved(&state, event).await
+    });
+    app.listen(|event: ReturnReversed, state: AppState| async move {
+        reports::on_return_reversed(&state, event).await
     });
     app.listen(|event: RecordVoided, state: AppState| async move {
         payouts::on_voided(&state, event).await
