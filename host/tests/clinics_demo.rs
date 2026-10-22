@@ -439,4 +439,9 @@ async fn the_tickets_name_the_record_they_are_about() {
         .await
         .assert_ok()
         .assert_dont_see("clinics.claim");
+    // The stock shortage notice names the visit by its number.
+    app.get("/notifications")
+        .await
+        .assert_ok()
+        .assert_dont_see("clinics.visit:");
 }

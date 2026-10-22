@@ -206,13 +206,21 @@ pub async fn on_negative(state: &AppState, event: &StockNegative) -> Result {
     if people.is_empty() {
         return Ok(());
     }
+    // The visit that consumed it by its number (`VIS-0005`) where its module
+    // gives one, else `type:id`.
+    let source = match event.source.as_ref() {
+        Some(source) => wl_kernel::documents::subject_label(&state.db, source)
+            .await?
+            .unwrap_or_else(|| source.to_string()),
+        None => String::new(),
+    };
     let mut request = NotifyRequest::new(SHORT_NOTICE, location.subject())
         .subject_label(&location.name_en)
         .data(renox::serde_json::json!({
             "item": item.code,
             "location": location.name_en,
             "quantity": quantity_text(event.quantity_milli),
-            "source": event.source.as_ref().map(ToString::to_string).unwrap_or_default(),
+            "source": source,
         }));
     for id in people {
         request = request.to_user(id);
