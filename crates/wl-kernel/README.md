@@ -144,7 +144,10 @@ allocations with their ids, so the invoice module reopens each target; the bank 
 prepaid `Subject` ride along), `RefundPaid` and `RefundFailed` (both name the `RefundSource`, so the
 owner of a credit note, order or booking restores its side). Receipts come from `RECEIPT_SERIES` (`RCT-ACME-2026-0001`)
 and payment vouchers from `PAYMENT_VOUCHER_SERIES` (`PV-ACME-2026-0001`), or the `_SINGLE` forms with
-exactly one active legal entity: gapless, per entity, reset yearly.
+exactly one active legal entity: gapless, per entity, reset yearly. The record a payment is made in advance
+for (a booking, an enrolment) is asked about through `prepaid_subjects(&state)`: the app has one provider
+(`provide_prepaid_subjects`), and a module that owns another type of prepaid record next to it registers a
+check for that type with `register_prepaid_subject_type(subject_type, check)`.
 
 Every notice goes through one contract. A module registers its notification types in
 `register` with `wl_kernel::notify::register_type(NotificationTypeDef::new(..))` (statutory

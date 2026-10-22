@@ -194,7 +194,8 @@ pub use payments::{
     DepositId, Direction, NoPaymentLinks, NoPayments, NoPrepaidSubjects, PAYMENT_LINK_SUBJECT_TYPE,
     PaymentFailed, PaymentFailureKind, PaymentId, PaymentLinkExpired, PaymentLinkRef,
     PaymentLinkRequest, PaymentLinks, PaymentMethod, PaymentReceived, PaymentRecorder,
-    PaymentReversed, PaymentSource, PaymentStatus, PaymentSummary, PrepaidSubjects, RecordPayment,
+    PaymentReversed, PaymentSource, PaymentStatus, PaymentSummary, PrepaidCheck, PrepaidSubjects,
+    RecordPayment, register_prepaid_subject_type,
     RefundApproved, RefundAttemptRef, RefundFailed, RefundFailedFrom, RefundFailureKind, RefundId,
     RefundPaid, RefundRequest, RefundSource, ReversalReason, UnpaidRefund,
 };

@@ -1144,6 +1144,33 @@ async fn without_payments_the_recorder_finds_nothing_and_refuses_to_record() {
     }
 }
 
+/// A module that owns a type of prepaid record registers its own check
+/// (`register_prepaid_subject_type`): it is asked for its type, while every
+/// other subject still goes to the provided contract (none here: all active).
+#[renox::test]
+async fn a_registered_prepaid_type_is_asked_before_the_provided_contract() {
+    use wl_kernel::Subject;
+    use wl_kernel::payments::{
+        PaymentFuture, prepaid_subjects, register_prepaid_subject_type,
+    };
+
+    fn only_even<'a>(_state: &'a AppState, subject: &'a Subject) -> PaymentFuture<'a, bool> {
+        Box::pin(async move { Ok(subject.subject_id % 2 == 0) })
+    }
+
+    register_prepaid_subject_type("pkg_prepaid.thing", only_even);
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let subjects = prepaid_subjects(app.state());
+
+    let even = Subject::new("pkg_prepaid.thing", 2);
+    let odd = Subject::new("pkg_prepaid.thing", 3);
+    let other = Subject::new("pkg_prepaid.other", 3);
+    assert!(subjects.is_active(app.state(), &even).await.unwrap());
+    assert!(!subjects.is_active(app.state(), &odd).await.unwrap());
+    assert!(subjects.is_active(app.state(), &other).await.unwrap());
+}
+
 /// #58 AC7: without the parties module the directory marks no contact point
 /// invalid (`None`, for the kernel's directory as for `NoParties`), so a
 /// give-up run still succeeds.
