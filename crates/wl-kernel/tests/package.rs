@@ -2225,6 +2225,38 @@ async fn without_sales_the_frozen_days_move_no_package() {
     assert!(moved.is_none());
 }
 
+/// 10 EdTech (#440): the events of a pause cause added and removed name the
+/// cause and the agreement, so the vertical can tell its own pause from a
+/// user's.
+#[test]
+fn the_pause_events_name_their_cause_and_agreement() {
+    use wl_kernel::subscriptions::{PauseCause, SubscriptionId, SubscriptionPaused, SubscriptionResumed};
+    use wl_kernel::Subject;
+
+    let paused = SubscriptionPaused {
+        subscription: SubscriptionId(4),
+        party: PartyId(9),
+        source: Subject::new("edtech.enrolment", 12),
+        cause: PauseCause::User,
+        until: None,
+        first: true,
+    };
+    let json = renox::serde_json::to_value(&paused).unwrap();
+    assert_eq!(json["cause"], "user");
+    assert_eq!(json["source"]["subject_type"], "edtech.enrolment");
+    let resumed = SubscriptionResumed {
+        subscription: SubscriptionId(4),
+        party: PartyId(9),
+        source: Subject::new("edtech.enrolment", 12),
+        cause: PauseCause::Agreement,
+        resumed: true,
+        to_past_due: false,
+    };
+    let back: SubscriptionResumed =
+        renox::serde_json::from_value(renox::serde_json::to_value(&resumed).unwrap()).unwrap();
+    assert_eq!(back, resumed);
+}
+
 /// #216, #217: without the `hr`, `ticketing` and `documents` modules nobody
 /// works anywhere, no checklist is started and no SOP is pending.
 #[renox::test]

@@ -53,7 +53,8 @@ use wl_kernel::payments::{
     ReversalReason, UnpaidRefund,
 };
 use wl_kernel::subscriptions::{
-    SubscriptionCancelled, SubscriptionPastDue, SubscriptionSettled, SubscriptionSuspended,
+    SubscriptionCancelled, SubscriptionPastDue, SubscriptionPaused, SubscriptionResumed,
+    SubscriptionSettled, SubscriptionSuspended,
 };
 use wl_kernel::tickets::{
     ContractCover, OpenTicket, ServiceContractCoverage, ServiceContractId, TaskComment,
@@ -900,6 +901,10 @@ pub struct Booted {
     pub sub_settled: Recorded<SubscriptionSettled>,
     /// `SubscriptionCancelled`.
     pub sub_cancelled: Recorded<SubscriptionCancelled>,
+    /// `SubscriptionPaused`.
+    pub sub_paused: Recorded<SubscriptionPaused>,
+    /// `SubscriptionResumed`.
+    pub sub_resumed: Recorded<SubscriptionResumed>,
     /// The events of the payer bills.
     pub payer: payer::PayerEvents,
     /// The portal grants of the client companies.
@@ -1729,6 +1734,8 @@ pub async fn boot_all(
     let sub_suspended = Recorded::new();
     let sub_settled = Recorded::new();
     let sub_cancelled = Recorded::new();
+    let sub_paused = Recorded::new();
+    let sub_resumed = Recorded::new();
     let payer_events = payer::PayerEvents::new();
     let tickets = TicketDesk::default();
     let creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
@@ -1794,6 +1801,8 @@ pub async fn boot_all(
     let app = record(app, &sub_suspended);
     let app = record(app, &sub_settled);
     let app = record(app, &sub_cancelled);
+    let app = record(app, &sub_paused);
+    let app = record(app, &sub_resumed);
     let app = payer_events.record(app);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
@@ -1930,6 +1939,8 @@ pub async fn boot_all(
         sub_suspended,
         sub_settled,
         sub_cancelled,
+        sub_paused,
+        sub_resumed,
         payer: payer_events,
         portal,
         sheets,

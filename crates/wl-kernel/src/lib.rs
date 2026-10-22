@@ -221,8 +221,8 @@ pub use subject::Subject;
 pub use subscriptions::{
     BillingCycle, CancelSubscription, NoSubscriptions, PauseCause, PauseSubscription, PaymentMode,
     SUBSCRIPTION_SUBJECT_TYPE, StartSubscription, SubscriptionCancelled, SubscriptionId,
-    SubscriptionPastDue, SubscriptionSettled, SubscriptionStatus, SubscriptionSummary,
-    SubscriptionSuspended, Subscriptions,
+    SubscriptionPastDue, SubscriptionPaused, SubscriptionResumed, SubscriptionSettled,
+    SubscriptionStatus, SubscriptionSummary, SubscriptionSuspended, Subscriptions,
 };
 pub use tickets::{
     Assignee, CONFIDENTIAL_TASK_CATEGORY, ChecklistCompleted, ChecklistOutcome, ChecklistRunId,

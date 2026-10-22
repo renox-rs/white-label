@@ -42,8 +42,8 @@ use wl_kernel::parties::{NEUTRAL_BLOCK_REASON, PartyBlocked, PartyStatus, PartyU
 use wl_kernel::subscriptions::{
     CancelSubscription, PauseCause, PauseSubscription, SUBSCRIPTION_SUBJECT_TYPE,
     StartSubscription, SubscriptionCancelled, SubscriptionFuture, SubscriptionId,
-    SubscriptionPastDue, SubscriptionSettled, SubscriptionStatus, SubscriptionSummary,
-    SubscriptionSuspended, Subscriptions,
+    SubscriptionPastDue, SubscriptionPaused, SubscriptionResumed, SubscriptionSettled,
+    SubscriptionStatus, SubscriptionSummary, SubscriptionSuspended, Subscriptions,
 };
 use wl_kernel::{PartyId, Subject};
 
@@ -522,6 +522,18 @@ pub async fn resume(
     let left = SubscriptionPause::open_of(&mut tx, subscription.id).await?;
     if subscription.status != SubscriptionStatus::Paused || !left.is_empty() {
         tx.commit().await?;
+        // The cause is gone; other causes keep it paused (10 `EDU.RUL.14`).
+        state
+            .emit(SubscriptionResumed {
+                subscription: subscription.subscription_id(),
+                party: subscription.party(),
+                source: subscription.source(),
+                cause,
+                resumed: false,
+                to_past_due: false,
+            })
+            .await
+            .map_err(TransitionError::Failed)?;
         return Ok(Subscription::find_or_404(&state.db, subscription.id).await?);
     }
     facts.causes_left = left.len();
@@ -560,6 +572,17 @@ pub async fn resume(
         .await?;
     tx.commit().await?;
     outcome.emit(state).await.map_err(TransitionError::Failed)?;
+    state
+        .emit(SubscriptionResumed {
+            subscription: subscription.subscription_id(),
+            party: subscription.party(),
+            source: subscription.source(),
+            cause,
+            resumed: true,
+            to_past_due: past_due,
+        })
+        .await
+        .map_err(TransitionError::Failed)?;
     Ok(Subscription::find_or_404(&state.db, subscription.id).await?)
 }
 
@@ -1186,6 +1209,24 @@ async fn announce(state: &AppState, event: &Transitioned<Subscription>) -> Resul
             // cause added to a paused subscription neither.
             let cause = event.meta.get("cause").and_then(Value::as_str);
             let first = event.from != SubscriptionStatus::Paused.as_str();
+            // The cause added is told to the vertical (10 `EDU.RUL.14`).
+            if let Some(added) = PauseCause::ALL.iter().copied().find(|c| Some(c.as_str()) == cause) {
+                let until = SubscriptionPause::open_of(&state.db, subscription.id)
+                    .await?
+                    .into_iter()
+                    .find(|p| p.cause == added)
+                    .and_then(|p| p.until);
+                state
+                    .emit(SubscriptionPaused {
+                        subscription: id,
+                        party,
+                        source,
+                        cause: added,
+                        until,
+                        first,
+                    })
+                    .await?;
+            }
             if first && cause != Some(PauseCause::PartyBlock.as_str()) {
                 notify_party(state, &subscription, PAUSED_NOTICE, Value::Null).await
             } else {

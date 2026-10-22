@@ -251,3 +251,68 @@ async fn a_block_on_a_frozen_membership_adds_its_cause() {
     assert_eq!(now(&t, &sub).await.status, SubscriptionStatus::Paused);
     assert_eq!(causes(&t, &sub).await.len(), 1);
 }
+
+/// 10 `EDU.RUL.14` (#440): the vertical hears each pause cause added and
+/// removed, with the cause, so it can freeze the enrolment of a membership a
+/// user paused and ignore its own pause and a block. A cause removed while
+/// another keeps the subscription `paused` is heard too, with `resumed` false.
+#[renox::test]
+async fn each_pause_cause_added_and_removed_is_told_to_the_vertical() {
+    let t = boot_subscriptions(membership()).await;
+    let sub = start(&t, &enrolment(8), d("2027-01-01")).await;
+    subscriptions(t.state())
+        .pause(
+            t.state(),
+            &enrolment(8),
+            PauseSubscription::new(PauseCause::User, d("2027-01-05"))
+                .reason("travelling")
+                .until(d("2027-01-19")),
+        )
+        .await
+        .expect("the user pause runs");
+    freeze(&t, &enrolment(8), "2027-01-06").await;
+
+    let paused = t.sub_paused.all();
+    let told: Vec<_> = paused.iter().map(|e| (e.cause, e.first)).collect();
+    assert_eq!(
+        told,
+        [(PauseCause::User, true), (PauseCause::Agreement, false)]
+    );
+    assert_eq!(paused[0].until, Some(d("2027-01-19")));
+    assert_eq!(paused[0].source, enrolment(8));
+    assert_eq!(paused[0].subscription.0, sub.id);
+
+    // The user's pause ends while the agreement's keeps it paused.
+    subscriptions(t.state())
+        .resume(t.state(), &enrolment(8), PauseCause::User, d("2027-01-19"))
+        .await
+        .unwrap();
+    // Then the agreement resumes: nothing is left.
+    subscriptions(t.state())
+        .resume(
+            t.state(),
+            &enrolment(8),
+            PauseCause::Agreement,
+            d("2027-01-20"),
+        )
+        .await
+        .unwrap();
+    let resumed = t.sub_resumed.all();
+    let told: Vec<_> = resumed.iter().map(|e| (e.cause, e.resumed)).collect();
+    assert_eq!(
+        told,
+        [(PauseCause::User, false), (PauseCause::Agreement, true)]
+    );
+    assert!(resumed.iter().all(|e| !e.to_past_due));
+    // A cause that is not open tells nothing.
+    subscriptions(t.state())
+        .resume(
+            t.state(),
+            &enrolment(8),
+            PauseCause::Agreement,
+            d("2027-01-21"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(t.sub_resumed.all().len(), 2);
+}
