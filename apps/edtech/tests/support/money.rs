@@ -210,6 +210,11 @@ impl Books {
         self.payments.lock().unwrap().push((id, amount));
     }
 
+    /// `amount` fils paid on invoice `id` were reversed (a chargeback).
+    pub fn reverse(&self, id: i64, amount: i64) {
+        self.payments.lock().unwrap().push((id, -amount));
+    }
+
     /// What invoice `id` was paid so far, in fils.
     pub fn paid_of(&self, id: i64) -> i64 {
         self.payments

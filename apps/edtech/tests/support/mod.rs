@@ -19,13 +19,18 @@ use wl_kernel::parties::provide_directory;
 use wl_kernel::payments::{provide_payment_links, provide_payment_recorder};
 use wl_kernel::sales::{provide_package_ledger, provide_package_sales};
 use wl_kernel::subscriptions::provide_subscriptions;
+use wl_kernel::tickets::provide_task_creator;
 use wl_scheduling::{Resource, ResourceType, WlScheduling};
 
 /// The stand-ins of the parties, the invoice book, the subscriptions and the
 /// packages the enrolments talk to.
 pub mod money;
 
+/// The stand-in of the ticketing module's task creator.
+pub mod tasks;
+
 pub use money::{Books, Cash, Messages, Packages, People, Subs};
+pub use tasks::Tasks;
 
 /// The pages extend the app's layout; a package test has no app, so it
 /// brings the smallest one.
@@ -84,6 +89,7 @@ struct Harness {
     packages: Packages,
     cash: Cash,
     messages: Messages,
+    tasks: Tasks,
 }
 
 impl Module for Harness {
@@ -100,6 +106,7 @@ impl Module for Harness {
         provide_payment_recorder(app, self.cash.clone());
         provide_payment_links(app, self.cash.clone());
         provide_notifier(app, self.messages.clone());
+        provide_task_creator(app, self.tasks.clone());
     }
 
     fn routes(&self) -> Routes {
@@ -130,6 +137,8 @@ pub struct Centre {
     pub cash: Cash,
     /// The notifications asked of the notifier.
     pub messages: Messages,
+    /// The tickets opened through the task creator.
+    pub tasks: Tasks,
     who: Arc<Mutex<Option<renox::AuthUser>>>,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
@@ -154,6 +163,7 @@ pub async fn boot_with_holidays(holidays: &[NaiveDate]) -> Centre {
         Packages::default(),
     );
     let (cash, messages) = (Cash::default(), Messages::default());
+    let tasks = Tasks::default();
     let mut scheduling_module = WlScheduling::new();
     for (code, initiated_by) in edtech::reasons::SCHEDULING_REASON_CODES {
         scheduling_module = scheduling_module.reason_code(code, *initiated_by);
@@ -173,6 +183,7 @@ pub async fn boot_with_holidays(holidays: &[NaiveDate]) -> Centre {
             packages: packages.clone(),
             cash: cash.clone(),
             messages: messages.clone(),
+            tasks: tasks.clone(),
         });
     let listed: Vec<String> = holidays.iter().map(|d| format!("\"{d}\"")).collect();
     let client = CLIENT.replace("{holidays}", &listed.join(", "));
@@ -192,6 +203,7 @@ pub async fn boot_with_holidays(holidays: &[NaiveDate]) -> Centre {
         packages,
         cash,
         messages,
+        tasks,
         who,
         _views: views,
     }
@@ -577,6 +589,47 @@ impl Centre {
         Enrolment::find_or_404(self.db(), enrolment.id)
             .await
             .expect("the enrolment")
+    }
+
+    /// The card payment on invoice `invoice` of `enrolment` is charged back:
+    /// the book takes `amount` back and wl-invoicing announces the invoice
+    /// reopened, as it does after a reversed payment.
+    pub async fn charge_back(&self, enrolment: &Enrolment, invoice: i64, amount: i64) {
+        self.books.reverse(invoice, amount);
+        self.announce_reopened(enrolment, invoice, amount).await;
+    }
+
+    /// wl-invoicing announces invoice `invoice` of `enrolment` reopened with
+    /// `amount` open, the book unchanged (an event heard twice).
+    pub async fn announce_reopened(&self, enrolment: &Enrolment, invoice: i64, amount: i64) {
+        self.state()
+            .emit(wl_kernel::invoicing::InvoiceReopened {
+                invoice: wl_kernel::invoicing::InvoiceId(invoice),
+                party: enrolment.payer(),
+                source: enrolment.subject(),
+                money_source: wl_kernel::Subject::new("payments.payment", 1),
+                amount,
+                balance: amount,
+                new_status: wl_kernel::invoicing::InvoiceStatus::Issued,
+                reason: wl_kernel::invoicing::ReopenReason::PaymentReversed,
+                reversal_reason: Some("chargeback".to_owned()),
+            })
+            .await
+            .expect("the reopening is announced");
+    }
+
+    /// The chargeback was won, or the payer paid again: invoice `invoice` of
+    /// `enrolment` is paid in full and wl-invoicing announces it.
+    pub async fn pay_again(&self, enrolment: &Enrolment, invoice: i64, amount: i64) {
+        self.books.pay(invoice, amount);
+        self.state()
+            .emit(wl_kernel::invoicing::InvoicePaid {
+                invoice: wl_kernel::invoicing::InvoiceId(invoice),
+                party: enrolment.payer(),
+                source: enrolment.subject(),
+            })
+            .await
+            .expect("the payment is announced");
     }
 
     /// Party `id` is blocked: the directory says so and `PartyBlocked` is
