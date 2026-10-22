@@ -15,8 +15,8 @@
 //! ```
 //!
 //! Every state of §4.1 is declared with its tone so the diagram is whole;
-//! the transitions out of `attempted` come with their issues (BL-DLV-03,
-//! BL-DLV-07). `assign`, `unassign`, `dispatch` and `cancel` are in
+//! the transitions out of `attempted` (`reattempt`, `return`, `discard` and
+//! their system twins) are in [`crate::attempted`]. `assign`, `unassign`, `dispatch` and `cancel` are in
 //! [`crate::plan`], `deliver` and `fail` in [`crate::proof`],
 //! `open_review` and `close_review` in [`crate::review`], `reverse_delivery` (and
 //! its approved twin) in [`crate::reverse`], `mark_lost` (and its
@@ -68,6 +68,7 @@ impl StateMachine for Delivery {
             .chain(crate::lost::transitions())
             .chain(crate::reverse::transitions())
             .chain(crate::abort::delivery_transitions())
+            .chain(crate::attempted::transitions())
             .fold(machine, Machine::transition)
     }
 }

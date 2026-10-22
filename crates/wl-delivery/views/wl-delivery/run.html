@@ -34,6 +34,7 @@
           <rx-select name="reason" :label="tx['hand_over.reason']" :options="hand_over_reasons" :selected="''" id="hand-over-reason"/>
         </rx-form-grid>
         <rx-input name="note" :label="tx['hand_over.note']" id="hand-over-note"/>
+        <p>{{ tx['hand_over.arrival_hint'] }}</p>
         <table class="rx-table">
           <caption>{{ tx['hand_over.stops'] }}</caption>
           <tbody>
@@ -43,6 +44,10 @@
               <td>{{ stop.number }}</td>
               <td>{{ stop.recipient }}</td>
               <td>{{ stop.area }}</td>
+              <td>{% if stop.perishable %}
+                <input type="text" name="arrival_{{ stop.id }}" id="hand-over-arrival-{{ stop.id }}" size="8" placeholder="{{ tx['hand_over.arrival_placeholder'] }}" aria-label="{{ tx['hand_over.arrival'] }}">
+                {% if stop.window_end %}<small>{{ tx['hand_over.window_end'] }}: {{ stop.window_end }}</small>{% endif %}
+                {% endif %}</td>
             </tr>
             {% endif %}{% endfor %}
           </tbody>

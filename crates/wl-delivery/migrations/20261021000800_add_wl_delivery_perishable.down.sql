@@ -1,0 +1,10 @@
+ALTER TABLE "wl_delivery_hand_over_stops" DROP COLUMN expected_arrival;
+ALTER TABLE "wl_delivery_deliveries" DROP COLUMN wastage_value;
+ALTER TABLE "wl_delivery_deliveries" DROP COLUMN wastage_id;
+ALTER TABLE "wl_delivery_deliveries" DROP COLUMN wastage_type;
+ALTER TABLE "wl_delivery_deliveries" DROP COLUMN discarded_at;
+ALTER TABLE "wl_delivery_deliveries" DROP COLUMN discard_photo_ref;
+ALTER TABLE "wl_delivery_deliveries" DROP COLUMN discard_reason;
+ALTER TABLE "wl_delivery_deliveries" DROP COLUMN resolution;
+ALTER TABLE "wl_delivery_deliveries" DROP COLUMN promise_minutes;
+ALTER TABLE "wl_delivery_deliveries" DROP COLUMN placed_at;

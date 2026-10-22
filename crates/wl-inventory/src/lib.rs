@@ -5,6 +5,7 @@ mod arrival;
 pub mod balance;
 pub mod chase;
 pub mod config;
+pub mod delivery_wastage;
 pub mod dispatch;
 mod dispatch_screens;
 mod events;
@@ -696,6 +697,8 @@ impl Module for WlInventory {
         events::register(app);
         // BL-STK-26: a cancelled order line gives its goods back or scraps them.
         sales_cancel::register(app);
+        // A discarded perishable delivery is wastage with the source as reference.
+        wl_kernel::delivery::provide_delivery_wastage(app, delivery_wastage::InventoryWastage);
         hold_decide::register(app);
         // `STK.RUL.07`: the deciders of an open hold are reminded every H
         // hours and the escalation role told every 2 x H.

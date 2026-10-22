@@ -32,7 +32,20 @@
 //! physically out, so they stay `out_for_delivery` and its `dispatch` skips
 //! them (it dispatches `assigned` stops only). A run `cancel` is not built
 //! yet; when it is, it must refuse a run that holds handed-over stops. The
-//! window for perishable stops is BL-DLV-10 (Launch 06).
+//! window for perishable stops is the subject of the next paragraph.
+//!
+//! **Perishable stops (BL-DLV-10).** Cooked food handed to another rider must
+//! still arrive within the brand's delivery promise. The dispatcher enters
+//! the arrival the receiving run expects for each perishable stop
+//! ([`Proposal::arrivals`]; there is no route optimisation in the MVP, the run's
+//! estimated duration and sequence are only a hint on the form). The window
+//! ends at the source's placed time plus its delivery promise
+//! ([`window_end`], Asia/Dubai time is the display of the same instant): an
+//! arrival after it, or none, refuses the proposal and the stop stays on the
+//! giving run, where an `abort` fails it with *run aborted* and `WRK.RUL.16`
+//! applies. An arrival exactly at the window end is accepted. A stop whose
+//! source gave no promise has no end to compare with, but still needs its
+//! arrival. Non-perishable stops need none.
 //!
 //! [`DeliverySettings::hand_over_counts_cash`]: crate::settings::DeliverySettings::hand_over_counts_cash
 
@@ -43,7 +56,7 @@ use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::delivery::{DeliveryAssigned, RunHandedOver};
-use wl_kernel::documents::today;
+use wl_kernel::documents::{dubai_date, dubai_text, today};
 
 use crate::delivery::{Delivery, DeliveryStatus};
 use crate::doc_guard;
@@ -58,6 +71,53 @@ pub const HAND_OVER: &str = "hand_over";
 
 /// Why stops are handed over (§4.2).
 pub const REASONS: [&str; 4] = ["breakdown", "accident", "driver_unwell", "load_balancing"];
+
+/// The latest arrival a receiving run may promise for the perishable
+/// `delivery`: the source's placed time plus its delivery promise. `None`
+/// when the source gave no promise.
+pub fn window_end(delivery: &Delivery) -> Option<DateTime> {
+    let placed = delivery.placed_at?;
+    let minutes = delivery.promise_minutes?;
+    Some(placed + renox::chrono::Duration::minutes(minutes))
+}
+
+/// Why the perishable `delivery` cannot be handed over with the expected
+/// `arrival`: none given, or after the window end. `None` for a stop that may
+/// go (and for a non-perishable one, which needs no arrival).
+pub fn arrival_problem(delivery: &Delivery, arrival: Option<DateTime>) -> Option<String> {
+    if !delivery.perishable {
+        return None;
+    }
+    let Some(arrival) = arrival else {
+        return Some(
+            english("wl_delivery.hand_over.arrival_needed").replace("{number}", &delivery.number),
+        );
+    };
+    match window_end(delivery) {
+        Some(end) if arrival > end => Some(
+            english("wl_delivery.hand_over.outside_window")
+                .replace("{number}", &delivery.number)
+                .replace("{end}", &dubai_text(end)),
+        ),
+        _ => None,
+    }
+}
+
+/// An arrival as the dispatcher types it, in Asia/Dubai time (UTC+4): a full
+/// `2026-06-01 19:40` (or with a `T`), or just `19:40`, which takes the day
+/// of `base`. `None` when it reads as neither.
+pub fn parse_arrival(text: &str, base: DateTime) -> Option<DateTime> {
+    use renox::chrono::{Duration, NaiveDateTime, NaiveTime};
+    let text = text.trim();
+    let dubai = Duration::hours(4);
+    for format in ["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S"] {
+        if let Ok(local) = NaiveDateTime::parse_from_str(text, format) {
+            return Some(local.and_utc() - dubai);
+        }
+    }
+    let time = NaiveTime::parse_from_str(text, "%H:%M").ok()?;
+    Some(dubai_date(base).and_time(time).and_utc() - dubai)
+}
 
 /// A hand-over from the giving run to the receiving run. It waits until the
 /// receiving driver confirms ([`confirm`]); only then do the stops move.
@@ -116,6 +176,9 @@ pub struct HandOverStop {
     pub delivery_id: i64,
     /// Whether the stop moved at the confirmation (it was still open).
     pub moved: bool,
+    /// The arrival the dispatcher expects on the receiving run; needed for a
+    /// perishable stop (BL-DLV-10).
+    pub expected_arrival: Option<DateTime>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -173,6 +236,9 @@ pub struct Proposal {
     pub note: String,
     /// The open stops (deliveries) to hand over.
     pub delivery_ids: Vec<i64>,
+    /// The arrival the receiving run expects per stop, `(delivery id,
+    /// arrival)`: needed for each perishable stop (BL-DLV-10).
+    pub arrivals: Vec<(i64, DateTime)>,
 }
 
 /// What the receiving driver confirms.
@@ -326,6 +392,20 @@ pub async fn propose(
             None => return Err(refused(english("wl_delivery.hand_over.no_stops"))),
         }
     }
+    // A perishable stop needs the arrival the receiving run expects, within
+    // the window; a refusal creates nothing and the stop stays on this run.
+    let arrival_of = |id: i64| {
+        proposal
+            .arrivals
+            .iter()
+            .find(|(stop, _)| *stop == id)
+            .map(|(_, at)| *at)
+    };
+    for stop in &stops {
+        if let Some(problem) = arrival_problem(stop, arrival_of(stop.id)) {
+            return Err(refused(problem));
+        }
+    }
     // The receiving driver and vehicle pass the document check of
     // `run.dispatch` today; a refusal creates nothing.
     let made: Mutex<Option<HandOver>> = Mutex::new(None);
@@ -353,6 +433,7 @@ pub async fn propose(
                 let mut row = HandOverStop {
                     hand_over_id: hand_over.id,
                     delivery_id: stop.id,
+                    expected_arrival: stop.perishable.then(|| arrival_of(stop.id)).flatten(),
                     ..HandOverStop::default()
                 };
                 row.insert(&state.db)
@@ -612,6 +693,43 @@ mod tests {
             stops_left: left,
             unconfirmed,
         }
+    }
+
+    fn food(placed: &str, promise: i64) -> Delivery {
+        Delivery {
+            number: "DLV-1".into(),
+            perishable: true,
+            placed_at: Some(placed.parse().unwrap()),
+            promise_minutes: Some(promise),
+            ..Delivery::default()
+        }
+    }
+
+    #[test]
+    fn a_perishable_stop_may_arrive_up_to_the_window_end_and_not_after() {
+        // Placed 19:00 Dubai (15:00 UTC), a 45-minute promise: 19:45.
+        let delivery = food("2026-06-01T15:00:00Z", 45);
+        let at = |hhmm: &str| parse_arrival(hhmm, delivery.placed_at.unwrap());
+        assert!(arrival_problem(&delivery, at("19:40")).is_none());
+        assert!(arrival_problem(&delivery, at("19:45")).is_none());
+        assert!(arrival_problem(&delivery, at("19:50")).is_some());
+        assert!(arrival_problem(&delivery, None).is_some());
+    }
+
+    #[test]
+    fn a_stop_that_is_not_perishable_needs_no_arrival() {
+        let mut delivery = food("2026-06-01T15:00:00Z", 45);
+        delivery.perishable = false;
+        assert!(arrival_problem(&delivery, None).is_none());
+    }
+
+    #[test]
+    fn an_arrival_is_read_in_dubai_time() {
+        let base: DateTime = "2026-06-01T15:00:00Z".parse().unwrap();
+        let expected: DateTime = "2026-06-01T15:40:00Z".parse().unwrap();
+        assert_eq!(parse_arrival("19:40", base), Some(expected));
+        assert_eq!(parse_arrival("2026-06-01 19:40", base), Some(expected));
+        assert_eq!(parse_arrival("soon", base), None);
     }
 
     #[test]

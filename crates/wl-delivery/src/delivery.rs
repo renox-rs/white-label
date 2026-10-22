@@ -142,6 +142,26 @@ pub struct Delivery {
     pub lost_at: Option<DateTime>,
     /// The claim ticket opened when it was lost; `None` when ticketing is off.
     pub claim_ticket_id: Option<i64>,
+    /// When the source was placed (06: the order's placed time); the start
+    /// of the perishable hand-over window.
+    pub placed_at: Option<DateTime>,
+    /// The source's delivery promise in minutes; the length of the window.
+    pub promise_minutes: Option<i64>,
+    /// What `WRK.RUL.08` or `WRK.RUL.16` decided for a failed delivery that
+    /// waits for its goods: `return` or `discard`.
+    pub resolution: Option<String>,
+    /// The reason the driver gave for the discard.
+    pub discard_reason: Option<String>,
+    /// The photo of the discarded goods.
+    pub discard_photo_ref: Option<String>,
+    /// When the goods were discarded.
+    pub discarded_at: Option<DateTime>,
+    /// The type of the wastage record the inventory made.
+    pub wastage_type: Option<String>,
+    /// The id of the wastage record.
+    pub wastage_id: Option<i64>,
+    /// The value of the wastage, in fils.
+    pub wastage_value: i64,
     /// The lifecycle state; changed only by a transition.
     pub status: DeliveryStatus,
     /// When the row was created.

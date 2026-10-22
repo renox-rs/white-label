@@ -682,6 +682,130 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_delivery.notices.lost_body",
         "Delivery {{ number }} is marked lost ({{ liability }} liable): {{ reason }}. A claim ticket was opened: {{ link }}",
     ),
+    // What follows a failed attempt (#163): reattempt, return, discard.
+    (
+        "wl_delivery.attempted.perishable_no_reattempt",
+        "A perishable delivery gets one attempt and is never reattempted: its goods are returned to the origin or discarded.",
+    ),
+    (
+        "wl_delivery.attempted.no_attempts_left",
+        "No attempts are left: return the goods to the origin.",
+    ),
+    (
+        "wl_delivery.attempted.reason_no_reattempt",
+        "The reason of the last visit does not allow a reattempt.",
+    ),
+    (
+        "wl_delivery.attempted.not_perishable",
+        "Only perishable goods are discarded.",
+    ),
+    (
+        "wl_delivery.attempted.reason_needed",
+        "Give the reason the goods are discarded.",
+    ),
+    (
+        "wl_delivery.attempted.photo_needed",
+        "Add the photo of the discarded goods.",
+    ),
+    (
+        "wl_delivery.attempted.confirm_goods",
+        "Confirm that the goods are back at the origin before the delivery is returned.",
+    ),
+    (
+        "wl_delivery.attempted.only_the_driver",
+        "Only the driver of the run discards the goods of a stop.",
+    ),
+    (
+        "wl_delivery.attempted.no_discard_task",
+        "The rules did not ask for these goods to be discarded.",
+    ),
+    ("wl_delivery.attempted.discarded", "Goods discarded."),
+    (
+        "wl_delivery.attempted.waiting_approval",
+        "The wastage is above the limit: a second person has to approve the discard.",
+    ),
+    ("wl_delivery.attempted.resolution.return", "The goods go back to the origin: confirm them there and the delivery is returned."),
+    ("wl_delivery.attempted.resolution.discard", "The driver discards the goods with a photo and a reason."),
+    ("wl_delivery.attempted.title", "After the failed visit"),
+    ("wl_delivery.attempted.reattempt", "Reattempt"),
+    (
+        "wl_delivery.attempted.reattempt_description",
+        "Put the delivery back in the queue for the next run.",
+    ),
+    ("wl_delivery.attempted.return", "Return to the origin"),
+    ("wl_delivery.attempted.return_title", "Return to the origin"),
+    (
+        "wl_delivery.attempted.return_description",
+        "The goods are back at the origin, which decides reuse or wastage.",
+    ),
+    (
+        "wl_delivery.attempted.goods_confirmed",
+        "Goods confirmed at the origin",
+    ),
+    ("wl_delivery.attempted.discarded_title", "Discarded goods"),
+    ("wl_delivery.attempted.discard_reason", "Reason"),
+    ("wl_delivery.attempted.discard_photo", "Photo reference"),
+    ("wl_delivery.attempted.discarded_at", "Discarded at"),
+    ("wl_delivery.attempted.wastage", "Wastage at cost"),
+    ("wl_delivery.attempted.waiting_title", "Waiting for approval"),
+    (
+        "wl_delivery.attempted.waiting",
+        "The wastage is above the limit. A second person has to approve the discard before it is recorded.",
+    ),
+    ("wl_delivery.attempted.discard_task", "Discard with photo"),
+    (
+        "wl_delivery.attempted.discard_task_text",
+        "This food cannot be delivered again. Photograph it, say why it is discarded and submit.",
+    ),
+    ("wl_delivery.attempted.discard", "Discard"),
+    ("wl_delivery.actions.reattempted", "The delivery is back in the queue."),
+    ("wl_delivery.actions.returned", "The delivery is returned to the origin."),
+    // The hand-over window of a perishable stop (#166).
+    (
+        "wl_delivery.hand_over.arrival_needed",
+        "{number} is perishable: enter the arrival the receiving run expects.",
+    ),
+    (
+        "wl_delivery.hand_over.outside_window",
+        "{number} cannot arrive by {end}, the end of its delivery promise: it stays on this run.",
+    ),
+    (
+        "wl_delivery.hand_over.arrival_format",
+        "Enter the expected arrival as a time like 19:40 (Dubai time).",
+    ),
+    ("wl_delivery.hand_over.arrival", "Expected arrival"),
+    ("wl_delivery.hand_over.arrival_placeholder", "19:40"),
+    (
+        "wl_delivery.hand_over.arrival_hint",
+        "A perishable stop needs the arrival the receiving run expects, in Dubai time, within its delivery promise.",
+    ),
+    ("wl_delivery.hand_over.window_end", "Latest arrival"),
+    (
+        "wl_delivery.notices.perishable_failed_subject",
+        "Delivery {{ number }}: perishable goods not delivered",
+    ),
+    (
+        "wl_delivery.notices.perishable_failed_body",
+        "The visit of {{ number }} failed and its goods cannot be delivered again: {{ action }}. {{ link }}",
+    ),
+    ("wl_delivery.notices.action_discard", "the driver discards them with a photo"),
+    ("wl_delivery.notices.action_return", "they go back to the origin"),
+    (
+        "wl_delivery.notices.returned_subject",
+        "Delivery {{ number }} returned",
+    ),
+    (
+        "wl_delivery.notices.returned_body",
+        "Delivery {{ number }} is back at the origin. {{ link }}",
+    ),
+    (
+        "wl_delivery.notices.discarded_subject",
+        "Delivery {{ number }} discarded",
+    ),
+    (
+        "wl_delivery.notices.discarded_body",
+        "The goods of delivery {{ number }} were discarded: {{ reason }}. {{ link }}",
+    ),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.

@@ -42,6 +42,12 @@
                        :title="tx['reverse.reject_title']" :description="tx['reverse.reject_description']" :submit-label="tx['reverse.reject']" icon="x" variant="danger" danger>
         <rx-textarea name="comment" :label="tx['reverse.comment']" :id="'reverse-reject-comment-' ~ delivery.id" required/>
       </rx-action-sheet>
+      <rx-confirm rx-if="can_reattempt" :id="'reattempt-' ~ delivery.id" :label="tx['attempted.reattempt']" :action="route('wl_delivery.reattempt', delivery.id)" method="POST"
+                  :title="tx['attempted.reattempt']" :message="tx['attempted.reattempt_description']" :confirm-label="tx['attempted.reattempt']"/>
+      <rx-action-sheet rx-if="can_return" :id="'return-' ~ delivery.id" :label="tx['attempted.return']" :action="route('wl_delivery.return', delivery.id)"
+                       :title="tx['attempted.return_title']" :description="tx['attempted.return_description']" :submit-label="tx['attempted.return']" icon="undo-2">
+        <rx-select name="goods_confirmed" :label="tx['attempted.goods_confirmed']" :options="yes_no" :selected="'0'" :id="'return-confirmed-' ~ delivery.id" required/>
+      </rx-action-sheet>
       <rx-action-sheet rx-if="can_find" :id="'found-' ~ delivery.id" :label="tx['actions.found']" :action="route('wl_delivery.found', delivery.id)"
                        :title="tx['actions.found_title']" :description="tx['actions.found_description']" :submit-label="tx['actions.found']" icon="package-check">
         <rx-input name="depot" :label="tx['actions.found_depot']" :id="'found-depot-' ~ delivery.id" required/>
@@ -57,6 +63,19 @@
         <rx-textarea name="comment" :label="tx['cod.comment']" :id="'cod-reject-comment-' ~ delivery.id" required/>
       </rx-action-sheet>
     </rx-page-header>
+    <rx-card rx-if="resolution or reattempt_hint" :title="tx['attempted.title']">
+      <p rx-if="resolution">{{ resolution }}</p>
+      <p rx-if="reattempt_hint">{{ reattempt_hint }}</p>
+    </rx-card>
+    <rx-include template="wl-kernel/approval_card.html"/>
+    <rx-card rx-if="discard" :title="tx['attempted.discarded_title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['attempted.discard_reason']" :value="discard.reason"/>
+        <rx-entry :label="tx['attempted.discard_photo']" :value="discard.photo"/>
+        <rx-entry :label="tx['attempted.discarded_at']" :value="discard.at"/>
+        <rx-entry :label="tx['attempted.wastage']" :value="discard.wastage"/>
+      </rx-infolist>
+    </rx-card>
     <rx-card rx-if="reversal" :title="tx['reverse.request_title']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['reverse.requested_by']" :value="reversal.requested_by"/>

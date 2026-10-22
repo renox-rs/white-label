@@ -225,18 +225,29 @@ async fn take_off_lines(
     Ok(taken)
 }
 
+/// What posting the components of a prepared line as wastage did.
+#[derive(Debug, Default)]
+pub(crate) struct Wasted {
+    /// The value posted, in fils.
+    pub value: i64,
+    /// What stock did not cover (item code, thousandths).
+    pub short: Vec<(String, i64)>,
+    /// The first wastage movement made.
+    pub first_movement: Option<i64>,
+}
+
 /// Posts the exploded components of `quantity_milli` of a prepared line as
-/// wastage at `location`, as far as the stock covers them. Returns the value
-/// posted and what was short (item code, thousandths).
-async fn waste_components(
+/// wastage at `location` with `reason` and `order` as reference, as far as
+/// the stock covers them.
+pub(crate) async fn waste_components(
     tx: &mut Transaction,
     order: &Subject,
     location: &Location,
     components: &[wl_kernel::inventory::LineComponent],
     quantity_milli: i64,
-) -> Result<(i64, Vec<(String, i64)>)> {
-    let mut value = 0;
-    let mut short = Vec::new();
+    reason: &str,
+) -> Result<Wasted> {
+    let mut wasted = Wasted::default();
     for component in components {
         let item = Item::find_or_404(&mut *tx, component.item.subject_id).await?;
         let need = i64::try_from(
@@ -259,18 +270,19 @@ async fn waste_components(
                 item.average_cost,
                 part_value,
                 order,
-                Some(SCRAP_REASON.to_owned()),
+                Some(reason.to_owned()),
                 None,
             );
             moved.theoretical = true;
             moved.insert(&mut *tx).await?;
-            value += part_value;
+            wasted.value += part_value;
+            wasted.first_movement.get_or_insert(moved.id);
         }
         if left > 0 {
-            short.push((item.code.clone(), left));
+            wasted.short.push((item.code.clone(), left));
         }
     }
-    Ok((value, short))
+    Ok(wasted)
 }
 
 /// Applies the cancellation of one line (see the module docs).
@@ -338,17 +350,18 @@ async fn apply_line(state: &AppState, request: LineRequest) -> Result {
             action = "reported";
         } else if left > 0 {
             let location = Location::find_or_404(&mut tx, recipe.location.subject_id).await?;
-            let (posted, short) = waste_components(
+            let wasted = waste_components(
                 &mut tx,
                 &request.order,
                 &location,
                 &recipe.components,
                 left,
+                SCRAP_REASON,
             )
             .await?;
-            value += posted;
+            value += wasted.value;
             action = "wasted";
-            for (code, quantity) in short {
+            for (code, quantity) in wasted.short {
                 notes.push(format!("short {code} {quantity}"));
             }
         }

@@ -536,6 +536,16 @@ pub async fn receive(
                 .map_err(TransitionError::Failed)?;
         }
     }
+    // Goods the rules sent back to the origin are returned once the depot
+    // ticked them received (`WRK.RUL.08`, `WRK.RUL.16`).
+    for entry in entries
+        .iter()
+        .filter(|entry| entry.line_id == 0 && entry.received_milli > 0)
+    {
+        crate::attempted::on_goods_received(state, entry.delivery_id)
+            .await
+            .map_err(TransitionError::Failed)?;
+    }
     try_close(state, run.id).await
 }
 
