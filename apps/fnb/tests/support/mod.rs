@@ -36,6 +36,7 @@ use wl_sales::{SalesOrder, WlSales};
 
 pub mod notices;
 pub mod payouts;
+pub mod stock;
 pub mod tickets;
 
 use notices::Notices;
@@ -307,6 +308,17 @@ pub async fn boot_gateway() -> World {
 /// The app booted with the delivery module `delivery`, the vertical `fnb` and
 /// the payments module `payments`.
 pub async fn boot_full(delivery: WlDelivery, fnb: Fnb, payments: WlPayments) -> World {
+    boot_all(delivery, fnb, payments, WlInventory::new()).await
+}
+
+/// The app booted with the stock module `inventory` too (the hold reminders
+/// of the 06 client, the recall notices route).
+pub async fn boot_all(
+    delivery: WlDelivery,
+    fnb: Fnb,
+    payments: WlPayments,
+    inventory: WlInventory,
+) -> World {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -330,7 +342,7 @@ pub async fn boot_full(delivery: WlDelivery, fnb: Fnb, payments: WlPayments) -> 
                 .order_acceptance_channels(&["website"])
                 .aggregator_channels(&["aggregator_a"]),
         )
-        .module(WlInventory::new())
+        .module(inventory)
         .module(fnb)
         .module(Probe)
         .module(PortalProbe(portal.clone()))
