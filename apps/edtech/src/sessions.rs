@@ -205,12 +205,15 @@ pub(crate) async fn insert_planned(
 }
 
 /// Gives the sessions of the old tutor of batch `batch_id`, from `from` on,
-/// to the new tutor. A session already moved to another tutor keeps its own.
-/// It is part of the batch's `change_tutor`.
+/// to the new tutor. A session already moved to another tutor keeps its own;
+/// a `held` or `cancelled` session is not touched. It is part of the batch's
+/// `change_tutor`: under the lock of the new tutor's calendar every slot is
+/// checked once more, so the change is all or nothing, and the sessions moved
+/// are no longer flagged (`EDU.RUL.12`).
 ///
 /// # Errors
 ///
-/// The database's errors.
+/// A 422 naming the days the new tutor is taken; the database's errors.
 pub(crate) async fn reassign_remaining(
     tx: &mut Transaction,
     batch_id: i64,
@@ -225,10 +228,16 @@ pub(crate) async fn reassign_remaining(
         .where_(Session::SESSION_DATE.gte(from))
         .get(&mut *tx)
         .await?;
-    for session in remaining
+    let moving: Vec<Session> = remaining
         .into_iter()
         .filter(|s| s.tutor_resource_id == old)
-    {
+        .collect();
+    if let Some(resource) = resource {
+        let slots: Vec<(DateTime, DateTime)> =
+            moving.iter().map(|s| (s.starts_at, s.ends_at)).collect();
+        tutors::reserve(&mut *tx, resource, &slots, Except::default()).await?;
+    }
+    for session in &moving {
         Session::query()
             .where_(Session::ID.eq(session.id))
             .update(
@@ -241,7 +250,8 @@ pub(crate) async fn reassign_remaining(
             )
             .await?;
     }
-    Ok(())
+    let ids: Vec<i64> = moving.iter().map(|s| s.id).collect();
+    crate::flags::clear(tx, &ids).await
 }
 
 /// The number of `scheduled` sessions of batch `batch_id`.
@@ -619,6 +629,9 @@ pub(crate) fn register(app: &mut Registry) {
         |event: Transitioned<Session>, state: AppState| async move {
             if event.transition == SUBMIT_ATTENDANCE || event.transition == CANCEL {
                 on_closed(&state, event.key).await?;
+            }
+            if event.transition == CHANGE_TUTOR {
+                tutors::tell_session_change(&state, event.key).await?;
             }
             Ok(())
         },

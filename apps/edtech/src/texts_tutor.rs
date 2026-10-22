@@ -18,4 +18,22 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         ":tutor has no employee record, so the :kind cannot be checked (first session date :first). Link the tutor to an employee or choose another tutor.",
     ),
     ("edtech.tutors.problem.more_dates", " and :count more"),
+    // What the students and guardians are told when the tutor changes. No
+    // reason is given.
+    (
+        "edtech.tutors.notice.batch_title",
+        "Your tutor changes from :date",
+    ),
+    (
+        "edtech.tutors.notice.batch_body",
+        "From :date the classes of :batch (:course) are taught by another tutor. The days, the times and the room do not change.",
+    ),
+    (
+        "edtech.tutors.notice.session_title",
+        "The tutor of your class on :date changes",
+    ),
+    (
+        "edtech.tutors.notice.session_body",
+        "The class :batch · :number on :date at :time is taught by another tutor. The time and the room do not change.",
+    ),
 ];

@@ -20,6 +20,7 @@ pub mod enrolment_machine;
 pub mod enrolments;
 pub mod exit;
 pub mod fees;
+pub mod flags;
 pub mod frozen;
 pub mod lapse;
 pub mod linked;

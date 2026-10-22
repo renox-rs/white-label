@@ -80,6 +80,16 @@ pub struct Session {
     pub held_at: Option<DateTime>,
     /// The user who submitted the attendance.
     pub attendance_by: Option<i64>,
+    /// Why the tutor is not available or not eligible for it (`EDU.RUL.12`);
+    /// `None` while the session is not flagged ([`crate::flags`]).
+    pub flag_reason: Option<String>,
+    /// When the session was flagged.
+    pub flagged_at: Option<DateTime>,
+    /// When the centre manager was told that it was still flagged 24 hours
+    /// before it starts.
+    pub flag_escalated_at: Option<DateTime>,
+    /// The alert (tutor and trigger) that flagged it.
+    pub flag_alert_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: SessionStatus,
     /// When the row was created.
@@ -97,6 +107,11 @@ impl Session {
     /// The reference wl-scheduling keeps with the block this session makes.
     pub fn block_reference(&self) -> String {
         self.subject().to_string()
+    }
+
+    /// Whether the session shows "tutor not available or not eligible".
+    pub fn is_flagged(&self) -> bool {
+        self.flag_reason.is_some()
     }
 
     /// Whether the session still holds its tutor and room.

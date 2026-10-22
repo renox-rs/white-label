@@ -18,14 +18,17 @@
 //!   checked on the dates of its plan.
 
 use renox::chrono::{Duration, NaiveDate};
-use renox::db::{Transaction, now};
+use renox::db::{DateTime, Transaction, now};
 use renox::prelude::*;
 use wl_kernel::documents::today;
 
 use crate::batch::{Batch, BatchStatus};
 use crate::batch_machine::{BatchInput, CHANGE_TUTOR, CHANGE_TUTOR_RUNNING};
 use crate::batches;
+use crate::course::Course;
 use crate::db::{refused, set_batch};
+use crate::enrolment::Enrolment;
+use crate::notices;
 use crate::permissions;
 use crate::session::{Session, SessionStatus};
 use crate::sessions::{self, Except};
@@ -57,6 +60,45 @@ pub async fn tutor_eligible(
     dates: &[NaiveDate],
 ) -> Result {
     crate::eligibility::check(state, tutor, batch, dates).await
+}
+
+/// Locks the calendar of the tutor `resource` for the rest of the transaction:
+/// the tutor's row of `edtech_tutor_locks` is written first, so a second change
+/// that gives them sessions waits for this one to commit (the row lock of
+/// PostgreSQL, the write lock of SQLite) and then sees its sessions.
+///
+/// # Errors
+///
+/// The database's errors.
+pub(crate) async fn lock_calendar(tx: &mut Transaction, resource: i64) -> Result {
+    renox::db::sql(
+        "INSERT INTO edtech_tutor_locks (resource_id, locked_at) VALUES (?, ?) \
+         ON CONFLICT (resource_id) DO UPDATE SET locked_at = excluded.locked_at",
+    )
+    .bind(resource)
+    .bind(now())
+    .execute(&mut *tx)
+    .await?;
+    Ok(())
+}
+
+/// Takes the calendar of the tutor `resource` for `slots`: locks it
+/// ([`lock_calendar`]) and refuses, naming the days, when the tutor teaches
+/// another `scheduled` session at one of them. All or nothing: the caller's
+/// transaction is rolled back on the refusal.
+///
+/// # Errors
+///
+/// A 422 naming the days the tutor is taken; the database's errors.
+pub(crate) async fn reserve(
+    tx: &mut Transaction,
+    resource: i64,
+    slots: &[(DateTime, DateTime)],
+    except: Except,
+) -> Result {
+    lock_calendar(&mut *tx, resource).await?;
+    let clashes = sessions::conflicts(&mut *tx, Some(resource), None, slots, except).await?;
+    sessions::no_clash(&clashes)
 }
 
 /// Records `resource` as the tutor of batch `batch_id` from `from`: the open
@@ -195,6 +237,73 @@ pub async fn change_batch_tutor(
         ..BatchInput::default()
     };
     batches::run(state, Some(by), id, name, input).await
+}
+
+/// After a batch's `change_tutor`: each student, or the guardian of a student
+/// under 18, with a seat in the batch is told once that their classes from the
+/// date are taught by another tutor. The message gives no reason and does not
+/// say which sessions moved one by one.
+///
+/// # Errors
+///
+/// The database's and the notifier's errors.
+pub async fn tell_batch_change(state: &AppState, batch_id: i64) -> Result {
+    let batch = Batch::find_or_404(&state.db, batch_id).await?;
+    let from = TutorAssignment::of_batch(&state.db, batch_id)
+        .await?
+        .into_iter()
+        .filter(|row| row.session_id.is_none())
+        .map(|row| row.valid_from)
+        .max();
+    let Some(from) = from else {
+        return Ok(());
+    };
+    let course = Course::find(&state.db, batch.course_id)
+        .await?
+        .map_or_else(String::new, |course| course.title());
+    let title = english("edtech.tutors.notice.batch_title", &[("date", &from)]);
+    let body = english(
+        "edtech.tutors.notice.batch_body",
+        &[
+            ("date", &from),
+            ("batch", &batch.number()),
+            ("course", &course),
+        ],
+    );
+    for enrolment in Enrolment::seated_in(&state.db, batch_id).await? {
+        notices::tell_family(state, &enrolment, &title, &body).await?;
+    }
+    Ok(())
+}
+
+/// After a session's `change_tutor`: each student, or guardian, with a seat in
+/// its batch is told once that the session is taught by another tutor; no
+/// reason is given.
+///
+/// # Errors
+///
+/// The database's and the notifier's errors.
+pub async fn tell_session_change(state: &AppState, session_id: i64) -> Result {
+    let session = Session::find_or_404(&state.db, session_id).await?;
+    let batch = Batch::find_or_404(&state.db, session.batch_id).await?;
+    let when = crate::sessions::time_text(session.starts_at);
+    let title = english(
+        "edtech.tutors.notice.session_title",
+        &[("date", &session.session_date)],
+    );
+    let body = english(
+        "edtech.tutors.notice.session_body",
+        &[
+            ("batch", &batch.number()),
+            ("number", &session.number),
+            ("date", &session.session_date),
+            ("time", &when),
+        ],
+    );
+    for enrolment in Enrolment::seated_in(&state.db, batch.id).await? {
+        notices::tell_family(state, &enrolment, &title, &body).await?;
+    }
+    Ok(())
 }
 
 /// The assignments of batch `batch_id`, for its page.

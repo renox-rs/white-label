@@ -21,7 +21,8 @@ use wl_kernel::documents::today;
 
 use crate::batch::{Batch, BatchStatus};
 use crate::batch_machine::{
-    BatchInput, CANCEL, COMPLETE, OPEN, START, TERMINATE, TERMINATE_ACTION, TERMINATE_APPROVED,
+    BatchInput, CANCEL, CHANGE_TUTOR, CHANGE_TUTOR_RUNNING, COMPLETE, OPEN, START, TERMINATE,
+    TERMINATE_ACTION, TERMINATE_APPROVED,
 };
 use crate::course::Course;
 use crate::db::refused;
@@ -546,6 +547,11 @@ pub(crate) fn register(app: &mut Registry) {
         };
         if let Some(kind) = kind {
             exit::finish(&state, event.key, kind).await?;
+        }
+        // A new tutor from a date: each student or guardian is told once, with
+        // no reason (BL-EDU-09).
+        if event.transition == CHANGE_TUTOR || event.transition == CHANGE_TUTOR_RUNNING {
+            tutors::tell_batch_change(&state, event.key).await?;
         }
         Ok(())
     });

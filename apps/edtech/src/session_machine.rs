@@ -37,8 +37,10 @@ use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::dubai_date;
 
+use crate::flags;
 use crate::permissions;
 use crate::session::{Session, SessionStatus};
+use crate::sessions::Except;
 use crate::texts::english;
 use crate::tutors::{self, Tutor};
 
@@ -155,7 +157,11 @@ fn reschedule() -> Transition<Session> {
                         ("session_date", &dubai_date(start)),
                     ],
                 )
-                .await
+                .await?;
+                // Moved to a date the service found the tutor can teach: the
+                // flag of `EDU.RUL.12` is resolved (the rule flags it again if
+                // the new date is still affected).
+                flags::clear(tx, &[id]).await
             })
         })
 }
@@ -175,6 +181,21 @@ fn change_tutor() -> Transition<Session> {
             let session = s.clone();
             let input = input_of(ctx);
             Box::pin(async move {
+                // Under the lock of the new tutor's calendar the slot is
+                // checked once more, so two changes cannot give them the same
+                // time (BL-EDU-09).
+                if let Some(resource) = input.tutor_resource_id {
+                    tutors::reserve(
+                        tx,
+                        resource,
+                        &[(session.starts_at, session.ends_at)],
+                        Except {
+                            batch: None,
+                            session: Some(session.id),
+                        },
+                    )
+                    .await?;
+                }
                 set(
                     tx,
                     session.id,
@@ -191,7 +212,8 @@ fn change_tutor() -> Transition<Session> {
                     };
                     tutors::record_session(tx, &session, &tutor, input.by).await?;
                 }
-                Ok(())
+                // A new tutor: the flag of `EDU.RUL.12` is resolved.
+                flags::clear(tx, &[session.id]).await
             })
         })
 }
@@ -255,7 +277,10 @@ fn cancel(name: &'static str, system: bool) -> Transition<Session> {
         .effect(|s: &Session, ctx, tx| {
             let id = s.id;
             let reason = ctx.reason().map(str::to_owned);
-            Box::pin(async move { set(tx, id, &[("cancel_reason", &reason)]).await })
+            Box::pin(async move {
+                set(tx, id, &[("cancel_reason", &reason)]).await?;
+                flags::clear(tx, &[id]).await
+            })
         })
 }
 
