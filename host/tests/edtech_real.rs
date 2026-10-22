@@ -361,3 +361,320 @@ async fn edu_01_a_late_payment_is_refunded_by_wl_payments_and_the_new_enrolment_
     }
     let _ = PartyId(sara.0);
 }
+
+// ---- #442: the centre permit and the course approval, the real guard ----------------------------
+
+/// The message of a refusal.
+fn refusal(error: &Error) -> String {
+    match error {
+        Error::Status(status, message) => {
+            assert_eq!(*status, StatusCode::UNPROCESSABLE_ENTITY, "{message}");
+            message.clone()
+        }
+        other => panic!("not a refusal: {other:?}"),
+    }
+}
+
+/// The course ILT-A that the regulator must approve.
+async fn approved_course(w: &World, coordinator: &AuthUser) -> Course {
+    let mut new = NewCourse::new("ILT-A", "IELTS approved", "English language", 40).level("B2");
+    new.approval_required = true;
+    new.approval_no = Some("KHDA-2026-77".to_owned());
+    courses::create(w.state(), coordinator, new).await.unwrap()
+}
+
+/// A planned batch of `course` from the next Monday after `day(7)`, with a
+/// tutor and a room of their own.
+async fn planned_of(
+    w: &World,
+    coordinator: &AuthUser,
+    course: &Course,
+    name: &str,
+    tutor: (i64, Option<i64>),
+) -> Batch {
+    let mut room =
+        wl_scheduling::Resource::new(&format!("Room {name}"), wl_scheduling::ResourceType::Room);
+    room.capacity = 14;
+    room.save(w.db()).await.unwrap();
+    let first = monday_from(day(7));
+    batches::create(
+        w.state(),
+        coordinator,
+        NewBatch::new(
+            course.id,
+            12,
+            (first, first + TimeDelta::days(27)),
+            &[1, 3],
+            "18:00",
+            90,
+        )
+        .tutor(tutor.0, tutor.1)
+        .room(room.id, Some(14)),
+    )
+    .await
+    .expect("the batch is planned")
+}
+
+/// A person resource for a tutor.
+async fn tutor_resource(w: &World, name: &str, employee: Option<i64>) -> wl_scheduling::Resource {
+    let mut resource = wl_scheduling::Resource::new(name, wl_scheduling::ResourceType::Person);
+    resource.employee_id = employee;
+    resource.save(w.db()).await.unwrap();
+    resource
+}
+
+/// #442 points 1 and 2 through the real wl-documents: the approval ends before
+/// the last session, so `batches::open` is refused naming the approval and the
+/// day, with no override offered, by the service and by the page; with an
+/// approval that covers the last session (the very last day is enough) the same
+/// batch opens.
+#[renox::test]
+async fn edu_07_open_follows_the_course_approval_in_the_real_guard() {
+    let w = boot().await;
+    let (coordinator_user, coordinator) = w.staff("Amal", ACADEMIC_COORDINATOR).await;
+    w.permit_until(day(400)).await;
+    let course = approved_course(&w, &coordinator).await;
+    let tutor = tutor_resource(&w, "Layla", None).await;
+    let batch = planned_of(&w, &coordinator, &course, "A", (tutor.id, None)).await;
+    let last = batches::plan_for(w.state(), &batch)
+        .unwrap()
+        .last()
+        .expect("sessions")
+        .date;
+    let approval = record_document(&w.app, "course_approval", course.subject(), day(20)).await;
+
+    let error = batches::open(w.state(), &coordinator, batch.id)
+        .await
+        .unwrap_err();
+    let message = refusal(&error);
+    assert!(message.contains("Course approval"), "{message}");
+    assert!(message.contains(&day(20).to_string()), "{message}");
+    assert!(!message.contains("Centre permit"), "{message}");
+    assert_eq!(
+        Batch::find_or_404(w.db(), batch.id).await.unwrap().status,
+        edtech::BatchStatus::Planned
+    );
+    w.app.acting_as(&coordinator_user);
+    let page = w
+        .app
+        .htmx()
+        .post(&format!("/edtech/batches/{}/open", batch.id), &[("x", "y")])
+        .await;
+    page.assert_status(422);
+    assert!(page.text().contains("Course approval"));
+
+    // The approval runs to the very last session: the batch opens.
+    wl_documents::Document::query()
+        .where_(wl_documents::Document::ID.eq(approval.id))
+        .update(w.db(), &[("expiry_date", &Some(last))])
+        .await
+        .unwrap();
+    let opened = batches::open(w.state(), &coordinator, batch.id)
+        .await
+        .unwrap();
+    assert_eq!(opened.status, edtech::BatchStatus::Open);
+}
+
+/// #442 point 3 through the real guard: the centre permit expired, so
+/// `certificates::issue` is refused naming the permit although the certificate
+/// states no approval; no number is spent; after the renewal it is issued.
+#[renox::test]
+async fn edu_07_issue_follows_the_centre_permit_in_the_real_guard() {
+    let w = boot().await;
+    let (_, coordinator) = w.staff("Amal", ACADEMIC_COORDINATOR).await;
+    let (_, dina) = w.staff("Dina", COUNSELLOR).await;
+    let permit = w.permit_until(day(400)).await;
+    let course = w.course(&coordinator).await;
+    let tutor = tutor_resource(&w, "Layla", None).await;
+    let batch = planned_of(&w, &coordinator, &course, "A", (tutor.id, None)).await;
+    batches::open(w.state(), &coordinator, batch.id)
+        .await
+        .unwrap();
+    let sara = tenant(&w.app, "Sara Ali").await;
+    let e = enrolments::create(
+        w.state(),
+        &dina,
+        NewEnrolment::course(sara.0, batch.id, 252_000).terms_accepted(),
+    )
+    .await
+    .unwrap();
+    enrolments::activate(w.state(), Some(&dina), e.id)
+        .await
+        .unwrap();
+    enrolments::complete(w.state(), e.id).await.unwrap();
+    let draft = edtech::Certificate::of_enrolment(w.db(), e.id)
+        .await
+        .unwrap()
+        .into_iter()
+        .next()
+        .expect("a draft certificate");
+    assert!(!draft.states_approval);
+
+    wl_documents::Document::query()
+        .where_(wl_documents::Document::ID.eq(permit.id))
+        .update(w.db(), &[("expiry_date", &Some(day(-5)))])
+        .await
+        .unwrap();
+    let error = edtech::certificates::issue(w.state(), &coordinator, draft.id)
+        .await
+        .unwrap_err();
+    let message = refusal(&error);
+    assert!(message.contains("Centre permit"), "{message}");
+    assert!(message.contains(&day(-5).to_string()), "{message}");
+    let still = edtech::Certificate::find_or_404(w.db(), draft.id)
+        .await
+        .unwrap();
+    assert_eq!(still.status, edtech::CertificateStatus::Draft);
+    assert!(still.number.is_none(), "no number is spent");
+
+    wl_documents::Document::query()
+        .where_(wl_documents::Document::ID.eq(permit.id))
+        .update(w.db(), &[("expiry_date", &Some(day(400)))])
+        .await
+        .unwrap();
+    let issued = edtech::certificates::issue(w.state(), &coordinator, draft.id)
+        .await
+        .unwrap();
+    assert_eq!(issued.status, edtech::CertificateStatus::Issued);
+    assert_eq!(issued.number.as_deref(), Some("CRT-0001"));
+}
+
+// ---- #443: the tutor's documents, the real guard ------------------------------------------------
+
+/// A tutor who is a wl-hr employee, active, and the person resource behind them.
+async fn employed(w: &World, name: &str) -> (wl_scheduling::Resource, i64) {
+    let party = tenant(&w.app, name).await;
+    let hired = wl_hr::employee::create(
+        w.state(),
+        wl_hr::employee::NewEmployee::new(party, "tutor", day(-400))
+            .status(wl_hr::employee::EmployeeStatus::Active),
+    )
+    .await
+    .expect("the tutor is hired");
+    (tutor_resource(w, name, Some(hired.id)).await, hired.id)
+}
+
+/// #443 points 1, 2 and 4 with real documents: a police clearance that ends on
+/// the Tuesday of the second week. `open` of a batch for minors is refused
+/// naming the clearance and the first failing date (the Wednesday after), by
+/// the service and the page; the same tutor opens an adult batch; a renewal
+/// that covers the last date lets the minors' batch open; then `reschedule` to a
+/// date beyond a later-ending clearance is refused and to an earlier date moves.
+#[renox::test]
+async fn edu_08_the_clearance_decides_open_and_reschedule_in_the_real_guard() {
+    let w = boot().await;
+    let (coordinator_user, coordinator) = w.staff("Amal", ACADEMIC_COORDINATOR).await;
+    w.permit_until(day(400)).await;
+    let (layla, employee) = employed(&w, "Layla Hassan").await;
+    let monday = monday_from(day(7));
+    let clearance = record_document(
+        &w.app,
+        "police_clearance",
+        wl_kernel::workforce::EmployeeId(employee).subject(),
+        monday + TimeDelta::days(8),
+    )
+    .await;
+    let kids = courses::create(
+        w.state(),
+        &coordinator,
+        NewCourse::new("KIDS-1", "Kids mathematics", "Mathematics", 30).for_minors(),
+    )
+    .await
+    .unwrap();
+    let minors = planned_of(&w, &coordinator, &kids, "K", (layla.id, Some(employee))).await;
+
+    let error = batches::open(w.state(), &coordinator, minors.id)
+        .await
+        .unwrap_err();
+    let message = refusal(&error);
+    assert!(
+        message.to_lowercase().contains("police clearance"),
+        "{message}"
+    );
+    let first_failing = monday + TimeDelta::days(9);
+    assert!(message.contains(&first_failing.to_string()), "{message}");
+    assert!(
+        message.contains(&(monday + TimeDelta::days(23)).to_string()),
+        "every failing date is listed: {message}"
+    );
+    assert!(message.contains("Layla Hassan"), "{message}");
+    assert!(!message.to_lowercase().contains("minor"), "{message}");
+    assert_eq!(
+        Batch::find_or_404(w.db(), minors.id).await.unwrap().status,
+        edtech::BatchStatus::Planned
+    );
+    w.app.acting_as(&coordinator_user);
+    let page = w
+        .app
+        .htmx()
+        .post(
+            &format!("/edtech/batches/{}/open", minors.id),
+            &[("x", "y")],
+        )
+        .await;
+    page.assert_status(422);
+    assert!(page.text().to_lowercase().contains("police clearance"));
+
+    // A tutor with no clearance on record teaches an adult course: none is asked.
+    let (omar, omar_employee) = employed(&w, "Omar Nasser").await;
+    let adult_course = w.course(&coordinator).await;
+    let adult = planned_of(
+        &w,
+        &coordinator,
+        &adult_course,
+        "B",
+        (omar.id, Some(omar_employee)),
+    )
+    .await;
+    assert_eq!(
+        batches::open(w.state(), &coordinator, adult.id)
+            .await
+            .unwrap()
+            .status,
+        edtech::BatchStatus::Open
+    );
+
+    // The renewal covers the last session of the minors' batch.
+    wl_documents::Document::query()
+        .where_(wl_documents::Document::ID.eq(clearance.id))
+        .update(
+            w.db(),
+            &[("expiry_date", &Some(monday + TimeDelta::days(27)))],
+        )
+        .await
+        .unwrap();
+    let opened = batches::open(w.state(), &coordinator, minors.id)
+        .await
+        .unwrap();
+    assert_eq!(opened.status, edtech::BatchStatus::Open);
+
+    // The clearance now ends on the Tuesday of the second week: a session moves
+    // to a day it covers and not beyond it.
+    wl_documents::Document::query()
+        .where_(wl_documents::Document::ID.eq(clearance.id))
+        .update(
+            w.db(),
+            &[("expiry_date", &Some(monday + TimeDelta::days(8)))],
+        )
+        .await
+        .unwrap();
+    let session = edtech::Session::of_batch(w.db(), minors.id)
+        .await
+        .unwrap()
+        .remove(0);
+    let late = monday + TimeDelta::days(11);
+    let error = edtech::sessions::reschedule(w.state(), &coordinator, session.id, late, "18:00")
+        .await
+        .unwrap_err();
+    let message = refusal(&error);
+    assert!(
+        message.to_lowercase().contains("police clearance"),
+        "{message}"
+    );
+    assert!(message.contains(&late.to_string()), "{message}");
+    let early = monday + TimeDelta::days(4);
+    let moved = edtech::sessions::reschedule(w.state(), &coordinator, session.id, early, "18:00")
+        .await
+        .unwrap();
+    assert_eq!(moved.session_date, early);
+}
