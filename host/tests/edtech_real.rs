@@ -3052,3 +3052,63 @@ async fn edu_14_a_tutor_marks_and_corrects_only_the_sessions_of_their_own_batch(
     .expect("the coordinator corrects any session");
     assert_eq!(mark_row(&w, &session, &e).await.mark, Mark::Late);
 }
+
+// ---- #452: booking a one-to-one with a tutor, against the real wl-documents ----------------------
+
+/// #452 point 3, run with the real wl-documents and the host's service types:
+/// a one-to-one booking with a tutor who has no police clearance on record is
+/// refused naming the clearance; once the clearance is accepted for a date that
+/// covers the lesson the same booking is made. (The clearance is asked of every
+/// tutor, not only for a minor: the eligibility query names no student, see the
+/// deferred line.)
+#[renox::test]
+async fn edu_17_a_one_to_one_booking_needs_the_tutors_clearance_in_the_real_guard() {
+    use wl_scheduling::{AvailabilityRule, ServiceType, resource, service};
+    let w = boot().await;
+    let (layla, employee) = employed(&w, "Layla Hassan").await;
+    let service_type = ServiceType::query()
+        .where_(ServiceType::CODE.eq(edtech::seed::ONE_TO_ONE_SERVICE))
+        .first(w.db())
+        .await
+        .unwrap()
+        .expect("the host seeds the one-to-one service type");
+    resource::offer(w.db(), service_type.id, layla.id).await.unwrap();
+    for weekday in 1..=7 {
+        AvailabilityRule::new(layla.id, weekday, 0, 1440)
+            .save(w.db())
+            .await
+            .unwrap();
+    }
+    let parent = tenant(&w.app, "Huda Khan").await;
+    let lesson = day(8);
+    let book = |w: &World| {
+        let state = w.state().clone();
+        let (service_id, tutor_id) = (service_type.id, layla.id);
+        async move {
+            match service::book(
+                &state,
+                wl_scheduling::NewBooking::new(parent, service_id, &[tutor_id], local(lesson, 10, 0)),
+                wl_scheduling::Actor::staff(1),
+                renox::db::now(),
+            )
+            .await
+            {
+                Ok(_) => "booked".to_owned(),
+                Err(refusal) => format!("{refusal:?}"),
+            }
+        }
+    };
+
+    let refused = book(&w).await;
+    assert_ne!(refused, "booked");
+    assert!(refused.to_lowercase().contains("police clearance"), "{refused}");
+
+    record_document(
+        &w.app,
+        "police_clearance",
+        wl_kernel::workforce::EmployeeId(employee).subject(),
+        day(365),
+    )
+    .await;
+    assert_eq!(book(&w).await, "booked");
+}
