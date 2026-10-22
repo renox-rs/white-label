@@ -246,12 +246,39 @@ async fn a_document_ending_in_twenty_days_counts_and_in_forty_does_not() {
         .unwrap();
     let html = page(&app, HR, "/dashboard").await;
     assert_eq!(counted(&html, LABELS[3]), others + 1);
+    // The tile opens the workers whose document ends soon, with the document.
+    let link = linked(&html, LABELS[3]).expect("the document tile has a link");
+    assert_eq!(link, "/hr/employees?documents=expiring");
+    let worker = text(
+        &app,
+        &format!(
+            "select p.legal_name_en from wl_documents_documents d join wl_hr_employees e on e.id = d.subject_id \
+             join wl_parties_parties p on p.id = e.party_id where d.id = {id}"
+        ),
+    )
+    .await;
+    let list = page(&app, HR, &link).await;
+    says(
+        &list,
+        &[
+            &worker,
+            "Only the workers with a document that ends within 30 days",
+            "Documents ending",
+            "Show every worker",
+        ],
+    );
+    let everyone = page(&app, HR, "/hr/employees").await;
+    assert!(!everyone.contains("Documents ending"), "the plain list");
     renox::db::sql(set(day(40).to_string()))
         .execute(app.db())
         .await
         .unwrap();
     let html = page(&app, HR, "/dashboard").await;
     assert_eq!(counted(&html, LABELS[3]), others);
+    if others == 0 {
+        let list = page(&app, HR, "/hr/employees?documents=expiring").await;
+        says(&list, &["No worker has a document ending within 30 days"]);
+    }
 }
 
 /// AC6: an account manager scoped to one client counts that client only.

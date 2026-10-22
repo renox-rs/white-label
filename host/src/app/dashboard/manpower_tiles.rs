@@ -178,7 +178,7 @@ pub(super) async fn figures(state: &AppState, user: &AuthUser) -> Result<Figures
             expiring as u64,
             "dashboard.tiles.documents_expiring_one",
             "dashboard.tiles.documents_expiring_many",
-            "/hr/employees",
+            "/hr/employees?documents=expiring",
             "id-card",
             Some("sand"),
         );

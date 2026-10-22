@@ -19,6 +19,16 @@ const TEXTS: &[(&str, &str)] = &[
         "Staff records with their onboarding.",
     ),
     ("wl_hr.employees.empty", "No employees yet"),
+    (
+        "wl_hr.employees.expiring_only",
+        "Only the workers with a document that ends within 30 days.",
+    ),
+    ("wl_hr.employees.show_all", "Show every worker"),
+    ("wl_hr.employees.documents_ending", "Documents ending"),
+    (
+        "wl_hr.employees.expiring_empty",
+        "No worker has a document ending within 30 days.",
+    ),
     ("wl_hr.employees.name", "Employee"),
     ("wl_hr.employees.number", "Number"),
     ("wl_hr.employees.job_role", "Job role"),

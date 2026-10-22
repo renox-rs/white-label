@@ -165,6 +165,21 @@ pub struct EmployeeRow {
     pub status_kind: &'static str,
     /// Required steps done or waived of all required steps, e.g. `3/5`.
     pub progress: String,
+    /// On the list narrowed to documents ending soon: *Residence visa 05 Nov
+    /// 2026*, one per document; empty otherwise.
+    pub documents_ending: String,
+}
+
+/// The days ahead the list `?documents=expiring` looks (the dashboard tile
+/// *Document expiring within 30 days* opens it).
+const EXPIRING_DAYS: u64 = 30;
+
+/// The query of the list.
+#[derive(Deserialize, Debug, Default)]
+pub struct IndexQuery {
+    /// `expiring`: only the workers with a document that ends within 30 days.
+    #[serde(default)]
+    pub documents: Option<String>,
 }
 
 /// What the list needs.
@@ -173,6 +188,8 @@ pub struct EmployeeRow {
 pub(crate) struct IndexPage {
     tx: Texts,
     employees: Vec<EmployeeRow>,
+    /// Set when the list is narrowed to the workers with a document ending soon.
+    expiring_only: bool,
 }
 
 /// The progress of the employee's `in_progress` onboardings: required steps
@@ -199,14 +216,47 @@ async fn progress_of(db: &Db, employee: i64) -> Result<String> {
     })
 }
 
-/// `GET /hr/employees`.
-async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
+/// `GET /hr/employees`; `?documents=expiring` narrows it to the workers with
+/// a document that ends within 30 days (for those who may see documents).
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Query(query): Query<IndexQuery>,
+) -> Result<View> {
+    let expiring_only = query.documents.as_deref() == Some("expiring")
+        && user.has_permission_anywhere("documents.view");
+    let day = today();
+    let until = day + renox::chrono::Days::new(EXPIRING_DAYS);
     let mut employees = Vec::new();
     for employee in Employee::query()
         .order_by_desc(Employee::ID)
         .get(&state.db)
         .await?
     {
+        let mut ending = Vec::new();
+        if expiring_only {
+            let subject = wl_kernel::workforce::EmployeeId(employee.id).subject();
+            for line in wl_kernel::documents::guard(&state)
+                .documents_of(&state.db, &subject, day, &lang.locale)
+                .await?
+            {
+                if let Some(valid_to) = line
+                    .valid_to
+                    .filter(|valid_to| *valid_to >= day && *valid_to <= until)
+                    .filter(|_| line.validity != "pending" && line.validity != "rejected")
+                {
+                    ending.push(format!(
+                        "{} {}",
+                        line.kind,
+                        super::payroll::date_text(valid_to)
+                    ));
+                }
+            }
+            if ending.is_empty() {
+                continue;
+            }
+        }
         employees.push(EmployeeRow {
             id: employee.id,
             name: employee_name(&state, &lang, &employee).await,
@@ -220,11 +270,13 @@ async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
             ),
             status_kind: employee_kind(employee.status),
             progress: progress_of(&state.db, employee.id).await?,
+            documents_ending: ending.join(", "),
         });
     }
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         employees,
+        expiring_only,
     }))
 }
 
@@ -668,6 +720,7 @@ async fn show(
         ),
         status_kind: employee_kind(employee.status),
         progress: progress_of(&state.db, employee.id).await?,
+        documents_ending: String::new(),
     };
     let pending_exit = match exits::pending_for(&state.db, &employee).await? {
         Some(request) => Some(PendingExitView {
