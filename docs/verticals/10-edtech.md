@@ -722,6 +722,15 @@ the package after the commit, once per attendance row; when none is left the att
 a correction are saved and the counsellor has one task to sell credits, and the credit is
 taken when a package is sold. `EDU.RUL.02` counts absences (excused or not) in a row.
 
+**Correcting the attendance in the app.** A correction changes the marks of one session in
+one step, with one reason. The credit of each corrected mark is priced again by the policy
+stored with the enrolment and only the difference moves; the attendance of a course is the
+share of the sessions held in which the student was present or late (an excused absence
+counts against it) and a certificate asks for at least 80% (`EDU.ACL.06`). A certificate that
+no longer meets the criteria is never changed by the correction: the coordinator gets one
+task to `reissue` or `revoke` it. A tutor's pay follows the sessions taught, which a mark
+does not change, so a correction of marks moves no timesheet entry.
+
 **Notification types.** Each type 10 registers names its group (the row of the wl-notify
 §5.4 default table) in `register_type`, which sets its give-up reaction (`NTF.RUL.01`).
 10 marks no type statutory.
