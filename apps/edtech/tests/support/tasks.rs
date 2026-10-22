@@ -43,9 +43,15 @@ impl Opened {
 
 /// The tickets other modules open.
 #[derive(Clone, Default)]
-pub struct Tasks(Arc<Mutex<Vec<Opened>>>);
+pub struct Tasks(Arc<Mutex<Vec<Opened>>>, Arc<Mutex<Option<String>>>);
 
 impl Tasks {
+    /// Opening a ticket whose source key starts with `prefix` fails from now on
+    /// (`None`: it works again).
+    pub fn fail_for(&self, prefix: Option<&str>) {
+        *self.1.lock().unwrap() = prefix.map(str::to_owned);
+    }
+
     /// Every ticket opened, oldest first.
     pub fn all(&self) -> Vec<Opened> {
         self.0.lock().unwrap().clone()
@@ -92,6 +98,14 @@ impl TaskCreator for Tasks {
         _state: &'a AppState,
         ticket: OpenTicket,
     ) -> TicketFuture<'a, Option<TicketRef>> {
+        let failing = self.1.lock().unwrap().clone();
+        if let (Some(prefix), Some(key)) = (failing, ticket.source_key.as_deref())
+            && key.starts_with(&prefix)
+        {
+            return Box::pin(async {
+                Err(Error::Internal(renox::anyhow::anyhow!("ticketing is down")))
+            });
+        }
         let mut all = self.0.lock().unwrap();
         let id = i64::try_from(all.len()).unwrap() + 1;
         all.push(Opened {
