@@ -623,3 +623,19 @@ async fn the_portal_sections_list_the_companys_rows() {
         no_raw_words(&html);
     }
 }
+
+/// The account manager holds roles scoped to his clients only: he is staff,
+/// not a portal person, so his sidebar has the approvals and the review
+/// tasks and not the client's own pages.
+#[renox::test]
+async fn the_account_manager_is_not_taken_for_a_portal_person() {
+    let app = demo().await;
+    let html = page(&app, AMAL, "/dashboard").await;
+    says(&html, &["href=\"/approvals\"", "Review tasks"]);
+    assert!(!html.contains("href=\"/portal/manpower/requests\""));
+    assert!(!html.contains("href=\"/portal/manpower/timesheets\""));
+    // The client approver keeps his own links and has no staff ones.
+    let carl = page(&app, CARL, "/dashboard").await;
+    says(&carl, &["href=\"/portal/manpower/requests\""]);
+    assert!(!carl.contains("Review tasks"));
+}

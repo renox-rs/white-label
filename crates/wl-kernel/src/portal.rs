@@ -143,10 +143,16 @@ pub fn portal_users(state: &AppState) -> Arc<dyn PortalUsers> {
 /// `client_approver`). The sidebar uses it to leave out the links that are
 /// shown to every signed-in person but belong to staff (the review tasks, the
 /// broadcasts).
+///
+/// A person with no role at all (their roles are scoped to a record, such as
+/// an account manager's to a client) is staff, not a portal person: one
+/// `client_*` role is needed.
 pub fn is_portal_only(user: &AuthUser) -> bool {
-    user.role_names()
-        .iter()
-        .all(|role| role == "member" || role.starts_with("client_"))
+    let roles = user.role_names();
+    roles.iter().any(|role| role.starts_with("client_"))
+        && roles
+            .iter()
+            .all(|role| role == "member" || role.starts_with("client_"))
 }
 
 #[cfg(test)]
