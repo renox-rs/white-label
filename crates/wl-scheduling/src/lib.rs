@@ -10,6 +10,7 @@ pub mod deposit;
 pub mod eligibility;
 pub mod events;
 pub mod links;
+pub mod names;
 pub mod notices;
 pub mod pages;
 pub mod prepaid;
@@ -295,6 +296,8 @@ impl Module for WlScheduling {
         });
         // wl-payments asks whether a booking still waits for its money.
         wl_kernel::payments::provide_prepaid_subjects(app, prepaid::PrepaidBookings);
+        // A vertical shows a booking's service by its name, not its code.
+        wl_kernel::scheduling::provide_service_names(app, names::ServiceTypeNames);
         // In the app group of the staff sidebar; the label is the app's
         // `nav.bookings` text.
         app.nav(

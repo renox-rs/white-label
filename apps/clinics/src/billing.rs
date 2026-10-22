@@ -32,6 +32,8 @@
 //!    patient share first and the remainder is refunded, or all of it is
 //!    refunded when the desk chose so. It is never forfeited.
 
+use std::collections::BTreeMap;
+
 use renox::db::now;
 use renox::prelude::*;
 use wl_kernel::invoicing::{
@@ -51,6 +53,7 @@ use crate::charges;
 use crate::claim::Claim;
 use crate::claims;
 use crate::db::refused;
+use crate::service_names;
 use crate::texts::english;
 use crate::visit::Visit;
 
@@ -123,9 +126,14 @@ fn vat(line: &ChargeLine) -> VatCategory {
     }
 }
 
-/// `kind code x units`, for an invoice or a claim.
-fn describe(line: &ChargeLine) -> String {
-    format!("{} x {}", line.code, line.units)
+/// `name x units`, for an invoice or a claim: a service by its name in
+/// `names` (the code when it has none), a consumable by its code.
+fn describe(line: &ChargeLine, names: &BTreeMap<String, String>) -> String {
+    let what = match line.kind {
+        ChargeKind::Service => service_names::name_of(names, &line.code),
+        ChargeKind::Consumable => line.code.clone(),
+    };
+    format!("{what} x {}", line.units)
 }
 
 /// Bills the visit `id`. A visit billed already, or being billed by another
@@ -216,6 +224,8 @@ async fn run(state: &AppState, id: i64, basis: Basis) -> Result<Billed> {
     pay_with_packages(state, &visit, &lines).await?;
     let visit = Visit::find_or_404(&state.db, id).await?;
     let quote = charges::quote(state, &visit).await?;
+    // Invoices and claims name a service in English, as the clinic's books are.
+    let names = service_names::names(state, "en").await?;
     for line in &quote.lines {
         ChargeLine::query()
             .where_(ChargeLine::ID.eq(line.id))
@@ -257,13 +267,16 @@ async fn run(state: &AppState, id: i64, basis: Basis) -> Result<Billed> {
                 (
                     line.units * 1000,
                     line.patient_share / line.units,
-                    describe(line),
+                    describe(line, &names),
                 )
             } else {
                 (
                     1000,
                     line.patient_share,
-                    english("clinics.billing.share_line", &[("line", &describe(line))]),
+                    english(
+                        "clinics.billing.share_line",
+                        &[("line", &describe(line, &names))],
+                    ),
                 )
             };
             let draft_line = DraftLine::new(&text, price, vat(line))
@@ -335,6 +348,7 @@ pub(crate) async fn payer_side(
         .map(PartyId)
         .ok_or_else(|| refused(english("clinics.billing.problem.no_patient", &[])))?;
     if quote.payer_total > 0 && visit.payer_bill_id.is_none() {
+        let names = service_names::names(state, "en").await?;
         let agreement = quote
             .contract
             .as_ref()
@@ -347,7 +361,8 @@ pub(crate) async fn payer_side(
         }
         for line in quote.lines.iter().filter(|l| l.payer_share > 0) {
             request = request.line(
-                NewPayerBillLine::new(&describe(line), line.payer_share).vat_category(vat(line)),
+                NewPayerBillLine::new(&describe(line, &names), line.payer_share)
+                    .vat_category(vat(line)),
             );
         }
         let made: PayerBillId = payer_bills(state).create(state, request, None).await?;
@@ -527,7 +542,14 @@ mod tests {
             units: 2,
             ..ChargeLine::default()
         };
-        assert_eq!(describe(&line), "laser x 2");
+        assert_eq!(describe(&line, &BTreeMap::new()), "laser x 2");
+        let names = BTreeMap::from([("laser".to_owned(), "Laser treatment".to_owned())]);
+        assert_eq!(describe(&line, &names), "Laser treatment x 2");
+        let consumable = ChargeLine {
+            kind: ChargeKind::Consumable,
+            ..line.clone()
+        };
+        assert_eq!(describe(&consumable, &names), "laser x 2");
         assert_eq!(vat(&line), VatCategory::ZeroRated);
         let standard = ChargeLine {
             vat_standard: true,

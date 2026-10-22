@@ -21,6 +21,7 @@ use crate::contract::{PayerContract, PayerTariff};
 use crate::contracts::{self, NewContract};
 use crate::money_text;
 use crate::permissions;
+use crate::service_names;
 use crate::texts;
 
 /// The routes of the pages.
@@ -97,6 +98,7 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .get(&state.db)
         .await?;
     let dash = text(&lang, "none");
+    let service_names = service_names::names(&state, &lang.locale).await?;
     let mut rows = Vec::with_capacity(all.len());
     let mut contract_options = Vec::with_capacity(all.len());
     for c in &all {
@@ -105,12 +107,13 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             .await?
             .iter()
             .map(|t| {
+                let what = service_names::name_of(&service_names, &t.service_code);
                 if !t.covered {
-                    format!("{} {}", t.service_code, text(&lang, "contract.covered_no"))
+                    format!("{what} {}", text(&lang, "contract.covered_no"))
                 } else {
                     match t.price {
-                        Some(price) => format!("{} {}", t.service_code, money_text(price)),
-                        None => t.service_code.clone(),
+                        Some(price) => format!("{what} {}", money_text(price)),
+                        None => what,
                     }
                 }
             })

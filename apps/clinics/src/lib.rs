@@ -41,6 +41,7 @@ pub mod reasons;
 pub mod recall_notice;
 pub mod recalls;
 pub mod seed;
+pub mod service_names;
 pub mod split;
 mod texts;
 pub mod visit;

@@ -307,3 +307,45 @@ async fn every_login_of_the_demo_clinic_opens_its_pages() {
         "pages that did not answer 200: {refused:#?}"
     );
 }
+
+/// A service shows by its name, not by its code, on the appointments, the
+/// visit, the claim and the payer's contract (`dental_checkup` reads *Dental
+/// check-up*), and the history of a visit starts with its check-in.
+#[renox::test]
+async fn the_pages_name_a_service_in_words() {
+    let app = booted().await;
+    host::clinics_demo::seed(app.kernel()).await.unwrap();
+    let admin = User::find_by_email(app.db(), "admin@palmgrove.example")
+        .await
+        .unwrap()
+        .expect("the demo administrator");
+    app.acting_as(&admin);
+    let visit = count(&app, "select min(id) from clinics_visits").await;
+    let claim = count(&app, "select min(id) from clinics_claims").await;
+    let codes = [
+        "dental_checkup",
+        "dental_xray",
+        "follow_up",
+        "physio_session",
+    ];
+    for path in [
+        "/clinics/appointments".to_owned(),
+        "/clinics/contracts".to_owned(),
+        format!("/clinics/visits/{visit}"),
+        format!("/clinics/claims/{claim}"),
+    ] {
+        let page = app.get(&path).await;
+        page.assert_ok();
+        for code in codes {
+            page.assert_dont_see(code);
+        }
+    }
+    app.get("/clinics/appointments")
+        .await
+        .assert_see("Dental check-up")
+        .assert_see("Follow-up visit");
+    app.get(&format!("/clinics/visits/{visit}"))
+        .await
+        .assert_see("Checked in")
+        .assert_dont_see("clinics.visits.transition");
+}

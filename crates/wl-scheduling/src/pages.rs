@@ -190,7 +190,7 @@ async fn row_of(state: &AppState, lang: &Lang, booking: &Booking) -> Result<Book
         id: booking.id,
         number: booking.number.clone(),
         party: party_name(state, lang, booking.party()).await,
-        service: service.map_or_else(String::new, |s| s.name_en),
+        service: service.map_or_else(String::new, |s| crate::names::name_in(&s, &lang.locale)),
         when: dubai_text(booking.starts_at),
         resources: resource_names(state, booking).await?,
         status: status_text(lang, booking.status),
