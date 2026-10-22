@@ -232,6 +232,9 @@ async fn run(state: AppState, forced: bool) -> Result {
     adopt_confirmed_orders(&state).await?;
     if let Some(cashier) = cashier {
         wl_payments::cash_till::demo(&state, cashier, today()).await?;
+        // A real till session, closed AED 35.00 short: its closing made the
+        // cash handover of the shortage (BL-PAY-19).
+        wl_sales::seed::demo_till_sessions(&state, cashier, today()).await?;
     }
     // The channels of the two kitchens (BL-FNB-14).
     let channels = fnb::seed::demo_channels(db).await?;
@@ -1661,7 +1664,7 @@ fn paper_ask(
 
 /// The outage and closing stories (BL-FNB-14, BL-FNB-15):
 ///
-/// - **Marina Kitchen** lost its devices 12 minutes ago: its two brands show
+/// - **Marina Kitchen** lost its devices 75 minutes ago: its two brands show
 ///   temporarily closed (Habibi Bowls stays open at Sharjah), the managers have
 ///   the notice and the kitchen manager the task, and a paper order of 50
 ///   minutes ago is entered with the late-entry flag;
@@ -1793,8 +1796,8 @@ async fn outage_and_closings(
     }
     made += 1;
 
-    // Marina now: devices silent 12 minutes ago, channels paused, a paper order.
-    let silent_since = now - TimeDelta::minutes(12);
+    // Marina now: devices silent 75 minutes ago, channels paused, a paper order.
+    let silent_since = now - TimeDelta::minutes(75);
     fnb::outage::open_by_devices(state, &marina, silent_since).await?;
     let before = now - TimeDelta::minutes(50);
     paper_order::enter_as(

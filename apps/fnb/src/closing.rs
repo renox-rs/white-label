@@ -67,7 +67,7 @@ pub enum ClosingStatus {
 #[model(
     table = "fnb_daily_closings",
     state_machine,
-    unique(outlet_id, business_date),
+    index(outlet_id),
     index(status)
 )]
 pub struct DailyClosing {
