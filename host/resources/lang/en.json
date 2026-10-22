@@ -46,6 +46,8 @@
     "stock_holds": "Stock holds",
     "pending_issues": "Pending issues",
     "recalls": "Recalls",
+    "my_leave": "My leave",
+    "leave_queue": "Leave to decide",
     "projects": "Projects",
     "contracts": "Client contracts",
     "requests": "Manpower requests",

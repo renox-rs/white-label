@@ -3,7 +3,7 @@
 
 mod support;
 
-use host::roles::{CLINIC_MANAGER, MEMBER, OWNER, RECEPTIONIST, STOREKEEPER};
+use host::roles::{CLINIC_MANAGER, MEMBER, NURSE, OWNER, RECEPTIONIST, STOREKEEPER};
 use support::{clinics_booted, person};
 
 /// The receptionist books through the picker and works the waiting list, and
@@ -104,4 +104,34 @@ async fn the_clinic_manager_follows_the_recalls_and_the_receptionist_does_not() 
         .await
         .assert_ok()
         .assert_dont_see(">Recalls<");
+}
+
+/// Staff ask for their own leave (the sidebar links *My leave*); the clinic
+/// manager also decides it (*Leave to decide*), the nurse does not.
+#[renox::test]
+async fn staff_ask_for_leave_and_the_clinic_manager_decides_it() {
+    let app = clinics_booted().await;
+    let grace = person(&app, "Grace", NURSE).await;
+    let mona = person(&app, "Mona", CLINIC_MANAGER).await;
+    let nobody = person(&app, "Nora", MEMBER).await;
+
+    app.acting_as(&grace);
+    app.get("/hr/leave").await.assert_ok();
+    app.get("/dashboard")
+        .await
+        .assert_ok()
+        .assert_see("My leave")
+        .assert_dont_see("Leave to decide");
+    app.get("/hr/leave/queue").await.assert_forbidden();
+
+    app.acting_as(&mona);
+    app.get("/hr/leave/queue").await.assert_ok();
+    app.get("/dashboard")
+        .await
+        .assert_ok()
+        .assert_see("My leave")
+        .assert_see("Leave to decide");
+
+    app.acting_as(&nobody);
+    app.get("/hr/leave").await.assert_forbidden();
 }

@@ -333,7 +333,19 @@ async fn every_login_of_the_demo_clinic_opens_its_pages() {
             .await
             .unwrap()
             .unwrap_or_else(|| panic!("the demo login {}", login.email));
-        for path in pages_of(login.email) {
+        let mut pages = pages_of(login.email);
+        // Everyone asks for their own leave; the managers and the
+        // administrator decide the leave of their scopes.
+        pages.push("/hr/leave".into());
+        if matches!(
+            login.email,
+            "admin@palmgrove.example"
+                | "manager.jumeirah@palmgrove.example"
+                | "manager.bay@palmgrove.example"
+        ) {
+            pages.push("/hr/leave/queue".into());
+        }
+        for path in pages {
             app.acting_as(&user);
             let page = app.get(&path).await;
             if page.status.as_u16() != 200 {
