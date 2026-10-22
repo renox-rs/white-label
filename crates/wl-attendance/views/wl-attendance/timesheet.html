@@ -7,7 +7,7 @@
 <rx-page layout="layouts/app.html" :title="title">
   <rx-stack>
     <rx-page-header :title="title" :badge="status" :badge-kind="status_kind"
-                    :back="route('wl_attendance.timesheets')" :back-label="tx['back']"/>
+                    :back="back_url" :back-label="tx['back']"/>
     <rx-form-errors/>
     <rx-alert rx-for="note in notes" kind="info" :message="note"/>
     <rx-row>

@@ -339,7 +339,9 @@ impl Module for WlNotify {
             NavLink::route("wl_notify.broadcasts", "nav.broadcasts")
                 .icon("mail")
                 .group("nav.admin")
-                .order(43),
+                .order(43)
+                // Shown to everyone signed in, but staff's: not to a portal user.
+                .when(|user| !wl_kernel::portal::is_portal_only(user)),
         );
         app.templates(|env| {
             for (name, source) in VIEWS {

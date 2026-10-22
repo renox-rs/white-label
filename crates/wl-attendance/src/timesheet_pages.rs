@@ -64,12 +64,22 @@ pub fn routes() -> Routes {
     wl_kernel::scopes::anywhere(
         Routes::new()
             .get("/timesheets", list)
-            .name("wl_attendance.timesheets")
-            .get("/timesheets/{id}", show)
-            .name("wl_attendance.timesheet"),
+            .name("wl_attendance.timesheets"),
         permissions::VIEW,
     )
+    // The page of one timesheet is also the client approver's (and viewer's)
+    // in the portal (BL-MPW-28): `ensure_reach` lets in who acts for the
+    // client of the timesheet's context.
+    .merge(
+        Routes::new()
+            .get("/timesheets/{id}", show)
+            .name("wl_attendance.timesheet")
+            .require_auth(),
+    )
 }
+
+/// The client's own list of timesheets in the portal (BL-MPW-28).
+pub const PORTAL_LIST: &str = "/portal/manpower/timesheets";
 
 /// The page of a timesheet.
 pub fn url(id: i64) -> String {
@@ -470,6 +480,9 @@ pub(crate) struct SheetPage {
     categories: Vec<(String, String)>,
     period_from: String,
     period_to: String,
+    /// Where *back* goes: the list for staff, the portal's list for the
+    /// client's own user.
+    back_url: String,
 }
 
 /// The sheet's entries as the days of the grid, with the totals row.
@@ -503,15 +516,89 @@ fn grid(entries: &[TimesheetEntry]) -> (Vec<DayRow>, DayRow) {
     (days, row(String::new(), totals))
 }
 
-/// `Forbidden` unless the timesheet's context is in the person's reach.
-async fn ensure_reach(state: &AppState, user: &AuthUser, sheet: &Timesheet) -> Result {
-    let reach = wl_kernel::scopes::reach(&state.db, user, permissions::VIEW).await?;
-    if reach.is_all() {
+/// How a person reaches a timesheet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Seen {
+    /// As staff: the context is in their reach.
+    Staff,
+    /// As a user of the client the timesheet is for, in the portal.
+    Portal,
+}
+
+/// How `user` reaches `sheet`. Staff (`attendance.view` somewhere) need the
+/// context in their reach, else `Forbidden`. Anyone else must act in the portal
+/// for the client of the context (`MPW.ACL.01`); a portal user of *another*
+/// client gets `NotFound`, as if the sheet did not exist, and a person with no
+/// portal access `Forbidden`.
+async fn ensure_reach(state: &AppState, user: &AuthUser, sheet: &Timesheet) -> Result<Seen> {
+    if has_view(user) {
+        let reach = wl_kernel::scopes::reach(&state.db, user, permissions::VIEW).await?;
+        if reach.is_all() {
+            return Ok(Seen::Staff);
+        }
+        return match sheet.context() {
+            Some(context) if reach.contains(&state.db, &context).await? => Ok(Seen::Staff),
+            _ => Err(Error::Forbidden),
+        };
+    }
+    match standing_in_portal(state, user, sheet).await? {
+        Some(true) => Ok(Seen::Portal),
+        Some(false) => Err(Error::NotFound),
+        None => Err(Error::Forbidden),
+    }
+}
+
+/// Whether the person holds `attendance.view` globally or in some scope.
+fn has_view(user: &AuthUser) -> bool {
+    user.allows(permissions::VIEW) || user.has_permission_anywhere(permissions::VIEW)
+}
+
+/// `Some(true)` when `user` acts in the portal for the client of `sheet`,
+/// `Some(false)` when they act for other clients only, `None` when for none.
+async fn standing_in_portal(
+    state: &AppState,
+    user: &AuthUser,
+    sheet: &Timesheet,
+) -> Result<Option<bool>> {
+    let users = wl_kernel::portal::portal_users(state);
+    let day = wl_kernel::documents::today();
+    if let Some(party) = describe(state, sheet)
+        .await
+        .and_then(|info| info.client_party)
+        && users
+            .acting_for(&state.db, user.id, wl_kernel::PartyId(party), day)
+            .await?
+            .is_some()
+    {
+        return Ok(Some(true));
+    }
+    Ok(
+        if users.parties_of(&state.db, user.id, day).await?.is_empty() {
+            None
+        } else {
+            Some(false)
+        },
+    )
+}
+
+/// For the actions on a timesheet: a person who acts in the portal only for
+/// *other* clients meets `NotFound`, as if the sheet did not exist
+/// (`MPW.ACL.01`). Everyone else passes; the service decides.
+///
+/// # Errors
+///
+/// `NotFound` as above.
+pub(crate) async fn not_of_another_client(
+    state: &AppState,
+    user: &AuthUser,
+    sheet: &Timesheet,
+) -> Result {
+    if has_view(user) {
         return Ok(());
     }
-    match sheet.context() {
-        Some(context) if reach.contains(&state.db, &context).await? => Ok(()),
-        _ => Err(Error::Forbidden),
+    match standing_in_portal(state, user, sheet).await? {
+        Some(false) => Err(Error::NotFound),
+        _ => Ok(()),
     }
 }
 
@@ -591,8 +678,8 @@ async fn show(
     Path(id): Path<i64>,
 ) -> Result<Response> {
     let sheet = Timesheet::find_or_404(&state.db, id).await?;
-    ensure_reach(&state, &user, &sheet).await?;
-    let page = build(&state, &user, &lang, &sheet).await?;
+    let seen = ensure_reach(&state, &user, &sheet).await?;
+    let page = build(&state, &user, &lang, &sheet, seen).await?;
     if wants_html(&headers) {
         return Ok(View::typed(page).into_response());
     }
@@ -608,6 +695,7 @@ async fn build(
     user: &AuthUser,
     lang: &Lang,
     sheet: &Timesheet,
+    seen: Seen,
 ) -> Result<SheetPage> {
     let db = &state.db;
     let system = text(lang, "history.system");
@@ -879,7 +967,16 @@ async fn build(
         signed,
         adjustments,
         original_url: sheet.adjusts_id.map(url).unwrap_or_default(),
-        invoice_url,
+        invoice_url: if seen == Seen::Portal {
+            String::new()
+        } else {
+            invoice_url
+        },
+        back_url: if seen == Seen::Portal {
+            PORTAL_LIST.to_owned()
+        } else {
+            "/timesheets".to_owned()
+        },
         documents_url: format!(
             "/documents/of/{}/{}",
             sheet.subject().subject_type,

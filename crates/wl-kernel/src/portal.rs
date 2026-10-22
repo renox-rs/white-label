@@ -81,6 +81,25 @@ pub trait PortalUsers: Send + Sync + 'static {
         Box::pin(async { Ok(None) })
     }
 
+    /// Every party `user` acts for on `on` (their `active` grants valid that
+    /// day), oldest grant first; the default has none. A vertical lists a
+    /// client user's own companies with it (09 `MPW.ACL.01`).
+    fn parties_of<'a>(
+        &'a self,
+        _db: &'a Db,
+        _user: i64,
+        _on: NaiveDate,
+    ) -> PortalFuture<'a, Vec<PortalUser>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// The one text a portal user is shown for an action refused while the
+    /// party is blocked: the same whatever the reason (`PTY.ACL.02`). `wl-portal`
+    /// answers with its setting; the default is the English text.
+    fn neutral_text(&self, _lang: &Lang) -> String {
+        "This request cannot be completed online. Please contact us.".to_owned()
+    }
+
     /// Takes away every portal grant for `party` that still gives access
     /// (an invitation not accepted is expired, an `active`, `read_only` or
     /// `suspended` grant is closed), with `reason`; answers how many grants
@@ -117,6 +136,17 @@ pub fn portal_users(state: &AppState) -> Arc<dyn PortalUsers> {
         Some(users) => Arc::clone(&users),
         None => Arc::new(NoPortalUsers),
     }
+}
+
+/// Whether `user` is a person of the portal and nothing else: they hold no role
+/// but `member` and the roles of a client's own users (`client_*`, e.g.
+/// `client_approver`). The sidebar uses it to leave out the links that are
+/// shown to every signed-in person but belong to staff (the review tasks, the
+/// broadcasts).
+pub fn is_portal_only(user: &AuthUser) -> bool {
+    user.role_names()
+        .iter()
+        .all(|role| role == "member" || role.starts_with("client_"))
 }
 
 #[cfg(test)]

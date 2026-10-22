@@ -223,6 +223,18 @@ pub struct TimesheetSummary {
     pub status: String,
     /// `regular` or `adjustment`.
     pub kind: String,
+    /// The hours of all categories, in minutes.
+    #[serde(default)]
+    pub minutes: i64,
+    /// Who approves it: `internal` or `external` (the client).
+    #[serde(default)]
+    pub approver_kind: String,
+    /// It was submitted and escalated to the client's contact.
+    #[serde(default)]
+    pub escalated: bool,
+    /// It was approved by the clause of deemed approval, not by a person.
+    #[serde(default)]
+    pub deemed: bool,
 }
 
 /// A timesheet that payroll paid on provisional hours was approved, and the

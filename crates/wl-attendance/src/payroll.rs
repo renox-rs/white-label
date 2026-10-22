@@ -523,16 +523,32 @@ impl Timesheets for AttendanceTimesheets {
                 .order_by(Timesheet::ID)
                 .get(&state.db)
                 .await?;
-            Ok(sheets
-                .into_iter()
-                .map(|sheet| wl_kernel::timesheets::TimesheetSummary {
+            let mut out = Vec::new();
+            for sheet in sheets {
+                let minutes = TimesheetEntry::of_timesheet(&state.db, sheet.id)
+                    .await?
+                    .iter()
+                    .map(|entry| {
+                        entry.normal_minutes
+                            + entry.overtime_minutes
+                            + entry.night_minutes
+                            + entry.rest_day_minutes
+                            + entry.public_holiday_minutes
+                    })
+                    .sum();
+                out.push(wl_kernel::timesheets::TimesheetSummary {
                     subject: Subject::new(wl_kernel::timesheets::TIMESHEET_SUBJECT_TYPE, sheet.id),
                     from: sheet.period_from,
                     to: sheet.period_to,
                     status: sheet.status.as_str().to_owned(),
                     kind: sheet.kind.as_str().to_owned(),
-                })
-                .collect())
+                    minutes,
+                    approver_kind: kind_text(sheet.approver_kind).to_owned(),
+                    escalated: sheet.escalated_at.is_some(),
+                    deemed: sheet.approval_basis == Some(timesheet::ApprovalBasis::Deemed),
+                });
+            }
+            Ok(out)
         })
     }
 

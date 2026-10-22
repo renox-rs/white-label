@@ -262,8 +262,10 @@ async fn a_change_of_the_days_leaves_a_timesheet_already_submitted_as_it_was() {
 /// BL-MPW-19 (#433), who may approve: a timesheet of Gulf Tower's deployment is
 /// approved only by an approver of Gulf Tower. The approver of Marina Bay,
 /// who holds the same global role `client_approver`, and a member of staff
-/// without the permission are refused (403) and the sheet stays `submitted`;
-/// Gulf Tower's own approver approves it.
+/// without the permission are refused and the sheet stays `submitted`; Gulf
+/// Tower's own approver approves it. The other client's approver meets 404 as of
+/// BL-MPW-28 (`MPW.ACL.01`: a sheet of another client is not found, never a 403
+/// with data); the member of staff stays 403.
 #[renox::test]
 async fn a_client_approver_approves_only_the_timesheets_of_their_own_client() {
     let app = boot().await;
@@ -284,9 +286,9 @@ async fn a_client_approver_approves_only_the_timesheets_of_their_own_client() {
     let sheet = waiting(&app, worker, deployment, 0).await;
     let path = format!("/timesheets/{}/approve", sheet.id);
 
-    for refused in [&other, &staff] {
+    for (refused, status) in [(&other, 404), (&staff, 403)] {
         app.acting_as(refused);
-        app.htmx().post(&path, &[]).await.assert_status(403);
+        app.htmx().post(&path, &[]).await.assert_status(status);
         assert_eq!(
             reload(&app, &sheet).await.status,
             TimesheetStatus::Submitted

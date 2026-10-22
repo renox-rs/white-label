@@ -499,6 +499,9 @@ async fn approve_timesheet(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<Response> {
+    // A client user of another company meets "not found" (`MPW.ACL.01`).
+    let sheet = crate::timesheet::Timesheet::find_or_404(&state.db, id).await?;
+    crate::timesheet_pages::not_of_another_client(&state, &user, &sheet).await?;
     approval::approve(&state, &user, id).await?;
     Ok((
         Toast::success(text(&lang, "approval.approved")),
@@ -556,6 +559,9 @@ async fn reject_timesheet(
     Path(id): Path<i64>,
     Valid(form): Valid<ReviewForm>,
 ) -> Result<Response> {
+    // A client user of another company meets "not found" (`MPW.ACL.01`).
+    let sheet = crate::timesheet::Timesheet::find_or_404(&state.db, id).await?;
+    crate::timesheet_pages::not_of_another_client(&state, &user, &sheet).await?;
     approval::reject(&state, &user, id, &form.reason).await?;
     Ok((
         Toast::success(text(&lang, "approval.rejected")),
