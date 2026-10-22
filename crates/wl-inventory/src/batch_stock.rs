@@ -108,8 +108,8 @@ async fn produce(state: &AppState, request: ProduceBatch) -> Result<Option<Produ
                 "wl_inventory.batch.lot_short",
                 &[
                     ("lot", &lot.number),
-                    ("left", &left),
-                    ("used", &input.quantity_milli),
+                    ("left", &left.to_string()),
+                    ("used", &input.quantity_milli.to_string()),
                 ],
             )));
         }

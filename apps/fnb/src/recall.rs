@@ -169,11 +169,7 @@ impl RecallDecision {
 /// Whether the customer of `order` is unknown: an aggregator's order, or a sale
 /// through a channel without a customer (the counter).
 async fn is_walk_in(state: &AppState, order: &FnbOrder) -> Result<bool> {
-    if settings(state)
-        .walk_in_channels
-        .iter()
-        .any(|channel| *channel == order.channel)
-    {
+    if settings(state).walk_in_channels.contains(&order.channel) {
         return Ok(true);
     }
     Ok(order_desk(state)
@@ -385,24 +381,21 @@ pub async fn trace(state: &AppState, recall_id: i64) -> Result<Trace> {
                 };
                 let (_, outlet) =
                     outlet_of(&state.db, holder.location.as_ref().map(|l| l.subject_id)).await?;
-                if !customers.contains_key(&party.0) {
+                if let std::collections::btree_map::Entry::Vacant(slot) = customers.entry(party.0) {
                     let name = directory(state)
                         .display_name(&state.db, party, "en")
                         .await?
                         .unwrap_or_default();
                     let status = directory(state).status(&state.db, party).await?;
-                    customers.insert(
-                        party.0,
-                        CustomerGroup {
-                            party: party.0,
-                            name,
-                            orders: Vec::new(),
-                            no_contact: !matches!(
-                                status,
-                                Some(PartyStatus::Active | PartyStatus::Blocked)
-                            ),
-                        },
-                    );
+                    slot.insert(CustomerGroup {
+                        party: party.0,
+                        name,
+                        orders: Vec::new(),
+                        no_contact: !matches!(
+                            status,
+                            Some(PartyStatus::Active | PartyStatus::Blocked)
+                        ),
+                    });
                 }
                 let Some(group) = customers.get_mut(&party.0) else {
                     continue;

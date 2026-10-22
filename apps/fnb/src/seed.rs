@@ -24,9 +24,19 @@ pub const OUTLETS: [(&str, &str); 3] = [
     ("central", "Central Production Kitchen"),
 ];
 
+/// One menu item of [`MENU`]: code, name, brand code, price, unit cost, recipe.
+pub type MenuRow = (
+    &'static str,
+    &'static str,
+    &'static str,
+    i64,
+    i64,
+    &'static [(&'static str, i64)],
+);
+
 /// The menu items: code, name, brand code, price (fils, before VAT), unit
 /// cost (fils), and the recipe as (ingredient key, thousandths per unit).
-pub const MENU: [(&str, &str, &str, i64, i64, &[(&str, i64)]); 4] = [
+pub const MENU: [MenuRow; 4] = [
     (
         "shawarma-plate",
         "Chicken shawarma plate",

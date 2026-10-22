@@ -4,6 +4,7 @@
 
 use renox::auth::User;
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 
 use crate::lead_source::{DEFAULTS, LeadSource};
 
@@ -541,7 +542,6 @@ pub async fn demo_order_changes(db: &Db, party: i64) -> Result<usize> {
 ///   missing cola resolved by the business (amount refunded AED 30).
 pub async fn demo_order_cancellations(db: &Db, party: i64) -> Result<usize> {
     use renox::db::now;
-    use renox::state_machine::StateMachine;
     use wl_kernel::documents::today;
 
     use crate::cancel_lines::{CancelDetail, CancelledLine};

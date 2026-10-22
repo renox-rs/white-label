@@ -48,7 +48,7 @@
 
 use renox::db::Transaction;
 use renox::prelude::*;
-use renox::state_machine::{Machine, Transition, TransitionCtx};
+use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 use wl_kernel::approvals::ApprovalRequest;
 use wl_kernel::sales::{LineOutcomeKind, fulfilment_progress};
@@ -930,7 +930,6 @@ pub async fn recheck(tx: &mut Transaction, request: &ApprovalRequest) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use renox::state_machine::StateMachine;
 
     fn order(status: SalesOrderStatus) -> SalesOrder {
         SalesOrder {

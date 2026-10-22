@@ -174,7 +174,7 @@ pub async fn totals(db: &Db, closing: &DailyClosing) -> Result<Totals> {
     for order in &paper {
         add_to(&mut totals, &order.channel, order.amount);
     }
-    totals.channels.sort_by(|a, b| b.gross.cmp(&a.gross));
+    totals.channels.sort_by_key(|c| std::cmp::Reverse(c.gross));
     Ok(totals)
 }
 

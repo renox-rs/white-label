@@ -222,6 +222,7 @@ pub const STATUS_FAILED: &str = "failed";
 
 /// A money step of a change.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+#[allow(clippy::duplicated_attributes)] // each `index(..)` is a separate index; `status` repeats by design
 #[model(
     table = "wl_sales_order_settlements",
     index(order_id, kind, status),
