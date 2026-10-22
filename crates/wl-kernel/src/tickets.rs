@@ -352,6 +352,20 @@ impl TaskComment {
 /// The future a [`TaskCreator`] method returns.
 pub type TicketFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
+/// A ticket as another module lists it: its number, title and status key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TicketSummary {
+    /// The id.
+    pub id: TicketId,
+    /// The number, e.g. `TKT-2026-0001`.
+    pub number: String,
+    /// The title.
+    pub title: String,
+    /// The status key (`open`, `assigned`, `in_progress`, `on_hold`,
+    /// `resolved`, `closed`, `cancelled`).
+    pub status: String,
+}
+
 /// Opens tickets for other modules. `wl-ticketing` provides it; without that
 /// module, [`task_creator`] gives [`NoTickets`].
 pub trait TaskCreator: Send + Sync + 'static {
@@ -385,6 +399,18 @@ pub trait TaskCreator: Send + Sync + 'static {
         _subject: &'a Subject,
         _category_key: &'a str,
     ) -> TicketFuture<'a, Vec<TicketRef>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// Every ticket of the category `category_key` about `subject`, open or
+    /// not, oldest first (09 Manpower lists the absence tickets of a worker).
+    /// The default finds none.
+    fn tickets_of<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _subject: &'a Subject,
+        _category_key: &'a str,
+    ) -> TicketFuture<'a, Vec<TicketSummary>> {
         Box::pin(async { Ok(Vec::new()) })
     }
 

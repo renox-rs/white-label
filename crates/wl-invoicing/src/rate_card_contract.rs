@@ -7,7 +7,9 @@
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_kernel::Subject;
-use wl_kernel::rate_cards::{RateCardFuture, RateCardVersion as KernelVersion, RateCards};
+use wl_kernel::rate_cards::{
+    RateCardFuture, RateCardVersion as KernelVersion, RateCards, VersionRow,
+};
 
 use crate::rate_card::RateCard;
 use crate::rate_pricing::version_in_force;
@@ -33,6 +35,44 @@ impl RateCards for Cards {
                     version: version.version,
                     effective_from: version.effective_from,
                 }))
+        })
+    }
+
+    fn card_of<'a>(
+        &'a self,
+        state: &'a AppState,
+        source: &'a Subject,
+    ) -> RateCardFuture<'a, Option<i64>> {
+        Box::pin(async move { Ok(RateCard::of_source(&state.db, source).await?.map(|c| c.id)) })
+    }
+
+    fn versions<'a>(
+        &'a self,
+        state: &'a AppState,
+        source: &'a Subject,
+    ) -> RateCardFuture<'a, Vec<VersionRow>> {
+        Box::pin(async move {
+            let Some(card) = RateCard::of_source(&state.db, source).await? else {
+                return Ok(Vec::new());
+            };
+            let versions = crate::rate_card::RateCardVersion::query()
+                .where_(crate::rate_card::RateCardVersion::RATE_CARD_ID.eq(card.id))
+                .order_by(crate::rate_card::RateCardVersion::VERSION)
+                .get(&state.db)
+                .await?;
+            let mut rows = Vec::new();
+            for version in versions {
+                rows.push(VersionRow {
+                    id: version.id,
+                    version: version.version,
+                    effective_from: version.effective_from,
+                    status: version.status.as_str().to_owned(),
+                    accepted_on: version.accepted_on,
+                    accepted_document: version.accepted_document.clone(),
+                    lines: i64::try_from(version.lines(&state.db).await?.len()).unwrap_or(0),
+                });
+            }
+            Ok(rows)
         })
     }
 

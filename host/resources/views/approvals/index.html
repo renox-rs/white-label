@@ -1,0 +1,51 @@
+<rx-page layout="layouts/app.html" title="{{ t('approvals.title') }}">
+  {#- The approvals inbox (docs/UX.md 2.1): what waits for the person, in
+      words, with Approve, Reject and Return for changes (the kernel's decide
+      routes), and the person's own requests with who they wait for. A row is
+      a card, so on a phone its buttons have the width of the screen. -#}
+  <rx-stack>
+    <rx-page-header title="{{ t('approvals.title') }}" subtitle="{{ t('approvals.subtitle') }}"/>
+    <rx-form-errors/>
+    <rx-tabs id="approvals-tabs">
+      <rx-tab key="waiting" :label="t('approvals.tab_waiting') ~ ' (' ~ waiting | length ~ ')'">
+        <rx-stack>
+          <rx-card rx-for="item in waiting" :title="item.action" :subtitle="item.subject">
+            <rx-stack>
+              <span>{{ item.requested }}</span>
+              <span rx-if="item.reason">{{ t('approvals.reason') }}: {{ item.reason }}</span>
+              <a rx-if="item.url" href="{{ item.url }}">{{ t('approvals.open_record') }}</a>
+              <rx-row rx-if="item.can_decide">
+                <rx-action-sheet :id="'approve-' ~ item.id" :label="item.labels.approve" :action="route('wl_kernel.approvals.approve', item.id)" :title="item.labels.approve_title" :submit-label="item.labels.approve" variant="primary" icon="check">
+                  <rx-textarea name="comment" :label="item.labels.comment" :hint="item.labels.comment_optional" :id="'approve-comment-' ~ item.id"/>
+                </rx-action-sheet>
+                <rx-action-sheet :id="'reject-' ~ item.id" :label="item.labels.reject" :action="route('wl_kernel.approvals.reject', item.id)" :title="item.labels.reject_title" :submit-label="item.labels.reject" icon="circle-x" danger>
+                  <rx-textarea name="comment" :label="item.labels.comment" :hint="item.labels.comment_reject" :id="'reject-comment-' ~ item.id" required/>
+                </rx-action-sheet>
+                <rx-action-sheet :id="'return-' ~ item.id" :label="item.labels.return" :action="route('wl_kernel.approvals.return', item.id)" :title="item.labels.return_title" :submit-label="item.labels.return" icon="arrow-left">
+                  <rx-textarea name="comment" :label="item.labels.comment" :hint="item.labels.comment_return" :id="'return-comment-' ~ item.id" required/>
+                </rx-action-sheet>
+              </rx-row>
+            </rx-stack>
+          </rx-card>
+          <rx-empty rx-if="not waiting" :title="t('approvals.empty')" :message="t('approvals.empty_text')" icon="circle-check"/>
+        </rx-stack>
+      </rx-tab>
+      <rx-tab key="mine" :label="t('approvals.tab_mine') ~ ' (' ~ mine | length ~ ')'">
+        <rx-stack>
+          <rx-card rx-for="item in mine" :title="item.action" :subtitle="item.subject">
+            <rx-stack>
+              <span><rx-badge :kind="item.status_kind" :text="item.state or item.status"/></span>
+              <span>{{ item.requested }}</span>
+              <span rx-if="item.reason">{{ t('approvals.reason') }}: {{ item.reason }}</span>
+              <a rx-if="item.url" href="{{ item.url }}">{{ t('approvals.open_record') }}</a>
+              <rx-row rx-if="item.can_withdraw">
+                <rx-confirm :id="'withdraw-' ~ item.id" :label="item.labels.withdraw" :action="route('wl_kernel.approvals.withdraw', item.id)" method="POST" :title="item.labels.withdraw_title" :message="item.labels.withdraw_message" :confirm-label="item.labels.withdraw" :cancel-label="item.labels.cancel" icon="x"/>
+              </rx-row>
+            </rx-stack>
+          </rx-card>
+          <rx-empty rx-if="not mine" :title="t('approvals.empty_mine')" :message="t('approvals.empty_mine_text')" icon="inbox"/>
+        </rx-stack>
+      </rx-tab>
+    </rx-tabs>
+  </rx-stack>
+</rx-page>

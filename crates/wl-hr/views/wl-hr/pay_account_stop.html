@@ -11,7 +11,7 @@
           <p>{{ tx['pay_account.stop_hint'] }} {{ date }}</p>
           <rx-confirm id="stop-pay-account" :label="tx['pay_account.stop_button']" :action="action" method="POST"
                       :title="tx['pay_account.stop_button']" :message="tx['pay_account.stop_confirm']"
-                      :confirm-label="tx['pay_account.stop_button']" :cancel-label="tx['cancel']" icon="ban"/>
+                      :confirm-label="tx['pay_account.stop_button']" :cancel-label="tx['cancel']" icon="circle-x"/>
         </rx-stack>
       </rx-card>
     </template>

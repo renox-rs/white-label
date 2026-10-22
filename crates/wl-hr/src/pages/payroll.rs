@@ -4,6 +4,7 @@
 //! | Route | Name | Needs |
 //! |---|---|---|
 //! | `GET /hr/payroll/{id}` | `wl_hr.payroll_run` | `payroll.view` |
+//! | `GET /hr/payroll/{id}/sif/{version}` | `wl_hr.payroll_sif` | `payroll.view`; downloads the file and audits it; a run never submitted has none (422) |
 //! | `POST /hr/payroll/{id}/transitions/calculate` | `wl_hr.payroll_calculate` | `payroll.view` and `payroll.prepare`; asks the timesheets for the hours first |
 //! | `POST /hr/payroll/{id}/transitions/{name}` | `wl_hr.payroll_transitions.*` | `payroll.view` and the transition's permission |
 //! | `POST /hr/payroll/{id}/supplementary` | `wl_hr.payroll_supplementary` | `payroll.prepare` |
@@ -50,6 +51,8 @@ pub fn routes() -> Routes {
             Routes::new()
                 .get("/hr/payroll/{id}", show)
                 .name("wl_hr.payroll_run")
+                .get("/hr/payroll/{id}/sif/{version}", download_sif)
+                .name("wl_hr.payroll_sif")
                 .post("/hr/payroll/{id}/transitions/calculate", calculate)
                 .name("wl_hr.payroll_calculate")
                 .group(
@@ -97,8 +100,28 @@ pub(crate) fn aed(fils: i64) -> String {
     format!("{sign}{}.{:02}", fils / 100, fils % 100)
 }
 
+/// `fils` as `AED 12,500.00`, for the lists.
+pub(crate) fn aed_text(fils: i64) -> String {
+    let plain = aed(fils.abs());
+    let (whole, fraction) = plain.split_once('.').unwrap_or((&plain, "00"));
+    let mut grouped = String::new();
+    for (i, digit) in whole.chars().enumerate() {
+        if i > 0 && (whole.len() - i) % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(digit);
+    }
+    let sign = if fils < 0 { "-" } else { "" };
+    format!("{sign}AED {grouped}.{fraction}")
+}
+
+/// A date as `01 Nov 2026`.
+pub(crate) fn date_text(date: renox::chrono::NaiveDate) -> String {
+    date.format("%d %b %Y").to_string()
+}
+
 /// The badge kind of a run status.
-fn run_kind(status: PayrollRunStatus) -> &'static str {
+pub(crate) fn run_kind(status: PayrollRunStatus) -> &'static str {
     match status {
         PayrollRunStatus::Draft => "info",
         PayrollRunStatus::Calculated | PayrollRunStatus::Approved => "info",
@@ -128,8 +151,12 @@ pub struct LineView {
     pub employee: String,
     /// The gross fixed wage, dirhams.
     pub wage: String,
+    /// `wage` as `AED 2,550.00`.
+    pub wage_text: String,
     /// The net pay, dirhams.
     pub net: String,
+    /// `net` as `AED 2,550.00`.
+    pub net_text: String,
     /// The status in the page's language.
     pub status: String,
     /// The badge kind.
@@ -142,6 +169,8 @@ pub struct LineView {
     pub failed: bool,
     /// Whether its payslip is published.
     pub payslip: bool,
+    /// Whether the bank paid it.
+    pub paid: bool,
     /// The timesheet hours the line was calculated from, e.g. `160 h`.
     pub hours: String,
     /// Whether the hours are provisional (the timesheet is not approved yet).
@@ -151,11 +180,17 @@ pub struct LineView {
     pub exception: String,
     /// The pay of overtime and the like, dirhams.
     pub variable: String,
+    /// `variable` as `AED 2,550.00`.
+    pub variable_text: String,
     /// The hours added or taken back by adjustments and reconciliations,
     /// dirhams, signed.
     pub difference: String,
+    /// `difference` as `AED 2,550.00`.
+    pub difference_text: String,
     /// The deductions, dirhams.
     pub deductions: String,
+    /// `deductions` as `AED 2,550.00`.
+    pub deductions_text: String,
     /// On a carried line: the warning that it pays after the WPS due date.
     pub warning: String,
     /// On a carried line: why it was carried.
@@ -173,6 +208,8 @@ pub struct CarryView {
     pub employee: String,
     /// The amount it pays, dirhams.
     pub amount: String,
+    /// `amount` as `AED 2,550.00`.
+    pub amount_text: String,
     /// The period of the run it was held in.
     pub held_in: String,
     /// Why it was held.
@@ -197,6 +234,8 @@ pub struct DifferenceView {
     pub hours: String,
     /// The amount, dirhams, signed.
     pub amount: String,
+    /// `amount` as `AED 2,550.00`.
+    pub amount_text: String,
     /// Whether the preparer can turn it into a recovery plan: it is negative
     /// and the run is still being prepared.
     pub can_convert: bool,
@@ -211,8 +250,12 @@ pub struct ExceptionView {
     pub cap: String,
     /// The deductions counted against it, dirhams.
     pub amount: String,
+    /// `amount` as `AED 2,550.00`.
+    pub amount_text: String,
     /// The cap, dirhams.
     pub limit: String,
+    /// `limit` as `AED 2,550.00`.
+    pub limit_text: String,
 }
 
 /// One action the user may run.
@@ -243,6 +286,10 @@ pub(crate) struct ShowPage {
     actions: Vec<ActionView>,
     approve_blocked: bool,
     submit_blocked: String,
+    approve_same_user: bool,
+    result_summary: String,
+    documents_url: String,
+    can_upload_result: bool,
 
     can_approve: bool,
     can_comment: bool,
@@ -269,6 +316,12 @@ pub struct SifView {
     pub lines: i64,
     /// The sum of the nets, dirhams.
     pub total: String,
+    /// `total` as `AED 2,550.00`.
+    pub total_text: String,
+    /// The download of the file.
+    pub url: String,
+    /// The bank's result or confirmation recorded against it.
+    pub confirmation: String,
 }
 
 /// The run's header.
@@ -337,6 +390,7 @@ async fn show(
             category: difference.category.clone(),
             hours: hours_text(difference.minutes),
             amount: aed(difference.amount),
+            amount_text: aed_text(difference.amount),
             can_convert: difference.status == differences::OPEN
                 && difference.amount < 0
                 && matches!(
@@ -362,6 +416,7 @@ async fn show(
                 line_id: held.id,
                 employee,
                 amount: aed(held.net_amount),
+                amount_text: aed_text(held.net_amount),
                 held_in,
                 reason: held.held_reason.clone().unwrap_or_default(),
                 warning: release::warning_for(&state, &held, &run)
@@ -376,7 +431,9 @@ async fn show(
             employee: names.get(&problem.employee_id).cloned().unwrap_or_default(),
             cap: text(&lang, &format!("payroll.cap.{}", problem.scope.key())),
             amount: aed(problem.amount),
+            amount_text: aed_text(problem.amount),
             limit: aed(problem.cap),
+            limit_text: aed_text(problem.cap),
         });
     }
     let approve_blocked = !exceptions.is_empty();
@@ -413,12 +470,39 @@ async fn show(
             needs_reason: action.needs_reason,
         });
     }
+    // The approver who prepared the run cannot approve it (`HRM.ACL.04`): the
+    // button is shown disabled with the reason, not left out.
+    let approve_same_user = run.status == PayrollRunStatus::Calculated
+        && user.has_permission(permissions::PAYROLL_APPROVE)
+        && run.prepared_by == Some(user.id);
+    let result_summary = if matches!(
+        run.status,
+        PayrollRunStatus::PartiallyRejected | PayrollRunStatus::Paid
+    ) && lines.iter().any(|l| l.failed)
+    {
+        texts::t_with(
+            &lang,
+            "wl_hr.payroll.result_summary",
+            &[
+                ("paid", &lines.iter().filter(|l| l.paid).count()),
+                ("failed", &lines.iter().filter(|l| l.failed).count()),
+            ],
+        )
+    } else {
+        String::new()
+    };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
+        approve_same_user,
+        result_summary,
+        documents_url: format!("/documents/of/{}/{}", run.subject().subject_type, run.id),
+        can_upload_result: user.has_permission("documents.upload")
+            && !run.status.is_unsent()
+            && run.sif_version > 0,
         run: RunView {
             id: run.id,
             period: run.period.clone(),
-            run_type: run.run_type.clone(),
+            run_type: text(&lang, &format!("payroll.kind.{}", run.run_type)),
             status: text(&lang, &format!("payroll.status.{}", run.status.as_str())),
             status_kind: run_kind(run.status),
             corrects: run.corrects,
@@ -452,6 +536,9 @@ async fn show(
                 name: f.file_name,
                 lines: f.line_count,
                 total: aed(f.total),
+                total_text: aed_text(f.total),
+                url: format!("/hr/payroll/{id}/sif/{}", f.version),
+                confirmation: f.confirmation.unwrap_or_default(),
             })
             .collect(),
         can_record_rejection: prepares && run.status == PayrollRunStatus::Submitted,
@@ -507,7 +594,9 @@ fn line_view(lang: &Lang, line: &PayrollLine, employee: String) -> LineView {
         id: line.id,
         employee,
         wage: aed(line.fixed_wage),
+        wage_text: aed_text(line.fixed_wage),
         net: aed(line.net_amount),
+        net_text: aed_text(line.net_amount),
         status: text(lang, &format!("payroll.line.{}", line.status.as_str())),
         status_kind: line_kind(line.status),
         reason: line
@@ -518,6 +607,7 @@ fn line_view(lang: &Lang, line: &PayrollLine, employee: String) -> LineView {
         comment: line.approver_comment.clone().unwrap_or_default(),
         failed: line.status == LineStatus::Failed,
         payslip: line.payslip_published_at.is_some(),
+        paid: line.status == LineStatus::Paid,
         hours: if line.hours_minutes == 0 {
             String::new()
         } else {
@@ -530,8 +620,11 @@ fn line_view(lang: &Lang, line: &PayrollLine, employee: String) -> LineView {
             .map(|e| text(lang, &format!("payroll.exception.{e}")))
             .unwrap_or_default(),
         variable: aed(line.variable_amount),
+        variable_text: aed_text(line.variable_amount),
         difference: aed(line.difference_amount),
+        difference_text: aed_text(line.difference_amount),
         deductions: aed(line.deductions_amount),
+        deductions_text: aed_text(line.deductions_amount),
         warning: line.late_warning.clone().unwrap_or_default(),
         carried: line.carry_reason.clone().unwrap_or_default(),
         component: line.component.clone().unwrap_or_default(),
@@ -807,24 +900,64 @@ pub struct PartialForm {
     #[validate(max = 500)]
     #[serde(default)]
     pub result_file: String,
-    /// The failed lines, one per row: `<line id>=<reason from the file>`.
+    /// The failed lines, one per row: `<employee number>=<reason from the file>`.
     #[validate(max = 5000)]
     #[serde(default)]
     pub failed: String,
 }
 
-/// The failed lines of a form: `12=invalid IBAN`, one per row.
-fn parse_failed(text: &str) -> Result<Vec<FailedLine>> {
+/// The failed lines of a form, one per row: `<line id or employee number>=<reason>`,
+/// for example `DSM-0003=invalid IBAN`. A row that does not read so is refused
+/// in words, with the row, not with a bare key; the employee number is the
+/// one the page shows, so nobody has to know a line id.
+async fn parse_failed(
+    state: &AppState,
+    lang: &Lang,
+    run_id: i64,
+    text_of_rows: &str,
+) -> Result<Vec<FailedLine>> {
+    let bad = |row: &str| {
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            texts::t_with(
+                lang,
+                "wl_hr.payroll.failed_row_bad",
+                &[("row", &row.to_owned())],
+            ),
+        )
+    };
     let mut failed = Vec::new();
-    for row in text.lines().map(str::trim).filter(|r| !r.is_empty()) {
-        let (line, reason) = row
-            .split_once('=')
-            .ok_or_else(|| Error::BadRequest("failed".to_owned()))?;
+    let lines = if text_of_rows.trim().is_empty() {
+        Vec::new()
+    } else {
+        PayrollRun::find_or_404(&state.db, run_id)
+            .await?
+            .lines(&state.db)
+            .await?
+    };
+    for row in text_of_rows
+        .lines()
+        .map(str::trim)
+        .filter(|r| !r.is_empty())
+    {
+        let (key, reason) = row.split_once('=').ok_or_else(|| bad(row))?;
+        let key = key.trim();
+        let line_id = match key.parse::<i64>() {
+            Ok(id) => id,
+            Err(_) => {
+                let mut found = None;
+                for line in &lines {
+                    let employee = Employee::find(&state.db, line.employee_id).await?;
+                    if employee.is_some_and(|e| e.employee_number.eq_ignore_ascii_case(key)) {
+                        found = Some(line.id);
+                        break;
+                    }
+                }
+                found.ok_or_else(|| bad(row))?
+            }
+        };
         failed.push(FailedLine {
-            line_id: line
-                .trim()
-                .parse()
-                .map_err(|_| Error::BadRequest("failed".to_owned()))?,
+            line_id,
             reason: reason.trim().to_owned(),
         });
     }
@@ -841,7 +974,7 @@ async fn record_partial(
     Valid(form): Valid<PartialForm>,
 ) -> Result<Response> {
     let input = PartialInput {
-        failed: parse_failed(&form.failed)?,
+        failed: parse_failed(&state, &lang, id, &form.failed).await?,
         result_file: form.result_file,
     };
     run_as(&state, &user, id, crate::payroll::RECORD_PARTIAL, &input).await?;
@@ -939,4 +1072,44 @@ async fn pay_other(
     wps_partial::pay_line_other_way(&state, id, &form.method, &form.reference, Some(user.id))
         .await?;
     Ok((Toast::success(text(&lang, "payroll.other_paid")), back).into_response())
+}
+
+/// `GET /hr/payroll/{id}/sif/{version}`: the salary file as a download. The
+/// download is audited. A run that was never submitted has no file.
+async fn download_sif(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path((id, version)): Path<(i64, i64)>,
+) -> Result<Response> {
+    let run = PayrollRun::find_or_404(&state.db, id).await?;
+    let file = SifFile::of_run(&state.db, id)
+        .await?
+        .into_iter()
+        .find(|f| f.version == version);
+    let Some(file) = file else {
+        return Err(Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            text(&lang, "payroll.no_sif"),
+        ));
+    };
+    renox::audit::record(
+        &state.db,
+        renox::audit::Entry::new("hr.payroll.sif_downloaded")
+            .user(user.id)
+            .subject(PayrollRun::TABLE, run.id)
+            .data(renox::serde_json::json!({ "version": file.version, "file": file.file_name })),
+    )
+    .await?;
+    Ok((
+        [
+            ("content-type", "text/plain; charset=utf-8".to_owned()),
+            (
+                "content-disposition",
+                format!("attachment; filename=\"{}\"", file.file_name),
+            ),
+        ],
+        file.content,
+    )
+        .into_response())
 }

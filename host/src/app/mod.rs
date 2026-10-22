@@ -1,6 +1,7 @@
 pub mod accounting_portal;
 pub mod accounting_seed;
 pub mod activity;
+pub mod approvals_inbox;
 pub mod clinics_demo;
 pub mod clinics_money;
 pub mod clinics_seed;
@@ -16,6 +17,7 @@ pub mod logistics_rules;
 pub mod logistics_seed;
 pub mod logistics_settings;
 pub mod manpower_demo;
+pub mod manpower_portal;
 pub mod manpower_seed;
 pub mod menu;
 pub mod negative_flow;

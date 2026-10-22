@@ -36,7 +36,7 @@ use wl_kernel::documents::today;
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::parties::directory;
 use wl_kernel::portal::portal_users;
-use wl_kernel::timesheets::ApproverResolver;
+use wl_kernel::timesheets::{ApproverResolver, ContextInfo};
 use wl_kernel::{PartyId, Subject};
 
 use crate::contract::{ClientContract, ContractStatus};
@@ -44,6 +44,8 @@ use crate::db::{refused, set_contract};
 use crate::deployment::{self, Deployment};
 use crate::notices;
 use crate::permissions::{self, CLIENT_APPROVER_PORTAL_ROLES};
+use crate::screens::role_text;
+use crate::site::Site;
 use crate::texts::english;
 
 /// What the contract said about timesheets from a moment on: one row each time
@@ -163,6 +165,34 @@ impl ApproverResolver for Approvers {
                 .filter(|user| user.has_any_role(CLIENT_APPROVER_PORTAL_ROLES))
                 .map(|user| NotifyRecipient::User { id: user.user_id })
                 .collect())
+        })
+    }
+
+    fn describe_context<'a>(
+        &'a self,
+        state: &'a AppState,
+        context: &'a Subject,
+    ) -> LabourFuture<'a, Option<ContextInfo>> {
+        Box::pin(async move {
+            if context.subject_type != deployment::SUBJECT_TYPE {
+                return Ok(None);
+            }
+            let Some(deployment) = Deployment::find(&state.db, context.subject_id).await? else {
+                return Ok(None);
+            };
+            let contract = ClientContract::find(&state.db, deployment.client_contract_id).await?;
+            let site = Site::find(&state.db, deployment.site_id).await?;
+            let client = directory(state)
+                .display_name(&state.db, deployment.client(), "en")
+                .await?
+                .unwrap_or_default();
+            let place = site.map_or_else(String::new, |site| format!(" at {}", site.name));
+            let reference = contract.map_or_else(String::new, |c| format!(", {}", c.reference));
+            Ok(Some(ContextInfo {
+                label: format!("{}{place}{reference}", role_text(&deployment.role)),
+                client_party: Some(deployment.client_party_id),
+                client,
+            }))
         })
     }
 

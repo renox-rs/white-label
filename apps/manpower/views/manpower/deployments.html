@@ -5,10 +5,21 @@
 <rx-page layout="layouts/app.html" :title="tx['deployments.title']">
   <rx-stack>
     <rx-page-header :title="tx['deployments.title']" :subtitle="tx['deployments.subtitle']"/>
-    <rx-table :rows="deployments" as="deployment" :key="deployment.id" :caption="tx['deployments.title']">
+    <rx-form-errors/>
+    <rx-row rx-if="can_plan">
+      <rx-action-sheet id="plan-deployment" :label="tx['action.plan']" :action="route('manpower.deployment_plan')"
+                       :title="tx['action.plan']" :description="tx['deployments.plan_hint_list']" :submit-label="tx['action.plan']" icon="user">
+        <rx-select name="request_id" :label="tx['deployments.request']" :options="plan.requests" :selected="plan.request_selected" required/>
+        <rx-select name="employee_id" :label="tx['form.worker']" :options="plan.workers" :selected="plan.worker_selected" :placeholder="tx['form.worker_placeholder']" required/>
+        <rx-input name="start_date" type="date" :label="tx['form.start_date']" :value="plan.today" id="plan-deployment-start" required/>
+        <rx-input name="end_date" type="date" :label="tx['form.end_date']" :hint="tx['form.end_date_hint']" id="plan-deployment-end"/>
+      </rx-action-sheet>
+    </rx-row>
+    <rx-table :rows="deployments" as="deployment" :key="deployment.worker ~ deployment.start_date" :caption="tx['deployments.title']" card>
       <rx-column :label="tx['deployments.worker']">
         <rx-stack>
-          <span>{{ deployment.worker }}</span>
+          <a rx-if="deployment.url" href="{{ deployment.url }}">{{ deployment.worker }}</a>
+          <span rx-else>{{ deployment.worker }}</span>
           <span class="rx-subtitle">{{ deployment.role | replace('_', ' ') | capitalize }} - {{ deployment.site }}</span>
           <span><rx-badge :kind="deployment.status_kind" :text="deployment.status"/></span>
           {% for flag in deployment.flags %}<span><rx-badge kind="warning" :text="flag"/></span>{% endfor %}

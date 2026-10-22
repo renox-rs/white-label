@@ -270,6 +270,150 @@ async fn activation_problems(
     Ok(problems)
 }
 
+/// Every check of `activate` that is not a document, in `tx`: the contract's
+/// hold, the employee, the end date, the request, the overlap and a blocked
+/// client. It never stops at the first (BL-MPW-24).
+async fn gather_problems(
+    state: &AppState,
+    by: &AuthUser,
+    deployment: &Deployment,
+    on: NaiveDate,
+    early: Vec<String>,
+    tx: &mut Transaction,
+) -> Result<Vec<String>> {
+    let mut found = Vec::new();
+    let contract = lock_contract(&mut *tx, deployment.client_contract_id).await?;
+    if let Some(text) = contract_problem(&mut *tx, &contract).await? {
+        // The screen says it first; the service's line follows (it is pinned).
+        found.push(if contract.status == ContractStatus::OnHold {
+            english("manpower.check.hold", &[("detail", &text)])
+        } else {
+            text
+        });
+    }
+    found.extend(early);
+    if let Some(text) = overlap::problem(
+        &mut *tx,
+        deployment,
+        on.max(deployment.start_date),
+        deployment.end_date,
+    )
+    .await?
+    {
+        found.push(text);
+    }
+    // A blocked client starts nothing new (BL-MPW-15).
+    if let Err(Error::Status(_, text)) = blocked::check(
+        &mut *tx,
+        state,
+        Some(by),
+        deployment.client(),
+        ActionKind::Start,
+    )
+    .await
+    {
+        found.push(text);
+    }
+    Ok(found)
+}
+
+/// The checks of `activate` that are not documents, nothing written.
+pub(crate) async fn other_problems(
+    state: &AppState,
+    by: &AuthUser,
+    deployment: &Deployment,
+    on: NaiveDate,
+) -> Result<Vec<String>> {
+    let early = activation_problems(state, deployment, on).await?;
+    let mut tx = state.db.begin().await?;
+    let found = gather_problems(state, by, deployment, on, early, &mut tx).await;
+    drop(tx);
+    found
+}
+
+/// A failing document, in words, as the page and the sheet show it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub(crate) struct DocumentCheck {
+    /// *Residence visa of J. Khan expired on 03 Nov 2026 (cannot be overridden)*.
+    pub text: String,
+    /// The page that asks for an override; none when it cannot be overridden.
+    pub override_url: Option<String>,
+}
+
+/// The documents that fail for transition `guarded` of deployment `record_id`
+/// judged on `check_on`, one line each in words; the user's approved
+/// overrides count. The service's own refusal is the guard's raw message.
+pub(crate) async fn document_checks(
+    state: &AppState,
+    by: &AuthUser,
+    guarded: &str,
+    record_id: i64,
+    check_on: NaiveDate,
+    worker: &str,
+) -> Result<Vec<DocumentCheck>> {
+    let checked = wl_kernel::documents::guard(state)
+        .check_as(state, guarded, record_id, check_on, Some(by.id))
+        .await?;
+    let Err(refusal) = checked else {
+        return Ok(Vec::new());
+    };
+    let mut lines = Vec::new();
+    for failure in &refusal.failures {
+        let kind = document_label(&failure.message, &failure.entry.kind);
+        let (key, date) = match &failure.validity {
+            wl_kernel::documents::Validity::Invalid {
+                reason, expired_on, ..
+            } => (
+                match reason {
+                    wl_kernel::documents::InvalidReason::Expired => "manpower.check.expired",
+                    wl_kernel::documents::InvalidReason::Missing => "manpower.check.missing",
+                    wl_kernel::documents::InvalidReason::Rejected => "manpower.check.rejected",
+                    wl_kernel::documents::InvalidReason::PendingReview => "manpower.check.pending",
+                },
+                expired_on
+                    .map(crate::screens::date_text)
+                    .unwrap_or_default(),
+            ),
+            wl_kernel::documents::Validity::Valid { .. } => continue,
+        };
+        let allowed = failure.override_allowed();
+        let ending = english(
+            if allowed {
+                "manpower.check.override_allowed"
+            } else {
+                "manpower.check.override_never"
+            },
+            &[],
+        );
+        let line = english(
+            key,
+            &[("kind", &kind), ("worker", &worker), ("date", &date)],
+        );
+        let single = wl_kernel::documents::BlockRefusal {
+            guarded: refusal.guarded.clone(),
+            record_id: refusal.record_id,
+            failures: vec![failure.clone()],
+        };
+        lines.push(DocumentCheck {
+            text: format!("{line} {ending}"),
+            override_url: single.override_links().into_iter().next(),
+        });
+    }
+    Ok(lines)
+}
+
+/// The label of a document kind as the guard words it: the start of its
+/// message (*Residence visa expired on ...* is *Residence visa*); the key in
+/// words when the message has another shape.
+fn document_label(message: &str, kind: &str) -> String {
+    for marker in [" expired on", " missing", " rejected", " not accepted yet"] {
+        if let Some(at) = message.find(marker) {
+            return message[..at].to_owned();
+        }
+    }
+    crate::screens::kind_label(kind)
+}
+
 /// Activates deployment `id` today for `by`: the worker is on site, the
 /// request it fills takes a position in the same transaction, the client is
 /// told and [`DeploymentActivated`] is emitted.
@@ -285,10 +429,31 @@ pub async fn activate(state: &AppState, by: &AuthUser, id: i64, lang: &str) -> R
     // The documents and licences are judged on the day of the transition plus
     // the look-ahead, or the end date if earlier (`MPW.ACL.07`).
     let check_on = guard::check_date(on, deployment.end_date);
-    let active = guard::guarded(state, by, ACTIVATE_GUARDED, id, check_on, || {
+    let started = std::sync::atomic::AtomicBool::new(false);
+    let done = guard::guarded(state, by, ACTIVATE_GUARDED, id, check_on, || {
+        started.store(true, std::sync::atomic::Ordering::SeqCst);
         run_activate(state, by, &deployment, on)
     })
-    .await?;
+    .await;
+    let active = match done {
+        // The documents refused before the other checks ran: list those too,
+        // before the line that names the day the documents were judged on.
+        Err(Error::Status(code, message)) if !started.load(std::sync::atomic::Ordering::SeqCst) => {
+            let others: Vec<String> = other_problems(state, by, &deployment, on)
+                .await?
+                .into_iter()
+                .collect();
+            let message = match (others.is_empty(), message.rsplit_once('\n')) {
+                (true, _) => message,
+                (false, Some((documents, day))) => {
+                    format!("{documents}\n{}\n{day}", others.join("\n"))
+                }
+                (false, None) => format!("{message}\n{}", others.join("\n")),
+            };
+            return Err(Error::Status(code, message));
+        }
+        other => other?,
+    };
     let worker = worker_name(state, lang, active.employee()).await;
     tell_client(state, &active, "manpower.deployment.activated", &worker).await?;
     Ok(active)
@@ -305,39 +470,20 @@ async fn run_activate(
     let id = deployment.id;
     // One activation or extension of the worker at a time (`MPW.ACL.15`).
     let _worker = overlap::take(deployment.employee_id).await;
-    let mut problems = activation_problems(state, deployment, on).await?;
+    let early = activation_problems(state, deployment, on).await?;
     let mut tx = state.db.begin().await?;
     // The contract is read in the transaction of the transition, so a `hold`
     // committed first wins (`MPW.ACL.14`).
-    let contract = lock_contract(&mut tx, deployment.client_contract_id).await?;
-    if let Some(problem) = contract_problem(&mut tx, &contract).await? {
-        problems.insert(0, problem);
-    }
-    if let Some(problem) = overlap::problem(
-        &mut tx,
-        deployment,
-        on.max(deployment.start_date),
-        deployment.end_date,
-    )
-    .await?
-    {
-        problems.push(problem);
-    }
+    let problems: Vec<String> = gather_problems(state, by, deployment, on, early, &mut tx)
+        .await?
+        .into_iter()
+        .collect();
     let input = DeploymentInput {
         problems,
         on: Some(on),
         new_end_date: None,
         ..DeploymentInput::default()
     };
-    // A blocked client starts nothing new (BL-MPW-15).
-    blocked::check(
-        &mut tx,
-        state,
-        Some(by),
-        deployment.client(),
-        ActionKind::Start,
-    )
-    .await?;
     let activated = deployment
         .transition(ACTIVATE)
         .by(by)

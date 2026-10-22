@@ -4,7 +4,7 @@
 //! | Route | Name | Needs |
 //! |---|---|---|
 //! | `GET /hr/employees` | `wl_hr.employees` | `employees.view` |
-//! | `GET /hr/employees/{id}` | `wl_hr.employee` | `employees.view` |
+//! | `GET /hr/employees/{id}` | `wl_hr.employee` | `employees.view` (HR, PRO, MD), or a deployment of the worker in the user's client company |
 //! | `POST /hr/employees/{id}/transitions/{name}` | `wl_hr.employee_transitions.*` | `employees.view` and the transition's permission |
 //! | `POST /hr/employees/{id}/exits` | `wl_hr.exit_request` | `employees.manage` in the employee's scope |
 //! | `POST /hr/employees/{id}/contact-attempts` | `wl_hr.contact_attempt` | `employees.manage` in the employee's scope |
@@ -58,8 +58,6 @@ pub fn routes() -> Routes {
             Routes::new()
                 .get("/hr/employees", index)
                 .name("wl_hr.employees")
-                .get("/hr/employees/{id}", show)
-                .name("wl_hr.employee")
                 .group(
                     "/hr/employees",
                     "wl_hr.employee_transitions.",
@@ -67,6 +65,15 @@ pub fn routes() -> Routes {
                 )
                 .require_permission(permissions::EMPLOYEES_VIEW),
         )
+        // The page of one employee: the account manager, whose role is assigned
+        // in the client company, opens the workers of those clients (BL-MPW-31);
+        // the handler checks who may see which tab.
+        .merge(wl_kernel::scopes::anywhere(
+            Routes::new()
+                .get("/hr/employees/{id}", show)
+                .name("wl_hr.employee"),
+            permissions::EMPLOYEES_VIEW,
+        ))
         .merge(
             Routes::new()
                 .post("/hr/employees/{id}/onboardings", start_manual)
@@ -150,12 +157,29 @@ pub struct EmployeeRow {
     pub job_role: String,
     /// The hire date.
     pub hire_date: String,
+    /// The hire date as `01 Nov 2026`.
+    pub hire_date_text: String,
     /// The status in the page's language.
     pub status: String,
     /// The badge kind.
     pub status_kind: &'static str,
     /// Required steps done or waived of all required steps, e.g. `3/5`.
     pub progress: String,
+    /// On the list narrowed to documents ending soon: *Residence visa 05 Nov
+    /// 2026*, one per document; empty otherwise.
+    pub documents_ending: String,
+}
+
+/// The days ahead the list `?documents=expiring` looks (the dashboard tile
+/// *Document expiring within 30 days* opens it).
+const EXPIRING_DAYS: u64 = 30;
+
+/// The query of the list.
+#[derive(Deserialize, Debug, Default)]
+pub struct IndexQuery {
+    /// `expiring`: only the workers with a document that ends within 30 days.
+    #[serde(default)]
+    pub documents: Option<String>,
 }
 
 /// What the list needs.
@@ -164,6 +188,8 @@ pub struct EmployeeRow {
 pub(crate) struct IndexPage {
     tx: Texts,
     employees: Vec<EmployeeRow>,
+    /// Set when the list is narrowed to the workers with a document ending soon.
+    expiring_only: bool,
 }
 
 /// The progress of the employee's `in_progress` onboardings: required steps
@@ -190,31 +216,67 @@ async fn progress_of(db: &Db, employee: i64) -> Result<String> {
     })
 }
 
-/// `GET /hr/employees`.
-async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
+/// `GET /hr/employees`; `?documents=expiring` narrows it to the workers with
+/// a document that ends within 30 days (for those who may see documents).
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Query(query): Query<IndexQuery>,
+) -> Result<View> {
+    let expiring_only = query.documents.as_deref() == Some("expiring")
+        && user.has_permission_anywhere("documents.view");
+    let day = today();
+    let until = day + renox::chrono::Days::new(EXPIRING_DAYS);
     let mut employees = Vec::new();
     for employee in Employee::query()
         .order_by_desc(Employee::ID)
         .get(&state.db)
         .await?
     {
+        let mut ending = Vec::new();
+        if expiring_only {
+            let subject = wl_kernel::workforce::EmployeeId(employee.id).subject();
+            for line in wl_kernel::documents::guard(&state)
+                .documents_of(&state.db, &subject, day, &lang.locale)
+                .await?
+            {
+                if let Some(valid_to) = line
+                    .valid_to
+                    .filter(|valid_to| *valid_to >= day && *valid_to <= until)
+                    .filter(|_| line.validity != "pending" && line.validity != "rejected")
+                {
+                    ending.push(format!(
+                        "{} {}",
+                        line.kind,
+                        super::payroll::date_text(valid_to)
+                    ));
+                }
+            }
+            if ending.is_empty() {
+                continue;
+            }
+        }
         employees.push(EmployeeRow {
             id: employee.id,
             name: employee_name(&state, &lang, &employee).await,
             number: employee.employee_number.clone(),
             job_role: employee.job_role.clone(),
             hire_date: employee.hire_date.to_string(),
+            hire_date_text: super::payroll::date_text(employee.hire_date),
             status: text(
                 &lang,
                 &format!("employees.status.{}", employee.status.as_str()),
             ),
             status_kind: employee_kind(employee.status),
             progress: progress_of(&state.db, employee.id).await?,
+            documents_ending: ending.join(", "),
         });
     }
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         employees,
+        expiring_only,
     }))
 }
 
@@ -360,6 +422,134 @@ pub(crate) struct ShowPage {
     can_request_pay_account: bool,
     pay_channels: Vec<(String, String)>,
     pay_channel_selected: String,
+    tab_list: Vec<(String, String)>,
+    selected_tab: String,
+    staff: bool,
+    show_documents: bool,
+    documents: Vec<DocumentView>,
+    documents_url: String,
+    show_deployments: bool,
+    deployments: Vec<DeploymentView>,
+    show_timesheets: bool,
+    timesheets: Vec<SheetView>,
+    show_salary: bool,
+    salary: Option<SalaryView>,
+    show_pay_accounts: bool,
+}
+
+/// A document of the worker with its validity.
+#[derive(Serialize, Debug, Clone)]
+pub struct DocumentView {
+    /// The file.
+    pub url: String,
+    /// The kind.
+    pub kind: String,
+    /// The number, or empty.
+    pub number: String,
+    /// The last valid day in words, or empty.
+    pub valid_to: String,
+    /// The validity in words.
+    pub validity: String,
+    /// The badge kind.
+    pub validity_kind: &'static str,
+    /// The role answerable, in words.
+    pub role: String,
+}
+
+/// A deployment of the worker.
+#[derive(Serialize, Debug, Clone)]
+pub struct DeploymentView {
+    /// Its page.
+    pub url: String,
+    /// The client.
+    pub client: String,
+    /// The site.
+    pub site: String,
+    /// The role.
+    pub role: String,
+    /// The dates in words.
+    pub period: String,
+    /// The status in words.
+    pub status: String,
+    /// The badge kind.
+    pub status_kind: &'static str,
+}
+
+/// A timesheet of the worker.
+#[derive(Serialize, Debug, Clone)]
+pub struct SheetView {
+    /// Its page.
+    pub url: String,
+    /// The month, `October 2026`, or the dates of a shorter period.
+    pub month: String,
+    /// The hours, `160 h`.
+    pub hours: String,
+    /// The status in words.
+    pub status: String,
+    /// The badge kind.
+    pub status_kind: &'static str,
+    /// Regular or adjustment, in words.
+    pub kind: String,
+}
+
+/// The salary structure in force, as the *Salary* tab shows it.
+#[derive(Serialize, Debug, Clone)]
+pub struct SalaryView {
+    /// Whether the amounts are shown (after *Reveal*).
+    pub revealed: bool,
+    /// Revealed, and no structure is recorded.
+    pub none: bool,
+    /// The day it applies from.
+    pub since: String,
+    /// The basic wage.
+    pub basic: String,
+    /// The housing allowance.
+    pub housing: String,
+    /// The transport allowance.
+    pub transport: String,
+    /// Other allowances.
+    pub other: String,
+    /// The fixed wage.
+    pub fixed: String,
+    /// The pay of an hour.
+    pub hourly: String,
+}
+
+/// `minutes` as hours: `160 h`, `7 h 30 min`.
+fn pages_hours(minutes: i64) -> String {
+    crate::pages::payroll::hours_text(minutes)
+}
+
+/// The query of the employee page.
+#[derive(Deserialize, Debug, Default)]
+pub struct ShowQuery {
+    /// `salary`: show the amounts of the salary tab (audited).
+    #[serde(default)]
+    pub reveal: Option<String>,
+}
+
+/// The audit action of a viewed salary (`HRM.ACL.03`).
+pub const AUDIT_SALARY_VIEWED: &str = "hr.employee.salary_viewed";
+
+fn validity_kind(validity: &str) -> &'static str {
+    match validity {
+        "valid" => "success",
+        "expiring" | "pending" => "warning",
+        "expired" | "rejected" => "error",
+        _ => "info",
+    }
+}
+
+fn role_label(role: &str) -> String {
+    if role.len() <= 3 {
+        return role.to_uppercase();
+    }
+    let spaced = role.replace('_', " ");
+    let mut chars = spaced.chars();
+    chars
+        .next()
+        .map(|first| first.to_uppercase().chain(chars).collect())
+        .unwrap_or_default()
 }
 
 /// `GET /hr/employees/{id}`.
@@ -368,10 +558,20 @@ async fn show(
     user: AuthUser,
     lang: Lang,
     Path(id): Path<i64>,
+    Query(query): Query<ShowQuery>,
 ) -> Result<View> {
     let employee = Employee::find(&state.db, id)
         .await?
         .ok_or(Error::NotFound)?;
+    // Staff (HR, PRO, MD) see the record; a user whose role is assigned in a
+    // client company sees the worker only through the deployments there.
+    let staff = user.has_permission(permissions::EMPLOYEES_VIEW);
+    let placements = wl_kernel::placements::placements(&state)
+        .of_employee(&state, &user, wl_kernel::EmployeeId(id), &lang.locale)
+        .await?;
+    if !staff && !placements.as_ref().is_some_and(|rows| !rows.is_empty()) {
+        return Err(Error::Forbidden);
+    }
     let scopes = employee.scopes(&state.db).await?;
     let manages = steps::holds_manage(&state, user.id, &scopes).await?;
     let can_manage = manages;
@@ -513,12 +713,14 @@ async fn show(
         number: employee.employee_number.clone(),
         job_role: employee.job_role.clone(),
         hire_date: employee.hire_date.to_string(),
+        hire_date_text: super::payroll::date_text(employee.hire_date),
         status: text(
             &lang,
             &format!("employees.status.{}", employee.status.as_str()),
         ),
         status_kind: employee_kind(employee.status),
         progress: progress_of(&state.db, employee.id).await?,
+        documents_ending: String::new(),
     };
     let pending_exit = match exits::pending_for(&state.db, &employee).await? {
         Some(request) => Some(PendingExitView {
@@ -622,25 +824,171 @@ async fn show(
         }
     }
     let can_record_sick = acts_on_leave && EmployeeStatus::WORKING.contains(&employee.status);
+    let sensitive = staff && user.has_permission(permissions::EMPLOYEES_SENSITIVE_VIEW);
+    let show_pay_accounts = staff
+        && (can_manage || sensitive || user.has_permission(permissions::PAY_ACCOUNTS_APPROVE));
     let mut pay_accounts = Vec::new();
-    if can_manage || user.has_permission(permissions::PAY_ACCOUNTS_APPROVE) {
+    if show_pay_accounts {
         for account in crate::pay_account::PayAccount::of_employee(&state.db, id).await? {
             pay_accounts.push(crate::pages::pay_accounts::view_of(&state, &lang, &account).await?);
         }
     }
     let mut settlements = Vec::new();
-    if [
-        permissions::SETTLEMENTS_PREPARE,
-        permissions::SETTLEMENTS_APPROVE,
-        permissions::SETTLEMENTS_PAY,
-    ]
-    .iter()
-    .any(|permission| user.has_permission(permission))
+    if staff
+        && [
+            permissions::SETTLEMENTS_PREPARE,
+            permissions::SETTLEMENTS_APPROVE,
+            permissions::SETTLEMENTS_PAY,
+        ]
+        .iter()
+        .any(|permission| user.has_permission(permission))
     {
         for settlement in crate::settlement::FinalSettlement::of_employee(&state.db, id).await? {
             settlements.push(crate::pages::settlements::row_of(&lang, &settlement));
         }
     }
+    // The documents with their validity: HR, the PRO and the MD, not the
+    // account manager (who has `documents.view` for the client's papers).
+    let subject = wl_kernel::workforce::EmployeeId(id).subject();
+    let show_documents = staff
+        && user.has_permission_anywhere("documents.view")
+        && (can_manage
+            || sensitive
+            || user.has_permission(permissions::VISAS_MANAGE)
+            || user.has_permission(permissions::EMPLOYEES_EXIT_APPROVE));
+    let mut documents = Vec::new();
+    if show_documents {
+        for line in wl_kernel::documents::guard(&state)
+            .documents_of(&state.db, &subject, day, &lang.locale)
+            .await?
+        {
+            documents.push(DocumentView {
+                url: format!("/documents/{}/file", line.id),
+                kind: line.kind,
+                number: line.number.unwrap_or_default(),
+                valid_to: line
+                    .valid_to
+                    .map(crate::pages::payroll::date_text)
+                    .unwrap_or_default(),
+                validity: text(&lang, &format!("documents.validity.{}", line.validity)),
+                validity_kind: validity_kind(&line.validity),
+                role: line
+                    .responsible_role
+                    .as_deref()
+                    .map(role_label)
+                    .unwrap_or_default(),
+            });
+        }
+    }
+    let show_deployments = placements.is_some();
+    let deployments: Vec<DeploymentView> = placements
+        .unwrap_or_default()
+        .into_iter()
+        .map(|p| DeploymentView {
+            url: p.url,
+            client: p.client,
+            site: p.site,
+            role: p.role,
+            period: match p.to {
+                Some(to) => format!(
+                    "{} - {}",
+                    crate::pages::payroll::date_text(p.from),
+                    crate::pages::payroll::date_text(to)
+                ),
+                None => format!(
+                    "{} - {}",
+                    crate::pages::payroll::date_text(p.from),
+                    text(&lang, "deployments.open_ended")
+                ),
+            },
+            status_kind: if p.on_site { "success" } else { "info" },
+            status: p.status,
+        })
+        .collect();
+    let show_timesheets = user.has_permission_anywhere("attendance.view");
+    let mut timesheets = Vec::new();
+    if show_timesheets {
+        for sheet in wl_kernel::timesheets::timesheets(&state)
+            .of_employee(&state, wl_kernel::EmployeeId(id))
+            .await?
+        {
+            timesheets.push(SheetView {
+                url: format!("/timesheets/{}", sheet.subject.subject_id),
+                month: crate::hours::month_text(sheet.from, sheet.to),
+                hours: pages_hours(sheet.minutes),
+                status_kind: match sheet.status.as_str() {
+                    "approved" => "success",
+                    "submitted" => "warning",
+                    _ => "info",
+                },
+                status: text(&lang, &format!("sheets.status.{}", sheet.status)),
+                kind: text(&lang, &format!("sheets.kind.{}", sheet.kind)),
+            });
+        }
+    }
+    // The salary: shown after *Reveal*, and each reveal is audited.
+    let revealed = sensitive && query.reveal.as_deref() == Some("salary");
+    let mut salary = None;
+    if sensitive {
+        let found = crate::salary::SalaryStructure::effective(&state.db, id, day).await?;
+        if revealed {
+            renox::audit::record(
+                &state.db,
+                renox::audit::Entry::new(AUDIT_SALARY_VIEWED)
+                    .user(user.id)
+                    .subject(Employee::TABLE, id),
+            )
+            .await?;
+        }
+        salary = Some(match found {
+            Some(structure) if revealed => SalaryView {
+                revealed: true,
+                none: false,
+                since: crate::pages::payroll::date_text(structure.effective_from),
+                basic: crate::pages::payroll::aed_text(structure.basic),
+                housing: crate::pages::payroll::aed_text(structure.housing),
+                transport: crate::pages::payroll::aed_text(structure.transport),
+                other: crate::pages::payroll::aed_text(structure.other_allowances),
+                fixed: crate::pages::payroll::aed_text(structure.fixed_wage()),
+                hourly: crate::pages::payroll::aed_text(structure.hourly()),
+            },
+            None if revealed => SalaryView {
+                revealed: true,
+                none: true,
+                since: String::new(),
+                basic: String::new(),
+                housing: String::new(),
+                transport: String::new(),
+                other: String::new(),
+                fixed: String::new(),
+                hourly: String::new(),
+            },
+            _ => SalaryView {
+                revealed: false,
+                none: false,
+                since: String::new(),
+                basic: String::new(),
+                housing: String::new(),
+                transport: String::new(),
+                other: String::new(),
+                fixed: String::new(),
+                hourly: String::new(),
+            },
+        });
+    }
+    let mut tabs = vec![("overview".to_owned(), text(&lang, "tabs.overview"))];
+    for (key, shown) in [
+        ("documents", show_documents),
+        ("deployments", show_deployments),
+        ("timesheets", show_timesheets),
+        ("salary", sensitive),
+        ("pay_accounts", show_pay_accounts),
+    ] {
+        if shown {
+            tabs.push((key.to_owned(), text(&lang, &format!("tabs.{key}"))));
+        }
+    }
+    let selected_tab = if revealed { "salary" } else { "overview" }.to_owned();
     Ok(View::typed(ShowPage {
         leaves,
         can_record_sick,
@@ -649,21 +997,21 @@ async fn show(
             .map(|(key, _)| key.clone())
             .unwrap_or_default(),
         note_requests,
-        attempts,
-        report,
-        can_record_attempt,
+        attempts: if staff { attempts } else { Vec::new() },
+        report: if staff { report } else { String::new() },
+        can_record_attempt: staff && can_record_attempt,
         outcome_selected: outcomes
             .first()
             .map(|(key, _)| key.clone())
             .unwrap_or_default(),
         outcomes,
-        pending_exit,
+        pending_exit: if staff { pending_exit } else { None },
         exit_selected: exit_actions
             .first()
             .map(|(name, _)| name.clone())
             .unwrap_or_default(),
         exit_actions,
-        can_request_exit,
+        can_request_exit: staff && can_request_exit,
         tx: texts::all(&lang),
         employee: row,
         job_title: employee.job_title.clone(),
@@ -676,7 +1024,7 @@ async fn show(
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join(", "),
-        onboardings,
+        onboardings: if staff { onboardings } else { Vec::new() },
         templates,
         can_manage,
         can_activate: employee.status == EmployeeStatus::Onboarding
@@ -686,7 +1034,7 @@ async fn show(
         today: day.to_string(),
         pay_accounts,
         settlements,
-        can_request_pay_account: can_manage,
+        can_request_pay_account: staff && can_manage,
         pay_channels: [
             crate::pay_account::BANK_ACCOUNT,
             crate::pay_account::SALARY_CARD,
@@ -700,6 +1048,19 @@ async fn show(
         })
         .collect(),
         pay_channel_selected: crate::pay_account::BANK_ACCOUNT.to_owned(),
+        tab_list: tabs,
+        selected_tab,
+        staff,
+        show_documents,
+        documents,
+        documents_url: format!("/documents/of/{}/{}", subject.subject_type, id),
+        show_deployments,
+        deployments,
+        show_timesheets,
+        timesheets,
+        show_salary: sensitive,
+        salary,
+        show_pay_accounts,
     }))
 }
 

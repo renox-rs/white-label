@@ -224,7 +224,9 @@ impl Module for WlDocuments {
             NavLink::route("wl_documents.overrides", "nav.document_overrides")
                 .icon("shield")
                 .group("nav.app")
-                .order(37),
+                .order(37)
+                // Shown to everyone signed in, but staff's: not to a portal user.
+                .when(|user| !wl_kernel::portal::is_portal_only(user)),
         );
         app.nav(
             "app",
@@ -242,7 +244,8 @@ impl Module for WlDocuments {
             )
             .icon("circle-check")
             .group("nav.app")
-            .order(39),
+            .order(39)
+            .when(|user| !wl_kernel::portal::is_portal_only(user)),
         );
         app.nav(
             "app",

@@ -190,6 +190,7 @@ pub struct KindSpec {
 
 const EMPLOYEE: &str = wl_kernel::workforce::EMPLOYEE_SUBJECT_TYPE;
 const CONTRACT: &str = crate::contract::SUBJECT_TYPE;
+const PAYROLL_RUN: &str = wl_kernel::workforce::PAYROLL_RUN_SUBJECT_TYPE;
 const TIMESHEET: &str = wl_kernel::timesheets::TIMESHEET_SUBJECT_TYPE;
 
 const fn guarding(
@@ -353,6 +354,22 @@ pub const SIGNED_TIMESHEET: KindSpec = KindSpec {
     subjects: &[TIMESHEET],
     reminders: &[],
     role: ACCOUNT_MANAGER,
+    also_notify: &[],
+    guards: Guards::Nothing,
+    override_mode: Override::WithApproval,
+    look_ahead: 0,
+};
+
+/// The bank's result file of a payroll run (the manual WPS fallback, #510):
+/// uploaded on the run's documents page, its number is recorded with the
+/// partial result. The accountant answers for it; it blocks nothing.
+pub const BANK_RESULT: KindSpec = KindSpec {
+    key: "bank_result",
+    name_en: "Bank result file",
+    name_ar: "ملف نتيجة البنك",
+    subjects: &[PAYROLL_RUN],
+    reminders: &[],
+    role: ACCOUNTANT,
     also_notify: &[],
     guards: Guards::Nothing,
     override_mode: Override::WithApproval,

@@ -107,6 +107,8 @@ pub struct AccountView {
     pub status_kind: &'static str,
     /// The day the account may be used from.
     pub cooling_ends: String,
+    /// The same day in words (`01 Nov 2026`).
+    pub cooling_text: String,
     /// What is known of the notice to the worker.
     pub notice: String,
     /// Who reached the worker, how and when.
@@ -187,6 +189,10 @@ pub(crate) async fn view_of(
         cooling_ends: account
             .cooling_ends_on
             .map(|day| day.to_string())
+            .unwrap_or_default(),
+        cooling_text: account
+            .cooling_ends_on
+            .map(crate::pages::payroll::date_text)
             .unwrap_or_default(),
         notice,
         reached,

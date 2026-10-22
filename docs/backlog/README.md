@@ -1,6 +1,6 @@
 # Backlog — Negative Flows
 
-> Status: draft · Last updated: 2026-10-20 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-22 · Spec version: same commit as this file
 
 GitHub issues for building the negative flows fixed in the
 [negative-flow review](../reviews/2026-10-15-negative-flows.md). They were **created on GitHub
@@ -169,7 +169,11 @@ What a reader might expect here but belongs to another issue (with its ID).
 Created on 2026-10-16: 24 epics (#1–#24) and 429 issues (#25–#453), each issue a sub-issue of
 its epic, with the labels and milestones of §3. Added on 2026-10-20: 22 Build 1 issues (#458–#479)
 for the work the closed F1 issues deferred, and BL-HRM-30 (#480, Launch 09) for the effects of
-`report_absconding` that need payroll, so the backlog has 452 issues. Links between issues
+`report_absconding` that need payroll, so the backlog has 452 issues. Added on 2026-10-22: 12
+Launch 09 issues (#502–#513, BL-MPW-22 to BL-MPW-33) for the Manpower screens that the browser
+test of the F9 app found missing, so the backlog has 464 issues (BL-MPW-33, the Arabic
+translation, is created but not built in the same round). They use `area:sme-gap` as the
+closest existing area label; there is no `area:screens`. Links between issues
 use the GitHub numbers.
 The mapping from backlog ID to issue is in [github-issues.md](github-issues.md). When a backlog
 file changes, update the matching GitHub issue too.

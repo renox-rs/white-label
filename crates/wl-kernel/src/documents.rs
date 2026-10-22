@@ -657,6 +657,24 @@ impl RecordFlag {
     }
 }
 
+/// A document of a record as a page lists it (the employee page, #511).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DocumentLine {
+    /// The document's id (`/documents/{id}/file` serves the file).
+    pub id: i64,
+    /// The kind's name in the page's language.
+    pub kind: String,
+    /// The number on the document, if any.
+    pub number: Option<String>,
+    /// The last day it is valid, if it expires.
+    pub valid_to: Option<NaiveDate>,
+    /// `valid`, `expiring` (within the kind's look-ahead, 30 days when
+    /// none), `expired`, `pending` (waits for review) or `rejected`.
+    pub validity: String,
+    /// The role answerable for keeping it valid (`pro`), if the kind has one.
+    pub responsible_role: Option<String>,
+}
+
 /// The future a [`DocumentGuard`] or [`BlockSubjects`] method returns.
 pub type DocumentFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
@@ -681,6 +699,19 @@ pub trait DocumentGuard: Send + Sync + 'static {
         kind: &'a str,
         on_date: NaiveDate,
     ) -> DocumentFuture<'a, Validity>;
+
+    /// The documents of `subject` that are in force or wait for review
+    /// (superseded and archived ones are left out), by kind, with their
+    /// validity on `on_date`, names in `locale`. The default is none.
+    fn documents_of<'a>(
+        &'a self,
+        _db: &'a Db,
+        _subject: &'a Subject,
+        _on_date: NaiveDate,
+        _locale: &'a str,
+    ) -> DocumentFuture<'a, Vec<DocumentLine>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
 
     /// The subject types document kind `kind` attaches to (`hr.employee`,
     /// `inventory.asset`). A [`BlockSubjects`] provider that maps a record to

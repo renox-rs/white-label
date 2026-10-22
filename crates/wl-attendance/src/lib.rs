@@ -34,6 +34,8 @@ pub mod service;
 pub mod submit;
 mod texts;
 pub mod timesheet;
+pub mod timesheet_pages;
+mod timesheet_texts;
 
 use renox::db::Migration;
 use renox::nav::NavLink;
@@ -56,6 +58,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-attendance/crew.html",
         include_str!("../views/wl-attendance/crew.html"),
+    ),
+    (
+        "wl-attendance/timesheets.html",
+        include_str!("../views/wl-attendance/timesheets.html"),
+    ),
+    (
+        "wl-attendance/timesheet.html",
+        include_str!("../views/wl-attendance/timesheet.html"),
     ),
     (
         "wl-attendance/crew_form.html",
@@ -180,7 +190,9 @@ impl Module for WlAttendance {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes().merge(crew::routes())
+        pages::routes()
+            .merge(crew::routes())
+            .merge(timesheet_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -189,7 +201,9 @@ impl Module for WlAttendance {
 
     fn register(&self, app: &mut Registry) {
         app.view_data::<crew::CrewPage>()
-            .view_data::<crew::CrewForm>();
+            .view_data::<crew::CrewForm>()
+            .view_data::<timesheet_pages::ListPage>()
+            .view_data::<timesheet_pages::SheetPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.

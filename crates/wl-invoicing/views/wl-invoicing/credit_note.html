@@ -9,7 +9,7 @@
                     :badge="status_label" :badge-kind="status_kind">
       <template rx-if="can_issue">
         <rx-confirm :id="'issue-credit-note-' ~ credit_note.id" :label="tx['credit_note.issue.action']" :action="route('wl_invoicing.credit_note_issue', credit_note.id)" method="POST"
-                    :title="tx['credit_note.issue.confirm_title']" :message="tx['credit_note.issue.confirm_message']" :confirm-label="tx['credit_note.issue.action']" icon="send"/>
+                    :title="tx['credit_note.issue.confirm_title']" :message="tx['credit_note.issue.confirm_message']" :confirm-label="tx['credit_note.issue.action']" icon="arrow-right"/>
       </template>
       <rx-action-sheet rx-if="can_use" :id="'use-credit-note-' ~ credit_note.id" :label="tx['credit_note.use.action']" :action="route('wl_invoicing.credit_note_use', credit_note.id)"
                        :title="tx['credit_note.use.title']" :description="use_description" :submit-label="tx['credit_note.use.submit']" icon="receipt">
@@ -17,7 +17,7 @@
         <rx-input name="amount" :label="tx['fields.amount']" :hint="tx['credit_note.amount_hint']" :id="'use-credit-note-amount-' ~ credit_note.id" required/>
       </rx-action-sheet>
       <rx-action-sheet rx-if="can_refund" :id="'refund-credit-note-' ~ credit_note.id" :label="tx['credit_note.refund.action']" :action="route('wl_invoicing.credit_note_refund', credit_note.id)"
-                       :title="tx['credit_note.refund.title']" :description="refund_description" :submit-label="tx['credit_note.refund.submit']" icon="wallet">
+                       :title="tx['credit_note.refund.title']" :description="refund_description" :submit-label="tx['credit_note.refund.submit']" icon="banknote">
         <rx-input name="amount" :label="tx['fields.amount']" :hint="tx['credit_note.amount_hint']" :id="'refund-credit-note-amount-' ~ credit_note.id" required/>
         <rx-select name="method" :label="tx['credit_note.refund.method']" :options="methods" :id="'refund-credit-note-method-' ~ credit_note.id"/>
         <rx-textarea name="reason" :label="tx['credit_note.refund.reason']" :id="'refund-credit-note-reason-' ~ credit_note.id" required/>
@@ -71,7 +71,7 @@
       <rx-column :label="tx['credit_note.fields.target']" hide-narrow>{{ movement.target if not movement.target_link else "" }}<a rx-if="movement.target_link" href="{{ movement.target_link }}">{{ movement.target }}</a></rx-column>
       <rx-column :label="tx['credit_note.fields.attempt']" hide-narrow>{{ movement.attempt or "" }}</rx-column>
       <rx-column :label="tx['history.at']" hide-narrow>{{ movement.at }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['credit_note.no_movements']" icon="wallet"/></rx-slot>
+      <rx-slot name="empty"><rx-empty :title="tx['credit_note.no_movements']" icon="banknote"/></rx-slot>
     </rx-table>
     <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
       <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>

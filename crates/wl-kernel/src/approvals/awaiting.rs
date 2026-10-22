@@ -98,11 +98,17 @@ const ACTION_LABELS: &[(&str, &str)] = &[
     ("construction.variation_abandon", "Abandon a variation"),
     ("documents.block_override", "Override a document block"),
     ("hr.cancel_onboarding", "Cancel an onboarding"),
-    ("hr.record_death", "Record the death of an employee"),
-    ("hr.reinstate", "Reinstate an employee"),
-    ("hr.report_absconding", "Report a worker as absconded"),
-    ("hr.waive_cooling", "Waive the cooling of a pay account"),
-    ("hr.withdraw_notice", "Withdraw a notice of leaving"),
+    (
+        "hr.record_death",
+        "Approve a non-standard exit: the death of a worker",
+    ),
+    ("hr.reinstate", "Reinstate a worker who left"),
+    (
+        "hr.report_absconding",
+        "Approve a non-standard exit: a worker reported as absconded",
+    ),
+    ("hr.waive_cooling", "Waive the pay account cooling period"),
+    ("hr.withdraw_notice", "Withdraw a resignation notice"),
     ("inventory.goods_receipt_post", "Post an over-receipt"),
     ("inventory.hold_discard", "Discard stock on hold"),
     ("inventory.hold_release", "Release stock on hold"),
@@ -127,15 +133,13 @@ const ACTION_LABELS: &[(&str, &str)] = &[
     ("invoicing.dispute_credit", "Credit a disputed invoice"),
     ("invoicing.owner_drawing", "Approve an owner drawing"),
     ("invoicing.payer_bill_void", "Void a payer bill"),
-    (
-        "invoicing.payer_money",
-        "Record a payer's remittance or recoupment",
-    ),
-    ("invoicing.payer_write_off", "Write off a payer bill"),
+    ("invoicing.payer_money", "Approve a payer money movement"),
+    ("invoicing.payer_write_off", "Write off a payer balance"),
     (
         "invoicing.rate_card_past_dated",
         "Approve a past-dated rate card",
     ),
+    ("invoicing.void", "Void an invoice"),
     ("invoicing.write_off", "Write off an invoice"),
     ("kernel.late_entry", "Approve a late attendance entry"),
     (
@@ -177,14 +181,21 @@ const ACTION_LABELS: &[(&str, &str)] = &[
 
 /// The action key of a request in words: the app's text
 /// `wl_kernel.approvals.action_<key with underscores>` when it has one, else
-/// the platform's, else the key itself.
+/// the platform's. An action nobody gave words shows *Approval needed* and its
+/// key goes to the log, never to the page.
 pub fn action_label(lang: &Lang, action: &str) -> String {
     let key = format!("wl_kernel.approvals.action_{}", action.replace('.', "_"));
     let found = lang.t(&key, &[]);
     if found != key {
         return found;
     }
-    platform_label(action).map_or_else(|| action.to_owned(), str::to_owned)
+    match platform_label(action) {
+        Some(label) => label.to_owned(),
+        None => {
+            eprintln!("approvals: the action `{action}` has no words; shown as `Approval needed`");
+            texts::t(lang, "wl_kernel.approvals.action_unknown")
+        }
+    }
 }
 
 /// The platform's words for the approval action `action`, if it has any.

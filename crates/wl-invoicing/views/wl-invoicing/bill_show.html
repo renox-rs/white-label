@@ -11,7 +11,7 @@
       <rx-link-button rx-if="can_edit" :href="route('wl_invoicing.supplier_bill_edit', bill.id)" :label="tx['supplier_bill.form.edit']" variant="secondary" icon="pencil"/>
       <template rx-if="can_submit">
         <rx-confirm :id="'submit-supplier-bill-' ~ bill.id" :label="tx['supplier_bill.submit.action']" :action="route('wl_invoicing.supplier_bill_submit', bill.id)" method="POST"
-                    :title="tx['supplier_bill.submit.confirm_title']" :message="tx['supplier_bill.submit.confirm_message']" :confirm-label="tx['supplier_bill.submit.action']" icon="send"/>
+                    :title="tx['supplier_bill.submit.confirm_title']" :message="tx['supplier_bill.submit.confirm_message']" :confirm-label="tx['supplier_bill.submit.action']" icon="arrow-right"/>
         <rx-confirm :id="'delete-supplier-bill-' ~ bill.id" :label="tx['supplier_bill.discard.action']" :action="route('wl_invoicing.supplier_bill_delete', bill.id)" method="POST"
                     :title="tx['supplier_bill.discard.confirm_title']" :message="tx['supplier_bill.discard.confirm_message']" :confirm-label="tx['supplier_bill.discard.action']" icon="trash-2"/>
       </template>
@@ -29,7 +29,7 @@
         <rx-row>
           <rx-badge :text="drawings.status" :kind="drawings.status_kind"/>
           <rx-confirm rx-if="drawings.can_request" :id="'request-drawing-' ~ bill.id" :label="tx['drawings.request.action']" :action="route('wl_invoicing.drawing_request', bill.id)" method="POST"
-                      :title="tx['drawings.request.title']" :message="tx['drawings.request.message']" :confirm-label="tx['drawings.request.action']" icon="send"/>
+                      :title="tx['drawings.request.title']" :message="tx['drawings.request.message']" :confirm-label="tx['drawings.request.action']" icon="arrow-right"/>
           <rx-action-sheet rx-if="drawings.can_recode" :id="'recode-line-' ~ bill.id" :label="tx['drawings.recode.action']" :action="route('wl_invoicing.bill_recode', bill.id)"
                            :title="tx['drawings.recode.title']" :description="tx['drawings.recode.description']" :submit-label="tx['drawings.recode.submit']" icon="tag">
             <rx-select name="line_id" :label="tx['drawings.recode.line']" :options="drawings.lines" id="recode-line-id" required/>

@@ -184,6 +184,7 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     app::negative_flow::register_approvals(&client_app);
     // What a client user of an accounting firm sees of its engagements.
     app::accounting_portal::register(&client_app);
+    app::manpower_portal::register(&client_app);
     // The kernel goes first: its seeder creates the legal entities the other
     // modules' demo data needs, and seeders run in the order modules mount.
     let name = config.client.name.clone();
@@ -403,6 +404,7 @@ fn base() -> renox::App {
         .module(Audit)
         .module(app::home::Home)
         .module(app::dashboard::Dashboard)
+        .module(app::approvals_inbox::ApprovalsInbox)
         .module(app::users::Users)
         .module(app::activity::Activity)
         .module(app::menu::Menu)

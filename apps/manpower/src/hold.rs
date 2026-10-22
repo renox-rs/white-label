@@ -187,11 +187,15 @@ impl NewReason {
             kind,
             text: text
                 .map(str::trim)
-                .filter(|text| !text.is_empty())
+                .filter(|text| !text.is_empty() && kind == HoldReason::Other)
                 .map(str::to_owned),
             invoice_id: None,
             cheque_id: None,
-            label: None,
+            // The invoice or cheque number the account manager names.
+            label: text
+                .map(str::trim)
+                .filter(|text| !text.is_empty() && kind != HoldReason::Other)
+                .map(str::to_owned),
             amount: 0,
         }
     }
@@ -414,6 +418,20 @@ pub async fn apply_reasons(
             Ok(Some(held))
         }
         ContractStatus::OnHold => {
+            // The account manager adds a cause the hold does not have yet.
+            if by.is_some() {
+                let open = ContractHold::open_of(&state.db, id).await?;
+                let known = input.reasons.iter().any(|new| {
+                    open.iter().any(|row| {
+                        row.reason == new.kind
+                            && (new.kind != HoldReason::Other
+                                || row.reason_text.as_deref() == new.text.as_deref())
+                    })
+                });
+                if known {
+                    return Err(refused(english("manpower.hold.already_held", &[])));
+                }
+            }
             let mut tx = state.db.begin().await?;
             add_reasons(&mut tx, id, &input.reasons, input.by).await?;
             set_contract(&mut tx, id, &[]).await?;

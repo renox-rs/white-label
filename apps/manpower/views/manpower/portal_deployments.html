@@ -1,0 +1,21 @@
+{#- manpower: the workers on site of the client in the portal (BL-MPW-28,
+    MPW.ACL.02): name, role, site, shift, dates and status; no salary, no
+    document, no medical datum. Replace it with
+    resources/views/manpower/portal_deployments.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['portal.deployments.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['portal.deployments.title']" :subtitle="tx['portal.deployments.subtitle']"/>
+    <rx-table :rows="workers" as="worker" :key="worker.worker ~ worker.period ~ worker.site" :caption="tx['portal.deployments.title']" card>
+      <rx-column :label="tx['portal.deployments.worker']">
+        <rx-stack>
+          <span>{{ worker.worker }}</span>
+          <span class="rx-subtitle">{{ worker.role }} - {{ worker.site }}</span>
+          <span><rx-badge :kind="worker.status_kind" :text="worker.status"/></span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['portal.deployments.shift']" hide-narrow>{{ worker.shift }}</rx-column>
+      <rx-column :label="tx['portal.period']" hide-narrow>{{ worker.period }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['portal.deployments.empty']" :message="tx['portal.deployments.empty_text']" icon="users"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

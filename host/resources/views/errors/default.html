@@ -3,8 +3,8 @@
     `reason` and `detail` are set (with APP_DEBUG also `request_line` and `template`). -#}
 <rx-page layout="layouts/app.html">
   <rx-slot name="seo"><title>{{ status }} {{ reason }} · {{ brand }}</title></rx-slot>
-  <rx-let name="fallback" :value="t('errors.not_found') if status == 404 else t('errors.other')"/>
+  <rx-let name="fallback" :value="t('errors.not_found') if status == 404 else (t('errors.forbidden') if status == 403 else t('errors.other'))"/>
   <div class="app-panel" data-error-status="{{ status }}" data-error-detail="{{ detail or '' }}">
-    <app-empty-state :icon="'circle-alert' if status >= 500 else 'map'" :title="reason" :text="detail or fallback" :action-href="route('home')" :action-label="t('errors.home')" action-icon="house"/>
+    <app-empty-state :icon="'circle-alert' if status >= 422 else 'map'" :title="t('errors.refused') if status == 422 else reason" :text="detail or fallback" :action-href="route('home')" :action-label="t('errors.home')" action-icon="house"/>
   </div>
 </rx-page>

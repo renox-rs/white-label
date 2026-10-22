@@ -145,6 +145,10 @@ pub fn kind_seed(spec: &KindSpec) -> KindSeed {
     if spec.guards != Guards::Nothing && spec.override_mode == Override::Never {
         kind = kind.legal_block();
     }
+    if spec.key == seed::BANK_RESULT.key {
+        // The banks send their result as a text, CSV or XML file, or a PDF.
+        kind = kind.file_types(&["csv", "txt", "xml", "xlsx", "pdf"]);
+    }
     let condition = BlockCondition::new("role", seed::SECURITY_ROLES);
     for guarded in seed::DEPLOYMENT_GUARDS
         .into_iter()
@@ -167,7 +171,10 @@ pub fn kind_seed(spec: &KindSpec) -> KindSeed {
 /// Registers the Manpower kinds with wl-documents and turns on the two
 /// registration kinds 09 uses with the MD as responsible role.
 pub fn register_documents() {
-    for spec in seed::KINDS.iter().chain([&seed::SIGNED_TIMESHEET]) {
+    for spec in seed::KINDS
+        .iter()
+        .chain([&seed::SIGNED_TIMESHEET, &seed::BANK_RESULT])
+    {
         register_kind(kind_seed(spec));
     }
     let mut settings = VerticalSettings::new().enabled(&[TRADEMARK, OTHER]);
@@ -212,6 +219,38 @@ pub fn grant_roles(client_app: &str) {
         return;
     }
     super::roles::grant_extra(manpower::permissions::MD_ROLE, &MD_PERMISSIONS);
+    // The account manager submits the timesheets of the clients they look
+    // after, approves for the client with the signed sheet (`MPW.ACL.09`) and
+    // opens the adjustment of a locked one. Reopening an approved timesheet is
+    // the admin's: the transition checks `timesheets.reopen` globally.
+    super::roles::grant_extra(
+        manpower::permissions::ACCOUNT_MANAGER_ROLE,
+        &[
+            wl_attendance::permissions::TIMESHEETS_SUBMIT,
+            wl_attendance::permissions::TIMESHEETS_APPROVE_ON_BEHALF,
+            wl_attendance::permissions::TIMESHEETS_ADJUST,
+            // The worker's page: the deployments and timesheets of the
+            // clients they look after (#511); no salary, no pay accounts.
+            wl_hr::permissions::EMPLOYEES_VIEW,
+        ],
+    );
+    // The accountant sees the rate cards (`MPW.ACL.04`): the rates are for the
+    // account manager, the accountant and the MD.
+    super::roles::grant_extra(
+        seed::ACCOUNTANT,
+        &[wl_invoicing::permissions::RATE_CARDS_VIEW],
+    );
+    // The payroll roles upload the bank's result file of a run (#510), and HR
+    // and the PRO read and add the documents of a worker (#511).
+    for role in [seed::HR, seed::ACCOUNTANT, seed::PRO] {
+        super::roles::grant_extra(
+            role,
+            &[
+                wl_documents::permissions::VIEW,
+                wl_documents::permissions::UPLOAD,
+            ],
+        );
+    }
     for role in [seed::HR, seed::ACCOUNTANT] {
         super::roles::grant_extra(
             role,
@@ -230,7 +269,7 @@ pub fn grant_roles(client_app: &str) {
 /// alert's forecast and the confidential tickets. The admin keeps all of it and
 /// stays the fallback of every `[md, admin]` approval step; segregation of
 /// duties applies to both (never the requester).
-const MD_PERMISSIONS: [&str; 33] = [
+const MD_PERMISSIONS: [&str; 34] = [
     wl_kernel::permissions::APPROVALS_VIEW,
     wl_kernel::permissions::LATE_ENTRIES_APPROVE,
     wl_parties::permissions::VIEW,
@@ -246,6 +285,7 @@ const MD_PERMISSIONS: [&str; 33] = [
     wl_invoicing::permissions::RATE_CARDS_VIEW,
     wl_invoicing::permissions::RATE_CARDS_APPROVE,
     wl_hr::permissions::EMPLOYEES_VIEW,
+    wl_hr::permissions::EMPLOYEES_SENSITIVE_VIEW,
     wl_hr::permissions::EMPLOYEES_EXIT_APPROVE,
     wl_hr::permissions::PAY_ACCOUNTS_APPROVE,
     wl_hr::permissions::PAYROLL_VIEW,
