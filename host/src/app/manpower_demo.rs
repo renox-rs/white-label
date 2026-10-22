@@ -129,10 +129,15 @@ pub const LOGINS: &[Login] = &[
     Login {
         name: "Carl Whitfield",
         email: "approver@gulftower.example",
-        roles: &[MEMBER],
+        roles: &[MEMBER, CLIENT_APPROVER],
         label: "Client approver (portal), Gulf Tower",
     },
 ];
+
+/// The role the timesheets of the demo name as their external approver (a
+/// timesheet's `approver_role`): the client's approver holds it, so the client
+/// approves in the app as in the spec.
+const CLIENT_APPROVER: &str = "client_approver";
 
 /// `n` days from today (negative: before).
 fn day(n: i64) -> NaiveDate {
@@ -431,6 +436,7 @@ impl Seed {
 
     async fn run(&mut self) -> Result {
         define(self.db()).await?;
+        renox::auth::permissions::define_role(self.db(), CLIENT_APPROVER, &[]).await?;
         self.entity = wl_kernel::LegalEntity::default_entity(self.db()).await?.id;
         self.logins().await?;
         let clients = self.clients().await?;
@@ -797,6 +803,7 @@ impl Seed {
                 "work_permit",
                 "emirates_id",
                 "health_insurance",
+                "site_pass",
             ];
             if worker.role.starts_with("security") {
                 kinds.extend(["sira_licence", "health_card"]);
@@ -1231,7 +1238,7 @@ impl Seed {
                     } else {
                         LineStatus::Included
                     },
-                    exception: held
+                    held_reason: held
                         .then(|| "Work permit expired, held until it is renewed".to_owned()),
                     ..PayrollLine::default()
                 },
