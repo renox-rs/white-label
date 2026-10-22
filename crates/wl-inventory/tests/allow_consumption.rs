@@ -145,7 +145,7 @@ async fn a_manual_issue_at_a_negative_balance_is_refused() {
     let outlet1 = outlet(&t, "OUTLET-1").await;
     t.stock_in(&item, &outlet1, None, 2_000, 300).await;
     t.consume(&item, &outlet1, 5_000, &sale(1)).await;
-    let keeper = t.storekeeper("Amal").await;
+    let keeper = t.mover("Amal").await;
 
     t.issue_as_user(&keeper, &item, &outlet1, "1")
         .await

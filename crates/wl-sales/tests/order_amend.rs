@@ -376,7 +376,8 @@ async fn a_line_is_added_an_order_on_hold_stays_on_hold_and_the_guards_hold() {
         (3, SalesOrderStatus::CreditHold)
     );
     assert_eq!(lines(&t, &now).await.len(), 2);
-    assert_eq!(now.gross_total, 482_000);
+    // The added dessert is standard-rated: 2 x 10.00 plus 5% VAT is 21.00.
+    assert_eq!(now.gross_total, 482_100);
     assert_eq!(c.amended.lock().unwrap().len(), 2);
 
     // No reason, or nothing changed: refused.
