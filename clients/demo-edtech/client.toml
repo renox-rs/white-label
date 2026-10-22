@@ -1,0 +1,46 @@
+# The demo client of F10 (10 EdTech): a licensed training centre in Dubai.
+# Data is fictional. Boot it with CLIENT_CONFIG=clients/demo-edtech/client.toml.
+
+[client]
+name    = "Gulf Skills Training Centre LLC"
+app     = "edtech"
+domain  = "demo.gulfskills.example"
+locales = ["en", "ar"]
+
+[branding]
+accent       = "#0F766E"
+second       = "#C2410C"
+display_font = "Poppins"
+
+[modules]
+enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "sales", "hr", "attendance", "scheduling", "portal"]
+
+[roles]
+# `PLT.RUL.04`: a compliance-critical rule that fails alerts the owner role
+# and the company admin (10 §7.2).
+owner = "owner"
+
+[[legal_entities]]
+code      = "GSTC"
+name_en   = "Gulf Skills Training Centre LLC"
+emirate   = "dubai"
+licensing_authority = "Knowledge and Human Development Authority (KHDA)"
+trade_licence_no = "9012345"
+trn       = "100000000000003"
+address_en = "Office 305, Al Barsha Business Centre, Dubai"
+default   = true
+
+# The UAE public holidays the timetable skips when sessions are generated
+# (10 §4.2). Fixed dates are listed; the moon-sighted ones follow the official
+# announcement and are amended here each year.
+[calendar]
+holidays = [
+  "2026-01-01",
+  "2026-03-20", "2026-03-21", "2026-03-22",
+  "2026-05-26", "2026-05-27", "2026-05-28", "2026-05-29",
+  "2026-06-16",
+  "2026-08-25",
+  "2026-12-02", "2026-12-03",
+  "2027-01-01",
+  "2027-03-10", "2027-03-11", "2027-03-12",
+]

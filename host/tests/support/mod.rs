@@ -236,6 +236,30 @@ pub async fn clinics_booted() -> TestApp {
     app
 }
 
+/// The demo EdTech client (10 EdTech).
+const EDTECH_CLIENT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../clients/demo-edtech/client.toml"
+);
+
+/// The EdTech host, with `wl:install` and the seeds run as the demo does.
+pub async fn edtech_booted() -> TestApp {
+    let config = wl_kernel::ClientConfig::load(EDTECH_CLIENT).expect("the edtech client");
+    let app = TestApp::new(
+        host::app_for(config)
+            .expect("the app")
+            .provide(noon_clock())
+            .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
 /// The demo logistics client (03 Logistics).
 const LOGISTICS_CLIENT: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
