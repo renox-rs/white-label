@@ -207,6 +207,16 @@ pub trait Timesheets: Send + Sync + 'static {
     ) -> LabourFuture<'a, Vec<TimesheetSummary>> {
         Box::pin(async { Ok(Vec::new()) })
     }
+
+    /// The timesheets of `employee`, newest period first. The employee page
+    /// lists them (#511). The default knows none.
+    fn of_employee<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _employee: EmployeeId,
+    ) -> LabourFuture<'a, Vec<TimesheetSummary>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
 }
 
 /// A timesheet of a context as a screen lists it (09 Manpower deployment

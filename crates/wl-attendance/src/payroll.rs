@@ -59,6 +59,7 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::BusinessCalendar;
+use wl_kernel::EmployeeId;
 use wl_kernel::Subject;
 use wl_kernel::attendance::LabourFuture;
 use wl_kernel::calendar::calendar;
@@ -523,32 +524,23 @@ impl Timesheets for AttendanceTimesheets {
                 .order_by(Timesheet::ID)
                 .get(&state.db)
                 .await?;
-            let mut out = Vec::new();
-            for sheet in sheets {
-                let minutes = TimesheetEntry::of_timesheet(&state.db, sheet.id)
-                    .await?
-                    .iter()
-                    .map(|entry| {
-                        entry.normal_minutes
-                            + entry.overtime_minutes
-                            + entry.night_minutes
-                            + entry.rest_day_minutes
-                            + entry.public_holiday_minutes
-                    })
-                    .sum();
-                out.push(wl_kernel::timesheets::TimesheetSummary {
-                    subject: Subject::new(wl_kernel::timesheets::TIMESHEET_SUBJECT_TYPE, sheet.id),
-                    from: sheet.period_from,
-                    to: sheet.period_to,
-                    status: sheet.status.as_str().to_owned(),
-                    kind: sheet.kind.as_str().to_owned(),
-                    minutes,
-                    approver_kind: kind_text(sheet.approver_kind).to_owned(),
-                    escalated: sheet.escalated_at.is_some(),
-                    deemed: sheet.approval_basis == Some(timesheet::ApprovalBasis::Deemed),
-                });
-            }
-            Ok(out)
+            summaries(state, sheets).await
+        })
+    }
+
+    fn of_employee<'a>(
+        &'a self,
+        state: &'a AppState,
+        employee: EmployeeId,
+    ) -> LabourFuture<'a, Vec<wl_kernel::timesheets::TimesheetSummary>> {
+        Box::pin(async move {
+            let sheets = Timesheet::query()
+                .where_(Timesheet::OWNER_EMPLOYEE_ID.eq(employee.0))
+                .order_by_desc(Timesheet::PERIOD_FROM)
+                .order_by_desc(Timesheet::ID)
+                .get(&state.db)
+                .await?;
+            summaries(state, sheets).await
         })
     }
 
@@ -571,4 +563,38 @@ impl Timesheets for AttendanceTimesheets {
                 .is_some_and(|sheet| sheet.status == TimesheetStatus::Locked))
         })
     }
+}
+
+/// `sheets` as the summaries a screen lists, with the minutes of all their
+/// entries.
+async fn summaries(
+    state: &AppState,
+    sheets: Vec<Timesheet>,
+) -> Result<Vec<wl_kernel::timesheets::TimesheetSummary>> {
+    let mut out = Vec::new();
+    for sheet in sheets {
+        let minutes = TimesheetEntry::of_timesheet(&state.db, sheet.id)
+            .await?
+            .iter()
+            .map(|entry| {
+                entry.normal_minutes
+                    + entry.overtime_minutes
+                    + entry.night_minutes
+                    + entry.rest_day_minutes
+                    + entry.public_holiday_minutes
+            })
+            .sum();
+        out.push(wl_kernel::timesheets::TimesheetSummary {
+            subject: Subject::new(wl_kernel::timesheets::TIMESHEET_SUBJECT_TYPE, sheet.id),
+            from: sheet.period_from,
+            to: sheet.period_to,
+            status: sheet.status.as_str().to_owned(),
+            kind: sheet.kind.as_str().to_owned(),
+            minutes,
+            approver_kind: kind_text(sheet.approver_kind).to_owned(),
+            escalated: sheet.escalated_at.is_some(),
+            deemed: sheet.approval_basis == Some(timesheet::ApprovalBasis::Deemed),
+        });
+    }
+    Ok(out)
 }

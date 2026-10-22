@@ -29,6 +29,7 @@ pub mod notices;
 pub mod overlap;
 pub mod pages;
 pub mod permissions;
+pub mod placements;
 pub mod portal;
 pub mod release;
 pub mod renewal;
@@ -239,6 +240,8 @@ impl Module for Manpower {
         // BL-MPW-19: who approves a deployment's timesheets, who is told when
         // the client does not, and after how many days silence is approval.
         wl_kernel::timesheets::provide_approver_resolver(app, approvers::Approvers);
+        // BL-MPW-31: the deployments of a worker, on the employee page of HR.
+        wl_kernel::placements::provide_placements(app, placements::WorkerPlacements);
         // Deployments whose end date has passed end by themselves: daily at
         // 02:00 Asia/Dubai.
         app.schedule()
