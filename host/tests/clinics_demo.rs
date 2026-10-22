@@ -348,6 +348,17 @@ async fn the_pages_name_a_service_in_words() {
         .await
         .assert_see("Checked in")
         .assert_dont_see("clinics.visits.transition");
+    // A bill names the visit it comes from (`VIS-0009`), not `clinics.visit:9`.
+    let bill = count(&app, "select min(id) from wl_invoicing_payer_bills").await;
+    app.get("/payer-bills")
+        .await
+        .assert_ok()
+        .assert_see("VIS-")
+        .assert_dont_see("clinics.visit:");
+    app.get(&format!("/payer-bills/{bill}"))
+        .await
+        .assert_ok()
+        .assert_dont_see("clinics.visit:");
 }
 
 /// A branch is named (*Business Bay*), never shown as its scope key

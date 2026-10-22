@@ -158,6 +158,15 @@ pub(crate) struct IndexPage {
     rows: Vec<Row>,
 }
 
+/// The record a bill comes from, named for people (`VIS-0009`) when its module
+/// registered a label for the type, else `type:id`.
+async fn source_label(state: &AppState, bill: &PayerBill) -> Result<String> {
+    let source = bill.source();
+    Ok(wl_kernel::documents::subject_label(&state.db, &source)
+        .await?
+        .unwrap_or_else(|| source.to_string()))
+}
+
 /// `GET /payer-bills`: every payer bill, newest first.
 async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
     let all = PayerBill::query()
@@ -172,7 +181,7 @@ async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
             number: number_text(&lang, &bill),
             payer: party_name(&state, bill.payer()).await?,
             customer: party_name(&state, bill.customer()).await?,
-            source: bill.source().to_string(),
+            source: source_label(&state, &bill).await?,
             status: text(
                 &lang,
                 &format!("payer_bill.status.{}", bill.status.as_str()),
@@ -406,7 +415,7 @@ async fn show(
             &lang,
             &format!("payer_bill.recipient.{}", bill.vat_recipient.as_str()),
         ),
-        source: bill.source().to_string(),
+        source: source_label(&state, &bill).await?,
         reference: bill.payer_reference.clone().unwrap_or_default(),
         service_date: day(Some(bill.service_date)),
         claimed: amount_text(&bill.currency, bill.claimed_total),
