@@ -5,6 +5,8 @@ mod arrival;
 pub mod balance;
 pub mod chase;
 pub mod config;
+pub mod dispatch;
+mod dispatch_screens;
 mod events;
 pub mod goods_receipt;
 pub mod hold_decide;
@@ -38,6 +40,7 @@ pub mod recall_trace;
 pub mod receipt_post;
 pub mod receipt_reverse;
 mod receipt_screens;
+pub mod sales_cancel;
 pub mod reorder;
 pub mod return_credit;
 pub mod return_dispatch;
@@ -150,6 +153,10 @@ pub mod permissions {
     pub const STOCK_HOLD: &str = "stock.hold";
     /// Decide the lines of a stock hold, and be told when one is placed.
     pub const LOTS_RELEASE: &str = "lots.release";
+    /// Pick, cancel and follow dispatches in the scope of their location
+    /// (wl-inventory §4 *Dispatch*), and be given the task when a
+    /// cancellation arrives for one that has left.
+    pub const DISPATCH_MANAGE: &str = "dispatch.manage";
     /// Open, trace, notify and close recalls.
     pub const RECALLS_MANAGE: &str = "recalls.manage";
     /// See the recalls and how far each is (the lots, where they are, the
@@ -369,6 +376,7 @@ impl Module for WlInventory {
             .merge(stock_screens::routes())
             .merge(recall_screens::routes())
             .merge(transfer_screens::routes())
+            .merge(dispatch_screens::routes())
             .merge(receipt_screens::routes())
     }
 
@@ -389,6 +397,7 @@ impl Module for WlInventory {
             .view_data::<recall_screens::RecallsPage>()
             .view_data::<recall_screens::RecallPage>()
             .view_data::<transfer_screens::TransfersPage>()
+            .view_data::<dispatch_screens::DispatchesPage>()
             .view_data::<receipt_screens::OrdersPage>()
             .view_data::<receipt_screens::ReceiptsPage>()
             .view_data::<receipt_screens::ReceiptPage>();
@@ -397,6 +406,7 @@ impl Module for WlInventory {
                 .iter()
                 .chain(stock_screens::VIEWS)
                 .chain(recall_screens::VIEWS)
+                .chain(dispatch_screens::VIEWS)
             {
                 // The app's own file of that name wins.
                 if env.get_template(name).is_err() {
@@ -465,6 +475,13 @@ impl Module for WlInventory {
                 &[permissions::STOCK_ADJUST][..],
             ),
             (
+                "wl_inventory.dispatches",
+                "nav.dispatches",
+                "truck",
+                70,
+                &[permissions::DISPATCH_MANAGE][..],
+            ),
+            (
                 "wl_inventory.recalls",
                 "nav.recalls",
                 "triangle-alert",
@@ -488,6 +505,7 @@ impl Module for WlInventory {
         // A page that holds only the id of a lot, a hold, a transfer or a
         // receipt (an approval, a message) shows its number.
         stock_screens::register_labels();
+        dispatch_screens::register_labels();
         app.model::<Item>();
         app.model::<Location>();
         app.model::<ItemSupplier>();
@@ -511,6 +529,9 @@ impl Module for WlInventory {
         app.model::<Lot>();
         app.model::<StockMovement>();
         app.model::<Transfer>();
+        app.model::<dispatch::Dispatch>();
+        app.model::<dispatch::DispatchLine>();
+        app.model::<sales_cancel::CancelEffect>();
         app.model::<TransferLine>();
         app.model::<StockHold>();
         app.model::<StockHoldLine>();
@@ -533,6 +554,7 @@ impl Module for WlInventory {
         renox::state_machine::register::<GoodsReceipt>();
         renox::state_machine::register::<Lot>();
         renox::state_machine::register::<Transfer>();
+        renox::state_machine::register::<dispatch::Dispatch>();
         renox::state_machine::register::<StockHold>();
         renox::state_machine::register::<StockHoldLine>();
         renox::state_machine::register::<Recall>();
@@ -672,6 +694,8 @@ impl Module for WlInventory {
             .step_permission(permissions::LOTS_RELEASE)
             .register();
         events::register(app);
+        // BL-STK-26: a cancelled order line gives its goods back or scraps them.
+        sales_cancel::register(app);
         hold_decide::register(app);
         // `STK.RUL.07`: the deciders of an open hold are reminded every H
         // hours and the escalation role told every 2 x H.

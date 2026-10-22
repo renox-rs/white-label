@@ -392,6 +392,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::STOCK_ADJUST,
             inventory::STOCK_HOLD,
             inventory::LOTS_RELEASE,
+            inventory::DISPATCH_MANAGE,
             scheduling::VIEW,
             scheduling::VIEW_DETAILS,
             scheduling::MANAGE,
@@ -934,6 +935,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::STOCK_ADJUST,
             inventory::STOCK_HOLD,
             inventory::LOTS_RELEASE,
+            inventory::DISPATCH_MANAGE,
         ],
     ),
     (

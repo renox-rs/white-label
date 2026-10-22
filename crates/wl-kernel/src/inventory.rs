@@ -1021,6 +1021,73 @@ pub fn stock_service(state: &AppState) -> Arc<dyn StockService> {
     }
 }
 
+/// One component of what a sale line consumes: an item and how much of it
+/// goes into one unit of the line (a recipe ingredient).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LineComponent {
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The quantity for one unit of the sale line, in thousandths of the
+    /// item's base unit.
+    pub per_unit_milli: i64,
+}
+
+/// What the stock side of a sale line is, for a sales cancellation outcome
+/// *scrap* (BL-STK-26): the vertical knows the recipe and whether the
+/// kitchen's consumption was already posted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SaleLineStock {
+    /// The location the components are taken from, `inventory.location:2`.
+    pub location: Subject,
+    /// What one unit of the line consumes.
+    pub components: Vec<LineComponent>,
+    /// The quantity of the line, in thousandths of its unit: what the
+    /// cancellation of a whole order scraps.
+    pub quantity_milli: i64,
+    /// Whether the consumption of the line was already posted (so a scrap
+    /// posts no second movement and the line is reported as wastage value).
+    pub consumed: bool,
+    /// The value of the line's goods, in fils: what is reported as wastage
+    /// when the consumption was already posted.
+    pub value: i64,
+}
+
+/// The stock side of the lines of a sales order. The vertical that explodes a
+/// recipe provides it (06: the menu item's recipe); the default knows no
+/// recipe, so a scrapped line without picked goods posts nothing.
+pub trait SaleLineStockSource: Send + Sync + 'static {
+    /// The stock side of the sale line `line` of `order` (`sales.sales_order`),
+    /// or `None` when it has none.
+    fn of_line<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _order: &'a Subject,
+        _line: i64,
+    ) -> StockFuture<'a, Option<SaleLineStock>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The source when nothing provides one.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoSaleLineStock;
+
+impl SaleLineStockSource for NoSaleLineStock {}
+
+/// Makes `source` the app's [`SaleLineStockSource`].
+pub fn provide_sale_line_stock(app: &mut Registry, source: impl SaleLineStockSource) {
+    let source: Arc<dyn SaleLineStockSource> = Arc::new(source);
+    app.provide(source);
+}
+
+/// The app's [`SaleLineStockSource`], or [`NoSaleLineStock`].
+pub fn sale_line_stock(state: &AppState) -> Arc<dyn SaleLineStockSource> {
+    match state.provided::<Arc<dyn SaleLineStockSource>>() {
+        Some(source) => Arc::clone(&source),
+        None => Arc::new(NoSaleLineStock),
+    }
+}
+
 /// A hold a vertical automation (06: the out-of-range reading) places on the
 /// stock at one location.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
