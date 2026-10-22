@@ -1691,3 +1691,220 @@ async fn edu_11_a_flagged_session_still_uses_the_real_credit() {
     );
     assert_eq!(credits_left(&w, party).await, 9, "the flag changes no credit");
 }
+
+// ---- #447 and #448: a batch stops and the refunds, through the real wl-payments and wl-invoicing -
+
+/// The student pays the first invoice of `e` on the card at its link and the
+/// accountant allocates the payment: the enrolment is active.
+async fn pay_by_card(w: &World, e: &Enrolment) {
+    let payment = start_payment(w, e).await;
+    online::gateway_succeeded(
+        w.state(),
+        payment.gateway_transaction.as_deref().expect("a transaction"),
+        payment.amount,
+    )
+    .await
+    .unwrap()
+    .expect("received");
+    allocate_to_invoice(w, e, &payment).await;
+    assert_eq!(reload(w, e).await.status, EnrolmentStatus::Active);
+}
+
+/// The refunds of wl-payments, oldest first.
+async fn refunds(w: &World) -> Vec<Refund> {
+    Refund::query()
+        .order_by(Refund::ID)
+        .get(w.db())
+        .await
+        .unwrap()
+}
+
+/// A batch of 12 sessions (Monday and Wednesday for six weeks) that began five
+/// weeks ago, open (nobody has taught yet).
+async fn started_batch(w: &World, coordinator: &AuthUser, name: &str) -> Batch {
+    w.permit_until(day(400)).await;
+    let course = w.course(coordinator).await;
+    let tutor = tutor_resource(w, &format!("Tutor {name}"), None).await;
+    let mut room =
+        wl_scheduling::Resource::new(&format!("Room {name}"), wl_scheduling::ResourceType::Room);
+    room.capacity = 14;
+    room.save(w.db()).await.unwrap();
+    let first = monday_from(day(-35));
+    let planned = batches::create(
+        w.state(),
+        coordinator,
+        NewBatch::new(
+            course.id,
+            12,
+            (first, first + TimeDelta::days(41)),
+            &[1, 3],
+            "18:00",
+            90,
+        )
+        .tutor(tutor.id, None)
+        .room(room.id, Some(14)),
+    )
+    .await
+    .expect("the batch is planned");
+    batches::open(w.state(), coordinator, planned.id)
+        .await
+        .expect("the batch opens")
+}
+
+/// #447 point 1 with the real modules: running batch B (12 sessions, 5 held)
+/// with E1 (AED 2,520.00 paid on the card, an admin fee) and E2 (paid too). The
+/// coordinator asks to terminate for "venue", E1 -> withdraw, E2 -> transfer to
+/// B2; the centre manager approves. 7 sessions are cancelled, wl-invoicing
+/// makes the one credit note of AED 1,470.00 (2,520.00 x 7/12, no admin fee)
+/// for E1, wl-payments holds the refund of the same amount REQUESTED by the
+/// coordinator and waiting for another person's approval; E2 is transferred
+/// with a new active enrolment in B2.
+#[renox::test]
+async fn edu_12_the_approved_termination_asks_the_real_payments_for_the_refund() {
+    let w = boot().await;
+    let (coordinator_user, coordinator) = w.staff("Amal", ACADEMIC_COORDINATOR).await;
+    let (_, dina) = w.staff("Dina", COUNSELLOR).await;
+    let (manager, _) = w.staff("Mona", host::roles::CENTRE_MANAGER).await;
+    let (_, tariq) = w.staff("Tariq", host::roles::TUTOR).await;
+    let (_, rita) = w.staff("Rita", host::roles::ACCOUNTANT).await;
+    let b = started_batch(&w, &coordinator, "B").await;
+    let b2 = w.open_batch(&coordinator, "B2", day(30)).await;
+    let (omar, sara) = (tenant(&w.app, "Omar Khan").await, tenant(&w.app, "Sara Ali").await);
+    let e1 = enrolments::create(
+        w.state(),
+        &dina,
+        NewEnrolment::course(omar.0, b.id, 252_000)
+            .admin_fee(10_500)
+            .terms_accepted(),
+    )
+    .await
+    .unwrap();
+    pay_by_card(&w, &e1).await;
+    let e2 = enrolments::create(
+        w.state(),
+        &dina,
+        NewEnrolment::course(sara.0, b.id, 252_000).terms_accepted(),
+    )
+    .await
+    .unwrap();
+    pay_by_card(&w, &e2).await;
+    let planned = edtech::Session::of_batch(w.db(), b.id).await.unwrap();
+    for session in planned.iter().take(5) {
+        edtech::sessions::submit_attendance(w.state(), &tariq, session.id)
+            .await
+            .expect("the attendance is submitted");
+    }
+    assert_eq!(
+        Batch::find_or_404(w.db(), b.id).await.unwrap().status,
+        edtech::BatchStatus::Running
+    );
+
+    let asked = batches::terminate(
+        w.state(),
+        &coordinator,
+        b.id,
+        "venue",
+        None,
+        vec![
+            edtech::exit::ExitChoice::withdraw(e1.id),
+            edtech::exit::ExitChoice::transfer(e2.id, b2.id),
+        ],
+    )
+    .await
+    .unwrap();
+    let request = asked.approval_request.expect("the centre manager decides");
+    assert!(refunds(&w).await.is_empty(), "nothing moves before the approval");
+    wl_kernel::approvals::approve(w.state(), request, &manager, "")
+        .await
+        .unwrap();
+
+    let sessions = edtech::Session::of_batch(w.db(), b.id).await.unwrap();
+    let count = |status: edtech::SessionStatus| sessions.iter().filter(|s| s.status == status).count();
+    assert_eq!(count(edtech::SessionStatus::Cancelled), 7);
+    assert_eq!(count(edtech::SessionStatus::Held), 5);
+    let one = reload(&w, &e1).await;
+    assert_eq!(one.status, EnrolmentStatus::Withdrawn);
+    assert_eq!(one.refund_amount, 147_000);
+    let notes = wl_invoicing::CreditNote::query().get(w.db()).await.unwrap();
+    assert_eq!(notes.len(), 1, "one credit note, for E1 only");
+    assert_eq!(notes[0].gross_total, 147_000, "AED 1,470.00");
+    let all = refunds(&w).await;
+    assert_eq!(all.len(), 1, "one refund");
+    assert_eq!(all[0].amount, 147_000);
+    assert_eq!(all[0].status, wl_payments::refund::RefundStatus::Requested);
+    assert_eq!(
+        all[0].requested_by,
+        Some(coordinator_user.id),
+        "recorded by the coordinator"
+    );
+    assert_eq!(all[0].approved_by, None, "and waiting for another person");
+    // The recorder cannot approve it; the accountant can.
+    assert!(
+        wl_payments::refund::approve(w.state(), &coordinator, &all[0])
+            .await
+            .is_err(),
+        "the person who recorded it may not approve it"
+    );
+    let approved = wl_payments::refund::approve(w.state(), &rita, &all[0])
+        .await
+        .expect("another person approves");
+    assert_eq!(approved.status, wl_payments::refund::RefundStatus::Approved);
+
+    let two = reload(&w, &e2).await;
+    assert_eq!(two.status, EnrolmentStatus::Transferred);
+    let next = Enrolment::find_or_404(w.db(), two.transferred_to_id.unwrap())
+        .await
+        .unwrap();
+    assert_eq!(next.status, EnrolmentStatus::Active);
+    assert_eq!(next.batch_id, Some(b2.id));
+}
+
+/// #448 point 1 with the real modules: open batch B (not started) with E1 who
+/// paid AED 2,520.00 and the AED 210.00 registration fee on the card. The
+/// coordinator cancels B for "too few students" and E1 -> withdraw: wl-invoicing
+/// makes one credit note of AED 2,730.00 and wl-payments holds a refund of
+/// AED 2,730.00 requested by the coordinator and awaiting approval; no admin fee
+/// and no tier is kept.
+#[renox::test]
+async fn edu_13_a_cancelled_batch_refunds_everything_through_the_real_payments() {
+    let w = boot().await;
+    let (coordinator_user, coordinator) = w.staff("Amal", ACADEMIC_COORDINATOR).await;
+    let (_, dina) = w.staff("Dina", COUNSELLOR).await;
+    let b = w.open_batch(&coordinator, "B", day(7)).await;
+    let omar = tenant(&w.app, "Omar Khan").await;
+    let e1 = enrolments::create(
+        w.state(),
+        &dina,
+        NewEnrolment::course(omar.0, b.id, 252_000)
+            .registration_fee(21_000)
+            .admin_fee(10_500)
+            .terms_accepted(),
+    )
+    .await
+    .unwrap();
+    pay_by_card(&w, &e1).await;
+
+    let done = batches::cancel(
+        w.state(),
+        &coordinator,
+        b.id,
+        "too few students",
+        vec![edtech::exit::ExitChoice::withdraw(e1.id)],
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(done.status, edtech::BatchStatus::Cancelled);
+    let one = reload(&w, &e1).await;
+    assert_eq!(one.status, EnrolmentStatus::Withdrawn);
+    assert_eq!(one.refund_amount, 273_000);
+    let notes = wl_invoicing::CreditNote::query().get(w.db()).await.unwrap();
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].gross_total, 273_000, "AED 2,730.00");
+    let all = refunds(&w).await;
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].amount, 273_000);
+    assert_eq!(all[0].status, wl_payments::refund::RefundStatus::Requested);
+    assert_eq!(all[0].requested_by, Some(coordinator_user.id));
+    assert_eq!(all[0].approved_by, None);
+}
