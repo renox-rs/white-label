@@ -438,6 +438,24 @@ pub trait BookingActions: Send + Sync + 'static {
     ) -> SchedulingFuture<'a, bool> {
         Box::pin(async { Ok(false) })
     }
+
+    /// Cancels `booking` for the staff user `user_id` with the reason code
+    /// `reason_code`, also after the check-in (`SCH.ACL.06`: a booking in
+    /// `checked_in` or `in_progress` is cancelled by staff only, once the
+    /// record opened at check-in has its work done captured or marked none).
+    /// 08 cancels the booking of a job card that was cancelled, declined or
+    /// voided. Answers whether it was cancelled; `false` for a booking that
+    /// cannot be cancelled any more (it was cancelled, is complete, or its
+    /// record has not said what was done yet). The default does nothing.
+    fn cancel_booking_by_staff<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _booking: BookingId,
+        _reason_code: &'a str,
+        _user_id: i64,
+    ) -> SchedulingFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
 }
 
 /// A booking a vertical makes for a party from a schedule, for the first free

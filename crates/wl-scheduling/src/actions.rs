@@ -120,4 +120,28 @@ impl BookingActions for SchedulingActions {
             }
         })
     }
+
+    fn cancel_booking_by_staff<'a>(
+        &'a self,
+        state: &'a AppState,
+        booking: BookingId,
+        reason_code: &'a str,
+        user_id: i64,
+    ) -> SchedulingFuture<'a, bool> {
+        Box::pin(async move {
+            match service::cancel(
+                state,
+                booking.0,
+                CancelRequest::new(reason_code),
+                Actor::staff(user_id),
+                renox::db::now(),
+            )
+            .await
+            {
+                Ok(_) => Ok(true),
+                Err(Refusal::Transition(_)) => Ok(false),
+                Err(other) => Err(unprocessable(&other)),
+            }
+        })
+    }
 }

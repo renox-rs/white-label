@@ -5,7 +5,7 @@
 
 mod support;
 
-use wl_kernel::scheduling::{BookingActions, ServiceBooking};
+use wl_kernel::scheduling::{BookingActions, ServiceBooking, WorkDone};
 use wl_kernel::{PartyId, Subject};
 use wl_scheduling::BookingStatus;
 use wl_scheduling::actions::SchedulingActions;
@@ -86,5 +86,70 @@ async fn a_booking_is_cancelled_as_the_system() {
             .cancel_booking(t.state(), booking, "resource_unavailable")
             .await
             .unwrap()
+    );
+}
+
+/// After the check-in a booking is cancelled for a staff user, once the
+/// record opened at check-in has its work done known; the system alone cannot
+/// (`SCH.ACL.06`), and the work done pending holds it back.
+#[renox::test]
+async fn a_checked_in_booking_is_cancelled_for_a_staff_user_once_its_work_done_is_known() {
+    let t = boot().await;
+    let bay = t.doctor("Bay 1").await;
+    t.service_with("periodic_service", &[&bay], |_| {}).await;
+    let booking = SchedulingActions
+        .book_service(
+            t.state(),
+            ServiceBooking::new(PATIENT, "periodic_service", in_hours(1)),
+        )
+        .await
+        .unwrap();
+    wl_scheduling::service::check_in(
+        t.state(),
+        booking.0,
+        wl_scheduling::service::Actor::staff(1),
+        support::now(),
+    )
+    .await
+    .expect("the party is checked in");
+    assert_eq!(
+        t.reload(booking.0).await.status,
+        BookingStatus::CheckedIn
+    );
+
+    // The system alone is refused after the check-in.
+    assert!(
+        !SchedulingActions
+            .cancel_booking(t.state(), booking, "walked_out")
+            .await
+            .unwrap()
+    );
+    // The record has not said what was done: the booking stays.
+    t.work.set(booking.0, WorkDone::Pending);
+    assert!(
+        !SchedulingActions
+            .cancel_booking_by_staff(t.state(), booking, "walked_out", 1)
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        t.reload(booking.0).await.status,
+        BookingStatus::CheckedIn
+    );
+
+    t.work.set(booking.0, WorkDone::Nothing);
+    assert!(
+        SchedulingActions
+            .cancel_booking_by_staff(t.state(), booking, "walked_out", 1)
+            .await
+            .unwrap()
+    );
+    assert_eq!(t.reload(booking.0).await.status, BookingStatus::Cancelled);
+    assert!(
+        !SchedulingActions
+            .cancel_booking_by_staff(t.state(), booking, "walked_out", 1)
+            .await
+            .unwrap(),
+        "a booking that was cancelled is left as it is"
     );
 }

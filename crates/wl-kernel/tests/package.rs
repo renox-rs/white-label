@@ -2547,4 +2547,10 @@ async fn without_scheduling_a_service_booking_is_refused_and_a_cancel_does_nothi
             .await
             .unwrap()
     );
+    assert!(
+        !actions
+            .cancel_booking_by_staff(state, BookingId(4), "job_stopped", 9)
+            .await
+            .unwrap()
+    );
 }
