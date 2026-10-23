@@ -46,6 +46,16 @@ pub const WORK_ORDERS_COST_VIEW: &str = "work_orders.cost_view";
 /// Approve the void of a production report: the line's supervisor and the
 /// production manager (`PLT.ACL.09`, `MFG.ACL.10`); never the requester.
 pub const WORK_ORDERS_VOID_APPROVE: &str = "work_orders.void_approve";
+/// See the non-conformance reports (QC, the production manager).
+pub const NCRS_VIEW: &str = "ncrs.view";
+/// Raise an NCR on a lot and change its cause (QC inspector).
+pub const NCRS_RAISE: &str = "ncrs.raise";
+/// Disposition, close, reopen and cancel an NCR (QC inspector, the
+/// production manager).
+pub const NCRS_DISPOSITION: &str = "ncrs.disposition";
+/// Approve a *use as is* disposition: someone other than the inspector who
+/// asks (`MFG.ACL.03`).
+pub const NCRS_APPROVE: &str = "ncrs.approve";
 /// Keep the plants and the production lines.
 pub const PLANTS_MANAGE: &str = "plants.manage";
 
@@ -77,6 +87,10 @@ pub const ALL: &[&str] = &[
     WORK_ORDERS_ABORT_APPROVE,
     WORK_ORDERS_VOID_APPROVE,
     WORK_ORDERS_COST_VIEW,
+    NCRS_VIEW,
+    NCRS_RAISE,
+    NCRS_DISPOSITION,
+    NCRS_APPROVE,
     PLANTS_MANAGE,
 ];
 

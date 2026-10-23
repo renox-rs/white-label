@@ -25,6 +25,9 @@ use wl_kernel::inventory::{
     LOT_SUBJECT_TYPE, PENDING_ISSUE_SUBJECT_TYPE, StockChoice, StockFuture, StockLot,
     StockNegative, StockService, provide_stock_service,
 };
+use wl_kernel::lot_disposal::{
+    LotDisposal, LotFacts, LotFuture, ReturnLot, ScrapLot, Scrapped, provide_lot_disposal,
+};
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
 };
@@ -393,6 +396,177 @@ impl ProductionStock for Stock {
     }
 }
 
+/// A lot of the fake inventory.
+#[derive(Clone, Debug)]
+struct FakeLot {
+    facts: LotFacts,
+}
+
+/// A Return to supplier of the fake inventory.
+#[derive(Clone, Debug)]
+pub struct FakeReturn {
+    /// What was asked.
+    pub request: ReturnLot,
+    /// `draft`, `dispatched` or `cancelled`.
+    pub status: String,
+    /// Its subject.
+    pub subject: Subject,
+}
+
+/// The lots of wl-inventory, as an NCR reaches them through the kernel's
+/// `LotDisposal`: the facts the test sets, the draft returns made, the scrap
+/// and the releases asked.
+#[derive(Clone, Default)]
+pub struct Lots {
+    lots: Arc<Mutex<Vec<FakeLot>>>,
+    /// The returns made.
+    pub returns: Arc<Mutex<Vec<FakeReturn>>>,
+    /// The scrap posted.
+    pub scrapped: Arc<Mutex<Vec<ScrapLot>>>,
+    /// The lots released.
+    pub released: Arc<Mutex<Vec<Subject>>>,
+    /// The lots closed out (rejected when emptied).
+    pub closed_out: Arc<Mutex<Vec<Subject>>>,
+}
+
+impl Lots {
+    /// Lot `id` of `item`, number `number`, from supplier `supplier` (none:
+    /// made in-house when `own`, else opening stock), `quantity_milli` at
+    /// `unit_cost` fils, in `status`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn put(
+        &self,
+        id: i64,
+        number: &str,
+        supplier: Option<i64>,
+        own: bool,
+        quantity_milli: i64,
+        unit_cost: i64,
+        status: &str,
+    ) {
+        self.lots.lock().unwrap().push(FakeLot {
+            facts: LotFacts {
+                lot: Subject::new(LOT_SUBJECT_TYPE, id),
+                item: Subject::new(ITEM_SUBJECT_TYPE, RESIN),
+                number: number.to_owned(),
+                supplier_lot: supplier.map(|_| number.to_owned()),
+                status: status.to_owned(),
+                supplier: supplier.map(wl_kernel::PartyId),
+                receipt: supplier.map(|_| Subject::new("inventory.goods_receipt", 12)),
+                produced_by: own.then(|| Subject::new("manufacturing.work_order", 99)),
+                quantity_milli,
+                location: Some(location(STORE)),
+                location_milli: quantity_milli,
+                unit_cost,
+                po_line: supplier.map(|_| 4),
+            },
+        });
+    }
+
+    /// The Return to supplier `n` (from 1) is now `status`.
+    pub fn set_return(&self, n: usize, status: &str) {
+        self.returns.lock().unwrap()[n - 1].status = status.to_owned();
+    }
+
+    /// The returns made so far.
+    pub fn made(&self) -> Vec<FakeReturn> {
+        self.returns.lock().unwrap().clone()
+    }
+
+    fn find(&self, lot: &Subject) -> Option<LotFacts> {
+        self.lots
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|found| found.facts.lot == *lot)
+            .map(|found| found.facts.clone())
+    }
+}
+
+fn unprocessable(message: &str) -> Error {
+    Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message.to_owned())
+}
+
+impl LotDisposal for Lots {
+    fn facts<'a>(
+        &'a self,
+        _state: &'a AppState,
+        lot: &'a Subject,
+    ) -> LotFuture<'a, Option<LotFacts>> {
+        Box::pin(async move { Ok(self.find(lot)) })
+    }
+
+    fn create_return<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: ReturnLot,
+    ) -> LotFuture<'a, Option<Subject>> {
+        Box::pin(async move {
+            let facts = self.find(&request.lot).expect("a known lot");
+            if facts.supplier_lot.is_none() {
+                return Err(unprocessable("The lot has no supplier lot"));
+            }
+            let mut all = self.returns.lock().unwrap();
+            let subject = Subject::new(
+                wl_kernel::inventory::SUPPLIER_RETURN_SUBJECT_TYPE,
+                i64::try_from(all.len()).unwrap() + 1,
+            );
+            all.push(FakeReturn {
+                request,
+                status: "draft".to_owned(),
+                subject: subject.clone(),
+            });
+            Ok(Some(subject))
+        })
+    }
+
+    fn return_status<'a>(
+        &'a self,
+        _state: &'a AppState,
+        supplier_return: &'a Subject,
+    ) -> LotFuture<'a, Option<String>> {
+        Box::pin(async move {
+            Ok(self
+                .returns
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|found| found.subject == *supplier_return)
+                .map(|found| found.status.clone()))
+        })
+    }
+
+    fn scrap<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: ScrapLot,
+    ) -> LotFuture<'a, Option<Scrapped>> {
+        Box::pin(async move {
+            let facts = self.find(&request.lot).expect("a known lot");
+            let value = request.quantity_milli * facts.unit_cost / 1_000;
+            self.scrapped.lock().unwrap().push(request);
+            Ok(Some(Scrapped {
+                value,
+                discarded: false,
+            }))
+        })
+    }
+
+    fn release<'a>(&'a self, _state: &'a AppState, lot: &'a Subject) -> LotFuture<'a, bool> {
+        Box::pin(async move {
+            self.released.lock().unwrap().push(lot.clone());
+            Ok(true)
+        })
+    }
+
+    fn close_out<'a>(&'a self, _state: &'a AppState, lot: &'a Subject) -> LotFuture<'a, bool> {
+        Box::pin(async move {
+            self.closed_out.lock().unwrap().push(lot.clone());
+            Ok(true)
+        })
+    }
+}
+
 /// The bills of materials of wl-inventory.
 #[derive(Clone, Default)]
 pub struct Boms(Arc<Mutex<Vec<BomVersion>>>);
@@ -626,6 +800,7 @@ impl Notifier for Recording {
 /// Provides the fakes.
 struct Fakes {
     stock: Stock,
+    lots: Lots,
     boms: Boms,
     lines: Lines,
     tickets: Tickets,
@@ -645,6 +820,7 @@ impl Module for Fakes {
     fn register(&self, app: &mut Registry) {
         provide_stock_service(app, self.stock.clone());
         provide_production_stock(app, self.stock.clone());
+        provide_lot_disposal(app, self.lots.clone());
         provide_boms(app, self.boms.clone());
         provide_order_lines(app, self.lines.clone());
         provide_task_creator(app, self.tickets.clone());
@@ -663,6 +839,8 @@ pub struct Booted {
     pub app: TestApp,
     /// The stock.
     pub stock: Stock,
+    /// The lots of the inventory.
+    pub lots: Lots,
     /// The BOMs.
     pub boms: Boms,
     /// The sales order lines.
@@ -837,6 +1015,59 @@ impl Booted {
             .await
     }
 
+    /// A QC inspector made without the approval right: a role of NCR work
+    /// only.
+    pub async fn clerk(&self, name: &str, plant: &Plant) -> User {
+        self.user_in(name, "ncr_clerk", &plant.scope()).await
+    }
+
+    /// The NCR `id` as it is now.
+    pub async fn ncr_now(&self, id: i64) -> manufacturing::Ncr {
+        manufacturing::Ncr::find_or_404(self.db(), id)
+            .await
+            .unwrap()
+    }
+
+    /// An NCR on lot `lot` of `kg` kilos with the defect "colour off", raised
+    /// by `by` in `plant` through the page's route.
+    pub async fn ncr(&self, by: &User, plant: &Plant, lot: i64, kg: &str) -> manufacturing::Ncr {
+        let (plant_id, lot_id) = (plant.id.to_string(), lot.to_string());
+        self.post(
+            by,
+            "/manufacturing/ncrs",
+            &[
+                ("plant_id", &plant_id),
+                ("lot_id", &lot_id),
+                ("quantity", kg),
+                ("defect", "colour off"),
+            ],
+        )
+        .await
+        .assert_status(303);
+        manufacturing::Ncr::query()
+            .order_by_desc(manufacturing::Ncr::ID)
+            .first(self.db())
+            .await
+            .unwrap()
+            .expect("an NCR")
+    }
+
+    /// `POST /manufacturing/ncrs/{id}/{action}` as `by`.
+    pub async fn ncr_act(
+        &self,
+        by: &User,
+        ncr: &manufacturing::Ncr,
+        action: &str,
+        form: &[(&str, &str)],
+    ) -> TestResponse {
+        self.post(
+            by,
+            &format!("/manufacturing/ncrs/{}/{action}", ncr.id),
+            form,
+        )
+        .await
+    }
+
     /// The work order `id` as it is now.
     pub async fn reload(&self, id: i64) -> WorkOrder {
         WorkOrder::find_or_404(self.db(), id).await.unwrap()
@@ -920,6 +1151,7 @@ impl Booted {
 /// Boots the app.
 pub async fn boot() -> Booted {
     let stock = Stock::default();
+    let lots = Lots::default();
     let boms = Boms::default();
     boms.panel(BOM, true);
     boms.panel(BOM + 1, false);
@@ -933,6 +1165,7 @@ pub async fn boot() -> Booted {
     let voided = Recorded::default();
     let fakes = Fakes {
         stock: stock.clone(),
+        lots: lots.clone(),
         boms: boms.clone(),
         lines: lines.clone(),
         tickets: tickets.clone(),
@@ -991,6 +1224,10 @@ pub async fn boot() -> Booted {
             perm::WORK_ORDERS_ABORT_APPROVE,
             perm::WORK_ORDERS_VOID_APPROVE,
             perm::WORK_ORDERS_COST_VIEW,
+            perm::NCRS_VIEW,
+            perm::NCRS_RAISE,
+            perm::NCRS_DISPOSITION,
+            perm::NCRS_APPROVE,
         ],
     )
     .await;
@@ -1014,11 +1251,23 @@ pub async fn boot() -> Booted {
         &[perm::WORK_ORDERS_VIEW, perm::WORK_ORDERS_REPORT],
     )
     .await;
-    define(perm::QC_ROLE, &[perm::WORK_ORDERS_VIEW]).await;
+    define(
+        perm::QC_ROLE,
+        &[
+            perm::WORK_ORDERS_VIEW,
+            perm::NCRS_VIEW,
+            perm::NCRS_RAISE,
+            perm::NCRS_DISPOSITION,
+            perm::NCRS_APPROVE,
+        ],
+    )
+    .await;
     define("stock_approver", &[perm::STOCK_APPROVE]).await;
+    define("ncr_clerk", &[perm::NCRS_VIEW, perm::NCRS_RAISE]).await;
     Booted {
         app,
         stock,
+        lots,
         boms,
         lines,
         tickets,

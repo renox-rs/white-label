@@ -16,6 +16,8 @@
 //! - **On a phone (390 px)** the pages are a stack of cards and tables inside
 //!   `rx-table` wrappers; the columns that do not fit are `hide-narrow`.
 
+pub(crate) mod ncr_page;
+pub(crate) mod ncrs_page;
 pub(crate) mod work_order_page;
 pub(crate) mod work_orders_page;
 
@@ -40,6 +42,14 @@ pub(crate) const VIEWS: &[(&str, &str)] = &[
     (
         "manufacturing/work_order.html",
         include_str!("../../views/manufacturing/work_order.html"),
+    ),
+    (
+        "manufacturing/ncrs.html",
+        include_str!("../../views/manufacturing/ncrs.html"),
+    ),
+    (
+        "manufacturing/ncr.html",
+        include_str!("../../views/manufacturing/ncr.html"),
     ),
 ];
 
@@ -123,6 +133,24 @@ pub(crate) async fn user_text(state: &AppState, id: Option<i64>, fallback: &str)
         .ok()
         .flatten()
         .map_or_else(|| fallback.to_owned(), |user| user.name)
+}
+
+/// The name of a party, else `fallback`.
+pub(crate) async fn party_text(
+    state: &AppState,
+    lang: &Lang,
+    id: Option<i64>,
+    fallback: &str,
+) -> String {
+    let Some(id) = id else {
+        return fallback.to_owned();
+    };
+    wl_kernel::parties::directory(state)
+        .display_name(&state.db, wl_kernel::PartyId(id), &lang.locale)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| fallback.to_owned())
 }
 
 /// The word of a state transition in the activity list.

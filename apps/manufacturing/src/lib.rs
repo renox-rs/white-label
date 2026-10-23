@@ -7,6 +7,8 @@ mod db;
 pub mod events;
 pub mod issue;
 pub mod material_hold;
+pub mod ncr;
+pub mod ncrs;
 pub mod notices;
 pub mod pages;
 pub mod permissions;
@@ -25,9 +27,11 @@ use renox::prelude::*;
 
 pub use abort::AbortLine;
 pub use events::{
-    WorkOrderAborted, WorkOrderCancelled, WorkOrderCompleted, WorkOrderReleased, WorkOrderUnlinked,
+    NcrCancelled, NcrClosed, NcrDispositioned, NcrRaised, NcrReopened, WorkOrderAborted,
+    WorkOrderCancelled, WorkOrderCompleted, WorkOrderReleased, WorkOrderUnlinked,
 };
 pub use issue::MaterialIssue;
+pub use ncr::{Cause, Disposition, Ncr, NcrDecision, NcrStatus, Origin};
 pub use pick_list::PickLine;
 pub use plant::{Line, Plant};
 pub use report::{ProductionReport, ReportStatus};
@@ -56,7 +60,12 @@ impl Module for Manufacturing {
 
     fn register(&self, app: &mut Registry) {
         app.view_data::<screens::work_orders_page::WorkOrdersPage>()
-            .view_data::<screens::work_order_page::WorkOrderPage>();
+            .view_data::<screens::work_order_page::WorkOrderPage>()
+            .view_data::<screens::ncrs_page::NcrsPage>()
+            .view_data::<screens::ncr_page::NcrPage>();
+        wl_kernel::approvals::register_subject_link(ncr::SUBJECT_TYPE, |id| {
+            screens::ncr_page::url(id)
+        });
         // An approval of a work order links to its page.
         wl_kernel::approvals::register_subject_link(work_order::SUBJECT_TYPE, |id| {
             screens::work_order_page::url(id)
@@ -78,14 +87,25 @@ impl Module for Manufacturing {
                 .order(9)
                 .permission(permissions::WORK_ORDERS_VIEW),
         );
+        app.nav(
+            "app",
+            NavLink::route("manufacturing.ncrs", "nav.ncrs")
+                .icon("clipboard-check")
+                .group("nav.app")
+                .order(10)
+                .permission(permissions::NCRS_VIEW),
+        );
         app.model::<Plant>()
             .model::<Line>()
             .model::<WorkOrder>()
             .model::<PickLine>()
             .model::<MaterialIssue>()
             .model::<ProductionReport>()
-            .model::<AbortLine>();
+            .model::<AbortLine>()
+            .model::<Ncr>()
+            .model::<NcrDecision>();
         work_order::register();
+        ncr::register();
         report::register(app);
         notices::register_types();
         // `MFG.ACL.12`: the posted quantities still match the request at the
@@ -95,9 +115,13 @@ impl Module for Manufacturing {
         });
         abort::listen(app);
         material_hold::listen(app);
+        ncrs::listen(app);
+        // A lot with an NCR open on it is not released (§7.1 *NCR*).
+        wl_kernel::lot_disposal::provide_lot_release_guard(app, ncrs::NcrReleaseGuard);
         app.schedule()
             .every_minutes(5, ABORT_SWEEP_TASK, |state: AppState| async move {
                 abort::sweep(&state).await?;
+                ncrs::sweep(&state).await?;
                 report::sweep(&state).await.map(|_| ())
             });
     }

@@ -130,6 +130,36 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewWorkOrder) -> Resul
     if !allowed {
         return Err(Error::Forbidden);
     }
+    insert(state, &plant, new, Some(by.id)).await
+}
+
+/// Creates a `planned` work order as the system, for the rework an NCR asks
+/// for (07 §7.1 *NCR* `disposition`): the permission was checked on the NCR.
+///
+/// # Errors
+///
+/// A 422 for an unknown or inactive plant, a line of another plant, a
+/// quantity that is not above zero or an end before the start.
+pub async fn create_by_system(
+    state: &AppState,
+    new: NewWorkOrder,
+    created_by: Option<i64>,
+) -> Result<WorkOrder> {
+    let plant = Plant::find(&state.db, new.plant_id)
+        .await?
+        .filter(|plant| plant.active)
+        .ok_or_else(|| refused(english("manufacturing.create.plant", &[])))?;
+    insert(state, &plant, new, created_by).await
+}
+
+/// The checks of the data and the insert of [`create`] and
+/// [`create_by_system`].
+async fn insert(
+    state: &AppState,
+    plant: &Plant,
+    new: NewWorkOrder,
+    created_by: Option<i64>,
+) -> Result<WorkOrder> {
     if let Some(line) = new.line_id {
         let found = Line::find(&state.db, line).await?;
         if !found
@@ -170,7 +200,7 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewWorkOrder) -> Resul
             source,
             sales_order_id,
             sales_order_line_id,
-            created_by: Some(by.id),
+            created_by,
             ..WorkOrder::default()
         },
     )

@@ -1,0 +1,34 @@
+{#- manufacturing: the non-conformance reports the person may see, with the lot,
+    the quantity, the cause, the disposition and the status. Replace it with
+    resources/views/manufacturing/ncrs.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['ncrs.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['ncrs.title']" :subtitle="tx['ncrs.subtitle']"/>
+    <rx-row rx-if="can_raise">
+      <rx-action-sheet id="raise-ncr" :label="tx['ncrs.new']" :action="route('manufacturing.ncr_create')"
+                       :title="tx['ncrs.new']" :description="tx['ncrs.new_hint']" :submit-label="tx['ncrs.new_save']" variant="primary" icon="plus">
+        <rx-select name="plant_id" :label="tx['form.plant']" :options="form.plants" :selected="form.plant_selected"/>
+        <rx-input name="lot_id" type="number" :label="tx['ncrs.form.lot']" :hint="tx['ncrs.form.lot_hint']" id="raise-ncr-lot"/>
+        <rx-input name="item_id" type="number" :label="tx['form.item']" :hint="tx['ncrs.form.item_hint']" id="raise-ncr-item"/>
+        <rx-input name="quantity" type="text" :label="tx['form.quantity']" :hint="tx['form.quantity_hint']" id="raise-ncr-quantity" required/>
+        <rx-textarea name="defect" :label="tx['ncrs.form.defect']" id="raise-ncr-defect" required/>
+        <rx-select name="cause" :label="tx['ncrs.form.cause']" :options="form.causes" :selected="form.cause_selected"/>
+      </rx-action-sheet>
+    </rx-row>
+    <rx-link-tabs :items="status_tabs" :current="status_current" :label="tx['ncrs.filter']"/>
+    <rx-table :rows="rows" as="ncr" :key="ncr.id" :caption="tx['ncrs.title']" card>
+      <rx-column :label="tx['ncrs.ncr']">
+        <rx-stack>
+          <span><a href="{{ ncr.url }}">{{ ncr.number }}</a> - {{ ncr.item }}</span>
+          <span class="rx-subtitle">{{ ncr.lot }}</span>
+          <span><rx-badge :kind="ncr.status_kind" :text="ncr.status"/></span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['ncrs.quantity']" align="num">{{ ncr.quantity }}</rx-column>
+      <rx-column :label="tx['ncrs.cause']" hide-narrow>{{ ncr.cause }}</rx-column>
+      <rx-column :label="tx['ncrs.disposition']" hide-narrow>{{ ncr.disposition }}</rx-column>
+      <rx-column :label="tx['ncrs.raised']" hide-narrow>{{ ncr.raised }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['ncrs.empty']" :message="tx['ncrs.empty_text']" icon="clipboard-check"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

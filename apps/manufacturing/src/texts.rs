@@ -13,6 +13,109 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("manufacturing.notice.subject", "{{ title }}"),
     ("manufacturing.notice.body", "{{ body }}"),
+    // The non-conformance report (`MFG.QCL.02`).
+    (
+        "manufacturing.ncr.choose",
+        "Choose what becomes of the goods: rework, scrap, use as is or return to the supplier.",
+    ),
+    (
+        "manufacturing.ncr.reopen_done",
+        "The action of the disposition has happened: the NCR cannot be reopened.",
+    ),
+    (
+        "manufacturing.ncr.close_not_done",
+        "The action of the disposition is not done yet: the rework work order is not completed, the scrap has not posted or the Return to supplier is not dispatched.",
+    ),
+    ("manufacturing.ncr.defect", "Describe the defect."),
+    ("manufacturing.ncr.quantity", "Give a quantity above zero."),
+    (
+        "manufacturing.ncr.item",
+        "Name the lot, or the item when it has no lot.",
+    ),
+    ("manufacturing.ncr.lot_unknown", "The lot is not known."),
+    (
+        "manufacturing.ncr.too_much",
+        "The lot holds only {{ available }}.",
+    ),
+    (
+        "manufacturing.ncr.cause_closed",
+        "The cause is changed until the NCR is closed.",
+    ),
+    (
+        "manufacturing.ncr.not_open",
+        "Only an open NCR is dispositioned.",
+    ),
+    (
+        "manufacturing.ncr.waiting",
+        "A decision on this NCR waits for an approval.",
+    ),
+    (
+        "manufacturing.ncr.needs_lot",
+        "This NCR is not on a lot: it cannot be scrapped, used as is or returned.",
+    ),
+    (
+        "manufacturing.ncr.use_as_is_status",
+        "The lot cannot be released: it is not in quarantine, on hold or released.",
+    ),
+    (
+        "manufacturing.ncr.own_production",
+        "The lot was made in-house: it cannot be returned to a supplier.",
+    ),
+    (
+        "manufacturing.ncr.no_supplier_lot",
+        "The supplier lot is not known (the lot has no goods receipt): choose another disposition.",
+    ),
+    (
+        "manufacturing.ncr.outcome",
+        "Choose credit or replace for the Return to supplier.",
+    ),
+    (
+        "manufacturing.ncr.no_stock",
+        "Stock is not enabled: the goods cannot be moved.",
+    ),
+    (
+        "manufacturing.ncr.return_alive",
+        "Cancel the Return to supplier first: that reopens the NCR.",
+    ),
+    (
+        "manufacturing.ncr.rework_alive",
+        "Cancel the rework work order first: that reopens the NCR.",
+    ),
+    (
+        "manufacturing.ncr.rework_cancelled",
+        "The rework work order was cancelled.",
+    ),
+    (
+        "manufacturing.ncr.rework_aborted",
+        "The rework work order was aborted.",
+    ),
+    (
+        "manufacturing.ncr.return_cancelled",
+        "The Return to supplier was cancelled.",
+    ),
+    (
+        "manufacturing.ncr.keeps_lot",
+        "{{ ncr }} is {{ status }} on this lot: it is not released until its action is done.",
+    ),
+    ("manufacturing.ncr.task_done", "Done."),
+    ("manufacturing.ncr.close_title", "Close {{ ncr }}"),
+    (
+        "manufacturing.ncr.close_body",
+        "The action of the disposition of {{ ncr }} is done. Check it and close the NCR.",
+    ),
+    (
+        "manufacturing.ncr.redisposition_title",
+        "Choose a new disposition for {{ ncr }}",
+    ),
+    (
+        "manufacturing.ncr.redisposition_body",
+        "{{ ncr }} is open again: {{ reason }} Choose what becomes of the goods.",
+    ),
+    ("manufacturing.ncr.rework_title", "Rework for {{ ncr }}"),
+    (
+        "manufacturing.ncr.rework_body",
+        "Work order {{ order }} was created for the rework of {{ ncr }}: set its line and BOM version and release it.",
+    ),
     (
         "manufacturing.problems.plant_name",
         "Give the plant a name.",
@@ -574,6 +677,232 @@ const TEXTS: &[(&str, &str)] = &[
         "manufacturing.screen.transition.auto_unlink_on_hold",
         "Unlinked from the order",
     ),
+    // The NCR screens.
+    (
+        "manufacturing.screen.done.ncr_raised",
+        "The NCR was raised.",
+    ),
+    (
+        "manufacturing.screen.done.ncr_dispositioned",
+        "The disposition is decided.",
+    ),
+    (
+        "manufacturing.screen.done.ncr_waiting",
+        "The decision waits for an approval.",
+    ),
+    ("manufacturing.screen.done.ncr_closed", "The NCR is closed."),
+    (
+        "manufacturing.screen.done.ncr_reopened",
+        "The NCR is open again.",
+    ),
+    (
+        "manufacturing.screen.done.ncr_cancelled",
+        "The NCR was cancelled.",
+    ),
+    (
+        "manufacturing.screen.done.ncr_cause",
+        "The cause was changed.",
+    ),
+    ("manufacturing.screen.ncrs.title", "Non-conformance reports"),
+    (
+        "manufacturing.screen.ncrs.subtitle",
+        "Defects on lots and what QC decided for them.",
+    ),
+    ("manufacturing.screen.ncrs.new", "Raise an NCR"),
+    (
+        "manufacturing.screen.ncrs.new_hint",
+        "Record a defect on a lot, or on an item when it has no lot.",
+    ),
+    ("manufacturing.screen.ncrs.new_save", "Raise"),
+    ("manufacturing.screen.ncrs.filter", "Filter by status"),
+    ("manufacturing.screen.ncrs.ncr", "NCR"),
+    ("manufacturing.screen.ncrs.quantity", "Quantity"),
+    ("manufacturing.screen.ncrs.cause", "Cause"),
+    ("manufacturing.screen.ncrs.disposition", "Disposition"),
+    ("manufacturing.screen.ncrs.raised", "Raised on"),
+    ("manufacturing.screen.ncrs.empty", "No NCRs"),
+    (
+        "manufacturing.screen.ncrs.empty_text",
+        "Defects found at inspection appear here.",
+    ),
+    ("manufacturing.screen.ncrs.form.lot", "Lot"),
+    (
+        "manufacturing.screen.ncrs.form.lot_hint",
+        "The number of the lot in the system.",
+    ),
+    ("manufacturing.screen.ncrs.form.item", "Item"),
+    (
+        "manufacturing.screen.ncrs.form.item_hint",
+        "Only when the goods have no lot.",
+    ),
+    ("manufacturing.screen.ncrs.form.defect", "Defect"),
+    ("manufacturing.screen.ncrs.form.cause", "Cause"),
+    ("manufacturing.screen.ncr.cause_default", "As the lot says"),
+    ("manufacturing.screen.ncr.title", "NCR"),
+    ("manufacturing.screen.ncr.lot_name", "Lot {{ number }}"),
+    (
+        "manufacturing.screen.ncr.open_rework",
+        "Open the rework work order",
+    ),
+    (
+        "manufacturing.screen.ncr.open_return",
+        "Open the Return to supplier",
+    ),
+    ("manufacturing.screen.ncr.tab.decisions", "Dispositions"),
+    ("manufacturing.screen.ncr.decision.what", "Disposition"),
+    ("manufacturing.screen.ncr.decision.in_force", "In force"),
+    ("manufacturing.screen.ncr.decision.ended", "Ended"),
+    (
+        "manufacturing.screen.ncr.decision.empty",
+        "No disposition yet",
+    ),
+    (
+        "manufacturing.screen.ncr.decision.empty_text",
+        "QC decides what becomes of the goods.",
+    ),
+    ("manufacturing.screen.ncr.fact.lot", "Lot"),
+    ("manufacturing.screen.ncr.fact.defect", "Defect"),
+    ("manufacturing.screen.ncr.fact.cause", "Cause"),
+    (
+        "manufacturing.screen.ncr.fact.cause_reason",
+        "Why the cause changed",
+    ),
+    ("manufacturing.screen.ncr.fact.origin", "Raised from"),
+    ("manufacturing.screen.ncr.fact.raised", "Raised"),
+    (
+        "manufacturing.screen.ncr.fact.raised_by",
+        "{{ date }} by {{ who }}",
+    ),
+    ("manufacturing.screen.ncr.fact.supplier", "Supplier"),
+    ("manufacturing.screen.ncr.fact.disposition", "Disposition"),
+    ("manufacturing.screen.ncr.fact.outcome", "For the supplier"),
+    ("manufacturing.screen.ncr.fact.note", "QC note"),
+    (
+        "manufacturing.screen.ncr.fact.scrap_value",
+        "Value scrapped",
+    ),
+    ("manufacturing.screen.ncr.fact.action", "Action"),
+    ("manufacturing.screen.ncr.fact.rework", "Rework work order"),
+    ("manufacturing.screen.ncr.fact.return", "Return to supplier"),
+    (
+        "manufacturing.screen.ncr.fact.return_name",
+        "Return {{ id }}",
+    ),
+    ("manufacturing.screen.ncr.action.done", "Done"),
+    ("manufacturing.screen.ncr.action.pending", "Not done yet"),
+    (
+        "manufacturing.screen.ncr.note.waiting",
+        "A decision on this NCR waits for an approval.",
+    ),
+    (
+        "manufacturing.screen.ncr.note.partial",
+        "The NCR covers part of the lot: the lot is not released until the action of the disposition is done.",
+    ),
+    (
+        "manufacturing.screen.ncr.note.reopened",
+        "The NCR is open again: choose a new disposition. The earlier one stays in the list of dispositions.",
+    ),
+    ("manufacturing.screen.ncr.rework.no_line", "Choose later"),
+    ("manufacturing.screen.ncr.form.note", "Note"),
+    (
+        "manufacturing.screen.ncr.form.outcome",
+        "What the supplier gives",
+    ),
+    ("manufacturing.screen.ncr.form.reason", "Reason"),
+    ("manufacturing.screen.ncr.action.rework", "Rework"),
+    (
+        "manufacturing.screen.ncr.action.rework_hint",
+        "A work order is created to make the goods right.",
+    ),
+    ("manufacturing.screen.ncr.action.scrap", "Scrap"),
+    (
+        "manufacturing.screen.ncr.action.scrap_hint",
+        "The goods are written off. Above AED 2,000 a second person approves first.",
+    ),
+    ("manufacturing.screen.ncr.action.use_as_is", "Use as is"),
+    (
+        "manufacturing.screen.ncr.action.use_as_is_hint",
+        "The goods are used as they are. Another inspector or the production manager approves first, then the lot is released.",
+    ),
+    (
+        "manufacturing.screen.ncr.action.return",
+        "Return to supplier",
+    ),
+    (
+        "manufacturing.screen.ncr.action.return_hint",
+        "A draft Return to supplier is made from the quarantine location.",
+    ),
+    ("manufacturing.screen.ncr.action.close", "Close"),
+    (
+        "manufacturing.screen.ncr.action.close_hint",
+        "The action of the disposition is done. Close the NCR.",
+    ),
+    ("manufacturing.screen.ncr.action.reopen", "Reopen"),
+    (
+        "manufacturing.screen.ncr.action.reopen_hint",
+        "The action did not happen: choose a new disposition.",
+    ),
+    ("manufacturing.screen.ncr.action.cause", "Change the cause"),
+    (
+        "manufacturing.screen.ncr.action.cause_hint",
+        "The supplier scorecard counts only NCRs caused by the supplier.",
+    ),
+    ("manufacturing.screen.ncr.action.cancel", "Cancel"),
+    (
+        "manufacturing.screen.ncr.action.cancel_hint",
+        "The NCR was raised in error.",
+    ),
+    ("manufacturing.screen.ncr_status.open", "Open"),
+    (
+        "manufacturing.screen.ncr_status.dispositioned",
+        "Dispositioned",
+    ),
+    ("manufacturing.screen.ncr_status.closed", "Closed"),
+    ("manufacturing.screen.ncr_status.cancelled", "Cancelled"),
+    ("manufacturing.screen.disposition.rework", "Rework"),
+    ("manufacturing.screen.disposition.scrap", "Scrap"),
+    ("manufacturing.screen.disposition.use_as_is", "Use as is"),
+    (
+        "manufacturing.screen.disposition.return_to_supplier",
+        "Return to supplier",
+    ),
+    ("manufacturing.screen.cause.supplier", "Supplier"),
+    (
+        "manufacturing.screen.cause.internal_process",
+        "Internal process",
+    ),
+    ("manufacturing.screen.cause.unknown", "Unknown"),
+    (
+        "manufacturing.screen.origin.incoming",
+        "Incoming inspection",
+    ),
+    ("manufacturing.screen.origin.dispute", "Customer dispute"),
+    ("manufacturing.screen.origin.production", "Production"),
+    ("manufacturing.screen.origin.other", "Other"),
+    ("manufacturing.screen.return_outcome.credit", "Credit"),
+    ("manufacturing.screen.return_outcome.replace", "Replacement"),
+    (
+        "manufacturing.screen.transition.disposition",
+        "Dispositioned",
+    ),
+    (
+        "manufacturing.screen.transition.disposition_scrap",
+        "Dispositioned",
+    ),
+    (
+        "manufacturing.screen.transition.disposition_use_as_is",
+        "Use as is asked",
+    ),
+    (
+        "manufacturing.screen.transition.disposition_scrap_approved",
+        "Dispositioned",
+    ),
+    (
+        "manufacturing.screen.transition.disposition_use_as_is_approved",
+        "Use as is approved",
+    ),
+    ("manufacturing.screen.transition.reopen", "Reopened"),
+    ("manufacturing.screen.transition.auto_reopen", "Reopened"),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

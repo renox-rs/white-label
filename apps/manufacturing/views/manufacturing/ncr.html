@@ -1,0 +1,174 @@
+{#- manufacturing: one non-conformance report (docs/UX.md section 2.2): its
+    status, the facts, the actions this person may run now (a blocked one is
+    disabled and says why), and the tabs Overview, Dispositions, Approvals and
+    Activity. Replace it with resources/views/manufacturing/ncr.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['ncr.title'] ~ ': ' ~ number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="subtitle" :badge="status" :badge-kind="status_kind"
+                    :back="route('manufacturing.ncrs')" :back-label="tx['ncrs.title']"/>
+    <rx-form-errors/>
+    <rx-alert rx-for="note in notes" kind="info" :message="note"/>
+    <template rx-if="actions.close.shown and actions.close.blocked">
+      <rx-alert kind="warning" :message="actions.close.blocked"/>
+    </template>
+    <template rx-if="actions.return_to_supplier.shown and actions.return_to_supplier.blocked">
+      <rx-alert kind="warning" :message="actions.return_to_supplier.blocked"/>
+    </template>
+    <rx-row>
+      <template rx-if="actions.rework.shown">
+        <template rx-if="actions.rework.blocked">
+          <rx-button :label="tx['ncr.action.rework']" variant="primary" icon="wrench" :disabled-reason="actions.rework.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="rework-ncr" :label="tx['ncr.action.rework']" :action="route('manufacturing.ncr_disposition', id)"
+                           :title="tx['ncr.action.rework']" :description="tx['ncr.action.rework_hint']" :submit-label="tx['ncr.action.rework']" variant="primary" icon="wrench">
+            <input type="hidden" name="disposition" value="rework"/>
+            <rx-select name="line_id" :label="tx['form.line']" :options="lines" :selected="line_selected"/>
+            <rx-input name="bom_id" type="number" :label="tx['form.bom']" :hint="tx['form.bom_hint']" id="rework-ncr-bom"/>
+            <rx-textarea name="note" :label="tx['ncr.form.note']" id="rework-ncr-note"/>
+          </rx-action-sheet>
+        </template>
+      </template>
+      <template rx-if="actions.scrap.shown">
+        <template rx-if="actions.scrap.blocked">
+          <rx-button :label="tx['ncr.action.scrap']" variant="secondary" icon="trash-2" :disabled-reason="actions.scrap.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="scrap-ncr" :label="tx['ncr.action.scrap']" :action="route('manufacturing.ncr_disposition', id)"
+                           :title="tx['ncr.action.scrap']" :description="tx['ncr.action.scrap_hint']" :submit-label="tx['ncr.action.scrap']" variant="secondary" icon="trash-2" danger>
+            <input type="hidden" name="disposition" value="scrap"/>
+            <rx-textarea name="note" :label="tx['ncr.form.note']" id="scrap-ncr-note"/>
+          </rx-action-sheet>
+        </template>
+      </template>
+      <template rx-if="actions.use_as_is.shown">
+        <template rx-if="actions.use_as_is.blocked">
+          <rx-button :label="tx['ncr.action.use_as_is']" variant="secondary" icon="check" :disabled-reason="actions.use_as_is.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="use-as-is-ncr" :label="tx['ncr.action.use_as_is']" :action="route('manufacturing.ncr_disposition', id)"
+                           :title="tx['ncr.action.use_as_is']" :description="tx['ncr.action.use_as_is_hint']" :submit-label="tx['ncr.action.use_as_is']" variant="secondary" icon="check">
+            <input type="hidden" name="disposition" value="use_as_is"/>
+            <rx-textarea name="note" :label="tx['ncr.form.note']" id="use-as-is-ncr-note"/>
+          </rx-action-sheet>
+        </template>
+      </template>
+      <template rx-if="actions.return_to_supplier.shown">
+        <template rx-if="actions.return_to_supplier.blocked">
+          <rx-button :label="tx['ncr.action.return']" variant="secondary" icon="undo-2" :disabled-reason="actions.return_to_supplier.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="return-ncr" :label="tx['ncr.action.return']" :action="route('manufacturing.ncr_disposition', id)"
+                           :title="tx['ncr.action.return']" :description="tx['ncr.action.return_hint']" :submit-label="tx['ncr.action.return']" variant="secondary" icon="undo-2">
+            <input type="hidden" name="disposition" value="return_to_supplier"/>
+            <rx-select name="outcome" :label="tx['ncr.form.outcome']" :options="outcomes" :selected="outcome_selected"/>
+            <rx-textarea name="note" :label="tx['ncr.form.note']" id="return-ncr-note"/>
+          </rx-action-sheet>
+        </template>
+      </template>
+      <template rx-if="actions.close.shown">
+        <template rx-if="actions.close.blocked">
+          <rx-button :label="tx['ncr.action.close']" variant="primary" icon="lock" :disabled-reason="actions.close.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="close-ncr" :label="tx['ncr.action.close']" :action="route('manufacturing.ncr_close', id)"
+                           :title="tx['ncr.action.close']" :description="tx['ncr.action.close_hint']" :submit-label="tx['ncr.action.close']" variant="primary" icon="lock"/>
+        </template>
+      </template>
+      <template rx-if="actions.reopen.shown">
+        <template rx-if="actions.reopen.blocked">
+          <rx-button :label="tx['ncr.action.reopen']" variant="secondary" icon="rotate-ccw" :disabled-reason="actions.reopen.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="reopen-ncr" :label="tx['ncr.action.reopen']" :action="route('manufacturing.ncr_reopen', id)"
+                           :title="tx['ncr.action.reopen']" :description="tx['ncr.action.reopen_hint']" :submit-label="tx['ncr.action.reopen']" variant="secondary" icon="rotate-ccw">
+            <rx-textarea name="reason" :label="tx['ncr.form.reason']" id="reopen-ncr-reason" required/>
+          </rx-action-sheet>
+        </template>
+      </template>
+      <template rx-if="actions.cause.shown">
+        <rx-action-sheet id="cause-ncr" :label="tx['ncr.action.cause']" :action="route('manufacturing.ncr_cause', id)"
+                         :title="tx['ncr.action.cause']" :description="tx['ncr.action.cause_hint']" :submit-label="tx['ncr.action.cause']" variant="secondary" icon="pencil">
+          <rx-select name="cause" :label="tx['ncrs.form.cause']" :options="causes" :selected="cause_selected"/>
+          <rx-textarea name="reason" :label="tx['ncr.form.reason']" id="cause-ncr-reason" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="actions.cancel.shown">
+        <template rx-if="actions.cancel.blocked">
+          <rx-button :label="tx['ncr.action.cancel']" variant="plain-danger" icon="circle-x" :disabled-reason="actions.cancel.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="cancel-ncr" :label="tx['ncr.action.cancel']" :action="route('manufacturing.ncr_cancel', id)"
+                           :title="tx['ncr.action.cancel']" :description="tx['ncr.action.cancel_hint']" :submit-label="tx['ncr.action.cancel']" variant="plain-danger" icon="circle-x" danger>
+            <rx-textarea name="reason" :label="tx['ncr.form.reason']" id="cancel-ncr-reason" required/>
+          </rx-action-sheet>
+        </template>
+      </template>
+    </rx-row>
+    <rx-tabs id="ncr-tabs" selected="overview" :label="tx['ncr.title']">
+      <rx-tab key="overview" :label="tx['tab.overview']">
+        <rx-stack>
+          <rx-card :title="tx['ncr.title']">
+            <rx-infolist columns="2">
+              <rx-entry rx-for="fact in facts" :label="fact.label" :value="fact.value"/>
+            </rx-infolist>
+          </rx-card>
+          <rx-row>
+            <rx-link-button rx-if="rework_url" :href="rework_url" :label="tx['ncr.open_rework']"/>
+            <rx-link-button rx-if="return_url" :href="return_url" :label="tx['ncr.open_return']"/>
+          </rx-row>
+        </rx-stack>
+      </rx-tab>
+      <rx-tab key="decisions" :label="tx['ncr.tab.decisions']">
+        <rx-table :rows="decisions" as="decision" :key="decision.at" :caption="tx['ncr.tab.decisions']" card>
+          <rx-column :label="tx['ncr.decision.what']">
+            <rx-stack>
+              <span>{{ decision.what }}</span>
+              <span rx-if="decision.outcome" class="rx-subtitle">{{ decision.outcome }}</span>
+            </rx-stack>
+          </rx-column>
+          <rx-column :label="tx['ncrs.quantity']" align="num">{{ decision.quantity }}</rx-column>
+          <rx-column :label="tx['activity.by']" hide-narrow>{{ decision.by }}</rx-column>
+          <rx-column :label="tx['activity.when']" hide-narrow>{{ decision.at }}</rx-column>
+          <rx-column :label="tx['fields.status']">
+            <rx-badge rx-if="decision.in_force" kind="warning" :text="tx['ncr.decision.in_force']"/>
+            <span rx-else>{{ tx['ncr.decision.ended'] }}: {{ decision.ended }}</span>
+          </rx-column>
+          <rx-slot name="empty"><rx-empty :title="tx['ncr.decision.empty']" :message="tx['ncr.decision.empty_text']" icon="clipboard-check"/></rx-slot>
+        </rx-table>
+      </rx-tab>
+      <rx-tab key="approvals" :label="tx['tab.approvals']">
+        <rx-table :rows="approvals" as="approval" :key="approval.id" :caption="tx['tab.approvals']" card>
+          <rx-column :label="tx['approval.request']">{{ approval.title }}</rx-column>
+          <rx-column :label="tx['fields.status']"><rx-badge :kind="approval.status_kind" :text="approval.status"/></rx-column>
+          <rx-column :label="tx['approval.requester']" hide-narrow>{{ approval.requester }}</rx-column>
+          <rx-column :label="tx['approval.requested']" hide-narrow>{{ approval.requested }}</rx-column>
+          <rx-column :label="tx['approval.decided']" hide-narrow>{{ approval.decided }}</rx-column>
+          <rx-column :label="tx['approval.note']">{{ approval.note }}</rx-column>
+          <rx-column :label="tx['approval.decision']">
+            <template rx-if="approval.can_decide">
+              <rx-action-sheet :id="'approve-' ~ approval.id" :label="tx['approval.approve']" :action="route('wl_kernel.approvals.approve', approval.id)"
+                               :title="tx['approval.approve']" :submit-label="tx['approval.approve']" variant="primary" icon="check">
+                <rx-textarea name="comment" :label="tx['approval.comment']" :hint="tx['approval.comment_optional']" :id="'approve-comment-' ~ approval.id"/>
+              </rx-action-sheet>
+              <rx-action-sheet :id="'reject-' ~ approval.id" :label="tx['approval.reject']" :action="route('wl_kernel.approvals.reject', approval.id)"
+                               :title="tx['approval.reject']" :submit-label="tx['approval.reject']" icon="circle-x" danger>
+                <rx-textarea name="comment" :label="tx['approval.comment']" :hint="tx['approval.comment_required']" :id="'reject-comment-' ~ approval.id" required/>
+              </rx-action-sheet>
+            </template>
+          </rx-column>
+          <rx-slot name="empty"><rx-empty :title="tx['approval.empty']" :message="tx['approval.empty_text']" icon="clock"/></rx-slot>
+        </rx-table>
+      </rx-tab>
+      <rx-tab key="activity" :label="tx['tab.activity']">
+        <rx-table :rows="activity" as="row" :key="row.at ~ row.what" :caption="tx['tab.activity']" card>
+          <rx-column :label="tx['activity.when']">{{ row.at }}</rx-column>
+          <rx-column :label="tx['activity.what']">{{ row.what }}</rx-column>
+          <rx-column :label="tx['activity.by']" hide-narrow>{{ row.by }}</rx-column>
+          <rx-column :label="tx['activity.reason']">{{ row.reason }}</rx-column>
+          <rx-slot name="empty"><rx-empty :title="tx['activity.empty']" icon="clock"/></rx-slot>
+        </rx-table>
+      </rx-tab>
+    </rx-tabs>
+  </rx-stack>
+</rx-page>

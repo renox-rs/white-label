@@ -17,6 +17,14 @@
 //! | `POST /manufacturing/work-orders/{id}/issue` | `manufacturing.issue` | `work_orders.issue` |
 //! | `POST /manufacturing/work-orders/{id}/report` | `manufacturing.report` | `work_orders.report` |
 //! | `POST /manufacturing/reports/{id}/void` | `manufacturing.report_void` | `work_orders.report` on the line; the line's supervisor or the production manager (`work_orders.void_approve`) approves (BL-MFG-04) |
+//! | `GET /manufacturing/ncrs` | `manufacturing.ncrs` | a permission of the NCRs for a plant |
+//! | `POST /manufacturing/ncrs` | `manufacturing.ncr_create` | `ncrs.raise` for the plant |
+//! | `GET /manufacturing/ncrs/{id}` | `manufacturing.ncr` | as the list |
+//! | `POST /manufacturing/ncrs/{id}/disposition` | `manufacturing.ncr_disposition` | `ncrs.disposition`; a scrap above AED 2,000 waits for `stock.approve`, *use as is* for `ncrs.approve` (BL-MFG-08) |
+//! | `POST /manufacturing/ncrs/{id}/close` | `manufacturing.ncr_close` | `ncrs.disposition` |
+//! | `POST /manufacturing/ncrs/{id}/reopen` | `manufacturing.ncr_reopen` | `ncrs.disposition` |
+//! | `POST /manufacturing/ncrs/{id}/cancel` | `manufacturing.ncr_cancel` | `ncrs.disposition` |
+//! | `POST /manufacturing/ncrs/{id}/cause` | `manufacturing.ncr_cause` | `ncrs.raise` (BL-MFG-15) |
 //!
 //! The lists and the record page answer a page when the request names
 //! `text/html` and JSON otherwise ([`wl_kernel::negotiate`]); the actions
@@ -28,10 +36,13 @@ use std::collections::BTreeMap;
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use wl_kernel::Subject;
 
 use crate::abort::{self, AbortAsk, ReturnLine};
 use crate::db::refused;
 use crate::issue::{self, IssueAsk};
+use crate::ncr::{Cause, Disposition, Origin};
+use crate::ncrs::{self, DispositionAsk, NewNcr};
 use crate::report::{self, ReportAsk};
 use crate::screens::{self, done, parse_quantity, work_order_page};
 use crate::texts::{english, t};
@@ -77,6 +88,22 @@ pub fn routes() -> Routes {
         .name("manufacturing.report")
         .post("/manufacturing/reports/{id}/void", void_report)
         .name("manufacturing.report_void")
+        .get("/manufacturing/ncrs", screens::ncrs_page::show)
+        .name("manufacturing.ncrs")
+        .post("/manufacturing/ncrs", raise_ncr)
+        .name("manufacturing.ncr_create")
+        .get("/manufacturing/ncrs/{id}", screens::ncr_page::show)
+        .name("manufacturing.ncr")
+        .post("/manufacturing/ncrs/{id}/disposition", disposition_ncr)
+        .name("manufacturing.ncr_disposition")
+        .post("/manufacturing/ncrs/{id}/close", close_ncr)
+        .name("manufacturing.ncr_close")
+        .post("/manufacturing/ncrs/{id}/reopen", reopen_ncr)
+        .name("manufacturing.ncr_reopen")
+        .post("/manufacturing/ncrs/{id}/cancel", cancel_ncr)
+        .name("manufacturing.ncr_cancel")
+        .post("/manufacturing/ncrs/{id}/cause", cause_ncr)
+        .name("manufacturing.ncr_cause")
 }
 
 /// A 303 to `path`.
@@ -367,4 +394,154 @@ async fn void_report(
         wl_kernel::voids::VoidOutcome::Voided(_) => "manufacturing.screen.done.voided",
     };
     Ok(done(&lang, &work_order_page::url(found.work_order_id), key))
+}
+
+/// The cause named by a form field.
+fn cause_of(lang: &Lang, text: &str) -> Result<Cause> {
+    match text {
+        "supplier" => Ok(Cause::Supplier),
+        "internal_process" => Ok(Cause::InternalProcess),
+        "unknown" => Ok(Cause::Unknown),
+        _ => Err(refused(t(lang, "manufacturing.bad_input"))),
+    }
+}
+
+/// `POST /manufacturing/ncrs`: `plant_id`, `lot_id` or `item_id`, `quantity`,
+/// `defect`, `cause` (empty: the default of the lot).
+async fn raise_ncr(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let lot = number(&lang, &form, "lot_id")?
+        .map(|id| Subject::new(wl_kernel::inventory::LOT_SUBJECT_TYPE, id));
+    let item = number(&lang, &form, "item_id")?
+        .map(|id| Subject::new(wl_kernel::inventory::ITEM_SUBJECT_TYPE, id));
+    let cause = match field(&form, "cause").as_str() {
+        "" => None,
+        text => Some(cause_of(&lang, text)?),
+    };
+    let ncr = ncrs::raise(
+        &state,
+        &user,
+        NewNcr {
+            plant_id: number(&lang, &form, "plant_id")?.unwrap_or_default(),
+            lot,
+            item,
+            quantity_milli: quantity(&lang, &form, "quantity")?.unwrap_or_default(),
+            defect: field(&form, "defect"),
+            cause,
+            origin: Origin::Incoming,
+            source: None,
+        },
+    )
+    .await?;
+    Ok(done(
+        &lang,
+        &screens::ncr_page::url(ncr.id),
+        "manufacturing.screen.done.ncr_raised",
+    ))
+}
+
+/// `POST /manufacturing/ncrs/{id}/disposition`: `disposition` (`rework`,
+/// `scrap`, `use_as_is`, `return_to_supplier`), `outcome`, `note`, `line_id`,
+/// `bom_id`.
+async fn disposition_ncr(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let disposition = match field(&form, "disposition").as_str() {
+        "rework" => Disposition::Rework,
+        "scrap" => Disposition::Scrap,
+        "use_as_is" => Disposition::UseAsIs,
+        "return_to_supplier" => Disposition::ReturnToSupplier,
+        _ => return Err(refused(english("manufacturing.ncr.choose", &[]))),
+    };
+    let made = ncrs::disposition(
+        &state,
+        &user,
+        id,
+        DispositionAsk {
+            disposition,
+            outcome: Some(field(&form, "outcome")),
+            note: Some(field(&form, "note")),
+            line_id: number(&lang, &form, "line_id")?,
+            bom_id: number(&lang, &form, "bom_id")?,
+        },
+    )
+    .await?;
+    let key = if made.approval_request.is_some() {
+        "manufacturing.screen.done.ncr_waiting"
+    } else {
+        "manufacturing.screen.done.ncr_dispositioned"
+    };
+    Ok(done(&lang, &screens::ncr_page::url(id), key))
+}
+
+/// `POST /manufacturing/ncrs/{id}/close`.
+async fn close_ncr(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    ncrs::close(&state, &user, id).await?;
+    Ok(done(
+        &lang,
+        &screens::ncr_page::url(id),
+        "manufacturing.screen.done.ncr_closed",
+    ))
+}
+
+/// `POST /manufacturing/ncrs/{id}/reopen`: `reason`.
+async fn reopen_ncr(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    ncrs::reopen(&state, &user, id, &field(&form, "reason")).await?;
+    Ok(done(
+        &lang,
+        &screens::ncr_page::url(id),
+        "manufacturing.screen.done.ncr_reopened",
+    ))
+}
+
+/// `POST /manufacturing/ncrs/{id}/cancel`: `reason`.
+async fn cancel_ncr(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    ncrs::cancel(&state, &user, id, &field(&form, "reason")).await?;
+    Ok(done(
+        &lang,
+        &screens::ncr_page::url(id),
+        "manufacturing.screen.done.ncr_cancelled",
+    ))
+}
+
+/// `POST /manufacturing/ncrs/{id}/cause`: `cause`, `reason`.
+async fn cause_ncr(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let cause = cause_of(&lang, &field(&form, "cause"))?;
+    ncrs::change_cause(&state, &user, id, cause, &field(&form, "reason")).await?;
+    Ok(done(
+        &lang,
+        &screens::ncr_page::url(id),
+        "manufacturing.screen.done.ncr_cause",
+    ))
 }

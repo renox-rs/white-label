@@ -4,7 +4,7 @@
 
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
-use wl_kernel::Subject;
+use wl_kernel::{PartyId, Subject};
 
 /// A work order was `release`d.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -81,3 +81,81 @@ pub struct WorkOrderAborted {
 }
 
 impl Event for WorkOrderAborted {}
+
+/// An NCR was raised (`MFG.QCL.02`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NcrRaised {
+    /// The NCR, `manufacturing.ncr:5`.
+    pub ncr: Subject,
+    /// The lot, `inventory.lot:4`, if it is on one.
+    pub lot: Option<Subject>,
+    /// The item.
+    pub item: Subject,
+    /// The supplier of the lot at the time.
+    pub supplier: Option<PartyId>,
+    /// `supplier`, `internal_process` or `unknown`.
+    pub cause: String,
+    /// `incoming`, `dispute`, `production` or `other`.
+    pub origin: String,
+    /// The quantity, in thousandths.
+    pub quantity_milli: i64,
+}
+
+impl Event for NcrRaised {}
+
+/// QC decided what becomes of an NCR and the action was set going: the
+/// rework work order and the draft Return to supplier exist, or the scrap
+/// posted, or the lot was released.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NcrDispositioned {
+    /// The NCR.
+    pub ncr: Subject,
+    /// `rework`, `scrap`, `use_as_is` or `return_to_supplier`.
+    pub disposition: String,
+    /// For a return to supplier: `credit` or `replace`.
+    pub outcome: Option<String>,
+    /// The quantity, in thousandths.
+    pub quantity_milli: i64,
+    /// The draft Return to supplier, `inventory.supplier_return:4`.
+    pub return_to_supplier: Option<Subject>,
+    /// The rework work order.
+    pub rework_work_order: Option<Subject>,
+}
+
+impl Event for NcrDispositioned {}
+
+/// An NCR was closed by QC.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NcrClosed {
+    /// The NCR.
+    pub ncr: Subject,
+    /// The disposition it had.
+    pub disposition: Option<String>,
+}
+
+impl Event for NcrClosed {}
+
+/// An NCR was cancelled: raised in error.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NcrCancelled {
+    /// The NCR.
+    pub ncr: Subject,
+    /// The supplier it was raised against, if any.
+    pub supplier: Option<PartyId>,
+    /// The reason.
+    pub reason: String,
+}
+
+impl Event for NcrCancelled {}
+
+/// An NCR was reopened for a new disposition: the action of the earlier one
+/// did not happen.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NcrReopened {
+    /// The NCR.
+    pub ncr: Subject,
+    /// The reason.
+    pub reason: String,
+}
+
+impl Event for NcrReopened {}
