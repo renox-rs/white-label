@@ -552,9 +552,10 @@ pub async fn write_off(state: &AppState, by: &AuthUser, id: i64, reason: &str) -
 }
 
 /// `SupplierReturnCredited`: the Return to supplier of a raised claim was
-/// credited by a debit note, a replacement or a refund received, so the claim
-/// is recovered as the system. A manual credit with the reason *supplier
-/// refused* leaves the claim raised.
+/// credited by a debit note, a replacement or a refund received (the supplier's
+/// credit note or the replacement of 08 §7.1; a refund is the credit paid in
+/// cash), so the claim is recovered as the system. A manual credit with the
+/// reason *supplier refused*, or on any other basis, leaves the claim raised.
 ///
 /// # Errors
 ///
@@ -572,18 +573,23 @@ pub async fn on_return_credited(state: &AppState, event: &SupplierReturnCredited
         // raised and the purchaser is asked to write it off.
         return crate::supplier_rules::ask_to_write_off(state, &claim).await;
     }
+    if !matches!(
+        event.basis.as_str(),
+        "debit_note" | "replacement" | "refund_received"
+    ) {
+        // A basis the spec does not name is no recovery: the claim stays raised.
+        return Ok(());
+    }
     let reference = event
         .debit_note
         .map(|note| format!("debit note {note}"))
         .or_else(|| Some(event.basis.clone()));
     let input = SupplierInput {
         basis: Some(
-            if event.basis == "replacement" {
-                "replacement"
-            } else if event.basis == "refund_received" {
-                "refund_received"
-            } else {
-                "credit_note"
+            match event.basis.as_str() {
+                "replacement" => "replacement",
+                "refund_received" => "refund_received",
+                _ => "credit_note",
             }
             .to_owned(),
         ),

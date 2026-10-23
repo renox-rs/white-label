@@ -488,3 +488,37 @@ async fn aut_11_the_claim_page_asks_for_a_write_off_that_waits_for_approval() {
         SupplierClaimStatus::Raised
     );
 }
+
+/// A credit on a basis the spec does not name recovers nothing; a debit note
+/// does.
+#[renox::test]
+async fn aut_11_only_a_debit_note_a_replacement_or_a_refund_recovers_the_claim() {
+    let t = boot().await;
+    let about = delivered_with_alternator(&t).await;
+    t.tickets
+        .add(&about, "warranty", 1, "TKT-2026-0001", "closed");
+    let pia = pia(&t).await;
+    let claim = supplier_claims::raise(t.state(), &pia, alternator(1, &about, day(-100)))
+        .await
+        .unwrap();
+    let rts = Subject::new(
+        "inventory.supplier_return",
+        claim.supplier_return_id.unwrap(),
+    );
+    let credited = |basis: &str| SupplierReturnCredited {
+        supplier_return: rts.clone(),
+        supplier: PartyId(40),
+        basis: basis.to_owned(),
+        debit_note: None,
+        reason: Some("by hand".to_owned()),
+        wastage: 0,
+    };
+
+    t.state().emit(credited("goodwill")).await.unwrap();
+    let after = SupplierClaim::find_or_404(t.db(), claim.id).await.unwrap();
+    assert_eq!(after.status, SupplierClaimStatus::Raised, "not recovered");
+
+    t.state().emit(credited("debit_note")).await.unwrap();
+    let after = SupplierClaim::find_or_404(t.db(), claim.id).await.unwrap();
+    assert_eq!(after.status, SupplierClaimStatus::Recovered);
+}
