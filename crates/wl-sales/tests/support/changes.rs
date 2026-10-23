@@ -187,9 +187,17 @@ impl FulfilmentProgress for Started {
 
 /// The credit position of the customer, as the credit module would answer.
 #[derive(Clone, Default)]
-pub struct Exposure(Arc<Mutex<Option<CreditPosition>>>);
+pub struct Exposure(
+    Arc<Mutex<Option<CreditPosition>>>,
+    Arc<std::sync::atomic::AtomicUsize>,
+);
 
 impl Exposure {
+    /// How many times the credit position was asked for.
+    pub fn asked(&self) -> usize {
+        self.1.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     /// The customer has `exposure` fils without the order being checked and
     /// a limit of `limit` fils.
     pub fn set(&self, exposure: i64, limit: i64) {
@@ -210,6 +218,7 @@ impl CreditExposure for Exposure {
         _currency: &'a str,
         _excluding: &'a Subject,
     ) -> SalesFuture<'a, Option<CreditPosition>> {
+        self.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Box::pin(async move { Ok(self.0.lock().unwrap().clone()) })
     }
 }

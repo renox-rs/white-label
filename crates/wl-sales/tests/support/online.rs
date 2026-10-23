@@ -283,6 +283,9 @@ pub struct Online {
     pub gateway: Gateway,
     /// The task desk.
     pub desk: Desk,
+    /// The credit position of the customer (nobody asks it for an online
+    /// order).
+    pub exposure: super::changes::Exposure,
     /// `SalesOrderConfirmed`.
     pub confirmed: Arc<Mutex<Vec<SalesOrderConfirmed>>>,
     /// `SalesOrderCancelled`.
@@ -299,6 +302,7 @@ impl Module for Online {
         wl_kernel::payments::provide_payment_recorder(app, self.gateway.clone());
         wl_kernel::payments::provide_payment_links(app, self.gateway.clone());
         wl_kernel::tickets::provide_task_creator(app, self.desk.clone());
+        wl_kernel::sales::provide_credit_exposure(app, self.exposure.clone());
         let log = self.confirmed.clone();
         app.listen(move |event: SalesOrderConfirmed, _state: AppState| {
             let log = log.clone();

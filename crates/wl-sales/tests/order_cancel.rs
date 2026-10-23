@@ -181,6 +181,11 @@ async fn a_ten_percent_fee_is_kept_from_the_refund_and_billed_on_a_fee_document(
         "only the fee is billed, not the cancelled order"
     );
     assert_eq!(drafts[0].1.lines[0].gross(), 800);
+    assert_eq!(
+        drafts[0].1.lines[0].vat_category,
+        wl_kernel::invoicing::VatCategory::Exempt,
+        "the configured VAT category"
+    );
     let steps = OrderSettlement::of_order(t.db(), order.id).await.unwrap();
     assert!(
         steps
@@ -194,6 +199,45 @@ async fn a_ten_percent_fee_is_kept_from_the_refund_and_billed_on_a_fee_document(
     );
     let events = c.cancelled.lock().unwrap().clone();
     assert_eq!(events[0].outcomes[0].fee, 800);
+}
+
+/// AC3 (VAT category): with the F&B category (standard, 5%), the fee of AED 8
+/// is billed as AED 7.62 plus AED 0.38 VAT.
+#[renox::test]
+async fn the_fee_line_takes_the_configured_vat_category() {
+    let (t, c) = boot_changes_with(
+        WlSales::new()
+            .cancel_outcomes(&["return_to_stock", "scrap"])
+            .cancellation_fee_percent(10)
+            .cancellation_fee_vat("standard"),
+    )
+    .await;
+    t.app.acting_as(&clerk(&t).await);
+    let order = place(
+        &t,
+        &c,
+        "phone",
+        "online",
+        &[("meal", "1", "80.00"), ("side", "1", "40.00")],
+    )
+    .await;
+    let items = lines(&t, &order).await;
+    c.started.mark(items[0].id);
+    let outcome = format!("line_{}_outcome", items[0].id);
+    cancel(&t, &order, &[(outcome.as_str(), "scrap")])
+        .await
+        .assert_status(303);
+    let request = waiting(&t, &order).await.remove(0);
+    let mia = manager(&t).await;
+    approvals::approve(t.state(), request.id, &mia, "")
+        .await
+        .unwrap();
+
+    let drafts = c.ledger.drafts();
+    assert_eq!(drafts.len(), 1);
+    let line = &drafts[0].1.lines[0];
+    assert_eq!(line.vat_category, wl_kernel::invoicing::VatCategory::Standard);
+    assert_eq!((line.net(), line.vat(), line.gross()), (762, 38, 800));
 }
 
 /// AC4: Cashier A cannot approve.

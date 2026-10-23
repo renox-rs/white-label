@@ -90,6 +90,9 @@ async fn the_full_payment_confirms_an_order_of_a_channel_without_acceptance() {
     let draft = draft_order(&t, "phone", "online", &[]).await;
     let order = submit(&t, draft.id).await;
     assert_eq!(order.status, SalesOrderStatus::AwaitingPayment);
+    // The customer is far over the credit limit: a credit check would hold
+    // the order, but a paid order is never checked.
+    online.exposure.set(900_000_000, 1_000);
 
     t.state()
         .emit(online.gateway.received(&order, 42, TOTAL))
@@ -99,6 +102,7 @@ async fn the_full_payment_confirms_an_order_of_a_channel_without_acceptance() {
     let order = reload(&t, order.id).await;
     assert_eq!(order.status, SalesOrderStatus::Confirmed);
     assert!(order.confirmed_at.is_some());
+    assert_eq!(online.exposure.asked(), 0, "no credit check was run");
     let events = online.confirmed.lock().unwrap().clone();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].order.0, order.id);
