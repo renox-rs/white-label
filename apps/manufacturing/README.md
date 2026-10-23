@@ -88,3 +88,25 @@ Not built for the returned goods: the checklist template `returned_goods_inspect
 are `WRK.CHK.01` of wl-ticketing, which only has the kernel contract (`Checklists`) so far; until it
 provides one the QC inspector works from `/manufacturing/inspections`. Releasing a lot sets its status;
 moving the goods from the quarantine location to a store is a transfer by the storekeeper.
+
+## Deferred in F7 (what stays open, who provides it)
+
+Each row is a Done-when point or a seam that is not built or not testable end to end yet. The list is
+kept with the audit of the round (`DEFERRED-F7`).
+
+| Issue, point | What is missing | Provider |
+|---|---|---|
+| BL-MFG-11 point 6: export-only item refused at sales `submit` and `amend` | wl-sales has no caller of the kernel's `OrderLineRules`, because an order has no delivery address to tell domestic from export (`DeliveryDestination`). The refusal itself (`conformity::ItemRules`) is built and tested at the pick and dispatch guards; the sales side is tested with the rule called directly | wl-sales: a delivery address (and its VAT category) on the order, then the call at `submit` and `amend` |
+| BL-MFG-11 point 7: the look-ahead lists the orders promised after the expiry | `PromisedLines` is not provided by wl-sales (a sale line has no promised day); the test feeds the kernel trait with a fake. The 01:00 schedule is a constant not asserted | wl-sales: a promised day on the sale line |
+| BL-MFG-02 point 5: the output reserved for a cancelled line is released | wl-inventory keeps no reservation of an output lot for an order line (the dispatch pick reserves), so `release_reservation` answers `false`; the test proves the call with the app's fake stock | wl-inventory: reservations of output lots for order lines |
+| BL-MFG-03: the output *for stock* of a started work order | only flagged, not reserved or released by wl-inventory (same reason) | wl-inventory |
+| BL-SAL-13 / BL-MFG-14: an invoice already issued, a later delivery | the order keeps one invoice: a delivery accepted after the invoice was issued is not billed by wl-sales (the accountant gets a task naming the invoice); a second invoice per delivery is a client billing choice | wl-sales / client billing |
+| BL-MFG-14 *Late entry* for goods receipts and inspections | the limits (30 minutes, 24 hours) are installed for the production report only (`late_report`); wl-inventory's goods receipt keeps `arrived_at` and `late_entry` without the limits of `PLT.ACL.10`, and the returned-goods inspections keep their own time without them | wl-inventory (receipts), this app (inspections), a later issue |
+| BL-MFG-14 *Documents*: calibration certificates | `DOC.EXP.01` lists calibration, but the host seed registers no calibration kind: there is no equipment record to attach it to | a later issue (equipment) |
+| BL-MFG-14 *Onboarding and SOPs*: `HRM.RUL.17` reminders (due and +2 days), `DOC.RUL.04` re-acknowledgement after 7 days, `HRM.ACL.10` on a role before the checklist is complete | the 07 seed only creates the checklist and the SOPs (tested); the rules are wl-hr's and wl-documents' and are not run under the 07 values | wl-hr, wl-documents |
+| BL-MFG-14 *Lead sources*: the campaign report (trade exhibitions, leads, conversion, CAC, ROAS) and the wait of a cost over a campaign's budget under the 07 sources | the 07 sources are tested (`manufacturing_negative_flow.rs`); the report mechanisms are wl-sales campaigns' and are not run with the 07 seed | wl-sales (campaign reports) |
+| BL-MFG-14 *Onboarding*: the checklist as a signed `WRK.CHK.01` | wl-ticketing only has the kernel contract for checklists | wl-ticketing (`WRK.CHK.01`) |
+| BL-MFG-09 surface: a scanner or import entry of the lot | no scanner or import entry exists in the app; the lot check is the service every entry shares, tested through the issue route | a later issue (scanner/import) |
+| BL-MFG-13 point 3 | the lines are asked only for a quality dispute by a block the portal page shows when the kind is quality (tested as rendered); the choice is a client-side show/hide of Renox, not enforced by the server beyond ignoring the lines of a price dispute | none (by design) |
+| Returned goods: the inspection checklist `returned_goods_inspection` | see *Not built for the returned goods* above | wl-ticketing (`WRK.CHK.01`) |
+

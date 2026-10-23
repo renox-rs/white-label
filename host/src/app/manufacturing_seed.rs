@@ -558,6 +558,12 @@ pub async fn install(state: &AppState) -> Result<Installed> {
     Ok(installed)
 }
 
+/// Only the production report has these limits. Deferred (F7, BL-MFG-14): the
+/// same limits for goods receipts and for the inspections of returned goods
+/// (07 §7.1 *Late entry*), which keep their business time but have no limit
+/// installed; and no kind is registered for calibration certificates
+/// (`DOC.EXP.01`), there being no equipment record to attach them to.
+///
 /// M and N of a production report entered after the shift (`PLT.ACL.10`):
 /// flagged with a reason after 30 minutes, approved by the production manager
 /// after 24 hours. A limit the client changed is kept.
