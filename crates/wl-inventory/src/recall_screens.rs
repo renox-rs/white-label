@@ -399,6 +399,7 @@ async fn line_row(
         LineKind::Uncertain | LineKind::Possible => (word(lang, "mark", "uncertain"), "warning"),
         LineKind::Dispatch => (word(lang, "mark", "dispatch"), "info"),
         LineKind::WalkIn => (word(lang, "mark", "walk_in"), "info"),
+        LineKind::Production => (word(lang, "mark", "production"), "info"),
     };
     Ok(LineRow {
         id: line.id,

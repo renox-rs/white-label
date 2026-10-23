@@ -24,6 +24,7 @@ use renox::db::Transaction;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::parties::PartyId;
 use crate::sales::SalesOrderId;
 use crate::subject::Subject;
 
@@ -114,6 +115,10 @@ pub struct OrderLineInfo {
     pub open_milli: i64,
     /// Whether the line (or the whole order) was cancelled.
     pub cancelled: bool,
+    /// The customer of the order (07 recall trace: a work order for an
+    /// undelivered order belongs to that order's customer). `None` when the
+    /// provider does not say.
+    pub customer: Option<PartyId>,
 }
 
 /// The sales order lines a work order serves (wl-sales §6). Nobody provides

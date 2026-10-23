@@ -91,6 +91,7 @@ async fn line_text(db: &Db, line: &RecallLine) -> Result<String> {
         LineKind::Uncertain => ", lot uncertain",
         LineKind::Possible => ", possible",
         LineKind::Dispatch => ", dispatch",
+        LineKind::Production => ", work order",
         _ => "",
     };
     let delivery = line

@@ -1244,6 +1244,9 @@ pub enum TraceParty {
     /// The vertical does not know: the line is listed with the party
     /// *unknown* for manual handling.
     Unknown,
+    /// The goods of the subject are back on site (a returned or cancelled
+    /// dispatch): the subject is not listed (07 §4.4 step 8).
+    NotAffected,
 }
 
 /// The future a [`TracePartyResolver`] or [`LotTrace`] method returns.
@@ -1266,6 +1269,8 @@ pub trait TracePartyResolver: Send + Sync + 'static {
 
     /// The delivery status of a dispatched `subject` (`wl-delivery`), when
     /// the deployment has one: an undelivered delivery can still be stopped.
+    /// The trace also asks it for a dispatch that has not left and for a
+    /// production source (07: [`NOT_SHIPPED`], [`SHIPPED`]).
     fn delivery_status<'a>(
         &'a self,
         _state: &'a AppState,
@@ -1273,7 +1278,31 @@ pub trait TracePartyResolver: Send + Sync + 'static {
     ) -> TraceFuture<'a, Option<String>> {
         Box::pin(async { Ok(None) })
     }
+
+    /// Who is told about a line whose party is `party`: one recipient per
+    /// active buyer of a customer, else the party itself, reached through its
+    /// contact points (07: the customer's main contact email). The default is
+    /// the party.
+    fn addressees<'a>(
+        &'a self,
+        _state: &'a AppState,
+        party: PartyId,
+    ) -> TraceFuture<'a, Vec<crate::notify::NotifyRecipient>> {
+        Box::pin(async move { Ok(vec![crate::notify::NotifyRecipient::Party { id: party }]) })
+    }
 }
+
+/// The delivery status of a subject whose goods have not left the plant: a
+/// dispatch that is `draft` or `picked`, or a work order for an order not yet
+/// delivered (07 §4.4 step 8).
+pub const NOT_SHIPPED: &str = "not_shipped";
+
+/// The delivery status of a dispatch that left and is on its way (07 lists it
+/// for the recall owner to bring back).
+pub const SHIPPED: &str = "shipped";
+
+/// The delivery status of a dispatch the customer accepted.
+pub const DELIVERED: &str = "delivered";
 
 /// The resolver when no vertical provides one: nobody is known.
 #[derive(Debug, Clone, Copy, Default)]
@@ -1341,6 +1370,21 @@ pub struct TracedPlace {
     pub quantity_milli: i64,
 }
 
+/// A recall as the verticals list it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TracedRecall {
+    /// The recall, `inventory.recall:2`.
+    pub recall: Subject,
+    /// The number, `RCL-2026-0001`.
+    pub number: String,
+    /// `open`, `traced` or `closed`.
+    pub status: String,
+    /// Why it was opened.
+    pub reason: String,
+    /// The day it was opened (Asia/Dubai).
+    pub opened_on: Option<NaiveDate>,
+}
+
 /// The forward trace of a recall, for other modules (wl-inventory §6
 /// `LotTrace`): the clinics vertical reads the patients to call back, 06 the
 /// customers. Without the inventory module [`lot_trace`] gives [`NoLotTrace`],
@@ -1379,6 +1423,11 @@ pub trait LotTrace: Send + Sync + 'static {
         _by: Option<i64>,
     ) -> TraceFuture<'a, bool> {
         Box::pin(async { Ok(false) })
+    }
+    /// The recalls, newest first (a vertical lists them beside its own
+    /// customer view of the trace). The default has none.
+    fn recalls<'a>(&'a self, _state: &'a AppState) -> TraceFuture<'a, Vec<TracedRecall>> {
+        Box::pin(async { Ok(Vec::new()) })
     }
 }
 
@@ -1538,3 +1587,70 @@ pub struct DispatchReversed {
 }
 
 impl Event for DispatchReversed {}
+
+/// A dispatch as the verticals read it (wl-inventory §6 `DispatchDirectory`):
+/// who it goes to, where it stands and what is on it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchFacts {
+    /// The dispatch, `inventory.dispatch:3`.
+    pub dispatch: Subject,
+    /// The number, `DSP-2026-0001`.
+    pub number: String,
+    /// The state: `draft`, `picked`, `dispatched`, `delivered`, `returned`,
+    /// `discarded`, `lost` or `cancelled`.
+    pub status: String,
+    /// The record it fulfils (a sales order).
+    pub source: Subject,
+    /// The recipient, when it is a party.
+    pub recipient: Option<PartyId>,
+    /// The day it left (Asia/Dubai); `None` until `dispatch`.
+    pub dispatched_on: Option<NaiveDate>,
+    /// The lines.
+    pub lines: Vec<DispatchedLine>,
+}
+
+/// The dispatches, for the verticals that guard or follow them: the item
+/// flags at `pick` and `dispatch` (07 `MFG.ACL.11`), the export evidence
+/// (`MFG.RUL.08`) and the recall trace. `wl-inventory` provides it; without
+/// it [`dispatch_directory`] gives [`NoDispatchDirectory`], which knows none.
+pub trait DispatchDirectory: Send + Sync + 'static {
+    /// The dispatch `dispatch` (`inventory.dispatch:3`); `None` when unknown.
+    fn facts<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _dispatch: &'a Subject,
+    ) -> TraceFuture<'a, Option<DispatchFacts>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// The dispatches that left on or before `day` and have not been
+    /// returned, cancelled or discarded, oldest first.
+    fn left_by<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _day: NaiveDate,
+    ) -> TraceFuture<'a, Vec<DispatchFacts>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// The directory when nothing provides one.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoDispatchDirectory;
+
+impl DispatchDirectory for NoDispatchDirectory {}
+
+/// Makes `directory` the app's [`DispatchDirectory`].
+pub fn provide_dispatch_directory(app: &mut Registry, directory: impl DispatchDirectory) {
+    let directory: Arc<dyn DispatchDirectory> = Arc::new(directory);
+    app.provide(directory);
+}
+
+/// The app's [`DispatchDirectory`], or [`NoDispatchDirectory`] when none is
+/// provided.
+pub fn dispatch_directory(state: &AppState) -> Arc<dyn DispatchDirectory> {
+    match state.provided::<Arc<dyn DispatchDirectory>>() {
+        Some(directory) => Arc::clone(&directory),
+        None => Arc::new(NoDispatchDirectory),
+    }
+}

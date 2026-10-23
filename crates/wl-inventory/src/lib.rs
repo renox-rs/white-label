@@ -11,6 +11,7 @@ pub mod config;
 pub mod dispatch;
 pub mod dispatch_deliver;
 mod dispatch_deliver_pages;
+pub mod dispatch_directory;
 mod dispatch_events;
 pub mod dispatch_loss;
 mod dispatch_pages;
@@ -699,6 +700,10 @@ impl Module for WlInventory {
         wl_kernel::inventory::provide_stock_hold_service(app, hold_service::InventoryHolds);
         // 07 Manufacturing: an NCR returns, scraps or releases a failed lot.
         lot_disposal::register(app);
+        wl_kernel::inventory::provide_dispatch_directory(
+            app,
+            dispatch_directory::InventoryDispatches,
+        );
         hold_service::register_types();
         // `STK.RUL.06`: the storekeeper is told when stock runs short, and
         // after H hours gets a task and the manager is told.

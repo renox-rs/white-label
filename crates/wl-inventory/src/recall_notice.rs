@@ -25,7 +25,7 @@
 
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
-use wl_kernel::inventory::RECALL_LINE_SUBJECT_TYPE;
+use wl_kernel::inventory::{RECALL_LINE_SUBJECT_TYPE, trace_party_resolver};
 use wl_kernel::notify::{
     self, Category, MessageGaveUp, NotificationTypeDef, NotifyChannel, NotifyRequest,
 };
@@ -131,17 +131,21 @@ async fn request_for(
     };
     let number = recall.number.clone().unwrap_or_default();
     let party = PartyId(line.party_id.unwrap_or_default());
-    Ok(NotifyRequest::new(&notice_key(template), line.subject())
-        .subject_label(&number)
-        .to_party(party)
-        .data(renox::serde_json::json!({
-            "number": number,
-            "reason": recall.reason,
-            "item": item.0,
-            "lot": item.1,
-            "subject": line.used_by().map(|s| s.to_string()).unwrap_or_default(),
-            "date": line.occurred_on.map(|d| d.to_string()).unwrap_or_default(),
-        })))
+    // The vertical says who is told for the party: every active buyer of a
+    // customer, else the party's own contact points (07 §4.4 step 8).
+    let mut request =
+        NotifyRequest::new(&notice_key(template), line.subject()).subject_label(&number);
+    for recipient in trace_party_resolver(state).addressees(state, party).await? {
+        request = request.to(recipient);
+    }
+    Ok(request.data(renox::serde_json::json!({
+        "number": number,
+        "reason": recall.reason,
+        "item": item.0,
+        "lot": item.1,
+        "subject": line.used_by().map(|s| s.to_string()).unwrap_or_default(),
+        "date": line.occurred_on.map(|d| d.to_string()).unwrap_or_default(),
+    })))
 }
 
 /// Puts the lines `ids` back to `pending` after a notice failed.

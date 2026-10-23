@@ -42,7 +42,7 @@ use wl_kernel::invoicing::{
     SupplierBillId, SupplierBillLine, SupplierBillLineId, SupplierBillStatus, SupplierBills,
     SupplierDebitNoteCancelled, SupplierDebitNoteId, SupplierDebitNoteIssued,
 };
-use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
+use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest};
 use wl_kernel::sales::{CreditChecker, CreditFailure, CreditVerdict, SalesFuture, SalesOrderId};
 use wl_kernel::tickets::{OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef};
 use wl_kernel::{PartyId, Subject};
@@ -110,9 +110,21 @@ pub struct TraceParties {
     parties: Arc<Mutex<std::collections::BTreeMap<Subject, PartyId>>>,
     walk_in: Arc<Mutex<Vec<String>>>,
     delivery: Arc<Mutex<std::collections::BTreeMap<Subject, String>>>,
+    back: Arc<Mutex<Vec<Subject>>>,
+    addressed: Arc<Mutex<std::collections::BTreeMap<PartyId, Vec<NotifyRecipient>>>>,
 }
 
 impl TraceParties {
+    /// The goods of `subject` are back on site: it is not listed.
+    pub fn not_affected(&self, subject: &Subject) {
+        self.back.lock().unwrap().push(subject.clone());
+    }
+
+    /// `party` is told through `recipients`.
+    pub fn addressed(&self, party: PartyId, recipients: Vec<NotifyRecipient>) {
+        self.addressed.lock().unwrap().insert(party, recipients);
+    }
+
     /// `party` is behind `subject`.
     pub fn set(&self, subject: &Subject, party: PartyId) {
         self.parties.lock().unwrap().insert(subject.clone(), party);
@@ -142,6 +154,9 @@ impl TracePartyResolver for TraceParties {
             if self.walk_in.lock().unwrap().contains(&subject.subject_type) {
                 return Ok(TraceParty::WalkIn);
             }
+            if self.back.lock().unwrap().contains(subject) {
+                return Ok(TraceParty::NotAffected);
+            }
             Ok(match self.parties.lock().unwrap().get(subject) {
                 Some(party) => TraceParty::Party(*party),
                 None => TraceParty::Unknown,
@@ -155,6 +170,22 @@ impl TracePartyResolver for TraceParties {
         subject: &'a Subject,
     ) -> TraceFuture<'a, Option<String>> {
         Box::pin(async move { Ok(self.delivery.lock().unwrap().get(subject).cloned()) })
+    }
+
+    fn addressees<'a>(
+        &'a self,
+        _state: &'a AppState,
+        party: PartyId,
+    ) -> TraceFuture<'a, Vec<NotifyRecipient>> {
+        Box::pin(async move {
+            Ok(self
+                .addressed
+                .lock()
+                .unwrap()
+                .get(&party)
+                .cloned()
+                .unwrap_or_else(|| vec![NotifyRecipient::Party { id: party }]))
+        })
     }
 }
 

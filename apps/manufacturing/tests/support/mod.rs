@@ -42,7 +42,7 @@ use wl_kernel::tickets::{
     OpenTicket, TaskComment, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
 };
 use wl_kernel::voids::RecordVoided;
-use wl_kernel::{BusinessCalendar, Subject};
+use wl_kernel::{BusinessCalendar, PartyId, Subject};
 
 /// A manufacturer with no shared module besides the kernel.
 const CLIENT: &str = r#"
@@ -666,7 +666,10 @@ impl BillsOfMaterials for Boms {
 
 /// The sales order lines of wl-sales.
 #[derive(Clone, Default)]
-pub struct Lines(Arc<Mutex<Vec<OrderLineInfo>>>);
+pub struct Lines(
+    Arc<Mutex<Vec<OrderLineInfo>>>,
+    Arc<Mutex<std::collections::BTreeMap<i64, PartyId>>>,
+);
 
 impl Lines {
     /// Line `line` of order `order` is open for `open_milli`, owned by `owner`.
@@ -678,7 +681,18 @@ impl Lines {
             owner,
             open_milli,
             cancelled: false,
+            customer: self.1.lock().unwrap().get(&order).copied(),
         });
+    }
+
+    /// Order `order` belongs to customer `party`.
+    pub fn customer(&self, order: i64, party: i64) {
+        self.1.lock().unwrap().insert(order, PartyId(party));
+        for info in self.0.lock().unwrap().iter_mut() {
+            if info.order.0 == order {
+                info.customer = Some(PartyId(party));
+            }
+        }
     }
 
     /// Line `line` of order `order` was cancelled.

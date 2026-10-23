@@ -410,6 +410,7 @@ pub(crate) const STOCK_TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.stock.mark.uncertain", "Lot uncertain"),
     ("wl_inventory.stock.mark.dispatch", "Dispatched"),
     ("wl_inventory.stock.mark.walk_in", "Walk-in sales"),
+    ("wl_inventory.stock.mark.production", "Work order"),
     ("wl_inventory.stock.notice.pending", "Not told"),
     ("wl_inventory.stock.notice.sent", "Sent"),
     ("wl_inventory.stock.notice.waived", "Waived"),
