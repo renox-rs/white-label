@@ -59,7 +59,13 @@ fn sms(key: &str, texts: &str) -> NotificationTypeDef {
         .group(GROUP_BOOKINGS)
         .category(Category::Transactional)
         .channels(&[NotifyChannel::Sms])
-        .give_up(&[GiveUpReaction::MarkContactInvalid])
+        // No task, as the issue says: the kernel refuses a lone
+        // `MarkContactInvalid` on a transactional type, so the other contact
+        // of the customer is tried too.
+        .give_up(&[
+            GiveUpReaction::MarkContactInvalid,
+            GiveUpReaction::AlternativeRecipient,
+        ])
         .template(
             NotifyChannel::Sms,
             "en",
@@ -196,7 +202,13 @@ mod tests {
     fn aut_18_the_ready_sms_marks_the_contact_invalid_and_makes_no_task() {
         let def = sms(VEHICLE_READY, "ready");
         assert_eq!(def.group, GROUP_BOOKINGS);
-        assert_eq!(def.give_up, [GiveUpReaction::MarkContactInvalid]);
+        assert_eq!(
+            def.give_up,
+            [
+                GiveUpReaction::MarkContactInvalid,
+                GiveUpReaction::AlternativeRecipient
+            ]
+        );
         assert!(def.staff_role.is_none());
         assert!(def.template_for(NotifyChannel::Sms, "ar").is_some());
     }
