@@ -39,6 +39,10 @@ pub(crate) const PAYOUT_TEXTS: &[(&str, &str)] = &[
         "The statement {{ reference }} of {{ aggregator }} is already imported as {{ number }} (see /payouts/{{ id }}). Void that one first if it was the wrong file.",
     ),
     (
+        "fnb.payout.problem.period",
+        "The period ends before it starts: check the first and the last day.",
+    ),
+    (
         "fnb.payout.problem.no_preset",
         "There is no column preset for {{ aggregator }}: add it before importing its files.",
     ),

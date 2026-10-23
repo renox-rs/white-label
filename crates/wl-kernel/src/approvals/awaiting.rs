@@ -153,7 +153,7 @@ const ACTION_LABELS: &[(&str, &str)] = &[
     ),
     ("invoicing.void", "Void an invoice"),
     ("invoicing.write_off", "Write off an invoice"),
-    ("kernel.late_entry", "Approve a late attendance entry"),
+    ("kernel.late_entry", "Approve a late entry"),
     (
         "loyalty.adjustment_over_limit",
         "Adjust loyalty points above the limit",

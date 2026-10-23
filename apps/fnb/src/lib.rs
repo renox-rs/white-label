@@ -258,6 +258,11 @@ impl Module for Fnb {
     }
 
     fn register(&self, app: &mut Registry) {
+        // A page that names an order (a delivery's source, a ticket's subject)
+        // says its number.
+        wl_kernel::documents::register_subject_label(order::SUBJECT_TYPE, |db, id| {
+            Box::pin(async move { Ok(order::FnbOrder::find(db, id).await?.map(|o| o.number)) })
+        });
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::ShowPage>()
             .view_data::<pages::KitchenPage>()
@@ -370,6 +375,11 @@ impl Module for Fnb {
         recall::register(app);
         outage::register(app);
         closings::register(app);
+        app.listen(
+            |event: wl_kernel::late_entries::LateEntryRecorded, state: AppState| async move {
+                payouts::on_late_order(&state, event).await
+            },
+        );
         // In the app group of the staff sidebar; the labels are the host's
         // `nav.orders`, `nav.kitchen` and `nav.cod_customers` texts.
         app.nav(

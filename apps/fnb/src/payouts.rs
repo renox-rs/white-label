@@ -197,13 +197,18 @@ pub async fn import_as(
     if aggregator.is_empty() || reference.is_empty() {
         return Err(refused(english("fnb.payout.problem.identity", &[])));
     }
+    if let (Some(from), Some(to)) = (ask.period_from, ask.period_to)
+        && to < from
+    {
+        return Err(refused(english("fnb.payout.problem.period", &[])));
+    }
     if let Some(existing) = PayoutStatement::using(&state.db, &aggregator, &reference).await? {
         return Err(duplicate(&existing, &reference));
     }
     let Some(preset) = ImportPreset::of(&state.db, &aggregator).await? else {
         return Err(refused(english(
             "fnb.payout.problem.no_preset",
-            &[("aggregator", &aggregator)],
+            &[("aggregator", &aggregator_name(&aggregator))],
         )));
     };
     let parsed = payout_csv::parse(&ask.content, &preset)
@@ -291,6 +296,17 @@ pub async fn import_as(
     PayoutStatement::find_or_404(&state.db, statement.id).await
 }
 
+/// The name of an aggregator for a message: `aggregator_a` is "Aggregator A".
+fn aggregator_name(code: &str) -> String {
+    let key = format!("fnb.screen.channels.paper_channel.{code}");
+    let name = english(&key, &[]);
+    if name == key {
+        code.replace('_', " ")
+    } else {
+        name
+    }
+}
+
 /// 422 telling the accountant the statement exists, with its number and page.
 fn duplicate(existing: &PayoutStatement, reference: &str) -> Error {
     let id = existing.id.to_string();
@@ -298,7 +314,7 @@ fn duplicate(existing: &PayoutStatement, reference: &str) -> Error {
         "fnb.payout.problem.duplicate",
         &[
             ("reference", &reference.trim().to_owned()),
-            ("aggregator", &existing.aggregator),
+            ("aggregator", &aggregator_name(&existing.aggregator)),
             ("number", &existing.number),
             ("id", &id),
         ],
@@ -1020,6 +1036,34 @@ pub(crate) fn register_late_entry() {
     LateEntryDef::of(LATE_ORDER_SUBJECT, create_late_order)
         .business_time("occurred_at")
         .register();
+}
+
+/// `LateEntryRecorded` of a late order that a manager approved: the statements
+/// of its aggregator look their unmatched lines up again, as they do when the
+/// entry needs no approval.
+///
+/// # Errors
+///
+/// Database errors.
+pub(crate) async fn on_late_order(
+    state: &AppState,
+    event: wl_kernel::late_entries::LateEntryRecorded,
+) -> Result {
+    if event.subject.subject_type != LATE_ORDER_SUBJECT {
+        return Ok(());
+    }
+    let Some(late) = LateOrder::find(&state.db, event.subject.subject_id).await? else {
+        return Ok(());
+    };
+    let open = PayoutStatement::query()
+        .where_(PayoutStatement::AGGREGATOR.eq(late.aggregator))
+        .where_(PayoutStatement::STATUS.is_in([PayoutStatus::Imported, PayoutStatus::Disputed]))
+        .get(&state.db)
+        .await?;
+    for statement in open {
+        let _ = rematch(state, statement.id).await?;
+    }
+    Ok(())
 }
 
 /// What the cashier types for an order the statement names and the kitchen

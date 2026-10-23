@@ -65,7 +65,7 @@ pub(crate) const OUTAGE_TEXTS: &[(&str, &str)] = &[
     ),
     (
         "fnb.paper.problem.amount",
-        "The amount of an order cannot be negative.",
+        "Give the amount of the order in dirhams, like 42.50; it cannot be negative.",
     ),
     (
         "fnb.paper.problem.method",
