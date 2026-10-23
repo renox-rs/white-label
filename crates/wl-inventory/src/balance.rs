@@ -3,8 +3,9 @@
 //! lot-tracked item):
 //!
 //! - *on hand*: what arrived less what left;
-//! - *reserved*: set aside for a draft Return to supplier (the other
-//!   reservations come with the issues that build them);
+//! - *reserved*: set aside for a draft Return to supplier and for the lines of
+//!   a `picked` dispatch at the location (the other reservations come with the
+//!   issues that build them);
 //! - *on hold*: blocked by an open stock hold: the undecided lines of an open
 //!   hold on whole lots follow the lot wherever it is, those of an open hold
 //!   on a location block that balance only (a line decided `release`,
@@ -135,8 +136,8 @@ pub async fn lot_locations<'c>(db: impl Executor<'c>, lot_id: i64) -> Result<Vec
     Ok(places.into_iter().filter(|(_, qty)| *qty > 0).collect())
 }
 
-/// What draft returns to supplier set aside of `item_id` at `location_id`
-/// (of `lot_id` when given), in thousandths.
+/// What draft returns to supplier and picked dispatches set aside of
+/// `item_id` at `location_id` (of `lot_id` when given), in thousandths.
 ///
 /// # Errors
 ///
@@ -166,6 +167,8 @@ pub async fn reserved_at<'c>(
             .map(|line| line.quantity_milli)
             .sum::<i64>();
     }
+    reserved +=
+        crate::dispatch::reserved_picked(conn.reborrow(), item_id, location_id, lot_id).await?;
     Ok(reserved)
 }
 

@@ -5,6 +5,12 @@ mod arrival;
 pub mod balance;
 pub mod chase;
 pub mod config;
+pub mod dispatch;
+mod dispatch_events;
+mod dispatch_pages;
+pub mod dispatch_pick;
+pub mod dispatch_send;
+mod dispatch_texts;
 mod events;
 pub mod goods_receipt;
 pub mod hold_decide;
@@ -66,6 +72,11 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use config::{InventoryConfig, RejectionReason, ScoreSettings};
+pub use dispatch::{
+    Dispatch, DispatchLine, DispatchStatus, Handover, NewDispatch, NewDispatchLine,
+    create_draft as create_dispatch,
+};
+pub use dispatch_send::HandoverChoice;
 pub use goods_receipt::{
     DraftLine, DraftReceipt, GoodsReceipt, GoodsReceiptLine, GoodsReceiptStatus,
 };
@@ -121,6 +132,9 @@ pub mod permissions {
     pub const GOODS_RECEIPTS_POST: &str = "goods_receipts.post";
     /// Reverse a posted goods receipt.
     pub const GOODS_RECEIPTS_REVERSE: &str = "goods_receipts.reverse";
+    /// Pick, dispatch, cancel and confirm dispatches at the user's own
+    /// locations; record the refused goods received back (`STK.DSP.01`).
+    pub const DISPATCH_MANAGE: &str = "dispatch.manage";
     /// Manage returns to supplier.
     pub const SUPPLIER_RETURNS_MANAGE: &str = "supplier_returns.manage";
     /// List, rank and deactivate the suppliers of an item (`STK.SUP.01`).
@@ -369,6 +383,7 @@ impl Module for WlInventory {
             .merge(recall_screens::routes())
             .merge(transfer_screens::routes())
             .merge(receipt_screens::routes())
+            .merge(dispatch_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -520,6 +535,8 @@ impl Module for WlInventory {
         app.model::<RecallLine>();
         app.model::<PendingIssue>();
         app.model::<ShortageAlert>();
+        app.model::<Dispatch>();
+        app.model::<DispatchLine>();
         app.model::<GoodsReceipt>();
         app.model::<GoodsReceiptLine>();
         app.model::<SupplierReturn>();
@@ -529,6 +546,7 @@ impl Module for WlInventory {
         renox::state_machine::register::<PurchaseRequest>();
         renox::state_machine::register::<StockCount>();
         renox::state_machine::register::<GoodsReceipt>();
+        renox::state_machine::register::<Dispatch>();
         renox::state_machine::register::<Lot>();
         renox::state_machine::register::<Transfer>();
         renox::state_machine::register::<StockHold>();
@@ -670,6 +688,7 @@ impl Module for WlInventory {
             .step_permission(permissions::LOTS_RELEASE)
             .register();
         events::register(app);
+        dispatch_events::register(app);
         hold_decide::register(app);
         // `STK.RUL.07`: the deciders of an open hold are reminded every H
         // hours and the escalation role told every 2 x H.

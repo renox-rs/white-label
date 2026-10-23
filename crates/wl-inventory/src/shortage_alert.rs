@@ -134,7 +134,7 @@ async fn holders(db: &Db, permission: &str, location: &Location) -> Result<Vec<i
 }
 
 /// The first of `ids` who does not hold the company administrator role.
-async fn first_not_admin(db: &Db, ids: &[i64]) -> Result<Option<i64>> {
+pub(crate) async fn first_not_admin(db: &Db, ids: &[i64]) -> Result<Option<i64>> {
     for id in ids {
         let user = renox::auth::User::find_or_404(db, *id).await?;
         if !user

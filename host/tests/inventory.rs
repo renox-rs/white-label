@@ -39,6 +39,9 @@ fn the_roles_hold_the_inventory_permissions() {
     // The storekeeper receives; procurement approves an over-receipt.
     assert!(holds(STOREKEEPER, inventory::GOODS_RECEIPTS_POST));
     assert!(!holds(STOREKEEPER, inventory::PURCHASE_ORDERS_ISSUE));
+    // The storekeeper picks and dispatches goods to customers (#240).
+    assert!(holds(STOREKEEPER, inventory::DISPATCH_MANAGE));
+    assert!(!holds(PROCUREMENT, inventory::DISPATCH_MANAGE));
     assert!(holds(PROCUREMENT, inventory::PURCHASE_ORDERS_ISSUE));
     assert!(!holds(PROCUREMENT, inventory::GOODS_RECEIPTS_POST));
     // Procurement dispatches returns to supplier; a second holder approves
