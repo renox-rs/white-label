@@ -215,6 +215,11 @@ pub struct SalesReturnLine {
     /// The lot (`inventory.lot:N`, its id) the customer presents, for an item
     /// tracked by lot: a lot under an open recall is recalled goods.
     pub lot_id: Option<i64>,
+    /// The recall (`inventory.recall:N`, its id) this line is to join, written
+    /// before the goods are received: a line pending and not joined is retried.
+    pub recall_pending_id: Option<i64>,
+    /// When the line joined the recall's hold.
+    pub recall_joined_at: Option<DateTime>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

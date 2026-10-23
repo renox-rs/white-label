@@ -25,6 +25,8 @@ use support::{Booted, boot_configured};
 #[derive(Clone, Default)]
 struct Recalls {
     received: Arc<Mutex<Vec<(ReturnedGoods, Subject)>>>,
+    /// While set, taking goods into the hold fails.
+    failing: Arc<Mutex<bool>>,
 }
 
 impl LotTrace for Recalls {
@@ -50,6 +52,12 @@ impl LotTrace for Recalls {
         goods: &'a ReturnedGoods,
     ) -> TraceFuture<'a, bool> {
         Box::pin(async move {
+            if *self.failing.lock().unwrap() {
+                return Err(Error::Status(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "the stock is busy".to_owned(),
+                ));
+            }
             self.received
                 .lock()
                 .unwrap()
@@ -284,4 +292,46 @@ async fn sal_15_a_late_ordinary_return_still_needs_the_approval() {
     assert_eq!(ordinary.recall_id, None);
     assert!(ordinary.stock_follows_the_return());
     assert!(recalls.received.lock().unwrap().is_empty());
+}
+
+/// Taking the goods into the hold fails after `received` committed: the return
+/// stays received and unlinked, the clerk is not shown an error, and the
+/// scheduled retry joins the line once, with no goods taken in twice.
+#[renox::test]
+async fn sal_15_a_join_that_failed_after_the_receive_is_retried() {
+    let (t, recalls) = boot().await;
+    t.app.acting_as(&clerk(&t).await);
+    let (sale, line) = sold_on(&t, days_ago(60)).await;
+    let r = asked(&t, &sale, &format!("{}:2:7", line.id)).await;
+
+    *recalls.failing.lock().unwrap() = true;
+    t.app
+        .post(&format!("/sales-returns/{}/receive", r.id), &[("x", "")])
+        .await
+        .assert_status(303);
+    let r = SalesReturn::find_or_404(t.db(), r.id).await.unwrap();
+    assert_eq!(r.status, ReturnStatus::Received);
+    assert_eq!(r.recall_id, None, "not linked yet");
+    assert!(recalls.received.lock().unwrap().is_empty());
+    let still = wl_sales::sales_returns::retry_recall_joins(t.app.state()).await;
+    assert!(still.is_err(), "the stock is still busy");
+
+    *recalls.failing.lock().unwrap() = false;
+    let done = wl_sales::sales_returns::retry_recall_joins(t.app.state())
+        .await
+        .unwrap();
+    assert_eq!(done, [r.id]);
+    let r = SalesReturn::find_or_404(t.db(), r.id).await.unwrap();
+    assert_eq!(r.recall(), Some(Subject::new("inventory.recall", 1)));
+    assert!(!r.stock_follows_the_return());
+    assert_eq!(recalls.received.lock().unwrap().len(), 1);
+
+    wl_sales::sales_returns::retry_recall_joins(t.app.state())
+        .await
+        .unwrap();
+    assert_eq!(
+        recalls.received.lock().unwrap().len(),
+        1,
+        "the goods are taken in once"
+    );
 }

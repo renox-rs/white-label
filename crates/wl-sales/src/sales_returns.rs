@@ -5,11 +5,12 @@
 //! [`ReturnResolved`] and [`ReturnReversed`] follow the commit.
 
 use renox::chrono::NaiveDate;
+use renox::db::now;
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::Subject;
 use wl_kernel::documents::{dubai_date, today};
-use wl_kernel::inventory::{LOT_SUBJECT_TYPE, ReturnedGoods, lot_trace};
+use wl_kernel::inventory::{LOT_SUBJECT_TYPE, RECALL_SUBJECT_TYPE, ReturnedGoods, lot_trace};
 use wl_kernel::sales::{
     COUNTER_SALE_SUBJECT_TYPE, ReturnResolved, ReturnReversed, SALES_ORDER_SUBJECT_TYPE,
 };
@@ -226,15 +227,35 @@ async fn sale_date(state: &AppState, r: &SalesReturn) -> Result<NaiveDate> {
     Ok(at.map_or_else(today, dubai_date))
 }
 
-/// The goods of `r` that are under a recall (BL-SAL-15), each with the recall
+/// The scheduled task that joins recalled return lines that did not join.
+pub const RECALL_JOIN_TASK: &str = "sales:return-recall-join";
+/// How often it runs.
+pub const RECALL_JOIN_EVERY_MINUTES: u64 = 15;
+
+/// The goods of one return line, as the stock's trace takes them.
+fn goods_of(
+    r: &SalesReturn,
+    line: &SalesReturnLine,
+    sold: &SaleLine,
+    on: NaiveDate,
+) -> ReturnedGoods {
+    let mut goods =
+        ReturnedGoods::new(&sold.item_code, line.quantity_milli, r.subject()).sold_on(on);
+    if let Some(lot_id) = line.lot_id {
+        goods = goods.lot(Subject::new(LOT_SUBJECT_TYPE, lot_id));
+    }
+    goods
+}
+
+/// The lines of `r` that are under a recall (BL-SAL-15), each with the recall
 /// it is in: a lot in the scope of an open recall, or an item not tracked by
 /// lot that is in an open recall by received dates and was sold inside its
-/// trace window (`on` is the day of the sale).
+/// trace window (`on` is the day of the sale). Also the number of lines.
 async fn recalled_goods(
     state: &AppState,
     r: &SalesReturn,
     on: NaiveDate,
-) -> Result<(Vec<(ReturnedGoods, Subject)>, usize)> {
+) -> Result<(Vec<(i64, Subject)>, usize)> {
     let lines = r.lines(&state.db).await?;
     let trace = lot_trace(state);
     let mut found = Vec::new();
@@ -242,16 +263,107 @@ async fn recalled_goods(
         let Some(sold) = SaleLine::find(&state.db, line.sale_line_id).await? else {
             continue;
         };
-        let mut goods =
-            ReturnedGoods::new(&sold.item_code, line.quantity_milli, r.subject()).sold_on(on);
-        if let Some(lot_id) = line.lot_id {
-            goods = goods.lot(Subject::new(LOT_SUBJECT_TYPE, lot_id));
-        }
+        let goods = goods_of(r, line, &sold, on);
         if let Some(recall) = trace.recall_of(state, &goods).await? {
-            found.push((goods, recall));
+            found.push((line.id, recall));
         }
     }
     Ok((found, lines.len()))
+}
+
+/// Takes the recalled lines of the received return `id` that have not joined
+/// yet into quarantine and onto their recall's hold, line by line: a line that
+/// joined is marked, so a retry after a failure never takes it in twice. The
+/// return links to the recall once one line joined. Returns whether every
+/// recalled line has joined.
+///
+/// # Errors
+///
+/// The stock's errors for the first line that could not join (the later lines
+/// wait for the next call), and the database's.
+pub async fn join_recalled(state: &AppState, id: i64) -> Result<bool> {
+    let r = SalesReturn::find_or_404(&state.db, id).await?;
+    if r.status != ReturnStatus::Received {
+        return Ok(false);
+    }
+    let on = sale_date(state, &r).await?;
+    let trace = lot_trace(state);
+    let mut failure = None;
+    for line in r.lines(&state.db).await? {
+        let (Some(recall_id), None) = (line.recall_pending_id, line.recall_joined_at) else {
+            continue;
+        };
+        let Some(sold) = SaleLine::find(&state.db, line.sale_line_id).await? else {
+            continue;
+        };
+        let goods = goods_of(&r, &line, &sold, on);
+        let recall = Subject::new(RECALL_SUBJECT_TYPE, recall_id);
+        match trace.receive_returned(state, &recall, &goods).await {
+            Ok(true) => {
+                SalesReturnLine::query()
+                    .where_(SalesReturnLine::ID.eq(line.id))
+                    .update(&state.db, &[("recall_joined_at", &Some(now()))])
+                    .await?;
+            }
+            Ok(false) => {
+                // Not taken in: nothing to retry.
+                let none: Option<i64> = None;
+                SalesReturnLine::query()
+                    .where_(SalesReturnLine::ID.eq(line.id))
+                    .update(&state.db, &[("recall_pending_id", &none)])
+                    .await?;
+            }
+            Err(error) => {
+                failure.get_or_insert(error);
+            }
+        }
+    }
+    let lines = r.lines(&state.db).await?;
+    let joined = lines
+        .iter()
+        .find(|line| line.recall_joined_at.is_some())
+        .and_then(|line| line.recall_pending_id);
+    if let (Some(recall_id), None) = (joined, r.recall_id) {
+        SalesReturn::query()
+            .where_(SalesReturn::ID.eq(id))
+            .update(&state.db, &[("recall_id", &Some(recall_id))])
+            .await?;
+    }
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    Ok(true)
+}
+
+/// The scheduled retry: every received return with a recalled line that did
+/// not join yet is joined again ([`join_recalled`]). Returns the returns that
+/// were done.
+///
+/// # Errors
+///
+/// The database's errors, and the first return that failed again after all
+/// were tried.
+pub async fn retry_recall_joins(state: &AppState) -> Result<Vec<i64>> {
+    let pending = SalesReturnLine::query()
+        .where_(SalesReturnLine::RECALL_PENDING_ID.is_not_null())
+        .where_(SalesReturnLine::RECALL_JOINED_AT.is_null())
+        .order_by(SalesReturnLine::RETURN_ID)
+        .get(&state.db)
+        .await?;
+    let mut ids: Vec<i64> = pending.iter().map(|line| line.return_id).collect();
+    ids.dedup();
+    let mut done = Vec::new();
+    let mut failure = None;
+    for id in ids {
+        match join_recalled(state, id).await {
+            Ok(true) => done.push(id),
+            Ok(false) => {}
+            Err(error) => {
+                failure.get_or_insert(error);
+            }
+        }
+    }
+    failure.map_or(Ok(done), Err)
 }
 
 /// The goods of return `id` are back (`receive`); `approved` accepts them
@@ -261,6 +373,12 @@ async fn recalled_goods(
 /// recall, and the recall decides their outcome (BL-SAL-15). Resolving such a
 /// return credits or refunds the customer but never restores stock
 /// ([`SalesReturn::stock_follows_the_return`]).
+///
+/// The recall each recalled line is to join is written before the transition,
+/// and the lines join after it ([`join_recalled`]). If taking the goods in
+/// fails the return stays received, the failure is not raised to the clerk (the
+/// goods are theirs to hand over either way) and the scheduled
+/// [`retry_recall_joins`] joins the line later.
 ///
 /// A return with some lines under a recall and some not needs the approval for
 /// the window as before; only the recalled lines join the hold. Receiving the
@@ -279,6 +397,15 @@ pub async fn receive(
         window_days: config_of(state).return_window_days,
         approved: approved || (total > 0 && recalled.len() == total),
     };
+    for (line_id, recall) in &recalled {
+        SalesReturnLine::query()
+            .where_(SalesReturnLine::ID.eq(*line_id))
+            .update(
+                &state.db,
+                &[("recall_pending_id", &Some(recall.subject_id))],
+            )
+            .await?;
+    }
     let _ = r
         .transition(RECEIVE)
         .by(by)
@@ -286,18 +413,9 @@ pub async fn receive(
         .run(state)
         .await
         .map_err(|e| e.into_error())?;
-    let trace = lot_trace(state);
-    let mut joined = None;
-    for (goods, recall) in &recalled {
-        if trace.receive_returned(state, recall, goods).await? {
-            joined = joined.or(Some(recall.subject_id));
-        }
-    }
-    if let Some(recall_id) = joined {
-        SalesReturn::query()
-            .where_(SalesReturn::ID.eq(id))
-            .update(&state.db, &[("recall_id", &Some(recall_id))])
-            .await?;
+    if !recalled.is_empty() {
+        // A failure waits for the scheduled retry; the return is received.
+        let _ = join_recalled(state, id).await;
     }
     SalesReturn::find_or_404(&state.db, id).await
 }
@@ -389,6 +507,11 @@ async fn announce(state: &AppState, event: &Transitioned<SalesReturn>) -> Result
 /// Registers the machine and the listener.
 pub(crate) fn register(app: &mut Registry) {
     renox::state_machine::register::<SalesReturn>();
+    app.schedule().every_minutes(
+        RECALL_JOIN_EVERY_MINUTES,
+        RECALL_JOIN_TASK,
+        |state: AppState| async move { retry_recall_joins(&state).await.map(|_| ()) },
+    );
     app.listen(
         |event: Transitioned<SalesReturn>, state: AppState| async move {
             announce(&state, &event).await
