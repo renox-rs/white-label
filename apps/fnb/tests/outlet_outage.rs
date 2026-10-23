@@ -141,6 +141,14 @@ async fn a_brand_cooked_by_another_outlet_stays_orderable_there() {
     let kitchens = outage::ordering_of(w.db(), &habibi).await.unwrap();
     let open: Vec<(&str, bool)> = kitchens.iter().map(|k| (k.name.as_str(), k.open)).collect();
     assert_eq!(open, [("Marina Kitchen", false), ("Sharjah Kitchen", true)]);
+    // The ordering page of the brand shows Sharjah taking orders and Marina
+    // closed, side by side.
+    let page = w.get(&w.nobody, "/ordering/habibi").await;
+    page.assert_ok();
+    let body = page.text();
+    assert!(body.contains("Temporarily closed"), "{body}");
+    assert!(body.contains("Taking orders"), "{body}");
+    assert!(body.contains("Sharjah Kitchen"), "{body}");
     assert!(d2c(&w, o.sharjah.id).await.iter().all(|c| !c.paused));
     assert!(
         Outage::open_of(w.db(), o.sharjah.id)
