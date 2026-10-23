@@ -25,7 +25,7 @@ Map of IDs to numbers: `docs/backlog/github-issues.md`. Issue text: `docs/backlo
 | Browser check with Playwright of 46 pages at 1280 and 390 px, main flows | done; no errors, no overflow at 390 px |
 | Polish round after the browser check (names instead of "Item 6", "None", icons, dates, duplicate ids) | done (`fix:` commits after `924a83b3`) |
 | Re-run of all tests after the polish round | done (see above) |
-| GitHub issues: tick Done-when, `**Deferred:**` lines, exactly one `**Verification summary**` comment per issue, then a sweep | TO DO (25 issues) |
+| GitHub issues: tick Done-when, `**Deferred:**` lines, exactly one `**Verification summary**` comment per issue | done for all 25; a sweep that re-reads every body and comment was started (check the issues for a leftover footer) |
 | Pull request | not opened; open one only when asked |
 
 ## What was built (where to look)
@@ -68,7 +68,12 @@ Map of IDs to numbers: `docs/backlog/github-issues.md`. Issue text: `docs/backlo
 | 11 | BL-MFG-14 lead sources: campaign report, cost over budget wait | not run with the 07 seed | wl-sales campaigns | owned there |
 | 12 | BL-MFG-14 signed checklists `WRK.CHK.01` (onboarding, returned goods inspection) | wl-ticketing has only the kernel contract `Checklists` | wl-ticketing | no provider |
 | 13 | BL-MFG-09 (#390) scanner/import entry | no scanner or import entry in the app | later issue | nothing to test |
-| 14 | BL-MFG-13 (#394) pt 3 | "no line selection for a price dispute" is a client-side show/hide; server ignores lines for a price dispute (tested) | none (by design) | not enforceable on the server |
+| 14 | BL-MFG-13 (#394) pt 3 | "no line selection for a price dispute" is a client-side show/hide; server ignores lines for a price dispute (tested). Ticked on the issue | none (by design) | not enforceable on the server |
+| 15 | BL-SAL-11 (#130) pt 2: stock reserved after a held order is released | nothing reserves stock on `SalesOrderConfirmed` (the dispatch pick reserves); only the status and the single event are tested. Left open on the issue | wl-inventory (reservation on the confirmed event) | no consumer exists |
+| 16 | BL-SAL-18 (#137) pt 2: the buyer sees only number and status | only `po_number::buyer_refusal` is tested, called directly; the portal page is built in BL-MFG-06 (`/portal/manufacturing/orders`) | wl-portal / BL-MFG-06 | re-check the point against `host/tests/manufacturing_po_number.rs` and `apps/manufacturing/tests/po_upload.rs` |
+| 17 | BL-MFG-14 (#395) pt 3: no bounce fee invoiced | asserted only as the config value `bounce_fee.is_none()` | wl-payments | no mechanism run under the 07 seed |
+| 18 | BL-MFG-14 pt 14: drawings left out of operating cost and profit reports; owner approval of the budget | not tested; approval asserted only as configuration (100% budget warning and drawing self-approval refusal are proved) | wl-invoicing / wl-accounting reports | not run with the 07 seed |
+| 19 | BL-MFG-14 pt 16: alternative supplier on a purchase request and a second person for a preferred supplier | not run with the 07 seed (supplier score 69 vs 70 is proved) | wl-inventory | not run with the 07 seed |
 
 Not proven end to end (say so in the issues): notice to a customer's main contact is proved as a queued message, not a delivered email; 09:00/09:15 timing of
 MFG.RUL.08 and the 01:00 expiry look-ahead schedule are not asserted; supplier score, cancellation fee and drawing approval are proved at mechanism level;
