@@ -3,6 +3,7 @@
 //! page where a customer approves an estimate. Every back-office route needs
 //! a signed-in user; each handler checks the permission of its action.
 
+pub mod accident;
 pub mod claims;
 pub mod fleet;
 pub mod insurers;
@@ -32,6 +33,7 @@ pub fn routes() -> Routes {
         .merge(job_cards::public_routes())
         .merge(labour::routes())
         .merge(stops::routes())
+        .merge(accident::routes())
         .merge(claims::routes())
         .merge(insurers::routes())
         .merge(fleet::routes())

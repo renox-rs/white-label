@@ -474,6 +474,8 @@ pub(crate) struct ShowPage {
     claim_no: String,
     accident: String,
     police_report: String,
+    police_document: String,
+    documents_link: String,
     repair: String,
     excess: String,
     estimate: String,
@@ -568,6 +570,15 @@ async fn show(
         (Some(no), None) => no.clone(),
         _ => text(&lang, "claims.police_missing"),
     };
+    let police_document =
+        match crate::documents::police_verdict(&state, crate::documents::GUARDED_CLAIM_APPROVE, claim.id, None)
+            .await?
+        {
+            crate::documents::PoliceVerdict::Valid => text(&lang, "police.attached"),
+            crate::documents::PoliceVerdict::Refused(words) => words,
+        };
+    let subject = claim.subject();
+    let documents_link = format!("/documents/of/{}/{}", subject.subject_type, subject.subject_id);
     let rate_card = match (claim.rate_card_id, claim.rate_card_version) {
         (Some(card), Some(version)) => format!("#{card} v{version}"),
         _ => none.clone(),
@@ -588,6 +599,8 @@ async fn show(
         claim_no: claim.claim_no.clone(),
         accident: claim.accident_date.to_string(),
         police_report,
+        police_document,
+        documents_link,
         repair: text(
             &lang,
             &format!("claims.repair.{}", claim.repair_type.as_str()),

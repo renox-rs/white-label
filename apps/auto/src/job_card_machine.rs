@@ -5,7 +5,7 @@
 //! |---|---|---|---|---|
 //! | [`START_INSPECTION`] | checked_in | inspecting | `job_cards.work` | `technician_assigned`, `intake_recorded` |
 //! | [`SEND_ESTIMATE`] | inspecting, in_progress | awaiting_approval | `job_cards.advise` | `intake_recorded`, `estimate_priced` |
-//! | [`APPROVE`] / [`APPROVE_SYSTEM`] | awaiting_approval | in_progress | `job_cards.advise` (recorded approval) / system (the customer's link, a claim) | `estimate_pending`, `police_report` (slot) |
+//! | [`APPROVE`] / [`APPROVE_SYSTEM`] | awaiting_approval | in_progress | `job_cards.advise` (recorded approval) / system (the customer's link, a claim) | `estimate_pending`, `police_report` (`AUT.ACL.20`, BL-AUT-07) |
 //! | [`DECLINE`] / [`DECLINE_SYSTEM`] | checked_in, inspecting, awaiting_approval | declined | `job_cards.advise` / system (estimate expired) | `nothing_approved`, `nothing_recorded` |
 //! | [`DECLINE_ADDED`] / [`DECLINE_ADDED_SYSTEM`] | awaiting_approval | in_progress | `job_cards.advise` / system (the customer's link) | `work_approved` |
 //! | [`WAIT_PARTS`] | in_progress | awaiting_parts | `job_cards.work` | `parts_requested` |
@@ -30,7 +30,8 @@
 //!   spec table.
 //! - The guards marked *slot* pass for now: they are the places where the
 //!   issues of the negative flows add their rules (BL-AUT-04 `parts_arrived`,
-//!   BL-AUT-05 .. BL-AUT-07 `deliver`, `pass_qc` and `approve`). A slot keeps
+//!   BL-AUT-05 and BL-AUT-06 `deliver` and `pass_qc`; `approve` has its
+//!   `police_report` since BL-AUT-07). A slot keeps
 //!   its name so that a test names the guard that refused. The three guards of
 //!   `cancel` (BL-AUT-01) read what the service recorded in the input
 //!   ([`StopRecord`]): the work done per line, the customer's acknowledgement,
@@ -55,6 +56,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::approval::{ApprovalStatus, EstimateApproval};
 use crate::db::set_job_card;
+use crate::documents::{PoliceVerdict, police_result};
 use crate::job_card::{JobCard, JobCardStatus, QcCheck};
 use crate::labour_line::{LabourLine, LineStatus};
 use crate::part_line::PartLine;
@@ -205,6 +207,10 @@ pub struct JobInput {
     /// The odometer reading the next service falls due at ([`DELIVER`]).
     #[serde(default)]
     pub next_service_odometer: Option<i64>,
+    /// What wl-documents answered for the police report ([`APPROVE`] and
+    /// [`APPROVE_SYSTEM`], `AUT.ACL.20`).
+    #[serde(default)]
+    pub police: Option<PoliceVerdict>,
 }
 
 fn input_of(ctx: &TransitionCtx) -> JobInput {
@@ -409,7 +415,13 @@ fn approve(name: &'static str, system: bool) -> Transition<JobCard> {
         let ok = input_of(ctx).approval_id.is_some();
         Box::pin(async move { check(ok, "auto.jobs.problem.nothing_to_approve") })
     });
-    slot(transition, "police_report").effect(|c: &JobCard, ctx, tx| {
+    transition.guard("police_report", |c: &JobCard, ctx| {
+        // Accident damage is repaired only with the police report attached
+        // and accepted (`AUT.ACL.20`, a legal block with no override).
+        let result = police_result(c.accident_damage, &input_of(ctx).police);
+        Box::pin(async move { result })
+    })
+    .effect(|c: &JobCard, ctx, tx| {
         let card = c.clone();
         let input = input_of(ctx);
         Box::pin(async move {

@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::documents::dubai_text;
 
+use super::accident::{self, AccidentView};
 use super::stops::{self, StopView, SubstituteView};
 use super::vehicles::{HistoryRow, km_text, vehicle_text};
 use super::{
@@ -717,6 +718,8 @@ pub(crate) struct ShowPage {
     wait: Vec<[String; 2]>,
     source_options: Vec<[String; 2]>,
     substitute: SubstituteView,
+    // The police report and the accident flag (BL-AUT-07).
+    accident_flag: AccidentView,
 }
 
 /// Whether a user sees the customer's name on a job card.
@@ -1096,6 +1099,7 @@ async fn show(
             .map(|source| [(*source).to_owned(), text(&lang, &format!("supply.source.{source}"))])
             .collect(),
         substitute: stops::substitute_view(&state, &lang, &user, &card).await?,
+        accident_flag: accident::view_of(&state, &lang, &user, &card).await?,
     }))
 }
 

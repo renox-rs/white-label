@@ -60,6 +60,10 @@ use crate::estimate::Estimate;
 use crate::insurer::Insurer;
 use crate::insurers;
 use crate::job_card::{JobCard, JobCardStatus};
+use crate::documents::{
+    GUARDED_CLAIM_APPROVE, GUARDED_CLAIM_BOOK_SURVEY, GUARDED_CLAIM_SUBMIT_ESTIMATE,
+    GUARDED_JOB_CARD_APPROVE, police_verdict,
+};
 use crate::job_card_machine::{APPROVE_SYSTEM, DECLINE_ADDED_SYSTEM, JobInput};
 use crate::job_cards::run_system as run_job_system;
 use crate::labour_line::{LabourLine, LineStatus};
@@ -433,7 +437,10 @@ async fn load(
 /// numbers, or in another state.
 pub async fn book_survey(state: &AppState, by: &AuthUser, id: i64) -> Result<InsuranceClaim> {
     let claim = load(state, by, id, permissions::INSURANCE_MANAGE).await?;
-    run(state, by, &claim, BOOK_SURVEY, None, input_for(by)).await
+    let mut input = input_for(by);
+    input.police =
+        Some(police_verdict(state, GUARDED_CLAIM_BOOK_SURVEY, claim.id, Some(by.id)).await?);
+    run(state, by, &claim, BOOK_SURVEY, None, input).await
 }
 
 /// The job card of `claim` and the estimate round waiting for an answer.
@@ -484,6 +491,9 @@ pub async fn submit_estimate(state: &AppState, by: &AuthUser, id: i64) -> Result
     input.priced = Some(!(labour.is_empty() && parts.is_empty()) && round.net_total > 0);
     input.estimate_amount = Some(round.net_total);
     input.job_round_id = Some(round.id);
+    input.police = Some(
+        police_verdict(state, GUARDED_CLAIM_SUBMIT_ESTIMATE, claim.id, Some(by.id)).await?,
+    );
     run(state, by, &claim, SUBMIT_ESTIMATE, None, input).await
 }
 
@@ -673,12 +683,14 @@ async fn approve_job(
         .display_name(&state.db, PartyId(insurer.party_id), "en")
         .await?
         .unwrap_or_else(|| claim.claim_no.clone());
+    let police = police_verdict(state, GUARDED_JOB_CARD_APPROVE, card.id, None).await?;
     let input = JobInput {
         by: Some(by.id),
         on: Some(today()),
         approval_id: Some(round_id),
         decided_by_name: Some(name),
         method: Some("recorded".to_owned()),
+        police: Some(police),
         ..JobInput::default()
     };
     run_job_system(state, &card, APPROVE_SYSTEM, None, input).await?;
@@ -704,6 +716,9 @@ pub async fn approve(
     let (input, round_id) =
         answer_input(state, by, &claim, ApprovalKind::Estimate, &answer).await?;
     let lines = input.lines.clone();
+    let mut input = input;
+    input.police =
+        Some(police_verdict(state, GUARDED_CLAIM_APPROVE, claim.id, Some(by.id)).await?);
     let approved = run(state, by, &claim, APPROVE, None, input).await?;
     approve_job(state, by, &approved, round_id, &lines).await?;
     InsuranceClaim::find_or_404(&state.db, id).await

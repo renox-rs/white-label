@@ -3,9 +3,9 @@
 //!
 //! | Transition | From | To | By | Guards |
 //! |---|---|---|---|---|
-//! | [`BOOK_SURVEY`] | registered | awaiting_survey | `insurance.manage` | `claim_details`, `police_report` (slot) |
-//! | [`SUBMIT_ESTIMATE`] | registered, awaiting_survey | estimate_submitted | `insurance.manage` | `claim_details`, `estimate_priced`, `police_report` (slot) |
-//! | [`APPROVE`] | estimate_submitted | approved | `insurance.manage` | `approval_reference`, `approval_document`, `approved_per_line`, `police_report` (slot) |
+//! | [`BOOK_SURVEY`] | registered | awaiting_survey | `insurance.manage` | `claim_details`, `police_report` (`AUT.ACL.20`) |
+//! | [`SUBMIT_ESTIMATE`] | registered, awaiting_survey | estimate_submitted | `insurance.manage` | `claim_details`, `estimate_priced`, `police_report` (`AUT.ACL.20`) |
+//! | [`APPROVE`] | estimate_submitted | approved | `insurance.manage` | `approval_reference`, `approval_document`, `approved_per_line`, `police_report` (`AUT.ACL.20`) |
 //! | [`REJECT`] | estimate_submitted | rejected | `insurance.manage` | a reason |
 //! | [`REQUEST_SUPPLEMENTARY`] | approved | supplementary_pending | `job_cards.advise` | `findings_recorded`, `supplementary_priced` |
 //! | [`APPROVE_SUPPLEMENTARY`] | supplementary_pending | approved | `insurance.manage` | `approval_reference`, `approval_document`, `approved_per_line` |
@@ -24,7 +24,7 @@
 //!   database (the estimate is priced, the lines the insurer approved add up)
 //!   and pass it in [`ClaimInput`].
 //! - The guards marked *slot* pass for now: they are where the issues of the
-//!   negative flows add their rules (BL-AUT-07 the police report, BL-AUT-08
+//!   negative flows add their rules (BL-AUT-08
 //!   the written withdrawal of `cancel`, BL-AUT-09 the total-loss notice,
 //!   BL-AUT-10 *nothing sent* of `void`). A slot keeps its name so a test
 //!   names the guard that refused.
@@ -46,6 +46,7 @@ use crate::claim_approval::{
     ApprovalKind, ApprovalOutcome, ApprovedLine, ClaimApproval, LINE_KINDS,
 };
 use crate::db::set_claim;
+use crate::documents::{PoliceVerdict, police_result};
 use crate::permissions;
 use crate::texts::english;
 
@@ -119,6 +120,10 @@ pub struct ClaimInput {
     /// The excess the customer pays, set when the claim is approved.
     #[serde(default)]
     pub excess: Option<i64>,
+    /// What wl-documents answered for the police report ([`BOOK_SURVEY`],
+    /// [`SUBMIT_ESTIMATE`], [`APPROVE`]; `AUT.ACL.20`).
+    #[serde(default)]
+    pub police: Option<PoliceVerdict>,
 }
 
 fn input_of(ctx: &TransitionCtx) -> ClaimInput {
@@ -139,6 +144,17 @@ fn given(text: &Option<String>) -> bool {
 fn slot(transition: Transition<InsuranceClaim>, name: &'static str) -> Transition<InsuranceClaim> {
     transition.guard(name, |_c: &InsuranceClaim, _ctx| {
         Box::pin(async { Ok::<(), String>(()) })
+    })
+}
+
+/// The guard `police_report` (`AUT.ACL.20`, a legal block): an insurance claim
+/// goes to the surveyor, the insurer and the approval only with the police
+/// accident report attached and accepted. The service asks wl-documents and
+/// hands the answer over in the input.
+fn police_report(transition: Transition<InsuranceClaim>) -> Transition<InsuranceClaim> {
+    transition.guard("police_report", |_c: &InsuranceClaim, ctx| {
+        let result = police_result(true, &input_of(ctx).police);
+        Box::pin(async move { result })
     })
 }
 
@@ -240,8 +256,8 @@ fn book_survey() -> Transition<InsuranceClaim> {
         .permission(permissions::INSURANCE_MANAGE)
         .from([ClaimStatus::Registered])
         .to(ClaimStatus::AwaitingSurvey);
-    let transition = with_claim_details(transition);
-    slot(transition, "police_report").effect(|c: &InsuranceClaim, _ctx, tx| {
+    let transition = police_report(with_claim_details(transition));
+    transition.effect(|c: &InsuranceClaim, _ctx, tx| {
         let claim = c.clone();
         Box::pin(async move {
             let stamp = now();
@@ -273,7 +289,7 @@ fn submit_estimate() -> Transition<InsuranceClaim> {
             let ok = input_of(ctx).priced == Some(true);
             Box::pin(async move { check(ok, "auto.claims.problem.not_priced") })
         });
-    slot(transition, "police_report").effect(|c: &InsuranceClaim, ctx, tx| {
+    police_report(transition).effect(|c: &InsuranceClaim, ctx, tx| {
         let claim = c.clone();
         let input = input_of(ctx);
         Box::pin(async move {
@@ -365,7 +381,7 @@ fn approve() -> Transition<InsuranceClaim> {
         .from([ClaimStatus::EstimateSubmitted])
         .to(ClaimStatus::Approved);
     let transition = with_approval(transition);
-    slot(transition, "police_report").effect(|c: &InsuranceClaim, ctx, tx| {
+    police_report(transition).effect(|c: &InsuranceClaim, ctx, tx| {
         let claim = c.clone();
         let input = input_of(ctx);
         Box::pin(async move {

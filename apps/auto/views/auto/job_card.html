@@ -247,6 +247,23 @@
         </rx-action-sheet>
       </rx-toolbar>
     </rx-card>
+    <rx-card rx-if="accident_flag.flagged" :title="tx['police.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['police.report']" :value="accident_flag.report"/>
+        <rx-entry rx-if="accident_flag.waiting" :label="tx['police.clear_waiting']" :value="accident_flag.waiting_text"/>
+      </rx-infolist>
+      <p><a href="{{ accident_flag.documents_link }}">{{ tx['police.documents'] }}</a></p>
+      <rx-toolbar>
+        <rx-action-sheet rx-if="accident_flag.can_ask" :id="'accident-clear-' ~ id" :label="tx['police.clear']" :action="route('auto.job_card_accident_clear', id)"
+                         :title="tx['police.clear']" :description="tx['police.clear_description']" :submit-label="tx['police.clear']" icon="x">
+          <rx-textarea name="reason" :label="tx['police.clear_reason']" :id="'accident-clear-reason-' ~ id" required/>
+        </rx-action-sheet>
+        <rx-action-sheet rx-if="accident_flag.can_decide" :id="'accident-decide-' ~ id" :label="tx['police.decide']" :action="route('auto.job_card_accident_decide', id)"
+                         :title="tx['police.decide']" :description="tx['police.decide_description']" :submit-label="tx['police.decide']" icon="check">
+          <rx-select name="decision" :label="tx['police.decision']" :options="[['approve', tx['police.decision.approve']], ['refuse', tx['police.decision.refuse']]]" :selected="'approve'" :id="'accident-decision-' ~ id"/>
+        </rx-action-sheet>
+      </rx-toolbar>
+    </rx-card>
     <rx-card rx-if="stop.summary" :title="tx['stop.summary']">
       <rx-table :rows="stop.summary" as="row" :key="row[0]" :caption="tx['stop.summary']">
         <rx-column :label="tx['jobs.what']">{{ row[0] }}</rx-column>

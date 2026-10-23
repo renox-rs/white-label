@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod accident_flag;
 pub mod approval;
 pub mod approval_rounds;
 pub mod billing;
@@ -12,6 +13,7 @@ pub mod claim_split;
 pub mod claims;
 pub mod declines;
 mod db;
+pub mod documents;
 pub mod estimate;
 pub mod fleet_billing;
 pub mod fleet_contract;
@@ -53,6 +55,7 @@ mod texts;
 mod texts_claims;
 mod texts_fleet;
 mod texts_jobs;
+mod texts_police;
 mod texts_stops;
 mod texts_supplier;
 mod texts_vehicles;
@@ -234,6 +237,8 @@ impl Module for Auto {
         // the purchaser's task and the booking follow the cancel, and the
         // booking asks the job card what was done.
         job_stops::register(app);
+        // The police report guard of the accident repair (`AUT.ACL.20`).
+        documents::register();
         job_void::listen(app);
         // A job card declined: the inspection fee, the booking and the
         // message asking the customer to collect; the hourly expiry check.

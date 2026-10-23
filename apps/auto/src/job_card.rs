@@ -155,6 +155,13 @@ pub struct JobCard {
     pub accident_damage: bool,
     /// The number of the police accident report.
     pub police_report_no: Option<String>,
+    /// Why the advisor asks to clear the accident flag (`AUT.ACL.20`); set
+    /// while the request waits for the workshop manager.
+    pub accident_clear_reason: Option<String>,
+    /// The user who asked to clear the accident flag.
+    pub accident_clear_by: Option<i64>,
+    /// When the request was made.
+    pub accident_clear_at: Option<DateTime>,
     /// The inspection fee agreed at check-in, in fils; 0 for none.
     pub inspection_fee: i64,
     /// The daily storage fee agreed at check-in, in fils; 0 for none

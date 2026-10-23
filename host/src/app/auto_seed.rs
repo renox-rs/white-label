@@ -9,8 +9,8 @@
 //!
 //! - the document kinds registered with wl-documents ([`register_documents`]):
 //!   the police accident report (the repair permit, a legal block of
-//!   `job_card.approve` and `insurance_claim.approve`, override `never`,
-//!   `AUT.ACL.20`), the claim documents (driving licence, Mulkiya, Emirates ID,
+//!   `job_card.approve` and the claim's `book_survey`, `submit_estimate` and
+//!   `approve`, override `never`, `AUT.ACL.20`), the claim documents (driving licence, Mulkiya, Emirates ID,
 //!   personal data, `AUT.ACL.18`), the customer trade licence and the fleet
 //!   contract (reminders only, `DOC.RUL.01`), kept by the responsible roles of
 //!   08 §7.1 *Responsible role per document kind*;
@@ -27,7 +27,8 @@
 //!
 //! Decisions: the police report is the one legal block of 08 (§9: "no
 //! override"); the `blocks` entries name the transitions of the job card and
-//! the claim, and the providers that answer them come with BL-AUT-07.
+//! the claim, and `auto::documents` has the providers that answer them
+//! (BL-AUT-07).
 
 use std::sync::Arc;
 
@@ -53,12 +54,12 @@ use wl_ticketing::{Category, Priority, SlaPolicy};
 /// The client app these values are for.
 pub const AUTO: &str = "auto";
 
-/// The transition `job_card.approve` (BL-AUT-07).
-pub const GUARDED_JOB_CARD_APPROVE: &str = "job_card.approve";
-/// The transition `insurance_claim.approve` (BL-AUT-07).
-pub const GUARDED_CLAIM_APPROVE: &str = "insurance_claim.approve";
-/// The transition `insurance_claim.submit_estimate` (BL-AUT-07).
-pub const GUARDED_CLAIM_SUBMIT_ESTIMATE: &str = "insurance_claim.submit_estimate";
+// The four transitions the police report blocks, with the providers that
+// answer them (BL-AUT-07).
+pub use auto::documents::{
+    GUARDED_CLAIM_APPROVE, GUARDED_CLAIM_BOOK_SURVEY, GUARDED_CLAIM_SUBMIT_ESTIMATE,
+    GUARDED_JOB_CARD_APPROVE,
+};
 
 /// The police accident report as wl-documents' seed: a document of the job
 /// card or of its claim that blocks the approval of both, a legal block
@@ -73,8 +74,9 @@ pub fn police_report_kind() -> KindSeed {
         .responsible_role(INSURANCE_COORDINATOR_ROLE)
         .legal_block()
         .blocks(GUARDED_JOB_CARD_APPROVE, BlockMode::Block)
-        .blocks(GUARDED_CLAIM_APPROVE, BlockMode::Block)
+        .blocks(GUARDED_CLAIM_BOOK_SURVEY, BlockMode::Block)
         .blocks(GUARDED_CLAIM_SUBMIT_ESTIMATE, BlockMode::Block)
+        .blocks(GUARDED_CLAIM_APPROVE, BlockMode::Block)
 }
 
 /// A document of a claim whose view is audited (`AUT.ACL.18`): personal
@@ -328,8 +330,9 @@ mod tests {
             guarded(&kind),
             [
                 ("job_card.approve", BlockMode::Block),
-                ("insurance_claim.approve", BlockMode::Block),
+                ("insurance_claim.book_survey", BlockMode::Block),
                 ("insurance_claim.submit_estimate", BlockMode::Block),
+                ("insurance_claim.approve", BlockMode::Block),
             ]
         );
         assert_eq!(kind.override_mode, OverrideMode::Never);

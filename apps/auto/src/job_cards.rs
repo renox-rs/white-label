@@ -37,6 +37,7 @@ use wl_kernel::scheduling::{BookingId, booking_actions};
 
 use crate::approval::{EstimateApproval, METHODS, MIN_WARRANTY_DAYS};
 use crate::db::refused;
+use crate::documents::{GUARDED_JOB_CARD_APPROVE, police_verdict};
 use crate::estimate::Estimate;
 use crate::job_card::{FUEL_LEVELS, JobCard, JobCardStatus, QC_KEYS, QcCheck};
 use crate::job_card_machine::{
@@ -368,6 +369,11 @@ pub async fn record_intake(
         JobCardStatus::CheckedIn | JobCardStatus::Inspecting
     ) {
         return Err(refused(english("auto.jobs.problem.intake_closed", &[])));
+    }
+    if card.accident_damage && !intake.accident_damage {
+        // The flag is cleared with a reason and the workshop manager's
+        // approval (`AUT.ACL.20`), not by correcting the intake.
+        return Err(refused(english("auto.police.problem.clear_by_approval", &[])));
     }
     let vehicle = Vehicle::find_or_404(&state.db, card.vehicle_id).await?;
     let complaint = intake.complaint.trim().to_owned();
@@ -940,6 +946,8 @@ pub async fn approve_recorded(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_owned);
+    input.police =
+        Some(police_verdict(state, GUARDED_JOB_CARD_APPROVE, card.id, Some(by.id)).await?);
     run(state, by, &card, APPROVE, None, input).await
 }
 
@@ -978,6 +986,7 @@ pub async fn approve_by_link(
     if !consent {
         return Err(refused(english("auto.jobs.problem.consent", &[])));
     }
+    let police = police_verdict(state, GUARDED_JOB_CARD_APPROVE, card.id, None).await?;
     let input = JobInput {
         on: Some(today()),
         approval_id: Some(round.id),
@@ -987,6 +996,7 @@ pub async fn approve_by_link(
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(str::to_owned),
+        police: Some(police),
         ..JobInput::default()
     };
     run_system(state, &card, APPROVE_SYSTEM, None, input).await

@@ -93,6 +93,7 @@
         <rx-entry :label="tx['claims.job_card']" :value="job_card"/>
         <rx-entry :label="tx['claims.accident']" :value="accident"/>
         <rx-entry :label="tx['claims.police_report']" :value="police_report"/>
+        <rx-entry :label="tx['police.report']" :value="police_document"/>
         <rx-entry :label="tx['claims.repair']" :value="repair"/>
         <rx-entry :label="tx['claims.excess']" :value="excess"/>
         <rx-entry :label="tx['claims.estimate']" :value="estimate"/>
@@ -103,6 +104,7 @@
         <rx-entry :label="tx['claims.payer_bill']" :value="payer_bill"/>
         <rx-entry :label="tx['claims.customer_invoice']" :value="customer_invoice"/>
       </rx-infolist>
+      <p><a href="{{ documents_link }}">{{ tx['police.documents'] }}</a></p>
       <template rx-if="job_card_id">
         <rx-toolbar>
           <rx-link-button :href="route('auto.job_card', job_card_id)" :label="tx['claims.open_job_card']" icon="wrench" variant="secondary"/>
