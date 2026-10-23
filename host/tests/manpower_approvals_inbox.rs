@@ -53,6 +53,25 @@ async fn release_asked(app: &TestApp) -> i64 {
     id
 }
 
+/// The demo's pay account of Anil waits for a second user and is listed in the
+/// inbox too (BL-MPW-34); these tests are about the kernel's requests, so the
+/// MD decides it first.
+async fn pay_account_decided(app: &TestApp) {
+    let id = scalar(
+        app,
+        "select min(id) from wl_hr_pay_accounts where status = 'pending_approval'",
+    )
+    .await;
+    post(
+        app,
+        MD,
+        &format!("/hr/pay-accounts/{id}/transitions/approve"),
+        &[],
+    )
+    .await
+    .assert_status(303);
+}
+
 /// AC1 and AC2 and AC3: the MD's row reads *Release a client contract from a
 /// credit hold*, the client, who asked and why, with the three buttons; the
 /// account manager sees *Waiting for the MD* and no button; *Approve* makes the
@@ -60,6 +79,7 @@ async fn release_asked(app: &TestApp) -> i64 {
 #[renox::test]
 async fn the_md_decides_a_release_the_account_manager_only_waits_for() {
     let app = demo().await;
+    pay_account_decided(&app).await;
     let id = release_asked(&app).await;
     let request = request_of(&app, "manpower.release").await;
 
@@ -387,6 +407,7 @@ async fn a_person_with_nothing_to_decide_is_told_so() {
 #[renox::test]
 async fn the_dashboard_row_links_to_the_inbox_and_shows_no_raw_key() {
     let app = demo().await;
+    pay_account_decided(&app).await;
     release_asked(&app).await;
     let html = page(&app, MD, "/dashboard").await;
     says(
