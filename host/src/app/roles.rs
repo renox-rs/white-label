@@ -9,6 +9,7 @@ use construction::permissions as con;
 use edtech::permissions as edu;
 use logistics::permissions as log;
 use manpower::permissions as mpw;
+use manufacturing::permissions as mfg;
 use property::permissions as prp;
 use renox::anyhow::anyhow;
 use renox::auth::permissions;
@@ -188,6 +189,15 @@ pub const ACCOUNT_MANAGER: &str = mpw::ACCOUNT_MANAGER_ROLE;
 /// The PRO (visa officer): works the visa cases of the workers and is told
 /// when a step passes its target (09 Manpower `MPW.RUL.14`).
 pub const PRO: &str = mpw::PRO_ROLE;
+/// The production planner: writes, releases, cancels and unlinks work orders and
+/// asks for the abort of one (07 Manufacturing §3.1, `MFG.ACL.12`); assigned per
+/// plant.
+pub const PRODUCTION_PLANNER: &str = mfg::PLANNER_ROLE;
+/// The production manager: also approves the abort of a work order and closes
+/// it, and sees its costs (07 §3.1, `MFG.ACL.12`); assigned per plant.
+pub const PRODUCTION_MANAGER: &str = mfg::PRODUCTION_MANAGER_ROLE;
+/// The QC inspector: sees the work orders of the plant, releases lots (07 §3.1).
+pub const QC_INSPECTOR: &str = mfg::QC_ROLE;
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -471,6 +481,15 @@ pub const ROLES: &[(&str, &[&str])] = &[
             mpw::DEPLOYMENTS_VIEW,
             mpw::DEPLOYMENTS_MANAGE,
             mpw::ABSENCE_MANAGE,
+            mfg::WORK_ORDERS_VIEW,
+            mfg::WORK_ORDERS_CREATE,
+            mfg::WORK_ORDERS_RELEASE,
+            mfg::WORK_ORDERS_REPORT,
+            mfg::WORK_ORDERS_ISSUE,
+            mfg::WORK_ORDERS_CLOSE,
+            mfg::WORK_ORDERS_ABORT_APPROVE,
+            mfg::WORK_ORDERS_COST_VIEW,
+            mfg::PLANTS_MANAGE,
             prp::UNITS_VIEW,
             prp::UNITS_MANAGE,
             prp::UNITS_RESERVE,
@@ -950,6 +969,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             attendance::CORRECT,
             // 09 §3.1: sees the deployments of their site (§3.2).
             mpw::DEPLOYMENTS_VIEW,
+            // 07 §3.1: the line supervisor reports on the work orders of
+            // their line and asks for the abort of one (`MFG.ACL.12`).
+            mfg::WORK_ORDERS_VIEW,
+            mfg::WORK_ORDERS_REPORT,
+            mfg::WORK_ORDERS_RELEASE,
         ],
     ),
     (
@@ -989,6 +1013,44 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::STOCK_TRANSFER,
             inventory::STOCK_ADJUST,
             inventory::STOCK_HOLD,
+            inventory::LOTS_RELEASE,
+            // 07 §3.1: issues materials to the work orders.
+            mfg::WORK_ORDERS_VIEW,
+            mfg::WORK_ORDERS_ISSUE,
+        ],
+    ),
+    (
+        PRODUCTION_PLANNER,
+        &[
+            mfg::WORK_ORDERS_VIEW,
+            mfg::WORK_ORDERS_CREATE,
+            mfg::WORK_ORDERS_RELEASE,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+        ],
+    ),
+    (
+        PRODUCTION_MANAGER,
+        &[
+            mfg::WORK_ORDERS_VIEW,
+            mfg::WORK_ORDERS_CREATE,
+            mfg::WORK_ORDERS_RELEASE,
+            mfg::WORK_ORDERS_REPORT,
+            mfg::WORK_ORDERS_CLOSE,
+            mfg::WORK_ORDERS_ABORT_APPROVE,
+            mfg::WORK_ORDERS_COST_VIEW,
+            mfg::PLANTS_MANAGE,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::STOCK_COST_VIEW,
+        ],
+    ),
+    (
+        QC_INSPECTOR,
+        &[
+            mfg::WORK_ORDERS_VIEW,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
             inventory::LOTS_RELEASE,
         ],
     ),
