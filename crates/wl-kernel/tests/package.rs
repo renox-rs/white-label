@@ -2509,6 +2509,29 @@ async fn the_deposit_handover_falls_back_when_payments_is_off() {
     assert_eq!(request.receipt, "RCPT-1");
 }
 
+/// 08 Auto (#134): without an inventory module no recall holds returned goods.
+#[renox::test]
+async fn without_inventory_no_recall_holds_returned_goods() {
+    use wl_kernel::Subject;
+    use wl_kernel::inventory::{ReturnedGoods, lot_trace};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let goods = ReturnedGoods::new("BRK-PAD", 2_000, Subject::new("sales.sales_return", 3))
+        .lot(Subject::new("inventory.lot", 7))
+        .sold_on(NaiveDate::from_ymd_opt(2026, 9, 10).unwrap());
+    assert_eq!(goods.item_code, "BRK-PAD");
+    let trace = lot_trace(app.state());
+    assert_eq!(trace.recall_of(app.state(), &goods).await.unwrap(), None);
+    let recall = Subject::new("inventory.recall", 1);
+    assert!(
+        !trace
+            .receive_returned(app.state(), &recall, &goods)
+            .await
+            .unwrap()
+    );
+}
+
 /// 08 Auto: without a scheduling module the booking actions link and complete
 /// nothing, and without an inventory module a return posts nothing.
 #[renox::test]

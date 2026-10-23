@@ -1419,6 +1419,50 @@ pub struct TracedPlace {
     pub quantity_milli: i64,
 }
 
+/// Goods a customer brings back that may be under a recall (wl-sales §4.5
+/// `receive`, §5.6 step 2): what the return names of them, for
+/// [`LotTrace::recall_of`] and [`LotTrace::receive_returned`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReturnedGoods {
+    /// The code of the item.
+    pub item_code: String,
+    /// The lot the customer presents, `inventory.lot:4`, for an item tracked
+    /// by lot.
+    pub lot: Option<Subject>,
+    /// The day the goods were sold (Asia/Dubai), for an item not tracked by
+    /// lot: it must fall in the recall's trace window.
+    pub sold_on: Option<NaiveDate>,
+    /// The quantity, in thousandths of the base unit.
+    pub quantity_milli: i64,
+    /// The record that brings them back, `sales.sales_return:3`.
+    pub source: Subject,
+}
+
+impl ReturnedGoods {
+    /// `quantity_milli` of the item `item_code` brought back by `source`.
+    pub fn new(item_code: &str, quantity_milli: i64, source: Subject) -> Self {
+        ReturnedGoods {
+            item_code: item_code.trim().to_owned(),
+            lot: None,
+            sold_on: None,
+            quantity_milli,
+            source,
+        }
+    }
+
+    /// Of the lot `lot`.
+    pub fn lot(mut self, lot: Subject) -> Self {
+        self.lot = Some(lot);
+        self
+    }
+
+    /// Sold on `day`.
+    pub fn sold_on(mut self, day: NaiveDate) -> Self {
+        self.sold_on = Some(day);
+        self
+    }
+}
+
 /// The forward trace of a recall, for other modules (wl-inventory §6
 /// `LotTrace`): the clinics vertical reads the patients to call back, 06 the
 /// customers. Without the inventory module [`lot_trace`] gives [`NoLotTrace`],
@@ -1455,6 +1499,32 @@ pub trait LotTrace: Send + Sync + 'static {
         _line: &'a Subject,
         _sent: bool,
         _by: Option<i64>,
+    ) -> TraceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// The open recall (`inventory.recall:2`, `open` or `traced` and its hold
+    /// open) that `goods` are in: their lot is in its scope, or, for an item
+    /// not tracked by lot, the item is in its scope by received dates and
+    /// `sold_on` is in its trace window. The default is no recall.
+    fn recall_of<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _goods: &'a ReturnedGoods,
+    ) -> TraceFuture<'a, Option<Subject>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Takes `goods` into quarantine and onto the stock hold of `recall`
+    /// (`recall_of` found it): a `return_in` movement to the quarantine
+    /// location and a line on the open hold. They are not restocked; the
+    /// recall decides. Returns whether they were received; the default
+    /// receives nothing.
+    fn receive_returned<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _recall: &'a Subject,
+        _goods: &'a ReturnedGoods,
     ) -> TraceFuture<'a, bool> {
         Box::pin(async { Ok(false) })
     }
