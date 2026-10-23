@@ -36,6 +36,7 @@ pub mod pending_issue;
 pub mod po_issue;
 pub mod po_revise;
 pub mod preferred_change;
+pub mod production_stock;
 pub mod purchase_order;
 pub mod purchase_request;
 pub mod recall;
@@ -674,6 +675,9 @@ impl Module for WlInventory {
         // short part becomes a pending issue. Clearing one above the value
         // (`STK.ACL.02`) needs a second holder of `stock.approve`.
         wl_kernel::inventory::provide_stock_service(app, stock_service::InventoryStock);
+        // 07 Manufacturing: the movements of a work order (return, wastage,
+        // output) post inside the transaction of its transition.
+        wl_kernel::production::provide_production_stock(app, production_stock::InventoryProduction);
         wl_kernel::SubjectMachine::of::<PendingIssue>(
             wl_kernel::inventory::PENDING_ISSUE_SUBJECT_TYPE,
         )

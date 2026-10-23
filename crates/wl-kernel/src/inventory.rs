@@ -914,6 +914,11 @@ pub struct ConsumedLot {
     pub lot: Option<Subject>,
     /// The quantity taken from it, in thousandths.
     pub quantity_milli: i64,
+    /// The cost of one base unit it was posted at, in fils (the item's
+    /// average cost then): a work order keeps it per issue to value what
+    /// goes back or is scrapped.
+    #[serde(default)]
+    pub unit_cost: i64,
 }
 
 /// What a consumption did: the part that posted now, and the pending issue

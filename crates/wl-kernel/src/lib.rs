@@ -42,6 +42,7 @@ pub mod payments;
 pub mod payroll_calendar;
 pub mod placements;
 pub mod portal;
+pub mod production;
 pub mod qualifications;
 pub mod quotations;
 pub mod rate_cards;

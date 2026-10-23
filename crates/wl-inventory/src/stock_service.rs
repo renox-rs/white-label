@@ -232,6 +232,7 @@ pub async fn consume(state: &AppState, request: ConsumeRequest) -> Result<Consum
         lots.push(ConsumedLot {
             lot: lot_id.map(|id| Subject::new(LOT_SUBJECT_TYPE, id)),
             quantity_milli: quantity,
+            unit_cost: item.average_cost,
         });
         let mut moved = StockMovement::leaving(
             MovementType::Consume,
