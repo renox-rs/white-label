@@ -361,9 +361,9 @@ impl Seed {
         self.staff().await?;
         self.centre().await?;
         self.courses_and_batches().await?;
+        self.sales().await?;
         self.enrol().await?;
         self.stories().await?;
-        self.sales().await?;
         self.notes().await?;
         renox::audit::record(
             self.db(),
