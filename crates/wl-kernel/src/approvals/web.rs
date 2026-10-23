@@ -92,6 +92,8 @@ pub struct CardDecision {
     pub comment: Option<String>,
     /// When it was taken.
     pub at: Option<DateTime>,
+    /// When it was taken, as `23 Oct 2026 22:15` in Asia/Dubai.
+    pub at_text: String,
 }
 
 /// One earlier return or rejection in the chain before a request, as the
@@ -141,6 +143,10 @@ pub struct ApprovalCard {
     pub created_at: Option<DateTime>,
     /// When it expires (an instant, shown in `APP_TIMEZONE`, Asia/Dubai).
     pub expires_at: Option<DateTime>,
+    /// When it was requested, as `23 Oct 2026 22:15` in Asia/Dubai.
+    pub created_text: String,
+    /// When it expires, in the same form; empty when it does not.
+    pub expires_text: String,
     /// "Step 1 of 2".
     pub step_label: String,
     /// Every step of the request.
@@ -267,6 +273,18 @@ fn decision_kind(decision: DecisionKind) -> &'static str {
 
 fn decision_label(tr: Tr<'_>, decision: DecisionKind) -> String {
     tr.t(&format!("wl_kernel.approvals.decision.{decision}"))
+}
+
+/// An instant as `23 Oct 2026 22:15` in Asia/Dubai, the form the screens
+/// use; empty for none.
+fn dubai_words(at: Option<DateTime>) -> String {
+    let dubai = renox::chrono::FixedOffset::east_opt(super::super::documents::DUBAI_OFFSET_SECONDS)
+        .expect("UTC+4 is a valid offset");
+    at.map_or_else(String::new, |at| {
+        at.with_timezone(&dubai)
+            .format("%d %b %Y %H:%M")
+            .to_string()
+    })
 }
 
 /// A permission in words: an app's own words under
@@ -435,6 +453,7 @@ fn build_card(
             kind: decision_kind(decision.decision),
             comment: decision.comment.clone().filter(|c| !c.trim().is_empty()),
             at: decision.created_at,
+            at_text: dubai_words(decision.created_at),
         })
         .collect();
     ApprovalCard {
@@ -457,6 +476,8 @@ fn build_card(
         requester: name_of(tr, people, request.requester_id),
         created_at: request.created_at,
         expires_at: request.expires_at,
+        created_text: dubai_words(request.created_at),
+        expires_text: dubai_words(request.expires_at),
         step_label: tr.t_with(
             "wl_kernel.approvals.card.step_of",
             &[
@@ -888,6 +909,10 @@ mod tests {
             card.steps[1].approvers,
             "finance, owner, anyone with the refunds approve permission"
         );
+        // Times read like the other screens, in Dubai (UTC+4).
+        assert_eq!(card.created_text, "03 Nov 2026 14:00");
+        assert_eq!(card.decisions[0].at_text, "03 Nov 2026 14:10");
+        assert_eq!(card.expires_text, "");
         assert_eq!(card.decisions.len(), 1);
         assert_eq!(card.decisions[0].approver, "Bilal");
         assert_eq!(card.decisions[0].decision, "approve");

@@ -101,6 +101,32 @@ fn no_none(html: &str, url: &str) {
     assert!(!bare, "{url} prints `None` for an empty value");
 }
 
+/// A time printed the ISO way (`2026-10-23 22:15`) instead of `23 Oct 2026
+/// 22:15`.
+fn no_iso_times(html: &str, url: &str) {
+    let text: Vec<char> = visible(html).chars().collect();
+    let digit = |at: usize, count: usize| {
+        (at..at + count).all(|i| text.get(i).is_some_and(char::is_ascii_digit))
+    };
+    for at in 0..text.len() {
+        let iso = digit(at, 4)
+            && text.get(at + 4) == Some(&'-')
+            && digit(at + 5, 2)
+            && text.get(at + 7) == Some(&'-')
+            && digit(at + 8, 2)
+            && text.get(at + 10) == Some(&' ')
+            && digit(at + 11, 2)
+            && text.get(at + 13) == Some(&':');
+        assert!(
+            !iso,
+            "{url} prints a time the ISO way: {}",
+            text[at..(at + 16).min(text.len())]
+                .iter()
+                .collect::<String>()
+        );
+    }
+}
+
 /// Every screen of the map answers 200 for its owner, shows visible words
 /// only, and keeps its tables in their wrappers (390 px).
 #[renox::test]
@@ -168,6 +194,7 @@ async fn every_screen_of_the_map_opens_for_its_owner_in_words() {
             .any(|prefix| screen.url.starts_with(prefix))
             {
                 no_none(&html, &screen.url);
+                no_iso_times(&html, &screen.url);
             }
         }
         // The pages of the vertical keep every table in the kit's wrapper;

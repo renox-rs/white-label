@@ -26,7 +26,7 @@ use renox::prelude::*;
 use serde::Serialize;
 use wl_kernel::Subject;
 use wl_kernel::approvals::{self, ApprovalCard};
-use wl_kernel::documents::{dubai_text, subject_label, today};
+use wl_kernel::documents::{subject_label, today};
 
 use crate::balance;
 
@@ -36,7 +36,7 @@ use crate::lot::{Lot, LotStatus};
 use crate::movement::{MovementType, StockMovement};
 use crate::pending_issue::{self, PendingIssue};
 use crate::permissions;
-use crate::screens::quantity_text;
+use crate::screens::{dubai_text, quantity_text};
 use crate::stock_hold::{HoldLineStatus, HoldStatus, REASONS, StockHold, StockHoldLine, lines_of};
 use crate::stock_ui_texts::STOCK_TEXTS;
 use crate::texts::t;

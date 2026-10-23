@@ -16,12 +16,12 @@
 //! above the over-receipt tolerance waits for a second person and shows its
 //! approval card.
 
+use crate::screens::dubai_text;
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::approvals::{self, ApprovalCard};
-use wl_kernel::documents::dubai_text;
 
 use crate::goods_receipt::{
     DraftLine, DraftReceipt, GoodsReceipt, GoodsReceiptLine, GoodsReceiptStatus, create_draft,

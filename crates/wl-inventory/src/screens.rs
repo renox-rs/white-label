@@ -28,6 +28,17 @@ use crate::screen_texts::SCREEN_TEXTS;
 use crate::supplier_pages::{ScoreView, SuggestionView, SupplierView};
 use crate::texts::{said, t};
 
+/// An instant as `23 Oct 2026 22:15` in Asia/Dubai: the form every screen of
+/// the suite uses.
+pub(crate) fn dubai_text(at: renox::db::DateTime) -> String {
+    at.with_timezone(
+        &renox::chrono::FixedOffset::east_opt(wl_kernel::documents::DUBAI_OFFSET_SECONDS)
+            .expect("UTC+4 is a valid offset"),
+    )
+    .format("%d %b %Y %H:%M")
+    .to_string()
+}
+
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
 pub(crate) const VIEWS: &[(&str, &str)] = &[

@@ -20,10 +20,10 @@
 //!
 //! The buttons post to the routes of [`crate::recall_pages`].
 
+use crate::screens::dubai_text;
 use renox::prelude::*;
 use serde::Serialize;
 use wl_kernel::Subject;
-use wl_kernel::documents::dubai_text;
 
 use crate::balance;
 use crate::item::Item;

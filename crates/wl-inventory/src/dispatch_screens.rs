@@ -21,11 +21,11 @@
 
 use std::collections::BTreeMap;
 
+use crate::screens::dubai_text;
 use renox::axum::http::HeaderMap;
 use renox::prelude::*;
 use serde::Serialize;
 use wl_kernel::Subject;
-use wl_kernel::documents::dubai_text;
 use wl_kernel::inventory::DISPATCH_SUBJECT_TYPE;
 
 use crate::balance;

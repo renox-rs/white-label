@@ -22,11 +22,11 @@
 
 use std::collections::BTreeMap;
 
+use crate::screens::dubai_text;
 use renox::axum::http::HeaderMap;
 use renox::axum::response::Redirect;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
-use wl_kernel::documents::dubai_text;
 
 use crate::bom::{self, Bom, BomStatus};
 use crate::bom_texts::BOM_TEXTS;
