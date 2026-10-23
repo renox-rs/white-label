@@ -609,3 +609,96 @@ async fn cancelling_a_started_prepaid_line_in_07_charges_no_fee() {
         assert!(found.approval, "a started line needs the manager");
     }
 }
+
+// ------------------------------------------------- credit at the dispatch
+
+/// BL-STK-21 AC1 and BL-SAL-10 AC1 with the real pieces on both sides: the
+/// order of a customer was confirmed within its limit; an invoice of AED
+/// 600,000 (not overdue) takes the customer over a limit of AED 500,000; the
+/// dispatch of the order is picked and `dispatch` is refused by the real
+/// credit re-check of wl-sales ("credit re-check failed"), the dispatch stays
+/// `picked` with its stock reserved and the order is on `credit_hold`.
+#[renox::test]
+async fn a_dispatch_over_the_limit_is_refused_by_the_real_credit_recheck_and_holds_the_order() {
+    let app = manufacturing_booted().await;
+    let sales = person(&app, "Sara", SALES).await;
+    let admin = person(&app, "Alia", ADMIN).await;
+    let keeper = person(&app, "Karim", host::roles::STOREKEEPER).await;
+    let customer = company(&app, "Al Noor Trading LLC").await;
+    credit_for(&app, customer).await;
+    submitted(&app, &sales, customer).await.assert_status(303);
+    let order = latest_order(&app).await;
+    assert_eq!(order.status, SalesOrderStatus::Confirmed);
+    issued_invoice(
+        &app,
+        &admin,
+        customer,
+        60_000_000,
+        VatCategory::ZeroRated,
+        day(30),
+    )
+    .await;
+
+    let mut panel = wl_inventory::Item::new("PANEL", "Panel", "pcs");
+    panel.save(app.db()).await.unwrap();
+    let mut store = wl_inventory::Location::new("FG", "Finished goods");
+    store.save(app.db()).await.unwrap();
+    wl_inventory::movement::StockMovement::receive(
+        panel.id,
+        None,
+        store.id,
+        20_000,
+        1_000,
+        20_000,
+        &wl_kernel::Subject::new("inventory.goods_receipt", 1),
+        None,
+    )
+    .save(app.db())
+    .await
+    .unwrap();
+    let dispatch = wl_inventory::create_dispatch(
+        app.db(),
+        None,
+        wl_inventory::NewDispatch {
+            source: order.subject(),
+            recipient: Some(customer),
+            recipient_name: "Al Noor".into(),
+            address: "Dubai".into(),
+            location_id: store.id,
+            lines: vec![wl_inventory::NewDispatchLine::of(panel.id, 10_000)],
+        },
+    )
+    .await
+    .unwrap();
+    let act = |action: &'static str, form: Vec<(&'static str, &'static str)>| {
+        let (app, keeper, id) = (&app, &keeper, dispatch.id);
+        async move {
+            app.acting_as(keeper);
+            app.htmx()
+                .post(&format!("/dispatches/{id}/{action}"), &form)
+                .await
+        }
+    };
+    act("pick", vec![]).await.assert_ok();
+
+    let refused = act(
+        "dispatch",
+        vec![("handover", "courier"), ("tracking_number", "TRK-1")],
+    )
+    .await;
+    refused.assert_status(422);
+    assert!(
+        refused.text().contains("credit re-check failed"),
+        "{}",
+        refused.text()
+    );
+    let after = wl_inventory::Dispatch::find_or_404(app.db(), dispatch.id)
+        .await
+        .unwrap();
+    assert_eq!(after.status, wl_inventory::DispatchStatus::Picked);
+    assert_eq!(
+        status_of(&app, order.id).await,
+        SalesOrderStatus::CreditHold,
+        "the real checker held the real order"
+    );
+}
