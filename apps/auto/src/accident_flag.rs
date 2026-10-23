@@ -6,19 +6,31 @@
 //! manager (a holder of `job_cards.accident`, never the one who asked), and
 //! never while an insurance claim is linked to the job card. The request waits
 //! on the job card (`accident_clear_*`) until it is decided; deciding it
-//! either clears the flag or drops the request.
+//! either clears the flag or drops the request. Every step (asked, cleared,
+//! refused) is an audit entry on the job card that keeps who, why and who
+//! decided, because the request columns are wiped when it is decided.
 
+use renox::audit::{self, Entry};
 use renox::db::now;
 use renox::prelude::*;
+use renox::serde_json::json;
 
 use crate::claim::{ClaimStatus, InsuranceClaim};
 use crate::db::refused;
-use crate::job_card::JobCard;
+use crate::job_card::{JOB_CARD_SUBJECT_TYPE, JobCard};
 use crate::permissions;
 use crate::texts::english;
 
-/// Whether an insurance claim (other than one registered in error) is linked
-/// to job card `id`: the flag then stays.
+/// Audit action: the advisor asked to clear the flag.
+pub const CLEAR_ASKED: &str = "auto.accident_flag_clear_asked";
+/// Audit action: the workshop manager cleared the flag.
+pub const CLEARED: &str = "auto.accident_flag_cleared";
+/// Audit action: the workshop manager refused to clear the flag.
+pub const CLEAR_REFUSED: &str = "auto.accident_flag_clear_refused";
+
+/// Whether an insurance claim still in force is linked to job card `id`: the
+/// flag then stays. A claim registered in error, withdrawn by the customer or
+/// declined by the insurer (voided, cancelled, rejected) no longer holds it.
 ///
 /// # Errors
 ///
@@ -27,7 +39,12 @@ pub async fn claim_linked(db: &Db, id: i64) -> Result<bool> {
     Ok(InsuranceClaim::of_job_card(db, id)
         .await?
         .iter()
-        .any(|claim| claim.status != ClaimStatus::Voided))
+        .any(|claim| {
+            !matches!(
+                claim.status,
+                ClaimStatus::Voided | ClaimStatus::Cancelled | ClaimStatus::Rejected
+            )
+        }))
 }
 
 /// The advisor asks to clear the accident flag of job card `id`, with `reason`.
@@ -73,6 +90,14 @@ pub async fn request_clear(
             ],
         )
         .await?;
+    audit::record(
+        &state.db,
+        Entry::new(CLEAR_ASKED)
+            .user(by.id)
+            .subject(JOB_CARD_SUBJECT_TYPE, card.id)
+            .data(json!({ "reason": reason })),
+    )
+    .await?;
     JobCard::find_or_404(&state.db, id).await
 }
 
@@ -123,5 +148,17 @@ pub async fn decide_clear(
             ],
         )
         .await?;
+    audit::record(
+        &state.db,
+        Entry::new(if approve { CLEARED } else { CLEAR_REFUSED })
+            .user(by.id)
+            .subject(JOB_CARD_SUBJECT_TYPE, card.id)
+            .data(json!({
+                "reason": card.accident_clear_reason,
+                "asked_by": requester,
+                "asked_at": card.accident_clear_at.map(|at| at.to_string()),
+            })),
+    )
+    .await?;
     JobCard::find_or_404(&state.db, id).await
 }

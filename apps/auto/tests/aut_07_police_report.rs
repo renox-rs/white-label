@@ -430,3 +430,102 @@ async fn aut_07_a_refused_request_keeps_the_flag() {
         .unwrap_err();
     assert!(words(&none).contains("No request"), "{none}");
 }
+
+/// The flag is cleared on JC-72: the audit trail of the job card keeps who
+/// asked, why, and who decided, although the request columns are wiped.
+#[renox::test]
+async fn aut_07_clearing_the_accident_flag_leaves_an_audit_trail() {
+    let t = boot().await;
+    let id = linked_free(&t).await;
+    let sami = t.advisor().await;
+    accident_flag::request_clear(t.state(), &sami, id, "Not an accident")
+        .await
+        .unwrap();
+    let wanda = t
+        .user("Wanda", &[aut::JOB_CARDS_VIEW, aut::JOB_CARDS_ACCIDENT])
+        .await;
+    let wanda = t.auth(&wanda).await;
+    let cleared = accident_flag::decide_clear(t.state(), &wanda, id, true)
+        .await
+        .unwrap();
+    assert!(!cleared.accident_damage && cleared.accident_clear_by.is_none());
+
+    let trail = renox::audit::for_subject(t.db(), auto::job_card::JOB_CARD_SUBJECT_TYPE, id, 10)
+        .await
+        .unwrap();
+    let asked = trail
+        .iter()
+        .find(|e| e.action == accident_flag::CLEAR_ASKED)
+        .expect("the request is on the trail");
+    assert_eq!(asked.user_id, Some(sami.id));
+    assert_eq!(asked.data["reason"], "Not an accident");
+    let done = trail
+        .iter()
+        .find(|e| e.action == accident_flag::CLEARED)
+        .expect("the clearing is on the trail");
+    assert_eq!(done.user_id, Some(wanda.id));
+    assert_eq!(done.data["reason"], "Not an accident");
+    assert_eq!(done.data["asked_by"], sami.id);
+}
+
+/// A refusal is on the trail too.
+#[renox::test]
+async fn aut_07_a_refused_clearing_is_on_the_audit_trail() {
+    let t = boot().await;
+    let id = linked_free(&t).await;
+    let sami = t.advisor().await;
+    accident_flag::request_clear(t.state(), &sami, id, "Not an accident")
+        .await
+        .unwrap();
+    let wanda = t
+        .user("Wanda", &[aut::JOB_CARDS_VIEW, aut::JOB_CARDS_ACCIDENT])
+        .await;
+    let wanda = t.auth(&wanda).await;
+    accident_flag::decide_clear(t.state(), &wanda, id, false)
+        .await
+        .unwrap();
+    let trail = renox::audit::for_subject(t.db(), auto::job_card::JOB_CARD_SUBJECT_TYPE, id, 10)
+        .await
+        .unwrap();
+    assert!(
+        trail
+            .iter()
+            .any(|e| e.action == accident_flag::CLEAR_REFUSED)
+    );
+}
+
+/// A claim the customer withdrew, the insurer rejected or that was voided no
+/// longer holds the flag; a live one does.
+#[renox::test]
+async fn aut_07_a_cancelled_or_rejected_claim_does_not_hold_the_flag() {
+    let t = boot().await;
+    let (e, claim_id) = claim_world(&t).await;
+    let sami = t.advisor().await;
+    assert!(
+        accident_flag::request_clear(t.state(), &sami, e.card.id, "Wrong flag")
+            .await
+            .is_err(),
+        "a live claim holds the flag"
+    );
+    for status in [
+        ClaimStatus::Cancelled,
+        ClaimStatus::Rejected,
+        ClaimStatus::Voided,
+    ] {
+        auto::InsuranceClaim::query()
+            .where_(auto::InsuranceClaim::ID.eq(claim_id))
+            .update(t.db(), &[("status", &status)])
+            .await
+            .unwrap();
+        assert!(
+            !accident_flag::claim_linked(t.db(), e.card.id)
+                .await
+                .unwrap(),
+            "{status:?}"
+        );
+    }
+    let asked = accident_flag::request_clear(t.state(), &sami, e.card.id, "Claim withdrawn")
+        .await
+        .unwrap();
+    assert!(asked.accident_clear_at.is_some());
+}
