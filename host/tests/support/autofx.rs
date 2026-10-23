@@ -70,13 +70,18 @@ pub struct World {
 
 /// Boots the demo client with `wl:install` and the seeds.
 pub async fn boot() -> World {
+    boot_with(|app| app).await
+}
+
+/// [`boot`] with `more` applied to the app first (an event recorder).
+pub async fn boot_with(more: impl FnOnce(App) -> App) -> World {
     let who = Arc::new(Mutex::new(None));
     let config = wl_kernel::ClientConfig::load(CLIENT).expect("the auto client");
-    let app = TestApp::new(
+    let app = TestApp::new(more(
         host::app_for(config)
             .expect("the app")
             .module(Who(who.clone())),
-    )
+    ))
     .await;
     app.kernel()
         .call("wl:install", Vec::<String>::new())
@@ -562,4 +567,84 @@ pub async fn fleet_deliver(
     )
     .await
     .unwrap()
+}
+
+/// Everything of one type `E` emitted so far.
+#[derive(Clone)]
+pub struct Recorded<E>(Arc<Mutex<Vec<E>>>);
+
+impl<E: Clone> Recorded<E> {
+    /// Nothing recorded yet.
+    pub fn new() -> Self {
+        Recorded(Arc::new(Mutex::new(Vec::new())))
+    }
+
+    /// The events, oldest first.
+    pub fn all(&self) -> Vec<E> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+/// `app` listening for `E`, recorded into `into`.
+pub fn record<E: Event + Clone>(app: App, into: &Recorded<E>) -> App {
+    let into = into.clone();
+    app.listen(move |event: E, _state: AppState| {
+        let into = into.clone();
+        async move {
+            into.0.lock().unwrap().push(event);
+            Ok(())
+        }
+    })
+}
+
+/// The Hilux with the plate number `number` of `owner`, checked in at the
+/// workshop (no booking) with the inspection fee `fee` agreed, inspected, the
+/// `labour` added, and the estimate sent when `send`.
+#[allow(clippy::too_many_arguments)]
+pub async fn inspected_card(
+    w: &World,
+    sami: &AuthUser,
+    tareq: &(User, AuthUser),
+    owner: PartyId,
+    number: &str,
+    fee: i64,
+    labour: Vec<NewLabour>,
+    send: bool,
+) -> JobCard {
+    let vehicle = vehicles::create(
+        w.state(),
+        sami,
+        NewVehicle::new(Emirate::Dubai, "A", number, "Toyota", "Hilux", owner.0)
+            .vin(&format!("JTHBK2625820{number}"))
+            .odometer(52_000),
+    )
+    .await
+    .unwrap();
+    let card = job_cards::check_in(
+        w.state(),
+        sami,
+        NewJobCard::new(vehicle.id, "Brake noise")
+            .odometer(52_100)
+            .condition("Scratch on the left door")
+            .acknowledged_by("Mona Hassan")
+            .inspection_fee(fee)
+            .technician(tareq.0.id)
+            .workshop(workshop()),
+    )
+    .await
+    .unwrap();
+    job_cards::start_inspection(w.state(), &tareq.1, card.id)
+        .await
+        .unwrap();
+    for line in labour {
+        job_cards::add_labour(w.state(), &tareq.1, card.id, line)
+            .await
+            .unwrap();
+    }
+    if send {
+        job_cards::send_estimate(w.state(), sami, card.id, Promise::default())
+            .await
+            .unwrap();
+    }
+    JobCard::find_or_404(w.db(), card.id).await.unwrap()
 }

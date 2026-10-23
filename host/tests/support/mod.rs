@@ -383,6 +383,32 @@ pub async fn tenant(app: &TestApp, name: &str) -> PartyId {
     .party_id()
 }
 
+/// A person party with a primary mobile number (a customer who gets SMS).
+pub async fn tenant_with_mobile(app: &TestApp, name: &str, mobile: &str) -> PartyId {
+    create(
+        app.state(),
+        NewParty {
+            kind: PartyKind::Person,
+            legal_name_en: name.into(),
+            person: Some(PersonDetails::default()),
+            contacts: vec![
+                email_of(name),
+                ContactPoint {
+                    contact_type: ContactType::Mobile,
+                    value: mobile.into(),
+                    is_primary: true,
+                    ..Default::default()
+                },
+            ],
+            source: "back_office".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .party_id()
+}
+
 /// A company party (a vendor, a company tenant or an owner).
 pub async fn company(app: &TestApp, name: &str) -> PartyId {
     create(
