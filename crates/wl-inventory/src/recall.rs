@@ -38,9 +38,13 @@
 //!   and its hold has no line (it closes at once: nothing to decide);
 //! - a scope that matches no lot is refused, and nothing is created: the
 //!   recall and its hold are one transaction;
-//! - an item that is not tracked by lot cannot be recalled by lot number
-//!   (BL-STK-17 recalls it by item and received dates), so such a scope
-//!   matches nothing;
+//! - an item that is not tracked by lot cannot be recalled by lot number, so
+//!   such a scope matches nothing; it is recalled by item, supplier and
+//!   received date range (BL-STK-17, [`ScopeEntry::by_receipts`]): `open`
+//!   finds the receipts of the item from the supplier dated in the range, is
+//!   refused when there is none, keeps the day of the first one on the scope
+//!   (it starts the trace) and holds the whole on-hand quantity of the item at
+//!   every location, in transit included, in lines that name no lot;
 //! - the owner is the holders of the business owner role (the company admins
 //!   when nobody holds it), the storekeepers the holders of `stock.adjust` or
 //!   `goods_receipts.post` in the scope of the locations of the held lines,
@@ -52,22 +56,28 @@
 use std::collections::BTreeSet;
 
 use renox::auth::permissions::{Scope, users_with_permission_in, users_with_role};
+use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::COMPANY_ADMIN_ROLE;
 use wl_kernel::Subject;
 use wl_kernel::compliance::business_owner_role;
-use wl_kernel::documents::today;
-use wl_kernel::inventory::{LOT_SUBJECT_TYPE, RECALL_SUBJECT_TYPE, RecallOpened};
+use wl_kernel::documents::{dubai_date, today};
+use wl_kernel::inventory::{
+    GOODS_RECEIPT_SUBJECT_TYPE, LOT_SUBJECT_TYPE, RECALL_SUBJECT_TYPE, RecallOpened,
+};
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
 use wl_kernel::numbering::{Reset, Series};
 
 use crate::chase::PROCUREMENT_ROLE;
 use crate::hold_decide::settle;
+use crate::goods_receipt::GoodsReceipt;
 use crate::hold_service::{NewHold, NewScope, announce_placed, place_in};
+use crate::item::Item;
 use crate::location::Location;
 use crate::lot::Lot;
+use crate::movement::{MovementType, StockMovement};
 use crate::permissions;
 use crate::recall_line::{NoticeStatus, RecallLine};
 use crate::stock_hold::lines_of;
@@ -205,6 +215,20 @@ pub struct RecallScope {
     pub lot_number: Option<String>,
     /// A supplier lot number of the item.
     pub supplier_lot: Option<String>,
+    /// For an item not tracked by lot: the supplier whose receipts start the
+    /// trace; `None` for any supplier.
+    pub supplier_party_id: Option<i64>,
+    /// For an item not tracked by lot: the first day of the received date
+    /// range.
+    pub received_from: Option<NaiveDate>,
+    /// For an item not tracked by lot: the last day of the received date
+    /// range.
+    pub received_to: Option<NaiveDate>,
+    /// The day the trace ends; `None` for today.
+    pub trace_end: Option<NaiveDate>,
+    /// For an item not tracked by lot: the day of the first receipt in the
+    /// range, found when the recall was opened. The trace starts that day.
+    pub first_receipt_on: Option<NaiveDate>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -235,6 +259,8 @@ pub struct NoticeInput {
     pub template: String,
     /// The ids of the affected lines to tell.
     pub lines: Vec<i64>,
+    /// The ids among `lines` that get the softer `possible` template.
+    pub softer: Vec<i64>,
     /// The user who sends them.
     pub by: Option<i64>,
     /// What is wrong with the selection (a line of another recall, one that
@@ -351,8 +377,12 @@ impl StateMachine for Recall {
                         Box::pin(async move {
                             let now = renox::db::now();
                             let sent = NoticeStatus::Sent.as_str().to_owned();
-                            let template = Some(input.template.clone());
                             for id in input.lines {
+                                let template = Some(if input.softer.contains(&id) {
+                                    crate::recall_notice::SOFTER_TEMPLATE.to_owned()
+                                } else {
+                                    input.template.clone()
+                                });
                                 RecallLine::query()
                                     .where_(RecallLine::ID.eq(id))
                                     .update(
@@ -434,6 +464,14 @@ pub struct ScopeEntry {
     pub lot_number: Option<String>,
     /// A supplier lot number of the item.
     pub supplier_lot: Option<String>,
+    /// The supplier whose receipts start the trace (item not tracked by lot).
+    pub supplier_party_id: Option<i64>,
+    /// The first day of the received date range (item not tracked by lot).
+    pub received_from: Option<NaiveDate>,
+    /// The last day of the received date range (item not tracked by lot).
+    pub received_to: Option<NaiveDate>,
+    /// The day the trace ends; `None` for today.
+    pub trace_end: Option<NaiveDate>,
 }
 
 impl ScopeEntry {
@@ -443,6 +481,10 @@ impl ScopeEntry {
             item_id,
             lot_number: Some(number.trim().to_owned()),
             supplier_lot: None,
+            supplier_party_id: None,
+            received_from: None,
+            received_to: None,
+            trace_end: None,
         }
     }
 
@@ -452,7 +494,37 @@ impl ScopeEntry {
             item_id,
             lot_number: None,
             supplier_lot: Some(number.trim().to_owned()),
+            supplier_party_id: None,
+            received_from: None,
+            received_to: None,
+            trace_end: None,
         }
+    }
+
+    /// The item `item_id`, not tracked by lot, received from `supplier`
+    /// (any supplier when `None`) between `from` and `to`, traced to
+    /// `trace_end` (today when `None`).
+    pub fn by_receipts(
+        item_id: i64,
+        supplier: Option<i64>,
+        from: NaiveDate,
+        to: NaiveDate,
+        trace_end: Option<NaiveDate>,
+    ) -> Self {
+        ScopeEntry {
+            item_id,
+            lot_number: None,
+            supplier_lot: None,
+            supplier_party_id: supplier,
+            received_from: Some(from),
+            received_to: Some(to),
+            trace_end,
+        }
+    }
+
+    /// Whether the entry names receipts by date instead of lot numbers.
+    pub fn by_dates(&self) -> bool {
+        self.received_from.is_some() || self.received_to.is_some()
     }
 }
 
@@ -509,6 +581,49 @@ async fn lots_of(tx: &mut renox::db::Transaction, entry: &ScopeEntry) -> Result<
         .iter()
         .map(|lot| lot.id)
         .collect())
+}
+
+/// The day of the first receipt of the item of `entry` from `supplier` (any
+/// supplier when `None`) dated inside the received range of `entry`, in `tx`;
+/// `None` when there is none. A receipt is dated by the day the goods arrived
+/// (a late entry's business time), else the day it was posted.
+async fn first_receipt(
+    tx: &mut renox::db::Transaction,
+    entry: &ScopeEntry,
+    supplier: Option<i64>,
+) -> Result<Option<NaiveDate>> {
+    let (Some(from), Some(to)) = (entry.received_from, entry.received_to) else {
+        return Ok(None);
+    };
+    let moves = StockMovement::query()
+        .where_(StockMovement::ITEM_ID.eq(entry.item_id))
+        .where_(StockMovement::MOVEMENT_TYPE.eq(MovementType::Receive))
+        .order_by(StockMovement::ID)
+        .get(&mut *tx)
+        .await?;
+    let mut first: Option<NaiveDate> = None;
+    for moved in moves {
+        let receipt = if moved.source_type == GOODS_RECEIPT_SUBJECT_TYPE {
+            GoodsReceipt::find(&mut *tx, moved.source_id).await?
+        } else {
+            None
+        };
+        if let Some(supplier) = supplier
+            && receipt.as_ref().map(|r| r.supplier_party_id) != Some(supplier)
+        {
+            continue;
+        }
+        let at = receipt
+            .as_ref()
+            .and_then(|r| r.arrived_at)
+            .unwrap_or(moved.moved_at);
+        let day = dubai_date(at);
+        if day < from || day > to {
+            continue;
+        }
+        first = Some(first.map_or(day, |earlier| earlier.min(day)));
+    }
+    Ok(first)
 }
 
 /// The ids of the users who hold `permission` in the scope of each of
@@ -595,19 +710,53 @@ pub async fn open(state: &AppState, user: &AuthUser, new: NewRecall) -> Result<R
     }
     let blank = |value: &Option<String>| value.as_deref().is_none_or(|v| v.trim().is_empty());
     if new.scope.is_empty()
-        || new
-            .scope
-            .iter()
-            .any(|entry| blank(&entry.lot_number) && blank(&entry.supplier_lot))
+        || new.scope.iter().any(|entry| {
+            !entry.by_dates() && blank(&entry.lot_number) && blank(&entry.supplier_lot)
+        })
     {
         return Err(refused(said("wl_inventory.recall.bad_scope", &[])));
     }
+    if new.scope.iter().any(|entry| {
+        entry.by_dates()
+            && match (entry.received_from, entry.received_to) {
+                (Some(from), Some(to)) => {
+                    to < from || entry.trace_end.is_some_and(|end| end < from)
+                }
+                _ => true,
+            }
+    }) {
+        return Err(refused(said("wl_inventory.recall.bad_dates", &[])));
+    }
     let mut tx = state.db.begin().await?;
     let mut lot_ids: BTreeSet<i64> = BTreeSet::new();
+    let mut firsts: Vec<Option<NaiveDate>> = Vec::new();
+    let mut whole_items: BTreeSet<i64> = BTreeSet::new();
+    let mut by_dates = false;
     for entry in &new.scope {
-        lot_ids.extend(lots_of(&mut tx, entry).await?);
+        if entry.by_dates() {
+            by_dates = true;
+            let item = Item::find_or_404(&mut tx, entry.item_id).await?;
+            if item.lot_tracked {
+                return Err(refused(said(
+                    "wl_inventory.recall.tracked_item",
+                    &[("item", &item.code)],
+                )));
+            }
+            let supplier = entry.supplier_party_id.or(new.supplier_party_id);
+            let Some(first) = first_receipt(&mut tx, entry, supplier).await? else {
+                return Err(refused(said(
+                    "wl_inventory.recall.no_receipt",
+                    &[("item", &item.code)],
+                )));
+            };
+            whole_items.insert(item.id);
+            firsts.push(Some(first));
+        } else {
+            lot_ids.extend(lots_of(&mut tx, entry).await?);
+            firsts.push(None);
+        }
     }
-    if lot_ids.is_empty() {
+    if lot_ids.is_empty() && !by_dates {
         return Err(refused(said("wl_inventory.recall.no_lot", &[])));
     }
     let mut recall = Recall {
@@ -621,12 +770,20 @@ pub async fn open(state: &AppState, user: &AuthUser, new: NewRecall) -> Result<R
         ..Recall::default()
     };
     recall.insert(&mut tx).await?;
-    for entry in &new.scope {
+    for (entry, first) in new.scope.iter().zip(firsts.iter()) {
         let mut row = RecallScope {
             recall_id: recall.id,
             item_id: entry.item_id,
             lot_number: entry.lot_number.clone().filter(|v| !v.trim().is_empty()),
             supplier_lot: entry.supplier_lot.clone().filter(|v| !v.trim().is_empty()),
+            supplier_party_id: entry
+                .by_dates()
+                .then(|| entry.supplier_party_id.or(new.supplier_party_id))
+                .flatten(),
+            received_from: entry.received_from,
+            received_to: entry.received_to,
+            trace_end: entry.trace_end,
+            first_receipt_on: *first,
             ..RecallScope::default()
         };
         row.insert(&mut tx).await?;
@@ -644,7 +801,10 @@ pub async fn open(state: &AppState, user: &AuthUser, new: NewRecall) -> Result<R
         &NewHold {
             reason: "recall".to_owned(),
             reference: recall.subject(),
-            scope: NewScope::Lots(lot_ids.iter().copied().collect()),
+            scope: NewScope::Stock {
+                lots: lot_ids.iter().copied().collect(),
+                items: whole_items.iter().copied().collect(),
+            },
             by: Some(user.id),
         },
         true,

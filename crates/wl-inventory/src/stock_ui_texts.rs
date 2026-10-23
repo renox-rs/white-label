@@ -369,6 +369,7 @@ pub(crate) const STOCK_TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.stock.template.customer", "Customers"),
     ("wl_inventory.stock.template.patient", "Patients"),
     ("wl_inventory.stock.template.internal", "Staff"),
+    ("wl_inventory.stock.template.possible", "Possible: may be affected"),
     ("wl_inventory.stock.recall.trace_again", "Trace again"),
     (
         "wl_inventory.stock.recall.trace_description",
@@ -408,6 +409,7 @@ pub(crate) const STOCK_TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_inventory.stock.mark.confirmed", "Proved"),
     ("wl_inventory.stock.mark.uncertain", "Lot uncertain"),
+    ("wl_inventory.stock.mark.possible", "Possible"),
     ("wl_inventory.stock.mark.dispatch", "Dispatched"),
     ("wl_inventory.stock.mark.walk_in", "Walk-in sales"),
     ("wl_inventory.stock.notice.pending", "Not told"),

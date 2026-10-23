@@ -81,6 +81,8 @@ pub struct RecallLine {
     pub party_id: Option<i64>,
     /// The lot.
     pub lot_id: Option<i64>,
+    /// The item, for a line of an item not tracked by lot (it names no lot).
+    pub item_id: Option<i64>,
     /// The location the lot left (the outlet of a walk-in count).
     pub location_id: Option<i64>,
     /// The quantity, in thousandths of the base unit.
@@ -125,6 +127,17 @@ impl RecallLine {
         }
     }
 
+    /// How sure the line is: every line of an item not tracked by lot is
+    /// *possible* (no lot proves which unit was used), the others by the kind
+    /// of evidence.
+    pub fn mark(&self) -> TraceMark {
+        if self.lot_id.is_none() && self.item_id.is_some() {
+            TraceMark::Possible
+        } else {
+            self.kind.mark()
+        }
+    }
+
     /// The kernel's view of the line.
     pub fn holder(&self) -> TracedHolder {
         TracedHolder {
@@ -138,7 +151,7 @@ impl RecallLine {
             quantity_milli: self.quantity_milli,
             on: self.occurred_on,
             kind: self.kind.as_str().to_owned(),
-            mark: self.kind.mark(),
+            mark: self.mark(),
             sales: self.sales_count,
             delivery_status: self.delivery_status.clone(),
             notice: self.notice_status.as_str().to_owned(),

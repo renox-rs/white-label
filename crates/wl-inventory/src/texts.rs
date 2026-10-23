@@ -860,7 +860,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.recall.no_reason", "A recall needs a reason."),
     (
         "wl_inventory.recall.bad_scope",
-        "A recall needs a scope: the items, with the lot numbers or the supplier lot numbers recalled.",
+        "A recall needs a scope: the items, with the lot numbers or the supplier lot numbers recalled, or an item not tracked by lot with a received date range.",
     ),
     (
         "wl_inventory.recall.bad_source",
@@ -873,6 +873,18 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_inventory.recall.no_lot",
         "No lot matches the scope of the recall: check the item and the lot numbers.",
+    ),
+    (
+        "wl_inventory.recall.bad_dates",
+        "A recall of an item not tracked by lot takes a received date range (from and to, the end not before the start) and a trace end date not before the start.",
+    ),
+    (
+        "wl_inventory.recall.tracked_item",
+        "{{ item }} is tracked by lot: recall it by lot number or supplier lot number.",
+    ),
+    (
+        "wl_inventory.recall.no_receipt",
+        "No receipt of {{ item }} from that supplier falls in the received date range: check the item, the supplier and the dates.",
     ),
     ("wl_inventory.recall.opened", "Recall opened."),
     (
@@ -890,7 +902,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.recall.closed", "Recall closed."),
     (
         "wl_inventory.recall.no_template",
-        "Choose the notice template: customer, patient or internal.",
+        "Choose the notice template: customer, patient, internal or possible.",
     ),
     (
         "wl_inventory.recall.no_lines",
@@ -935,6 +947,10 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_inventory.recall.notice_body_patient",
         "A product used in your care on {{ date }} ({{ item }}, lot {{ lot }}) is being recalled. {{ reason }}. Please contact the clinic to arrange a check.",
+    ),
+    (
+        "wl_inventory.recall.notice_body_possible",
+        "{{ item }}, which you received from us, may be affected by recall {{ number }}. {{ reason }}. Please bring it in for a check.",
     ),
     (
         "wl_inventory.recall.notice_body_internal",
