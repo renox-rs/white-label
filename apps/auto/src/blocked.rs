@@ -32,6 +32,11 @@
 //!   neutral text; the branch manager's review decides what goes on
 //!   ([`ensure_not_blocked`]). Lines the insurer approves on a claim are the
 //!   claim's, and the claim continues.
+//! - **Not a machine guard, on purpose.** 08 §7.1 lists only the police report
+//!   as a guard of `approve`; the refusal for a blocked customer is the
+//!   *Party blocked* setting. A guard cannot read the party directory, so the
+//!   service refuses before the transition, in both approval paths (the
+//!   recorded approval and the customer's link, [`ensure_not_blocked`]).
 //! - **Lifted.** The lines that were taken off stay off; the advisor may send a
 //!   new estimate for them.
 
