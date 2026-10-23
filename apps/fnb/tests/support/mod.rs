@@ -334,12 +334,35 @@ pub async fn boot_real_tickets(
     boot_everything(delivery, fnb, payments, inventory, true).await
 }
 
+/// [`boot_all`] with the sales module `sales` in place of the tests' own: the
+/// host's 06 settings (`host::fnb_seed::sales`) run against the real flows.
+pub async fn boot_with_sales(
+    delivery: WlDelivery,
+    fnb: Fnb,
+    payments: WlPayments,
+    inventory: WlInventory,
+    sales: WlSales,
+) -> World {
+    boot_configured(delivery, fnb, payments, inventory, false, Some(sales)).await
+}
+
 async fn boot_everything(
     delivery: WlDelivery,
     fnb: Fnb,
     payments: WlPayments,
     inventory: WlInventory,
     real_tickets: bool,
+) -> World {
+    boot_configured(delivery, fnb, payments, inventory, real_tickets, None).await
+}
+
+async fn boot_configured(
+    delivery: WlDelivery,
+    fnb: Fnb,
+    payments: WlPayments,
+    inventory: WlInventory,
+    real_tickets: bool,
+    sales: Option<WlSales>,
 ) -> World {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
@@ -358,12 +381,12 @@ async fn boot_everything(
         .module(delivery)
         .module(wl_parties::WlParties::new().exception_approver(wl_kernel::COMPANY_ADMIN_ROLE))
         .module(payments)
-        .module(
+        .module(sales.unwrap_or_else(|| {
             WlSales::new()
                 .cancel_outcomes(&["return_to_stock", "scrap"])
                 .order_acceptance_channels(&["website"])
-                .aggregator_channels(&["aggregator_a"]),
-        )
+                .aggregator_channels(&["aggregator_a"])
+        }))
         .module(inventory)
         .module(fnb)
         .module(Probe)
@@ -417,6 +440,7 @@ async fn boot_everything(
         dperm::VIEW,
         dperm::MANAGE,
         dperm::REVERSE,
+        dperm::APPROVE_COD_DIFFERENCE,
     ];
     let manager = make_user(app.db(), "Mia", &manager_grants).await;
     let manager_b = make_user(app.db(), "Basel", &manager_grants).await;
@@ -866,6 +890,17 @@ impl World {
     /// The rider delivers the stop of `delivery`, collecting `cash` dirhams
     /// ("85.00"); every line is delivered in full.
     pub async fn deliver_stop(&self, delivery: &Delivery, cash: &str) -> TestResponse {
+        self.deliver_stop_with(delivery, cash, &[]).await
+    }
+
+    /// [`deliver_stop`](Self::deliver_stop) with more `extra` form fields (a
+    /// `difference_reason` for cash collected short).
+    pub async fn deliver_stop_with(
+        &self,
+        delivery: &Delivery,
+        cash: &str,
+        extra: &[(&str, &str)],
+    ) -> TestResponse {
         let lines = delivery.lines(self.db()).await.unwrap();
         let mut fields: Vec<(String, String)> = vec![
             ("recipient_name".into(), "Mariam Al Hosani".into()),
@@ -886,10 +921,11 @@ impl World {
             ));
             fields.push((format!("refused_{}", line.id), "0".into()));
         }
-        let borrowed: Vec<(&str, &str)> = fields
+        let mut borrowed: Vec<(&str, &str)> = fields
             .iter()
             .map(|(name, value)| (name.as_str(), value.as_str()))
             .collect();
+        borrowed.extend_from_slice(extra);
         self.post(
             &self.rider,
             &format!("/driver/stops/{}/deliver", delivery.id),
