@@ -47,6 +47,10 @@ What is here so far:
 | Product conformity (BL-MFG-11, #392, `MFG.ACL.11`, `DOC.RUL.02`): items flagged regulated (accepted certificate kinds: ECAS, EQM, food-contact; none named: all three) or export only (`/manufacturing/conformity`); `pick` and `dispatch` of a dispatch are refused while no accepted kind is valid on the day (valid through the expiry date; a renewal in review does not count and is named; no override), an export only item is refused for a delivery in the UAE; the nightly look-ahead lists the order lines promised after the expiry | §2, §3.3, §7.1, §9 | `conformity`, wl-inventory `dispatch_guard` |
 | Export evidence (BL-MFG-12, #393, `MFG.RUL.08`): daily at 08:00 the accountant is warned at day 60 of a zero-rated export dispatch without a customs exit certificate, bill of lading or airway bill, and at day 90 the dispatch is flagged *5% VAT due* with one task naming the invoices, their amounts and the customer's contract note; evidence stops it, late evidence is told and nothing is reversed; compliance-critical (`/manufacturing/exports`) | §2, §4.1, §7.2, §9 | `exports` |
 | The buyer's PO upload (BL-MFG-06, #387): `/portal/manufacturing/orders` refuses a customer PO number (with its call-off number) an order of the customer holds, naming that order's number and status only; asked of wl-sales through the kernel's `CustomerPoCheck` | §4.1, §4.5 step 2 | `po_upload` |
+| The outcome proposed for a cancelled started line (BL-MFG-14, #395, 07 §7.1 *Sales order*): items flagged *made for one customer* on `/manufacturing/conformity` (printed labels, packaging; off by default) are proposed *scrap*, any other item *finish to stock*; `OutcomeProposals` is the kernel contract wl-sales reads to preselect the outcome in the cancel-order and cancel-remaining sheets; sales may change it per line | §6 *Item*, §7.1 | `outcome_proposals`, `conformity` |
+| A production report typed in later (BL-MFG-14, `PLT.ACL.10`): the report sheet takes the time the output was made (`occurred_at`), a reason and an outage reference when the line tablets were down and the supervisor enters the paper job cards at the end of the shift; the report keeps that business time; more than M minutes late it is flagged with the reason, more than N hours late it waits for a holder of `late_entries.approve` of the plant (the production manager) and is posted when one approves; the limits M and N are the entity's (host seed: 30 minutes, 24 hours) | §7.1 *Integrations*, *Late entry* | `late_report`, `report` |
+| Who is told that an item's certificate expires (BL-MFG-14, `DOC.RUL.01`): the QC inspectors of each plant that holds stock of the item (its lines' store and finished goods locations, through `StockService::on_hand`) or has an open work order for it; when no plant does, those of every plant | §7.1 *Responsible role per document kind* | `responsible` |
+| The work order as an agreement of a blocked customer (BL-MFG-14, wl-parties §5.6): the kind `work_order` continues and the planner decides (`unlink` to stock); the sales orders not yet dispatched are paused by wl-sales | §7.1 *Party blocked* | `lib` |
 | The screens: the work order list and the record page with the actions (disabled with the reason when a guard fails) | `docs/UX.md` | `screens`, `pages` |
 
 Comes with other issues (the states they need are declared):
@@ -72,13 +76,13 @@ the user `release` of a lot are the lot issues of wl-inventory; an NCR is raised
 decision of a stock hold). The quarantine location of a Return to supplier is the one of
 wl-inventory; the scrap limit of `STK.ACL.02` is AED 2,000 here, as for the abort.
 
-Seams left for the sales module (nothing provides them in the real host yet,
-so the matching Done-when points are proved with fakes): `OrderLines`
-(the customer of a work order's order), `DeliveryDestination` (whether an
-order is delivered abroad), `PromisedLines` (the look-ahead of `DOC.RUL.02`),
-`CustomerPoCheck` (BL-SAL-18) and `OrderLineRules` (the refusal of an export
-only item at `submit` and `amend`). wl-sales provides or calls them once F6 is
-merged.
+Seams of the sales module: wl-sales provides `OrderLines` (the customer and open quantity of a
+work order's order, BL-MFG-03), `FulfilmentProgress` is provided here (`progress`), `CustomerPoCheck`
+(BL-SAL-18) and the `OutcomeProposals` reader are in place. Not provided by anything yet, so the matching
+Done-when points are proved with fakes: `DeliveryDestination` (whether an order is delivered abroad),
+`PromisedLines` (the look-ahead of `DOC.RUL.02`) and `OrderLineRules` (the refusal of an export only item at
+`submit` and `amend`): a sale line has no promised day and no delivery address yet, so wl-sales cannot
+answer them; they stay seams and the real host leaves them unwired.
 
 Not built for the returned goods: the checklist template `returned_goods_inspection` and its field pages
 are `WRK.CHK.01` of wl-ticketing, which only has the kernel contract (`Checklists`) so far; until it

@@ -266,6 +266,32 @@ const LOGISTICS_CLIENT: &str = concat!(
     "/../clients/demo-logistics/client.toml"
 );
 
+/// The demo manufacturing client (07 Light Manufacturing).
+const MANUFACTURING_CLIENT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../clients/demo-manufacturing/client.toml"
+);
+
+/// The manufacturing host, with `wl:install` and the seeds run as the demo
+/// does (the clock at noon).
+pub async fn manufacturing_booted() -> TestApp {
+    let config =
+        wl_kernel::ClientConfig::load(MANUFACTURING_CLIENT).expect("the manufacturing client");
+    let app = TestApp::new(
+        host::app_for(config)
+            .expect("the app")
+            .provide(noon_clock())
+            .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
 /// The demo F&B client (06 F&B).
 const FNB_CLIENT: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),

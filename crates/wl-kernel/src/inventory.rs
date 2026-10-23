@@ -1051,6 +1051,17 @@ pub trait StockService: Send + Sync + 'static {
         Box::pin(async { Ok(None) })
     }
 
+    /// How much of `item` is on hand at `location`, in thousandths. `None`
+    /// when the module is off (07: the plants that hold stock of an item).
+    fn on_hand<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _item: &'a Subject,
+        _location: &'a Subject,
+    ) -> StockFuture<'a, Option<i64>> {
+        Box::pin(async { Ok(None) })
+    }
+
     /// The `source` that consumed (a visit, a sale) was cancelled before its
     /// pending issues posted: each one still open is cleared with the reason
     /// *source cancelled*, without a movement. Returns how many were cleared.

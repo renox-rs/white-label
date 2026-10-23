@@ -200,6 +200,9 @@ pub const PRODUCTION_MANAGER: &str = mfg::PRODUCTION_MANAGER_ROLE;
 /// The QC inspector: sees the work orders of the plant, releases lots, raises
 /// and dispositions NCRs (07 §3.1).
 pub const QC_INSPECTOR: &str = mfg::QC_ROLE;
+/// The operator of a production line: reports the output of the work orders
+/// of their line, on the tablet (07 §3.1, `MFG.ACL.01`); assigned per line.
+pub const LINE_OPERATOR: &str = "line_operator";
 /// The sales person of a manufacturer: enters and amends the customers' orders,
 /// decides what happens to goods that came back (deliver again or cancel the
 /// line) and follows the credit of the account (07 §3.1, `SAL.ACL.05`).
@@ -565,6 +568,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             mfg::PLANTS_MANAGE,
             mfg::CONFORMITY_MANAGE,
             mfg::EXPORTS_MANAGE,
+            mfg::RETURNED_GOODS_VIEW,
+            mfg::RETURNED_GOODS_DECIDE,
+            mfg::INSPECTIONS_VIEW,
+            mfg::INSPECTIONS_RECORD,
             prp::UNITS_VIEW,
             prp::UNITS_MANAGE,
             prp::UNITS_RESERVE,
@@ -1099,6 +1106,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             mfg::WORK_ORDERS_VIEW,
             mfg::WORK_ORDERS_ISSUE,
         ],
+    ),
+    (
+        LINE_OPERATOR,
+        &[mfg::WORK_ORDERS_VIEW, mfg::WORK_ORDERS_REPORT],
     ),
     (
         PRODUCTION_PLANNER,

@@ -564,13 +564,6 @@ pub async fn after_abort(state: &AppState, id: i64) -> Result<bool> {
     if claimed == 0 {
         return Ok(false);
     }
-    // The task of `MFG.RUL.09` that asked for this abort is done.
-    crate::order_changes::close_abort_task(
-        state,
-        id,
-        &english("manufacturing.order_change.abort_done", &[]),
-    )
-    .await?;
     let (mut returned, mut scrapped) = (0, 0);
     for line in &lines {
         let (Some(item), quantity) = (line.item_id, line.quantity_milli) else {
@@ -622,6 +615,14 @@ pub async fn after_abort(state: &AppState, id: i64) -> Result<bool> {
         }
     }
     tx.commit().await?;
+    // The task of `MFG.RUL.09` that asked for this abort is done (after the
+    // commit: it reads the database on its own connection).
+    crate::order_changes::close_abort_task(
+        state,
+        id,
+        &english("manufacturing.order_change.abort_done", &[]),
+    )
+    .await?;
     let output_lot = order
         .output_lot_id
         .map(|lot| Subject::new(wl_kernel::inventory::LOT_SUBJECT_TYPE, lot));

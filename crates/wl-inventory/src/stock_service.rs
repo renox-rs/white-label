@@ -460,6 +460,19 @@ impl StockService for InventoryStock {
         )
     }
 
+    fn on_hand<'a>(
+        &'a self,
+        state: &'a AppState,
+        item: &'a Subject,
+        location: &'a Subject,
+    ) -> StockFuture<'a, Option<i64>> {
+        Box::pin(async move {
+            crate::movement::on_hand(&state.db, item.subject_id, location.subject_id)
+                .await
+                .map(Some)
+        })
+    }
+
     fn source_cancelled<'a>(
         &'a self,
         state: &'a AppState,

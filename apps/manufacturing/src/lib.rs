@@ -26,6 +26,7 @@ pub mod portal;
 pub mod progress;
 pub mod recalls;
 pub mod report;
+pub mod responsible;
 pub mod returns;
 mod screens;
 mod texts;
@@ -195,6 +196,13 @@ impl Module for Manufacturing {
         // `PLT.ACL.10`: a report typed in from the paper job cards.
         late_report::register(app);
         notices::register_types();
+        // 07 §7.1 *Party blocked*: the work orders of a blocked customer
+        // continue; the planner may `unlink` them to stock.
+        wl_kernel::block_effects::AgreementKind::new("work_order")
+            .owner("manufacturing")
+            .effect(wl_kernel::block_effects::BlockEffect::Continue)
+            .decider(permissions::PLANNER_ROLE)
+            .register();
         // `MFG.ACL.12`: the posted quantities still match the request at the
         // final approval.
         wl_kernel::approvals::register_final_check(work_order::SUBJECT_TYPE, |tx, request| {

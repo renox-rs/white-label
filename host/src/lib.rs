@@ -46,7 +46,9 @@ pub use app::logistics_settings;
 pub use app::manpower_demo;
 pub use app::manpower_seed;
 pub use app::manufacturing_seed;
+pub use app::manufacturing_settings;
 pub use app::negative_flow::{delivery_for, invoicing_for, payments_for};
+pub use app::property_seed::sales_for;
 pub use app::roles;
 
 use wl_invoicing::WlInvoicing;
@@ -282,6 +284,11 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
         app = app.module(app::fnb_seed::FnbSeed);
         app = app.module(app::fnb_demo::FnbDemo);
     }
+    // The Manufacturing client's late-entry limits, lead sources, onboarding
+    // checklists and SOP library (BL-MFG-14).
+    if client_app == app::manufacturing_seed::MANUFACTURING {
+        app = app.module(app::manufacturing_seed::ManufacturingSeed);
+    }
     // The page that shows the shared modules' settings of this client.
     let app = app
         .module(app::negative_flow::NegativeFlow::new(&client_app, entities))
@@ -426,6 +433,8 @@ fn enable(
                     app::construction_seed::inventory(module)
                 } else if client_app == app::fnb_seed::FNB {
                     app::fnb_seed::inventory_for(client_app, module)
+                } else if client_app == app::manufacturing_seed::MANUFACTURING {
+                    app::manufacturing_seed::inventory(module)
                 } else {
                     app::clinics_money::inventory(client_app, module)
                 }),
