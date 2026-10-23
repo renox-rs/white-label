@@ -58,8 +58,10 @@ pub struct LotFacts {
     /// What is left at that location.
     pub location_milli: i64,
     /// The cost of one base unit: the goods receipt's, else the item's
-    /// average cost.
+    /// average cost (a Return to supplier is valued at it).
     pub unit_cost: i64,
+    /// The item's average cost of one base unit, which a write-off posts at.
+    pub average_cost: i64,
     /// The purchase order line of the receipt.
     pub po_line: Option<i64>,
 }

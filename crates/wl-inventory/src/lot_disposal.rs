@@ -108,6 +108,7 @@ pub async fn facts_of(db: &Db, lot_id: i64) -> Result<Option<LotFacts>> {
         location: biggest.map(|(id, _)| Subject::new(LOCATION_SUBJECT_TYPE, id)),
         location_milli: biggest.map_or(0, |(_, quantity)| quantity),
         unit_cost,
+        average_cost: item.average_cost,
         po_line,
     }))
 }

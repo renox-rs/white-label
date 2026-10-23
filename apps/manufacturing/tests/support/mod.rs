@@ -458,6 +458,7 @@ impl Lots {
                 location: Some(location(STORE)),
                 location_milli: quantity_milli,
                 unit_cost,
+                average_cost: unit_cost,
                 po_line: supplier.map(|_| 4),
             },
         });

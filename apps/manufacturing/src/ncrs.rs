@@ -475,7 +475,7 @@ async fn check(
                             &[("available", &left)],
                         ));
                     }
-                    input.scrap_value = value_of(ncr.quantity_milli, facts.unit_cost);
+                    input.scrap_value = value_of(ncr.quantity_milli, facts.average_cost);
                 }
             }
             input.outcome = None;
@@ -1076,6 +1076,25 @@ impl LotReleaseGuard for NcrReleaseGuard {
             }))
         })
     }
+}
+
+/// The final check of a *use as is* request (`MFG.ACL.03`): the inspector
+/// who raised the NCR is not among those who approved it, else the request
+/// fails and the NCR stays open.
+pub(crate) async fn recheck(
+    tx: &mut renox::db::Transaction,
+    request: &ApprovalRequest,
+) -> Result<Option<String>> {
+    if request.action != crate::ncr::USE_AS_IS_ACTION {
+        return Ok(None);
+    }
+    let ncr = Ncr::find_or_404(&mut *tx, request.subject_id).await?;
+    let raiser_approved = request
+        .decisions(&mut *tx)
+        .await?
+        .iter()
+        .any(|decision| Some(decision.approver_id) == ncr.raised_by);
+    Ok(raiser_approved.then(|| english("manufacturing.ncr.raiser_approves", &[])))
 }
 
 /// The decisions an NCR had, oldest first.

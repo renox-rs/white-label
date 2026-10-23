@@ -113,6 +113,10 @@ impl Module for Manufacturing {
         wl_kernel::approvals::register_final_check(work_order::SUBJECT_TYPE, |tx, request| {
             Box::pin(abort::recheck(tx, request))
         });
+        // `MFG.ACL.03`: the inspector who raised the NCR does not approve it.
+        wl_kernel::approvals::register_final_check(ncr::SUBJECT_TYPE, |tx, request| {
+            Box::pin(ncrs::recheck(tx, request))
+        });
         abort::listen(app);
         material_hold::listen(app);
         ncrs::listen(app);

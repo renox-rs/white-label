@@ -196,7 +196,8 @@ pub const PRODUCTION_PLANNER: &str = mfg::PLANNER_ROLE;
 /// The production manager: also approves the abort of a work order and closes
 /// it, and sees its costs (07 §3.1, `MFG.ACL.12`); assigned per plant.
 pub const PRODUCTION_MANAGER: &str = mfg::PRODUCTION_MANAGER_ROLE;
-/// The QC inspector: sees the work orders of the plant, releases lots (07 §3.1).
+/// The QC inspector: sees the work orders of the plant, releases lots, raises
+/// and dispositions NCRs (07 §3.1).
 pub const QC_INSPECTOR: &str = mfg::QC_ROLE;
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
@@ -1024,6 +1025,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // 07 §3.1: issues materials to the work orders.
             mfg::WORK_ORDERS_VIEW,
             mfg::WORK_ORDERS_ISSUE,
+            // 07 §4.3: dispatches the Return to supplier an NCR asks for.
+            inventory::SUPPLIER_RETURNS_MANAGE,
         ],
     ),
     (
@@ -1050,6 +1053,15 @@ pub const ROLES: &[(&str, &[&str])] = &[
             mfg::WORK_ORDERS_ABORT_APPROVE,
             mfg::WORK_ORDERS_VOID_APPROVE,
             mfg::WORK_ORDERS_COST_VIEW,
+            // 07 §3.1, `MFG.ACL.03`: also decides NCRs and approves a
+            // *use as is* that somebody else asks for.
+            mfg::NCRS_VIEW,
+            mfg::NCRS_RAISE,
+            mfg::NCRS_DISPOSITION,
+            mfg::NCRS_APPROVE,
+            // `STK.ACL.02`: decides a scrap above AED 2,000 (an NCR's) and the
+            // second step of an abort.
+            inventory::STOCK_APPROVE,
             mfg::PLANTS_MANAGE,
             inventory::ITEMS_VIEW,
             inventory::STOCK_VIEW,
@@ -1065,6 +1077,13 @@ pub const ROLES: &[(&str, &[&str])] = &[
         QC_INSPECTOR,
         &[
             mfg::WORK_ORDERS_VIEW,
+            // 07 §3.1, `MFG.QCL.02`: raises NCRs and decides what becomes of
+            // the goods; approves a *use as is* only on an NCR somebody else
+            // raised (`MFG.ACL.03`).
+            mfg::NCRS_VIEW,
+            mfg::NCRS_RAISE,
+            mfg::NCRS_DISPOSITION,
+            mfg::NCRS_APPROVE,
             inventory::ITEMS_VIEW,
             inventory::STOCK_VIEW,
             inventory::LOTS_RELEASE,
