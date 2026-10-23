@@ -66,6 +66,11 @@ pub async fn bill_closed(state: &AppState, job_card_id: i64) -> Result<Option<In
     if let Some(id) = card.invoice_id {
         return Ok(Some(InvoiceId(id)));
     }
+    // After a total loss the claim bills the strip-down, the labour done and
+    // the storage; the job card makes no invoice of its own (BL-AUT-09).
+    if card.closed_code.as_deref() == Some(stop::TOTAL_LOSS) {
+        return Ok(None);
+    }
     if !matches!(
         card.status,
         JobCardStatus::Declined | JobCardStatus::Cancelled

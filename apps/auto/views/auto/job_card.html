@@ -86,6 +86,9 @@
           <rx-input name="released_to" :label="tx['release.to']" :id="'job-release-to-' ~ id" required/>
           <rx-select name="condition" :label="tx['release.condition']" :options="stop.release_options" :selected="'safe'" :id="'job-release-condition-' ~ id"/>
           <rx-input name="signature" :label="tx['release.signature']" :hint="tx['release.signature_hint']" :id="'job-release-signature-' ~ id"/>
+          <template rx-if="stop.needs_instruction">
+            <rx-input name="instruction" :label="tx['release.instruction']" :hint="tx['release.instruction_hint']" :id="'job-release-instruction-' ~ id" required/>
+          </template>
         </rx-action-sheet>
       </template>
       <template rx-if="stop.can_on_account">

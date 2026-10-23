@@ -10,6 +10,9 @@ pub mod claim;
 pub mod claim_approval;
 pub mod claim_machine;
 pub mod claim_split;
+pub mod claim_total_loss;
+pub mod claim_void;
+pub mod claim_withdrawal;
 pub mod claims;
 mod db;
 pub mod declines;
@@ -27,6 +30,7 @@ pub mod fleet_services;
 pub mod incident;
 pub mod incidents;
 pub mod insurer;
+pub mod insurer_mail;
 pub mod insurers;
 pub mod job_card;
 pub mod job_card_machine;
@@ -41,6 +45,7 @@ pub mod part_line;
 pub mod parts;
 pub mod parts_delays;
 pub mod parts_wait;
+pub mod payer;
 pub mod permissions;
 pub mod reasons;
 pub mod release;
@@ -58,6 +63,7 @@ pub mod supply;
 pub mod test_drive;
 pub mod test_drives;
 mod texts;
+mod texts_claim_stops;
 mod texts_claims;
 mod texts_fleet;
 mod texts_incidents;
@@ -88,6 +94,7 @@ pub use job_stops::JobCardCancelled;
 pub use labour_line::{LabourLine, LabourPricing, LineStatus, WorkStatus};
 pub use labour_operation::LabourOperation;
 pub use part_line::{PartCondition, PartLine};
+pub use payer::Payer;
 pub use supplier_claim::{SupplierAnswer, SupplierClaim, SupplierClaimStatus};
 pub use test_drive::TestDrive;
 pub use vehicle::{Emirate, Vehicle};
@@ -267,6 +274,9 @@ impl Module for Auto {
         // when its invoices are paid.
         claim_machine::register();
         claims::register_listeners(app);
+        // What is written to the insurer and told to the customer about a
+        // claim: the survey request, the withdrawal letter, the total loss.
+        insurer_mail::register();
         // The fleet contract: the machine, the daily run (ends, renewals,
         // the services that fall due, the monthly invoice) and the listener
         // that frees a service plan when its booking is cancelled.

@@ -7,6 +7,7 @@
 //! | `GET /auto/claims/{id}` | `auto.claim` | `insurance.manage` or `invoices.issue` |
 //! | `POST /auto/claims/{id}/police-report` | `auto.claim_police` | `insurance.manage` |
 //! | `POST /auto/claims/{id}/survey` | `auto.claim_survey` | `insurance.manage` |
+//! | `POST /auto/claims/{id}/survey-request` | `auto.claim_survey_request` | `insurance.manage` |
 //! | `POST /auto/claims/{id}/submit` | `auto.claim_submit` | `insurance.manage` |
 //! | `POST /auto/claims/{id}/approve` | `auto.claim_approve` | `insurance.manage` |
 //! | `POST /auto/claims/{id}/reject` | `auto.claim_reject` | `insurance.manage` |
@@ -15,6 +16,7 @@
 //! | `POST /auto/claims/{id}/supplementary/decline` | `auto.claim_supp_decline` | `insurance.manage` |
 //! | `POST /auto/claims/{id}/invoice` | `auto.claim_invoice` | `invoices.issue` |
 //! | `POST /auto/claims/{id}/total-loss` | `auto.claim_total_loss` | `insurance.manage` |
+//! | `POST /auto/claims/{id}/charges` | `auto.claim_charges` | `insurance.manage` |
 //! | `POST /auto/claims/{id}/cancel` | `auto.claim_cancel` | `insurance.manage` |
 //! | `POST /auto/claims/{id}/void` | `auto.claim_void` | `insurance.manage` |
 //! | `GET /auto/claim-vehicle-options` | `auto.claim_vehicle_options` | `insurance.manage` |
@@ -35,7 +37,7 @@ use super::{
 };
 use crate::claim::{ClaimStatus, InsuranceClaim, RepairType};
 use crate::claim_approval::{ApprovalKind, ApprovalOutcome, ClaimApproval};
-use crate::claims::{self, Answer, NewClaim};
+use crate::claims::{self, Answer, NewClaim, Withdrawal};
 use crate::insurer::Insurer;
 use crate::insurers;
 use crate::job_card::JobCard;
@@ -62,6 +64,8 @@ pub fn routes() -> Routes {
         .name("auto.claim_police")
         .post("/auto/claims/{id}/survey", survey)
         .name("auto.claim_survey")
+        .post("/auto/claims/{id}/survey-request", survey_request)
+        .name("auto.claim_survey_request")
         .post("/auto/claims/{id}/submit", submit)
         .name("auto.claim_submit")
         .post("/auto/claims/{id}/approve", approve)
@@ -78,6 +82,8 @@ pub fn routes() -> Routes {
         .name("auto.claim_invoice")
         .post("/auto/claims/{id}/total-loss", total_loss)
         .name("auto.claim_total_loss")
+        .post("/auto/claims/{id}/charges", charges)
+        .name("auto.claim_charges")
         .post("/auto/claims/{id}/cancel", cancel)
         .name("auto.claim_cancel")
         .post("/auto/claims/{id}/void", void)
@@ -484,13 +490,18 @@ pub(crate) struct ShowPage {
     closed_reason: String,
     total_loss: String,
     withdrawal: String,
+    withdrawal_choice: String,
+    unlinked_job_card: String,
     payer_bill: String,
     customer_invoice: String,
     approvals: Vec<ApprovalRow>,
     estimate_lines: Vec<LineChoice>,
     supplementary_lines: Vec<LineChoice>,
+    charge_lines: Vec<LineChoice>,
     can_police: bool,
     can_survey: bool,
+    can_survey_request: bool,
+    can_charges: bool,
     can_submit: bool,
     can_approve: bool,
     can_reject: bool,
@@ -625,6 +636,16 @@ async fn show(
             .withdrawal_document
             .clone()
             .unwrap_or_else(|| none.clone()),
+        withdrawal_choice: match claim.withdrawal_choice.as_deref() {
+            Some(choice) => text(&lang, &format!("claims.choice.{choice}")),
+            None => none.clone(),
+        },
+        unlinked_job_card: match claim.unlinked_job_card_id {
+            Some(job_id) => JobCard::find(&state.db, job_id)
+                .await?
+                .map_or_else(|| none.clone(), |card| card.number()),
+            None => none.clone(),
+        },
         payer_bill: claim
             .payer_bill_id
             .map_or_else(|| none.clone(), |bill| format!("#{bill}")),
@@ -638,8 +659,17 @@ async fn show(
         supplementary_lines: choices(
             &claims::request_lines(&state.db, claim.id, ApprovalKind::Supplementary).await?,
         ),
+        charge_lines: choices(
+            &claims::request_lines(&state.db, claim.id, ApprovalKind::Charges).await?,
+        ),
         can_police: manage && !status.is_closed(),
         can_survey: manage && status == ClaimStatus::Registered,
+        can_survey_request: manage && !status.is_closed(),
+        can_charges: manage
+            && status == ClaimStatus::TotalLoss
+            && ClaimApproval::pending(&state.db, claim.id, ApprovalKind::Charges)
+                .await?
+                .is_some(),
         can_submit: manage
             && matches!(
                 status,
@@ -680,6 +710,10 @@ pub struct ReasonForm {
     /// The document that goes with it: the customer's written withdrawal.
     #[serde(default)]
     pub document: String,
+    /// What the customer chose when work had started: `continue_privately` or
+    /// `stop`.
+    #[serde(default)]
+    pub choice: String,
 }
 
 /// The form of the police report.
@@ -710,6 +744,17 @@ async fn police_report(
     )
     .await?;
     done(&lang, "claims.police_saved")
+}
+
+/// `POST /auto/claims/{id}/survey-request`.
+async fn survey_request(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    claims::send_survey_request(&state, &user, id).await?;
+    done(&lang, "claims.survey_requested")
 }
 
 /// `POST /auto/claims/{id}/survey`.
@@ -755,6 +800,7 @@ async fn answer_of(
         }
         answer = match line.kind {
             "labour" => answer.labour(line.line_id, amount),
+            "charge" => answer.charge(amount),
             _ => answer.part(line.line_id, amount),
         };
     }
@@ -856,6 +902,21 @@ async fn total_loss(
     done(&lang, "claims.total_loss_declared")
 }
 
+/// `POST /auto/claims/{id}/charges`: the insurer's approval of the charges of
+/// a total loss, with the amount approved for each.
+async fn charges(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    require(&user, permissions::INSURANCE_MANAGE)?;
+    let answer = answer_of(&state, id, ApprovalKind::Charges, &form).await?;
+    claims::approve_charges(&state, &user, id, answer).await?;
+    done(&lang, "claims.charges_approved")
+}
+
 /// `POST /auto/claims/{id}/cancel`.
 async fn cancel(
     State(state): State<AppState>,
@@ -864,8 +925,10 @@ async fn cancel(
     Path(id): Path<i64>,
     Form(form): Form<ReasonForm>,
 ) -> Result<Response> {
-    let document = Some(form.document.as_str()).filter(|d| !d.trim().is_empty());
-    claims::cancel(&state, &user, id, &form.reason, document).await?;
+    let mut request = Withdrawal::new(&form.reason);
+    request.document = Some(form.document.clone()).filter(|d| !d.trim().is_empty());
+    request.choice = Some(form.choice.clone()).filter(|c| !c.trim().is_empty());
+    claims::withdraw(&state, &user, id, request).await?;
     done(&lang, "claims.cancelled")
 }
 

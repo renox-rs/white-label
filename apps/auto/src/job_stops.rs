@@ -219,10 +219,21 @@ pub async fn cancel_pending(db: &Db, job_card_id: i64) -> Result<bool> {
 ///
 /// # Errors
 ///
-/// A 422 in words while the cancel waits.
+/// A 422 in words while the cancel waits, or while the private estimate sent
+/// after a claim was withdrawn is not signed.
 pub async fn ensure_not_pending(db: &Db, job_card_id: i64) -> Result {
     if cancel_pending(db, job_card_id).await? {
         return Err(refused(english("auto.stop.problem.pending_lines", &[])));
+    }
+    // After a claim was withdrawn the customer signs the private estimate
+    // first: no labour or part is recorded until then (`AUT.ACL.15`, AED 0
+    // tolerance, BL-AUT-08).
+    let card = JobCard::find(db, job_card_id).await?;
+    if card.is_some_and(|card| card.private_estimate) {
+        return Err(refused(english(
+            "auto.claims.problem.private_unsigned",
+            &[],
+        )));
     }
     Ok(())
 }
@@ -598,6 +609,7 @@ pub(crate) async fn record_in(
             ("work_done_value", &stop.work_value),
             ("billed_net", &stop.billed),
             ("bill_lowered", &stop.lowered()),
+            ("private_estimate", &false),
         ],
     )
     .await

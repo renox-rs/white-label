@@ -22,6 +22,7 @@ fn entries() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
         .chain(crate::texts_jobs::TEXTS.iter())
         .chain(crate::texts_stops::TEXTS.iter())
         .chain(crate::texts_claims::TEXTS.iter())
+        .chain(crate::texts_claim_stops::TEXTS.iter())
         .chain(crate::texts_fleet::TEXTS.iter())
         .chain(crate::texts_supplier::TEXTS.iter())
         .chain(crate::texts_police::TEXTS.iter())

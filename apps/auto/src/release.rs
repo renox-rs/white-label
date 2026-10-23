@@ -20,6 +20,11 @@
 //!   nothing to pay.
 //! - The storage fee is invoiced at release ([`crate::storage::bill_release`],
 //!   `AUT.RUL.18`, BL-AUT-05).
+//! - After a **total loss** the vehicle leaves on the insurer's written
+//!   instruction and with a signature, paid or not (§7.1 *Release vehicle*,
+//!   BL-AUT-09): [`release_with_instruction`] needs the instruction document,
+//!   the recipient (the insurer or the owner, as the instruction says) and the
+//!   signature, and takes no storage fee of its own (the claim bills storage).
 
 use renox::db::now;
 use renox::prelude::*;
@@ -30,6 +35,7 @@ use crate::db::refused;
 use crate::job_card::{JobCard, JobCardStatus};
 use crate::money_text;
 use crate::permissions;
+use crate::stop::TOTAL_LOSS;
 use crate::texts::english;
 
 /// The vehicle leaves drivable and safe.
@@ -140,13 +146,31 @@ async fn invoice_cleared(state: &AppState, id: i64) -> Result<bool> {
 /// A 403 without `job_cards.advise`; a 422 in words for a job card that is not
 /// declined or cancelled, one released already, a blank recipient, a condition
 /// that is not safe or as is, a release as is without the customer's
-/// signature, or an invoice that is not paid for a customer who is not on
-/// account.
+/// signature, an invoice that is not paid for a customer who is not on
+/// account, or a total loss (which needs [`release_with_instruction`]).
 pub async fn release(
     state: &AppState,
     by: &AuthUser,
     id: i64,
     request: Release,
+) -> Result<JobCard> {
+    release_with_instruction(state, by, id, request, None).await
+}
+
+/// Releases the vehicle of the declined or cancelled job card `id`, with the
+/// insurer's written `instruction` (a document reference) after a total loss.
+///
+/// # Errors
+///
+/// As for [`release`]; for a job card cancelled or declined for a total loss
+/// also a 422 without the instruction or without a signature. The instruction
+/// replaces the payment of the invoices: the vehicle leaves unpaid.
+pub async fn release_with_instruction(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+    request: Release,
+    instruction: Option<&str>,
 ) -> Result<JobCard> {
     if !by.has_permission(permissions::JOB_CARDS_ADVISE) {
         return Err(Error::Forbidden);
@@ -174,11 +198,30 @@ pub async fn release(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_owned);
-    if request.condition == AS_IS && signature.is_none() {
-        return Err(refused(english("auto.release.problem.signature", &[])));
-    }
-    if let Some(problem) = payment_problem(state, &card).await? {
-        return Err(refused(problem));
+    let total_loss = card.closed_code.as_deref() == Some(TOTAL_LOSS);
+    let instruction = instruction
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_owned);
+    if total_loss {
+        // The insurer's written instruction prevails over `AUT.ACL.17`, and the
+        // signature is the receipt of whoever takes the vehicle.
+        if instruction.is_none() {
+            return Err(refused(english("auto.release.problem.instruction", &[])));
+        }
+        if signature.is_none() {
+            return Err(refused(english(
+                "auto.release.problem.total_loss_signature",
+                &[],
+            )));
+        }
+    } else {
+        if request.condition == AS_IS && signature.is_none() {
+            return Err(refused(english("auto.release.problem.signature", &[])));
+        }
+        if let Some(problem) = payment_problem(state, &card).await? {
+            return Err(refused(problem));
+        }
     }
     let stamp = now();
     let claimed = JobCard::query()
@@ -191,6 +234,7 @@ pub async fn release(
                 ("released_to", &Some(recipient)),
                 ("release_condition", &Some(request.condition.clone())),
                 ("release_signature", &signature),
+                ("release_instruction", &instruction),
                 ("released_by", &Some(by.id)),
                 ("updated_at", &stamp),
             ],
@@ -199,7 +243,8 @@ pub async fn release(
     if claimed == 0 {
         return Err(refused(english("auto.release.problem.released", &[])));
     }
-    // The storage fee of the days the vehicle stayed (`AUT.RUL.18`).
+    // The storage fee of the days the vehicle stayed (`AUT.RUL.18`); none after
+    // a total loss, where the claim bills the storage.
     crate::storage::bill_release(state, id).await?;
     JobCard::find_or_404(&state.db, id).await
 }

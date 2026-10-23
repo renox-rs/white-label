@@ -87,6 +87,8 @@ pub struct LabourLine {
     pub approval: LineStatus,
     /// The estimate round that sent it.
     pub approval_id: Option<i64>,
+    /// Who pays it: the customer, or the insurer for a line it approved.
+    pub payer: crate::payer::Payer,
     /// How much of it was done.
     pub work: WorkStatus,
     /// The hours worked so far, in thousandths of an hour.

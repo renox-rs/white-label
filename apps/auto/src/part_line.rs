@@ -65,6 +65,8 @@ pub struct PartLine {
     pub approval: LineStatus,
     /// The estimate round that sent it.
     pub approval_id: Option<i64>,
+    /// Who pays it: the customer, or the insurer for a line it approved.
+    pub payer: crate::payer::Payer,
     /// The inventory location the part was issued from.
     pub store_location_id: Option<i64>,
     /// The quantity handed to the job.

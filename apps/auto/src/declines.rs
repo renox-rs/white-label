@@ -18,7 +18,10 @@
 //! response*. Added work on a job that was approved is not touched (the
 //! reminders go on), a job card funded by an open claim is chased through the
 //! claim, and a job card is declined once (it is terminal). The second branch
-//! of the rule, the private estimate after a claim was cancelled, is BL-AUT-08's.
+//! of the rule is the private estimate sent after a claim was withdrawn
+//! (*continue privately*, BL-AUT-08): unsigned after the same 7 days, the system
+//! cancels the job card with the reason *claim withdrawn* and the work done is
+//! invoiced to the customer ([`crate::claim_withdrawal::cancel_unsigned`]).
 //!
 //! Decisions:
 //!
@@ -48,7 +51,7 @@ use crate::job_card_machine::{DECLINE, DECLINE_SYSTEM, JobInput};
 use crate::job_stops::close_booking;
 use crate::permissions;
 use crate::reasons::ESTIMATE_DECLINED;
-use crate::stop::{self, NO_RESPONSE};
+use crate::stop::{self, NO_RESPONSE, TOTAL_LOSS};
 use crate::texts::english;
 use crate::vehicle::Vehicle;
 
@@ -176,7 +179,8 @@ pub async fn finish(state: &AppState, job_card_id: i64) -> Result<JobCard> {
         )
         .await?;
     let card = JobCard::find_or_404(&state.db, job_card_id).await?;
-    if claimed > 0 {
+    // After a total loss the customer is told through the claim (BL-AUT-09).
+    if claimed > 0 && card.closed_code.as_deref() != Some(TOTAL_LOSS) {
         ask_to_collect(state, &card).await?;
     }
     Ok(card)
@@ -187,6 +191,10 @@ pub async fn finish(state: &AppState, job_card_id: i64) -> Result<JobCard> {
 pub struct Expired {
     /// The job cards the system declined.
     pub declined: Vec<i64>,
+    /// The job cards the system cancelled because the private estimate sent
+    /// after a claim was withdrawn was not signed in time (the second branch of
+    /// the rule, BL-AUT-08).
+    pub cancelled: Vec<i64>,
     /// The job cards a decline was refused for, with why.
     pub failed: Vec<(i64, String)>,
 }
@@ -210,6 +218,17 @@ pub async fn expire_estimates(state: &AppState, at: DateTime) -> Result<Expired>
         let Some(since) = card.awaiting_since else {
             continue;
         };
+        // The second branch: the private estimate sent after a claim was
+        // withdrawn is not signed, which counts as *stop*.
+        if card.private_estimate {
+            if at >= since + Duration::days(EXPIRY_DAYS) {
+                match crate::claim_withdrawal::cancel_unsigned(state, &card).await {
+                    Ok(_) => done.cancelled.push(card.id),
+                    Err(error) => done.failed.push((card.id, error.to_string())),
+                }
+            }
+            continue;
+        }
         if card.work_approved() || at < since + Duration::days(EXPIRY_DAYS) {
             continue;
         }
@@ -289,7 +308,11 @@ pub(crate) fn register(app: &mut Registry) {
         "Decline the job cards whose estimate nobody answered in 7 days and ask the customer to collect the vehicle",
         |_args, state: AppState| async move {
             let done = expire_estimates(&state, now()).await?;
-            println!("{} job cards declined.", done.declined.len());
+            println!(
+                "{} job cards declined, {} cancelled.",
+                done.declined.len(),
+                done.cancelled.len()
+            );
             Ok(())
         },
     );

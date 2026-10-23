@@ -238,6 +238,13 @@ pub struct JobCard {
     /// The customer is on account: the vehicle may be released unpaid
     /// (`AUT.ACL.17`).
     pub on_account: bool,
+    /// The estimate waiting for the customer is the private estimate sent
+    /// after the insurance claim was withdrawn (`AUT.RUL.17`, BL-AUT-08): no
+    /// labour or part is recorded until it is signed.
+    pub private_estimate: bool,
+    /// The insurer's written instruction a vehicle was released on after a
+    /// total loss (BL-AUT-09).
+    pub release_instruction: Option<String>,
     /// When everything that follows the end of the job card was done.
     pub closing_done_at: Option<DateTime>,
     /// When the message asking the customer to collect the vehicle gave up

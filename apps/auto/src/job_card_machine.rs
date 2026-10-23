@@ -5,6 +5,7 @@
 //! |---|---|---|---|---|
 //! | [`START_INSPECTION`] | checked_in | inspecting | `job_cards.work` | `technician_assigned`, `intake_recorded` |
 //! | [`SEND_ESTIMATE`] | inspecting, in_progress | awaiting_approval | `job_cards.advise` | `intake_recorded`, `estimate_priced` |
+//! | [`SEND_PRIVATE_ESTIMATE`] | in_progress | awaiting_approval | system (the claim was withdrawn, BL-AUT-08) | `estimate_priced` |
 //! | [`APPROVE`] / [`APPROVE_SYSTEM`] | awaiting_approval | in_progress | `job_cards.advise` (recorded approval) / system (the customer's link, a claim) | `estimate_pending`, `police_report` (`AUT.ACL.20`, BL-AUT-07) |
 //! | [`DECLINE`] / [`DECLINE_SYSTEM`] | checked_in, inspecting, awaiting_approval | declined | `job_cards.advise` / system (estimate expired) | `nothing_approved`, `nothing_recorded` |
 //! | [`DECLINE_ADDED`] / [`DECLINE_ADDED_SYSTEM`] | awaiting_approval | in_progress | `job_cards.advise` / system (the customer's link) | `work_approved` |
@@ -74,6 +75,10 @@ pub const START_INSPECTION: &str = "start_inspection";
 /// `inspecting, in_progress → awaiting_approval`: the estimate (or added work)
 /// goes to the customer.
 pub const SEND_ESTIMATE: &str = "send_estimate";
+/// `in_progress → awaiting_approval`: the claim was withdrawn and the customer
+/// continues privately, so every line of the job goes to the customer in a
+/// private estimate (BL-AUT-08).
+pub const SEND_PRIVATE_ESTIMATE: &str = "send_private_estimate";
 /// `awaiting_approval → in_progress`: the advisor records the customer's
 /// approval.
 pub const APPROVE: &str = "approve";
@@ -271,6 +276,7 @@ impl StateMachine for JobCard {
             .terminal()
             .transition(start_inspection())
             .transition(send_estimate())
+            .transition(send_private_estimate())
             .transition(approve(APPROVE, false))
             .transition(approve(APPROVE_SYSTEM, true))
             .transition(decline(DECLINE, false))
@@ -400,6 +406,41 @@ fn send_estimate() -> Transition<JobCard> {
         })
 }
 
+/// `send_private_estimate`: the insurance claim was withdrawn and the customer
+/// continues privately. Every line of the job (what is done and what remains)
+/// goes to the customer in a round of its own at the private prices of the
+/// lines; until it is signed nothing is recorded on the job card, and unsigned
+/// after 7 days the system cancels it (`AUT.RUL.17`, BL-AUT-08).
+fn send_private_estimate() -> Transition<JobCard> {
+    Transition::new(SEND_PRIVATE_ESTIMATE)
+        .label("Send the private estimate")
+        .system()
+        .from([JobCardStatus::InProgress])
+        .to(JobCardStatus::AwaitingApproval)
+        .guard("estimate_priced", |_c: &JobCard, ctx| {
+            let ok = input_of(ctx).priced == Some(true);
+            Box::pin(async move { check(ok, "auto.jobs.problem.not_priced") })
+        })
+        .effect(|c: &JobCard, ctx, tx| {
+            let card = c.clone();
+            let input = input_of(ctx);
+            Box::pin(async move {
+                let revision = card.estimate_revision + 1;
+                crate::approval_rounds::open_private(tx, &card, revision, &input).await?;
+                set_job_card(
+                    tx,
+                    card.id,
+                    &[
+                        ("estimate_revision", &revision),
+                        ("awaiting_since", &Some(now())),
+                        ("private_estimate", &true),
+                    ],
+                )
+                .await
+            })
+        })
+}
+
 /// `approve`: the customer's approval is recorded (by the advisor, or by the
 /// customer on the link). The lines of the round are approved, the first
 /// approval is stamped, and a special order the customer approved is agreed.
@@ -446,6 +487,7 @@ fn approve(name: &'static str, system: bool) -> Transition<JobCard> {
                     &[
                         ("first_approved_at", &Some(first)),
                         ("awaiting_since", &none),
+                        ("private_estimate", &false),
                     ],
                 )
                 .await
@@ -498,8 +540,14 @@ fn decline(name: &'static str, system: bool) -> Transition<JobCard> {
                     .code
                     .clone()
                     .unwrap_or_else(|| crate::stop::CUSTOMER_LEFT.to_owned());
-                // The inspection fee agreed at check-in is what is billed.
-                let fee = card.inspection_fee.max(0);
+                // The inspection fee agreed at check-in is what is billed; after
+                // a total loss the claim bills the charges and the job card
+                // bills nothing (BL-AUT-09).
+                let fee = if code == crate::stop::TOTAL_LOSS {
+                    0
+                } else {
+                    card.inspection_fee.max(0)
+                };
                 set_job_card(
                     tx,
                     card.id,
@@ -922,6 +970,11 @@ mod tests {
                 vec!["inspecting", "in_progress"],
                 "awaiting_approval",
             ),
+            (
+                SEND_PRIVATE_ESTIMATE,
+                vec!["in_progress"],
+                "awaiting_approval",
+            ),
             (APPROVE, vec!["awaiting_approval"], "in_progress"),
             (APPROVE_SYSTEM, vec!["awaiting_approval"], "in_progress"),
             (
@@ -954,6 +1007,7 @@ mod tests {
         ];
         assert_eq!(machine.transitions().len(), expected.len());
         let system = [
+            SEND_PRIVATE_ESTIMATE,
             APPROVE_SYSTEM,
             DECLINE_SYSTEM,
             DECLINE_ADDED_SYSTEM,
@@ -990,6 +1044,7 @@ mod tests {
             guards(SEND_ESTIMATE),
             ["intake_recorded", "estimate_priced"]
         );
+        assert_eq!(guards(SEND_PRIVATE_ESTIMATE), ["estimate_priced"]);
         assert_eq!(guards(APPROVE), ["estimate_pending", "police_report"]);
         assert_eq!(
             guards(APPROVE_SYSTEM),

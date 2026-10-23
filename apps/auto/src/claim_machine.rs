@@ -13,9 +13,9 @@
 //! | [`COMPLETE`] | approved | repair_complete | system (job card `pass_qc`) | — |
 //! | [`INVOICE`] | repair_complete, total_loss | invoiced | `invoices.issue` | `charges_approved` (from `total_loss`) |
 //! | [`SETTLE`] | invoiced | settled | system (every invoice paid) | — |
-//! | [`DECLARE_TOTAL_LOSS`] | awaiting_survey .. supplementary_pending | total_loss | `insurance.manage` | `total_loss_notice` (slot) |
-//! | [`CANCEL`] | registered .. supplementary_pending | cancelled | `insurance.manage` | a reason; `written_withdrawal` (slot) |
-//! | [`VOID`] | registered | voided | `insurance.manage` | a reason; `nothing_sent` (slot) |
+//! | [`DECLARE_TOTAL_LOSS`] | awaiting_survey .. supplementary_pending | total_loss | `insurance.manage` | `total_loss_notice` (the insurer's notice attached, BL-AUT-09) |
+//! | [`CANCEL`] | registered .. supplementary_pending | cancelled | `insurance.manage` | a reason; `written_withdrawal` (from `approved` and `supplementary_pending`), `work_choice` (BL-AUT-08) |
+//! | [`VOID`] / [`VOID_APPROVED`] | registered | voided | `insurance.manage` (the kernel's void) | a reason; `nothing_sent` (BL-AUT-10) |
 //!
 //! Decisions:
 //!
@@ -23,25 +23,33 @@
 //!   services ([`crate::claims`]) work out what a guard needs from the
 //!   database (the estimate is priced, the lines the insurer approved add up)
 //!   and pass it in [`ClaimInput`].
-//! - The guards marked *slot* pass for now: they are where the issues of the
-//!   negative flows add their rules (BL-AUT-08
-//!   the written withdrawal of `cancel`, BL-AUT-09 the total-loss notice,
-//!   BL-AUT-10 *nothing sent* of `void`). A slot keeps its name so a test
-//!   names the guard that refused.
-//! - Effects only touch the claim's own rows (the approval rows); the job
-//!   card, the payer bill and the invoices are the service's, after the
-//!   commit.
-//! - `cancel`, `declare_total_loss` and `void` end the claim; what happens to
-//!   the job card (decline, cancel, unlink) is the issues' to add in the
-//!   service.
+//! - The guards of the negative flows read what the service put in the input
+//!   (the documents, the customer's choice, whether work started) or the claim
+//!   itself (what was sent to the insurer): BL-AUT-08 the written withdrawal
+//!   and the choice of `cancel`, BL-AUT-09 the total-loss notice, BL-AUT-10
+//!   *nothing sent* of `void`. A guard keeps its name so a test names the one
+//!   that refused.
+//! - Effects only touch the claim's own rows (the approval rows) and the
+//!   payer of the estimate lines; the job card, the payer bill, the letters
+//!   and the invoices are the service's, after the commit
+//!   ([`crate::claim_withdrawal`], [`crate::claim_total_loss`],
+//!   [`crate::claim_void`]).
+//! - `void` is the kernel's void (`PLT.ACL.09`): the `void` and
+//!   `void_approved` transitions come from `wl_kernel::voids`, with the claim's
+//!   rule on top. Nothing a claim posts needs an approval, so the void runs at
+//!   once.
 
 use renox::chrono::NaiveDate;
 use renox::db::now;
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
+use wl_kernel::SubjectMachine;
+use wl_kernel::voids;
 
-use crate::claim::{ClaimStatus, InsuranceClaim};
+use crate::claim::{
+    CONTINUE_PRIVATELY, ClaimStatus, INSURANCE_CLAIM_SUBJECT_TYPE, InsuranceClaim, STOP,
+};
 use crate::claim_approval::{
     ApprovalKind, ApprovalOutcome, ApprovedLine, ClaimApproval, LINE_KINDS,
 };
@@ -78,8 +86,13 @@ pub const DECLARE_TOTAL_LOSS: &str = "declare_total_loss";
 /// `registered .. supplementary_pending → cancelled`: the customer withdrew
 /// the claim.
 pub const CANCEL: &str = "cancel";
-/// `registered → voided`: registered in error.
-pub const VOID: &str = "void";
+/// `registered → voided`: registered in error (the kernel's void).
+pub const VOID: &str = voids::VOID;
+/// `registered → voided`: the kernel runs it after an approval; a claim posts
+/// nothing, so no approval is asked and it is never run.
+pub const VOID_APPROVED: &str = voids::VOID_APPROVED;
+/// The approval action key of the claim's void.
+pub const VOID_ACTION: &str = "auto.insurance_claim_void";
 
 /// What a run carries to the guards and effects.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -124,6 +137,14 @@ pub struct ClaimInput {
     /// [`SUBMIT_ESTIMATE`], [`APPROVE`]; `AUT.ACL.20`).
     #[serde(default)]
     pub police: Option<PoliceVerdict>,
+    /// What the customer chose when work had started ([`CANCEL`]):
+    /// `continue_privately` or `stop`.
+    #[serde(default)]
+    pub choice: Option<String>,
+    /// Work had started on the job card the claim funds ([`CANCEL`]): labour
+    /// done or part done, or parts issued.
+    #[serde(default)]
+    pub work_started: Option<bool>,
 }
 
 fn input_of(ctx: &TransitionCtx) -> ClaimInput {
@@ -138,13 +159,6 @@ fn check(ok: bool, key: &str) -> std::result::Result<(), String> {
 /// Whether `text` holds something.
 fn given(text: &Option<String>) -> bool {
     text.as_deref().is_some_and(|t| !t.trim().is_empty())
-}
-
-/// A guard slot: it names a rule an issue adds and passes for now.
-fn slot(transition: Transition<InsuranceClaim>, name: &'static str) -> Transition<InsuranceClaim> {
-    transition.guard(name, |_c: &InsuranceClaim, _ctx| {
-        Box::pin(async { Ok::<(), String>(()) })
-    })
 }
 
 /// The guard `police_report` (`AUT.ACL.20`, a legal block): an insurance claim
@@ -176,7 +190,7 @@ impl StateMachine for InsuranceClaim {
             Approved, AwaitingSurvey, Cancelled, EstimateSubmitted, Invoiced, Registered, Rejected,
             RepairComplete, Settled, SupplementaryPending, TotalLoss, Voided,
         };
-        Machine::new()
+        let machine = Machine::new()
             .initial([Registered])
             .state(Registered)
             .tone("neutral")
@@ -217,8 +231,13 @@ impl StateMachine for InsuranceClaim {
             .transition(invoice())
             .transition(settle())
             .transition(declare_total_loss())
-            .transition(cancel())
-            .transition(void())
+            .transition(cancel());
+        // `void` and `void_approved`, the kernel's, with the claim's rule on
+        // top (BL-AUT-10).
+        voids::transitions::<InsuranceClaim, _>(INSURANCE_CLAIM_SUBJECT_TYPE, [Registered])
+            .into_iter()
+            .map(void_rules)
+            .fold(machine, Machine::transition)
     }
 }
 
@@ -322,7 +341,7 @@ fn submit_estimate() -> Transition<InsuranceClaim> {
 }
 
 /// Records the insurer's answer on the request of `kind` waiting for it.
-async fn answer(
+pub(crate) async fn answer(
     tx: &mut renox::db::Transaction,
     claim_id: i64,
     kind: ApprovalKind,
@@ -394,6 +413,7 @@ fn approve() -> Transition<InsuranceClaim> {
                 None,
             )
             .await?;
+            crate::payer::mark_insurer_lines(tx, &input.lines).await?;
             let approved = ClaimApproval::sum(&input.lines);
             let excess = input.excess.unwrap_or(claim.excess);
             set_claim(
@@ -511,6 +531,7 @@ fn approve_supplementary() -> Transition<InsuranceClaim> {
                 None,
             )
             .await?;
+            crate::payer::mark_insurer_lines(tx, &input.lines).await?;
             let approved = claim.approved_amount + ClaimApproval::sum(&input.lines);
             let none: Option<renox::db::DateTime> = None;
             set_claim(
@@ -599,9 +620,11 @@ fn settle() -> Transition<InsuranceClaim> {
         })
 }
 
-/// `declare_total_loss`: the insurer's notice stops the work.
+/// `declare_total_loss`: the insurer's notice stops the work. The notice is
+/// attached (a document reference): without it the declaration is refused
+/// (`[S3]`, BL-AUT-09).
 fn declare_total_loss() -> Transition<InsuranceClaim> {
-    let transition = Transition::new(DECLARE_TOTAL_LOSS)
+    Transition::new(DECLARE_TOTAL_LOSS)
         .label("Declare a total loss")
         .permission(permissions::INSURANCE_MANAGE)
         .from([
@@ -610,27 +633,35 @@ fn declare_total_loss() -> Transition<InsuranceClaim> {
             ClaimStatus::Approved,
             ClaimStatus::SupplementaryPending,
         ])
-        .to(ClaimStatus::TotalLoss);
-    slot(transition, "total_loss_notice").effect(|c: &InsuranceClaim, ctx, tx| {
-        let id = c.id;
-        let notice = input_of(ctx).document;
-        Box::pin(async move {
-            set_claim(
-                tx,
-                id,
-                &[
-                    ("total_loss_at", &Some(now())),
-                    ("total_loss_notice", &notice),
-                ],
-            )
-            .await
+        .to(ClaimStatus::TotalLoss)
+        .guard("total_loss_notice", |_c: &InsuranceClaim, ctx| {
+            let ok = given(&input_of(ctx).document);
+            Box::pin(async move { check(ok, "auto.claims.problem.notice") })
         })
-    })
+        .effect(|c: &InsuranceClaim, ctx, tx| {
+            let id = c.id;
+            let notice = input_of(ctx).document;
+            Box::pin(async move {
+                set_claim(
+                    tx,
+                    id,
+                    &[
+                        ("total_loss_at", &Some(now())),
+                        ("total_loss_notice", &notice),
+                    ],
+                )
+                .await
+            })
+        })
 }
 
-/// `cancel`: the customer withdrew the claim.
+/// `cancel`: the customer withdrew the claim. From `approved` and
+/// `supplementary_pending` the customer's written withdrawal is needed
+/// (`written_withdrawal`), and when work had started on the job card the
+/// customer's choice, *continue privately* or *stop* (`work_choice`); the job
+/// card follows after the commit ([`crate::claim_withdrawal`]).
 fn cancel() -> Transition<InsuranceClaim> {
-    let transition = Transition::new(CANCEL)
+    Transition::new(CANCEL)
         .label("Withdraw the claim")
         .permission(permissions::INSURANCE_MANAGE)
         .from([
@@ -641,51 +672,78 @@ fn cancel() -> Transition<InsuranceClaim> {
             ClaimStatus::SupplementaryPending,
         ])
         .to(ClaimStatus::Cancelled)
-        .reason_required();
-    slot(transition, "written_withdrawal").effect(|c: &InsuranceClaim, ctx, tx| {
-        let id = c.id;
-        let reason = ctx.reason().map(str::to_owned);
-        let document = input_of(ctx).document;
-        Box::pin(async move {
-            set_claim(
-                tx,
-                id,
-                &[
-                    ("closed_reason", &reason),
-                    ("closed_at", &Some(now())),
-                    ("withdrawal_document", &document),
-                ],
-            )
-            .await
+        .reason_required()
+        .guard("written_withdrawal", |c: &InsuranceClaim, ctx| {
+            let late = matches!(
+                c.status,
+                ClaimStatus::Approved | ClaimStatus::SupplementaryPending
+            );
+            let ok = !late || given(&input_of(ctx).document);
+            Box::pin(async move { check(ok, "auto.claims.problem.withdrawal") })
         })
-    })
+        .guard("work_choice", |_c: &InsuranceClaim, ctx| {
+            let input = input_of(ctx);
+            let ok = input.work_started != Some(true)
+                || matches!(input.choice.as_deref(), Some(CONTINUE_PRIVATELY | STOP));
+            Box::pin(async move { check(ok, "auto.claims.problem.choice") })
+        })
+        .effect(|c: &InsuranceClaim, ctx, tx| {
+            let id = c.id;
+            let reason = ctx.reason().map(str::to_owned);
+            let input = input_of(ctx);
+            Box::pin(async move {
+                set_claim(
+                    tx,
+                    id,
+                    &[
+                        ("closed_reason", &reason),
+                        ("closed_at", &Some(now())),
+                        ("withdrawal_document", &input.document),
+                        ("withdrawal_choice", &input.choice),
+                    ],
+                )
+                .await
+            })
+        })
 }
 
-/// `void`: registered in error, before anything was sent to the insurer.
-fn void() -> Transition<InsuranceClaim> {
-    let transition = Transition::new(VOID)
-        .label("Void")
-        .permission(permissions::INSURANCE_MANAGE)
-        .from([ClaimStatus::Registered])
-        .to(ClaimStatus::Voided)
-        .reason_required();
-    slot(transition, "nothing_sent").effect(|c: &InsuranceClaim, ctx, tx| {
-        let id = c.id;
-        let reason = ctx.reason().map(str::to_owned);
-        Box::pin(async move {
-            set_claim(
-                tx,
-                id,
-                &[("closed_reason", &reason), ("closed_at", &Some(now()))],
-            )
-            .await
+/// What `void` adds to the kernel's guards (BL-AUT-10): nothing was sent to
+/// the insurer (`nothing_sent`, `PLT.ACL.09`), and the reason and the closing
+/// time are kept on the claim. The job card is unlinked by the void's reverse
+/// handler ([`crate::claim_void`]).
+fn void_rules(transition: Transition<InsuranceClaim>) -> Transition<InsuranceClaim> {
+    transition
+        .guard("nothing_sent", |c: &InsuranceClaim, _ctx| {
+            let ok = c.sent_to_insurer_at.is_none();
+            Box::pin(async move { check(ok, "auto.claims.problem.sent") })
         })
-    })
+        .effect(|c: &InsuranceClaim, ctx, tx| {
+            let id = c.id;
+            let reason = ctx.reason().map(str::to_owned);
+            Box::pin(async move {
+                set_claim(
+                    tx,
+                    id,
+                    &[("closed_reason", &reason), ("closed_at", &Some(now()))],
+                )
+                .await
+            })
+        })
 }
 
-/// Registers the machine for `rnx state:diagram`.
+/// The claim in the kernel's registry, with its own action key for the void.
+pub fn subject_machine() -> SubjectMachine {
+    SubjectMachine::of::<InsuranceClaim>(INSURANCE_CLAIM_SUBJECT_TYPE)
+        .action(VOID, VOID_ACTION)
+        .build()
+}
+
+/// Registers the machine for `rnx state:diagram`, with the kernel, and the
+/// claim as a voidable record.
 pub(crate) fn register() {
+    subject_machine().register();
     renox::state_machine::register::<InsuranceClaim>();
+    crate::claim_void::register();
 }
 
 #[cfg(test)]
@@ -763,6 +821,7 @@ mod tests {
             ),
             (CANCEL, open, "cancelled"),
             (VOID, vec!["registered"], "voided"),
+            (VOID_APPROVED, vec!["registered"], "voided"),
         ];
         assert_eq!(machine.transitions().len(), expected.len());
         for (name, from, to) in expected {
@@ -771,7 +830,7 @@ mod tests {
             assert_eq!(transition.to_state(), Some(to), "{name}");
             assert_eq!(
                 transition.is_system(),
-                [COMPLETE, SETTLE].contains(&name),
+                [COMPLETE, SETTLE, VOID_APPROVED].contains(&name),
                 "{name}"
             );
         }
@@ -817,8 +876,18 @@ mod tests {
         );
         assert_eq!(guards(INVOICE), ["charges_approved"]);
         assert_eq!(guards(DECLARE_TOTAL_LOSS), ["total_loss_notice"]);
-        assert_eq!(guards(CANCEL), ["written_withdrawal"]);
-        assert_eq!(guards(VOID), ["nothing_sent"]);
+        assert_eq!(guards(CANCEL), ["written_withdrawal", "work_choice"]);
+        for name in [VOID, VOID_APPROVED] {
+            assert_eq!(
+                guards(name),
+                [
+                    "permission_held",
+                    "not_given_to_third_party",
+                    "nothing_sent"
+                ],
+                "{name}"
+            );
+        }
         for name in [REJECT, DECLINE_SUPPLEMENTARY, CANCEL, VOID] {
             assert!(machine.find(name).unwrap().needs_reason(), "{name}");
         }

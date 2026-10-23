@@ -1027,6 +1027,9 @@ pub async fn decline_by_link(
     } else {
         reason.trim().to_owned()
     };
+    if card.private_estimate {
+        return crate::claim_withdrawal::cancel_unsigned(state, &card).await;
+    }
     let input = JobInput {
         on: Some(today()),
         approval_id: Some(round.id),
@@ -1053,6 +1056,11 @@ pub async fn decline_by_link(
 /// state.
 pub async fn decline(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> Result<JobCard> {
     let card = load(state, by, id, permissions::JOB_CARDS_ADVISE).await?;
+    if card.private_estimate {
+        // The customer will not sign the private estimate after the claim was
+        // withdrawn: that is *stop* (`AUT.RUL.17`, BL-AUT-08).
+        return crate::claim_withdrawal::cancel_unsigned(state, &card).await;
+    }
     let mut input = input_for(by);
     let round = pending_round(&state.db, card.id).await?;
     input.approval_id = round.map(|r| r.id);

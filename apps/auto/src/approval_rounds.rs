@@ -83,6 +83,98 @@ pub(crate) async fn open(
     Ok(round)
 }
 
+/// Opens round `revision` of `card` as a **private estimate** (BL-AUT-08): the
+/// insurance claim was withdrawn and the customer continues privately, so every
+/// line still in the estimate goes to the customer, what is done and what
+/// remains. A line the insurer approved stays approved (the work was
+/// authorised and may be done), and is pointed at the new round so the
+/// customer reads it there; a drafted line is sent with it. The round carries
+/// the total of all of them. A round the customer has not answered is
+/// superseded.
+///
+/// # Errors
+///
+/// The database's errors.
+pub(crate) async fn open_private(
+    tx: &mut Transaction,
+    card: &JobCard,
+    revision: i64,
+    input: &JobInput,
+) -> Result<EstimateApproval> {
+    supersede(tx, card.id).await?;
+    let live = |status: LineStatus| matches!(status, LineStatus::Draft | LineStatus::Approved);
+    let labour: Vec<LabourLine> = LabourLine::query()
+        .where_(LabourLine::JOB_CARD_ID.eq(card.id))
+        .get(&mut *tx)
+        .await?
+        .into_iter()
+        .filter(|line| live(line.approval))
+        .collect();
+    let parts: Vec<PartLine> = PartLine::query()
+        .where_(PartLine::JOB_CARD_ID.eq(card.id))
+        .get(&mut *tx)
+        .await?
+        .into_iter()
+        .filter(|line| live(line.approval))
+        .collect();
+    let net_total: i64 = labour.iter().map(LabourLine::price).sum::<i64>()
+        + parts.iter().map(PartLine::price).sum::<i64>();
+    let mut round = EstimateApproval {
+        job_card_id: card.id,
+        revision,
+        token: approval::new_token(),
+        net_total,
+        promised_for: input.promised_for,
+        warranty_days: input
+            .warranty_days
+            .unwrap_or(MIN_WARRANTY_DAYS)
+            .max(MIN_WARRANTY_DAYS),
+        status: ApprovalStatus::Pending,
+        sent_by: input.by,
+        sent_at: Some(now()),
+        ..EstimateApproval::default()
+    };
+    round.insert(&mut *tx).await?;
+    let stamp = now();
+    for line in &labour {
+        let status = if line.approval == LineStatus::Draft {
+            LineStatus::Sent
+        } else {
+            line.approval
+        };
+        LabourLine::query()
+            .where_(LabourLine::ID.eq(line.id))
+            .update(
+                &mut *tx,
+                &[
+                    ("approval", &status),
+                    ("approval_id", &Some(round.id)),
+                    ("updated_at", &stamp),
+                ],
+            )
+            .await?;
+    }
+    for line in &parts {
+        let status = if line.approval == LineStatus::Draft {
+            LineStatus::Sent
+        } else {
+            line.approval
+        };
+        PartLine::query()
+            .where_(PartLine::ID.eq(line.id))
+            .update(
+                &mut *tx,
+                &[
+                    ("approval", &status),
+                    ("approval_id", &Some(round.id)),
+                    ("updated_at", &stamp),
+                ],
+            )
+            .await?;
+    }
+    Ok(round)
+}
+
 /// Supersedes the round of job card `job_card_id` that the customer has not
 /// answered; the lines it sent go back to drafts, so a later round sends them
 /// again.

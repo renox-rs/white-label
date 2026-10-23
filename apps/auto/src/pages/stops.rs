@@ -118,6 +118,9 @@ pub(crate) struct StopView {
     pub can_release: bool,
     /// The conditions a vehicle is released in.
     pub release_options: Vec<[String; 2]>,
+    /// Whether the vehicle leaves on the insurer's written instruction (a
+    /// total loss, BL-AUT-09).
+    pub needs_instruction: bool,
     /// Whether a holder of `job_cards.approve` can say the customer is on
     /// account.
     pub can_on_account: bool,
@@ -285,6 +288,7 @@ pub(crate) fn view_of(
                 ]
             })
             .collect(),
+        needs_instruction: card.closed_code.as_deref() == Some(crate::stop::TOTAL_LOSS),
         can_on_account: user.has_permission(permissions::JOB_CARDS_APPROVE)
             && card.released_at.is_none(),
         on_account: card.on_account,
@@ -440,7 +444,7 @@ async fn cancel(
 }
 
 /// `POST /auto/job-cards/{id}/release`: `released_to`, `condition`,
-/// `signature`.
+/// `signature` and, after a total loss, the insurer's `instruction`.
 async fn release_vehicle(
     State(state): State<AppState>,
     user: AuthUser,
@@ -453,7 +457,8 @@ async fn release_vehicle(
         condition: field(&form, "condition").unwrap_or_default(),
         signature: field(&form, "signature"),
     };
-    release::release(&state, &user, id, request).await?;
+    let instruction = field(&form, "instruction");
+    release::release_with_instruction(&state, &user, id, request, instruction.as_deref()).await?;
     Ok((
         Toast::success(text(&lang, "release.released")),
         renox::HxRefresh,

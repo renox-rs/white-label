@@ -34,7 +34,7 @@
 use renox::chrono::NaiveDate;
 use renox::db::now;
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, TransitionCtx, TransitionError};
+use renox::state_machine::{StateMachine, TransitionCtx, TransitionError, Transitioned};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
     DraftLine, InvoiceDraft, InvoiceId, InvoicePaid, InvoiceStatus, VatCategory, invoicer,
@@ -48,11 +48,13 @@ use wl_kernel::{PartyId, Subject};
 
 use crate::approval::EstimateApproval;
 use crate::billing::{labour_draft_line, part_draft_line};
-use crate::claim::{ClaimStatus, INSURANCE_CLAIM_SUBJECT_TYPE, InsuranceClaim, RepairType};
+use crate::claim::{
+    CONTINUE_PRIVATELY, ClaimStatus, INSURANCE_CLAIM_SUBJECT_TYPE, InsuranceClaim, RepairType, STOP,
+};
 use crate::claim_approval::{ApprovalKind, ApprovalOutcome, ApprovedLine, ClaimApproval};
 use crate::claim_machine::{
     APPROVE, APPROVE_SUPPLEMENTARY, BOOK_SURVEY, CANCEL, COMPLETE, ClaimInput, DECLARE_TOTAL_LOSS,
-    DECLINE_SUPPLEMENTARY, INVOICE, REJECT, REQUEST_SUPPLEMENTARY, SETTLE, SUBMIT_ESTIMATE, VOID,
+    DECLINE_SUPPLEMENTARY, INVOICE, REJECT, REQUEST_SUPPLEMENTARY, SETTLE, SUBMIT_ESTIMATE,
 };
 use crate::claim_split::insurer_share;
 use crate::db::refused;
@@ -62,6 +64,7 @@ use crate::documents::{
 };
 use crate::estimate::Estimate;
 use crate::insurer::Insurer;
+use crate::insurer_mail::{self, SURVEY_TYPE};
 use crate::insurers;
 use crate::job_card::{JobCard, JobCardStatus};
 use crate::job_card_machine::{APPROVE_SYSTEM, DECLINE_ADDED_SYSTEM, JobInput};
@@ -429,7 +432,29 @@ async fn load(
     InsuranceClaim::find_or_404(&state.db, id).await
 }
 
-/// `book_survey`: the surveyor is asked to inspect.
+/// Emails the insurer the request to inspect the vehicle (the surveyor, on site
+/// or from photos). The claim keeps its state: the coordinator may ask first and
+/// book the survey after. Anything queued to the insurer makes the claim no
+/// longer voidable (BL-AUT-10).
+///
+/// # Errors
+///
+/// A 403 without `insurance.manage`; a 422 for a claim that is over.
+pub async fn send_survey_request(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+) -> Result<InsuranceClaim> {
+    let claim = load(state, by, id, permissions::INSURANCE_MANAGE).await?;
+    if claim.status.is_closed() {
+        return Err(refused(english("auto.claims.problem.closed", &[])));
+    }
+    let data = insurer_mail::letter_data(state, &claim).await?;
+    insurer_mail::email_insurer(state, &claim, SURVEY_TYPE, data).await?;
+    InsuranceClaim::find_or_404(&state.db, id).await
+}
+
+/// `book_survey`: the surveyor is asked to inspect, by email too.
 ///
 /// # Errors
 ///
@@ -440,7 +465,10 @@ pub async fn book_survey(state: &AppState, by: &AuthUser, id: i64) -> Result<Ins
     let mut input = input_for(by);
     input.police =
         Some(police_verdict(state, GUARDED_CLAIM_BOOK_SURVEY, claim.id, Some(by.id)).await?);
-    run(state, by, &claim, BOOK_SURVEY, None, input).await
+    let booked = run(state, by, &claim, BOOK_SURVEY, None, input).await?;
+    let data = insurer_mail::letter_data(state, &booked).await?;
+    insurer_mail::email_insurer(state, &booked, SURVEY_TYPE, data).await?;
+    InsuranceClaim::find_or_404(&state.db, id).await
 }
 
 /// The job card of `claim` and the estimate round waiting for an answer.
@@ -539,6 +567,18 @@ impl Answer {
         self.lines.push(ApprovedLine {
             kind: "part".to_owned(),
             line_id,
+            description: String::new(),
+            amount,
+        });
+        self
+    }
+
+    /// Approving `amount` fils of the storage charge of a total loss.
+    #[must_use]
+    pub fn charge(mut self, amount: i64) -> Self {
+        self.lines.push(ApprovedLine {
+            kind: "charge".to_owned(),
+            line_id: 0,
             description: String::new(),
             amount,
         });
@@ -785,6 +825,82 @@ pub async fn approve_supplementary(
     InsuranceClaim::find_or_404(&state.db, id).await
 }
 
+/// Records the insurer's approval of the charges of a total loss: its
+/// reference, the written approval and the amount it approved for each charge
+/// (`AUT.INS.04`, BL-AUT-09). A charge it did not list, or approved for less
+/// than its price, is billed to the customer by `invoice`. The claim keeps its
+/// state: `invoice` runs next.
+///
+/// # Errors
+///
+/// A 403 without `insurance.manage`; a 422 for a claim that is not
+/// `total_loss`, one whose charges were answered already, without the
+/// reference, the written approval or at least one approved charge, for a
+/// charge the claim does not list or an amount above its price.
+pub async fn approve_charges(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+    answer: Answer,
+) -> Result<InsuranceClaim> {
+    let claim = load(state, by, id, permissions::INSURANCE_MANAGE).await?;
+    if claim.status != ClaimStatus::TotalLoss {
+        return Err(refused(english("auto.claims.problem.not_total_loss", &[])));
+    }
+    ClaimApproval::pending(&state.db, claim.id, ApprovalKind::Charges)
+        .await?
+        .ok_or_else(|| refused(english("auto.claims.problem.nothing_asked", &[])))?;
+    let charges = crate::claim_total_loss::charge_lines(&state.db, &claim).await?;
+    let mut resolved: Vec<ApprovedLine> = Vec::new();
+    for line in &answer.lines {
+        let found = charges
+            .iter()
+            .find(|charge| charge.kind == line.kind && charge.line_id == line.line_id)
+            .ok_or_else(|| refused(english("auto.claims.problem.line_unknown", &[])))?;
+        if line.amount > found.price {
+            return Err(refused(english(
+                "auto.claims.problem.line_too_high",
+                &[("line", &found.description)],
+            )));
+        }
+        if resolved
+            .iter()
+            .any(|r| r.kind == line.kind && r.line_id == line.line_id)
+        {
+            return Err(refused(english("auto.claims.problem.line_twice", &[])));
+        }
+        resolved.push(ApprovedLine {
+            description: found.description.clone(),
+            ..line.clone()
+        });
+    }
+    let mut input = input_for(by);
+    input.reference = optional(&Some(answer.reference.clone()));
+    input.document = optional(&Some(answer.document.clone()));
+    input.lines = resolved;
+    if input.reference.is_none() {
+        return Err(refused(english("auto.claims.problem.reference", &[])));
+    }
+    if input.document.is_none() {
+        return Err(refused(english("auto.claims.problem.document", &[])));
+    }
+    if !crate::claim_machine::lines_are_valid(&input.lines) {
+        return Err(refused(english("auto.claims.problem.lines", &[])));
+    }
+    let mut tx = state.db.begin().await?;
+    crate::claim_machine::answer(
+        &mut tx,
+        claim.id,
+        ApprovalKind::Charges,
+        ApprovalOutcome::Approved,
+        &input,
+        None,
+    )
+    .await?;
+    tx.commit().await?;
+    InsuranceClaim::find_or_404(&state.db, id).await
+}
+
 /// `decline_supplementary`: the insurer declined the hidden damage; the added
 /// lines are declined on the job card (the advisor offers them to the customer
 /// as private items on a new round, `AUT.ACL.15`).
@@ -834,12 +950,15 @@ pub async fn decline_supplementary(
 }
 
 /// `declare_total_loss`: the insurer declared the vehicle a total loss. The
-/// notice is kept on the claim; the job card and the charges are the issue's
-/// (BL-AUT-09).
+/// insurer's notice (a document reference) is kept on the claim and must be
+/// given; the job card stops, the charges are listed for the insurer's
+/// approval and the customer is told ([`crate::claim_total_loss::follow`],
+/// BL-AUT-09).
 ///
 /// # Errors
 ///
-/// A 403 without `insurance.manage`; a 422 in another state.
+/// A 403 without `insurance.manage`; a 422 without the notice or in another
+/// state.
 pub async fn declare_total_loss(
     state: &AppState,
     by: &AuthUser,
@@ -852,13 +971,107 @@ pub async fn declare_total_loss(
     run(state, by, &claim, DECLARE_TOTAL_LOSS, None, input).await
 }
 
-/// `cancel`: the customer withdrew the claim; `document` is the written
-/// withdrawal. What happens to the job card is the issue's (BL-AUT-08).
+/// The customer's withdrawal of a claim (BL-AUT-08).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Withdrawal {
+    /// Why: withdrawn by the customer.
+    pub reason: String,
+    /// The customer's written withdrawal (a document reference); needed from
+    /// `approved` and `supplementary_pending`.
+    pub document: Option<String>,
+    /// When work had started: [`CONTINUE_PRIVATELY`] or [`STOP`].
+    pub choice: Option<String>,
+}
+
+impl Withdrawal {
+    /// A withdrawal for `reason`.
+    pub fn new(reason: &str) -> Self {
+        Withdrawal {
+            reason: reason.to_owned(),
+            ..Withdrawal::default()
+        }
+    }
+
+    /// With the customer's written withdrawal `document`.
+    #[must_use]
+    pub fn document(mut self, document: &str) -> Self {
+        self.document = Some(document.to_owned());
+        self
+    }
+
+    /// The customer continues privately.
+    #[must_use]
+    pub fn continue_privately(mut self) -> Self {
+        self.choice = Some(CONTINUE_PRIVATELY.to_owned());
+        self
+    }
+
+    /// The customer stops the job.
+    #[must_use]
+    pub fn stop(mut self) -> Self {
+        self.choice = Some(STOP.to_owned());
+        self
+    }
+}
+
+/// `cancel`: the customer withdrew the claim (BL-AUT-08). The service works out
+/// whether work started on the job card the claim funds and passes the answer
+/// to the guards: the customer's choice is needed then. Once the claim is
+/// cancelled the letter to the insurer and the job card follow
+/// ([`crate::claim_withdrawal::follow`]).
 ///
 /// # Errors
 ///
-/// A 403 without `insurance.manage`; a 422 without a reason or in another
-/// state.
+/// A 403 without `insurance.manage`; a 422 without a reason, from `approved`
+/// or `supplementary_pending` without the written withdrawal, with work
+/// started and no choice, for a choice that is not one of the two, for
+/// *continue privately* on a job card that is neither in progress nor waiting
+/// for the supplementary, or in another state.
+pub async fn withdraw(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+    request: Withdrawal,
+) -> Result<InsuranceClaim> {
+    let claim = load(state, by, id, permissions::INSURANCE_MANAGE).await?;
+    let choice = request
+        .choice
+        .as_deref()
+        .map(str::trim)
+        .filter(|choice| !choice.is_empty())
+        .map(str::to_owned);
+    if let Some(choice) = &choice
+        && choice != CONTINUE_PRIVATELY
+        && choice != STOP
+    {
+        return Err(refused(english("auto.claims.problem.choice_unknown", &[])));
+    }
+    let mut input = input_for(by);
+    input.document = optional(&request.document);
+    input.choice = choice.clone();
+    if let Some(job_id) = claim.job_card_id {
+        let card = JobCard::find_or_404(&state.db, job_id).await?;
+        if !card.status.is_closed() {
+            let estimate = Estimate::load(&state.db, card.id).await?;
+            input.work_started = Some(crate::claim_withdrawal::work_started(&estimate));
+            let sendable = matches!(
+                card.status,
+                JobCardStatus::InProgress | JobCardStatus::AwaitingApproval
+            );
+            if choice.as_deref() == Some(CONTINUE_PRIVATELY) && !sendable {
+                return Err(refused(english("auto.claims.problem.private_state", &[])));
+            }
+        }
+    }
+    run(state, by, &claim, CANCEL, Some(&request.reason), input).await
+}
+
+/// `cancel` without a choice: for a claim whose job card has no work started
+/// (see [`withdraw`]).
+///
+/// # Errors
+///
+/// As for [`withdraw`].
 pub async fn cancel(
     state: &AppState,
     by: &AuthUser,
@@ -866,19 +1079,20 @@ pub async fn cancel(
     reason: &str,
     document: Option<&str>,
 ) -> Result<InsuranceClaim> {
-    let claim = load(state, by, id, permissions::INSURANCE_MANAGE).await?;
-    let mut input = input_for(by);
-    input.document = optional(&document.map(str::to_owned));
-    run(state, by, &claim, CANCEL, Some(reason), input).await
+    let mut request = Withdrawal::new(reason);
+    request.document = document.map(str::to_owned);
+    withdraw(state, by, id, request).await
 }
 
-/// `void`: registered in error. What happens to the job card is the issue's
-/// (BL-AUT-10).
+/// `void`: the claim was registered in error (BL-AUT-10). It is the kernel's
+/// void: refused once anything was sent to the insurer (`nothing_sent`), the
+/// job card is unlinked and its lines are the customer's, and
+/// `RecordVoided` is emitted ([`crate::claim_void`]).
 ///
 /// # Errors
 ///
-/// A 403 without `insurance.manage`; a 422 without a reason or in another
-/// state.
+/// A 403 without `insurance.manage`; a 422 without a reason, once anything was
+/// sent to the insurer, or in another state.
 pub async fn void(
     state: &AppState,
     by: &AuthUser,
@@ -886,7 +1100,16 @@ pub async fn void(
     reason: &str,
 ) -> Result<InsuranceClaim> {
     let claim = load(state, by, id, permissions::INSURANCE_MANAGE).await?;
-    run(state, by, &claim, VOID, Some(reason), input_for(by)).await
+    match wl_kernel::voids::void(state, by, &claim.subject(), reason)
+        .await
+        .map_err(TransitionError::into_error)?
+    {
+        wl_kernel::voids::VoidOutcome::Voided(_) => {}
+        wl_kernel::voids::VoidOutcome::Pending(_) => {
+            return Err(refused(english("auto.stop.problem.approval", &[])));
+        }
+    }
+    InsuranceClaim::find_or_404(&state.db, id).await
 }
 
 /// The job card passed QC (`complete`): the claim funding it is ready for
@@ -941,6 +1164,15 @@ pub struct RequestLine {
 ///
 /// The database's errors.
 pub async fn request_lines(db: &Db, claim_id: i64, kind: ApprovalKind) -> Result<Vec<RequestLine>> {
+    if kind == ApprovalKind::Charges {
+        // The charges of a total loss are read from the job card as they
+        // stand: the labour done, the parts fitted and the storage so far.
+        if ClaimApproval::pending(db, claim_id, kind).await?.is_none() {
+            return Ok(Vec::new());
+        }
+        let claim = InsuranceClaim::find_or_404(db, claim_id).await?;
+        return crate::claim_total_loss::charge_lines(db, &claim).await;
+    }
     let Some(round_id) = ClaimApproval::pending(db, claim_id, kind)
         .await?
         .and_then(|request| request.job_round_id)
@@ -1099,6 +1331,22 @@ pub async fn invoice(state: &AppState, by: &AuthUser, id: i64) -> Result<Insuran
                 lines += 1;
             }
         }
+        if from_total_loss {
+            // The charges the insurer did not approve, or approved for less,
+            // are the customer's.
+            let charges = crate::claim_total_loss::charge_lines(&state.db, &claim).await?;
+            for (charge, rest) in crate::claim_total_loss::unapproved(&charges, &approved) {
+                let description = english(
+                    "auto.total_loss.customer_line",
+                    &[("description", &charge.description)],
+                );
+                draft = draft.line(
+                    DraftLine::new(&description, rest, VatCategory::Standard)
+                        .origin(origin.clone()),
+                );
+                lines += 1;
+            }
+        }
         if lines > 0 {
             let books = invoicer(state);
             if let Some(made) = books.draft(&state.db, draft).await? {
@@ -1194,6 +1442,19 @@ async fn on_money(state: &AppState, source: &Subject) -> Result {
 
 /// Registers the listeners that settle a claim when its invoices are paid.
 pub(crate) fn register_listeners(app: &mut Registry) {
+    // What follows a claim that was withdrawn or declared a total loss: the
+    // job card, the letter, the charges (BL-AUT-08, BL-AUT-09).
+    app.listen(
+        |event: Transitioned<InsuranceClaim>, state: AppState| async move {
+            match event.transition.as_str() {
+                CANCEL => crate::claim_withdrawal::follow(&state, event.key, event.actor_id).await,
+                DECLARE_TOTAL_LOSS => {
+                    crate::claim_total_loss::follow(&state, event.key, event.actor_id).await
+                }
+                _ => Ok(()),
+            }
+        },
+    );
     app.listen(|event: InvoicePaid, state: AppState| async move {
         on_money(&state, &event.source).await
     });

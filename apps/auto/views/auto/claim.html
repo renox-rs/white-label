@@ -17,6 +17,10 @@
         <rx-confirm :id="'claim-survey-' ~ id" :label="tx['claims.survey']" :action="route('auto.claim_survey', id)" method="POST"
                     :title="tx['claims.survey']" :message="tx['claims.survey_message']" :confirm-label="tx['claims.survey']" :cancel-label="tx['button_cancel']" icon="search"/>
       </template>
+      <template rx-if="can_survey_request">
+        <rx-confirm :id="'claim-survey-request-' ~ id" :label="tx['claims.survey_request']" :action="route('auto.claim_survey_request', id)" method="POST"
+                    :title="tx['claims.survey_request']" :message="tx['claims.survey_request_message']" :confirm-label="tx['claims.survey_request']" :cancel-label="tx['button_cancel']" icon="mail"/>
+      </template>
       <template rx-if="can_submit">
         <rx-confirm :id="'claim-submit-' ~ id" :label="tx['claims.submit']" :action="route('auto.claim_submit', id)" method="POST"
                     :title="tx['claims.submit']" :message="tx['claims.submit_message']" :confirm-label="tx['claims.submit']" :cancel-label="tx['button_cancel']" icon="send"/>
@@ -68,11 +72,22 @@
           <rx-input name="document" :label="tx['claims.total_loss_notice']" :hint="tx['claims.document_hint']" :id="'claim-total-loss-document-' ~ id" required/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_charges">
+        <rx-action-sheet :id="'claim-charges-' ~ id" :label="tx['claims.charges_action']" :action="route('auto.claim_charges', id)"
+                         :title="tx['claims.charges_action']" :description="tx['claims.charges_description']" :submit-label="tx['claims.charges_action']" icon="check">
+          <rx-input name="reference" :label="tx['claims.reference']" :hint="tx['claims.reference_hint']" :id="'claim-charges-reference-' ~ id" required/>
+          <rx-input name="document" :label="tx['claims.document']" :hint="tx['claims.document_hint']" :id="'claim-charges-document-' ~ id" required/>
+          <rx-stack rx-for="line in charge_lines">
+            <rx-input :name="line.field" :label="line.description ~ ': ' ~ tx['claims.line_approved']" :hint="tx['claims.line_price'] ~ ': ' ~ line.price" :value="line.value" :id="'claim-charges-' ~ line.field"/>
+          </rx-stack>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_cancel">
         <rx-action-sheet :id="'claim-cancel-' ~ id" :label="tx['claims.cancel']" :action="route('auto.claim_cancel', id)"
                          :title="tx['claims.cancel']" :description="tx['claims.cancel_description']" :submit-label="tx['claims.cancel']" icon="trash">
           <rx-textarea name="reason" :label="tx['claims.reason']" :id="'claim-cancel-reason-' ~ id" required/>
-          <rx-input name="document" :label="tx['claims.withdrawal']" :hint="tx['claims.document_hint']" :id="'claim-cancel-document-' ~ id"/>
+          <rx-input name="document" :label="tx['claims.withdrawal']" :hint="tx['claims.withdrawal_hint']" :id="'claim-cancel-document-' ~ id"/>
+          <rx-select name="choice" :label="tx['claims.choice']" :hint="tx['claims.choice_hint']" :options="[['stop', tx['claims.choice.stop']], ['continue_privately', tx['claims.choice.continue_privately']]]" :selected="'stop'" :id="'claim-cancel-choice-' ~ id"/>
         </rx-action-sheet>
       </template>
       <template rx-if="can_void">
@@ -101,6 +116,8 @@
         <rx-entry :label="tx['claims.rate_card']" :value="rate_card"/>
         <rx-entry :label="tx['claims.total_loss_notice']" :value="total_loss"/>
         <rx-entry :label="tx['claims.withdrawal']" :value="withdrawal"/>
+        <rx-entry :label="tx['claims.choice']" :value="withdrawal_choice"/>
+        <rx-entry :label="tx['claims.unlinked_job_card']" :value="unlinked_job_card"/>
         <rx-entry :label="tx['claims.payer_bill']" :value="payer_bill"/>
         <rx-entry :label="tx['claims.customer_invoice']" :value="customer_invoice"/>
       </rx-infolist>
@@ -110,6 +127,13 @@
           <rx-link-button :href="route('auto.job_card', job_card_id)" :label="tx['claims.open_job_card']" icon="wrench" variant="secondary"/>
         </rx-toolbar>
       </template>
+    </rx-card>
+    <rx-card rx-if="charge_lines" :title="tx['claims.charges_title']">
+      <rx-table :rows="charge_lines" as="row" :key="row.field" :caption="tx['claims.charges_title']">
+        <rx-column :label="tx['claims.charge']">{{ row.description }}</rx-column>
+        <rx-column :label="tx['claims.line_price']" align="num">{{ row.price }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['claims.charges_empty']" icon="receipt"/></rx-slot>
+      </rx-table>
     </rx-card>
     <rx-card :title="tx['claims.requests']">
       <rx-table :rows="approvals" as="row" :key="row.round" :caption="tx['claims.requests']">

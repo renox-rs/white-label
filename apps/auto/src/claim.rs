@@ -17,6 +17,12 @@ use wl_kernel::Subject;
 
 pub use crate::seed::INSURANCE_CLAIM_SUBJECT_TYPE;
 
+/// The customer withdrew the claim and pays the repair: a private estimate is
+/// sent on the same job card.
+pub const CONTINUE_PRIVATELY: &str = "continue_privately";
+/// The customer withdrew the claim and stops the job.
+pub const STOP: &str = "stop";
+
 /// Where a claim stands (08 §7.1 *Insurance repair claim*).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ClaimStatus {
@@ -151,6 +157,13 @@ pub struct InsuranceClaim {
     pub total_loss_notice: Option<String>,
     /// The customer's written withdrawal (document reference).
     pub withdrawal_document: Option<String>,
+    /// What the customer chose when work had started: `continue_privately` or
+    /// `stop` ([`CONTINUE_PRIVATELY`], [`STOP`]).
+    pub withdrawal_choice: Option<String>,
+    /// The job card a claim registered in error was unlinked from.
+    pub unlinked_job_card_id: Option<i64>,
+    /// When the letter to the insurer about the withdrawal was queued.
+    pub letter_sent_at: Option<DateTime>,
     /// Why the claim was rejected, cancelled or voided.
     pub closed_reason: Option<String>,
     /// When it was rejected, cancelled or voided.
