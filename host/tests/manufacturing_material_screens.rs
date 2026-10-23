@@ -233,3 +233,66 @@ async fn a_tracked_material_needs_its_lot_and_only_the_short_part_has_none() {
     );
     assert_eq!(rows[0].unit_cost, 800);
 }
+
+/// BL-MFG-14 *Stock* (#395): the 07 location blocks stock below zero: of 10 kg
+/// at the store a transfer of 15 kg is refused (nothing leaves), 10 kg go.
+#[renox::test]
+async fn a_transfer_that_would_take_a_store_below_zero_is_refused() {
+    let app = boot().await;
+    let f = floor(&app).await;
+    let keeper = person(&app, "Karim", STOREKEEPER, None).await;
+    let mut pigment = wl_inventory::Item::new("PIG", "Pigment", "kg");
+    pigment.save(app.db()).await.unwrap();
+    StockMovement::receive(
+        pigment.id,
+        None,
+        f.store.id,
+        10_000,
+        800,
+        8_000,
+        &wl_kernel::Subject::new("inventory.goods_receipt", 1),
+        None,
+    )
+    .save(app.db())
+    .await
+    .unwrap();
+    let mut other = Location::new("OTHER", "Other store");
+    other.save(app.db()).await.unwrap();
+    let draft = |quantity: i64| {
+        let (app, keeper, from, to, item) = (&app, &keeper, f.store.id, other.id, pigment.id);
+        async move {
+            create_draft(
+                app.db(),
+                Some(keeper.id),
+                NewTransfer {
+                    from_location_id: from,
+                    to_location_id: to,
+                    lines: vec![NewTransferLine::of(item, quantity)],
+                },
+            )
+            .await
+            .unwrap()
+        }
+    };
+
+    let too_much = draft(15_000).await;
+    post(
+        &app,
+        &keeper,
+        &format!("/transfers/{}/send", too_much.id),
+        &[],
+    )
+    .await
+    .assert_status(422);
+    assert_eq!(
+        wl_inventory::balance::on_hand_at(app.db(), pigment.id, f.store.id, None)
+            .await
+            .unwrap(),
+        10_000,
+        "nothing left the store"
+    );
+    let fits = draft(10_000).await;
+    post(&app, &keeper, &format!("/transfers/{}/send", fits.id), &[])
+        .await
+        .assert_ok();
+}

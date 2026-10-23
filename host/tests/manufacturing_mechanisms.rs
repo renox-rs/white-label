@@ -10,17 +10,30 @@
 
 mod support;
 
-use host::roles::{ACCOUNTANT, ADMIN, SALES};
+use host::roles::{ACCOUNTANT, ADMIN, OWNER, SALES};
+use renox::chrono::Datelike;
 use renox::prelude::*;
 use renox::testing::TestApp;
+use wl_invoicing::BillLineDraft;
+use wl_invoicing::bill_submit;
+use wl_invoicing::budget_lines::{self, LineInput, NewBudget};
+use wl_invoicing::credit_notes::By;
+use wl_invoicing::supplier_bill::{self, BillDraft};
+use wl_invoicing::{
+    BudgetCategory, CompanyBudget, DrawingApproval, DrawingStatus, StartChoice, SupplierBill,
+};
 use wl_kernel::PartyId;
+use wl_kernel::approvals;
 use wl_kernel::cheques::{ChequeStatus, RegisterCheque, cheques};
+use wl_kernel::documents::today;
 use wl_kernel::invoicing::VatCategory;
 use wl_payments::Cheque;
 use wl_sales::customer_account::{self, CustomerAccount, Terms};
 use wl_sales::{SalesOrder, SalesOrderStatus};
 
-use support::{company, day, entity, issued_invoice, manufacturing_booted, person};
+use support::{
+    company, count_messages, day, entity, issued_invoice, manufacturing_booted, messages_to, person,
+};
 
 /// A draft order on account of `customer` for 10 panels, entered through the
 /// pages of wl-sales and submitted; the order as stored after the submit.
@@ -206,5 +219,244 @@ async fn a_bounced_cheque_holds_the_account_and_a_third_presentation_is_refused(
     assert_eq!(
         (last.status, last.presentations),
         (ChequeStatus::Bounced, 2)
+    );
+}
+
+// ------------------------------------------------------ budget and drawings
+
+const VARIANCE: &str = "invoicing.budget_variance";
+
+/// A draft budget of EPI for this year with `amount` fils for the category
+/// `code` in the current month, prepared by `by`.
+async fn draft_budget(app: &TestApp, by: &User, code: &str, amount: i64) -> CompanyBudget {
+    let entity = entity(app, "EPI").await;
+    let budget = budget_lines::create(
+        app.state(),
+        NewBudget {
+            legal_entity_id: entity.id,
+            fiscal_year: i64::from(today().year()),
+            name: String::new(),
+            start: StartChoice::Empty,
+            revision_reason: None,
+        },
+        Some(by.id),
+    )
+    .await
+    .expect("the draft is made");
+    let category = BudgetCategory::by_code(app.db(), code)
+        .await
+        .unwrap()
+        .unwrap_or_else(|| panic!("the category {code}"));
+    let month = budget.months()[today().month0() as usize];
+    budget_lines::set_lines(
+        app.db(),
+        budget.id,
+        &[LineInput {
+            category_id: category.id,
+            month,
+            amount,
+            note: None,
+        }],
+    )
+    .await
+    .expect("the line is set");
+    budget
+}
+
+/// Submits the budget as `by` and has `approver` approve it.
+async fn approved_budget(
+    app: &TestApp,
+    by: &User,
+    approver: &User,
+    code: &str,
+    amount: i64,
+) -> CompanyBudget {
+    let budget = draft_budget(app, by, code, amount).await;
+    app.acting_as(by);
+    app.htmx()
+        .post(&format!("/budgets/{}/submit", budget.id), &[])
+        .await
+        .assert_redirect(&format!("/budgets/{}", budget.id));
+    let pending = approvals::pending_for(app.db(), &budget.subject())
+        .await
+        .unwrap();
+    assert_eq!(pending.len(), 1, "one pending request");
+    assert!(
+        approvals::approve(app.state(), pending[0].id, by, "")
+            .await
+            .is_err(),
+        "the preparer cannot approve their own budget"
+    );
+    approvals::approve(app.state(), pending[0].id, approver, "")
+        .await
+        .unwrap()
+        .expect("the approval runs");
+    CompanyBudget::find_or_404(app.db(), budget.id)
+        .await
+        .unwrap()
+}
+
+/// A supplier bill of one line of `price` dirhams coded `cost_code`, created
+/// and submitted by `by`.
+async fn bill(
+    app: &TestApp,
+    by: &User,
+    supplier: &str,
+    number: &str,
+    price: &str,
+    cost_code: &str,
+) -> SupplierBill {
+    app.acting_as(by);
+    app.htmx()
+        .post(
+            "/supplier-bills",
+            &[
+                ("supplier", supplier),
+                ("supplier_invoice_number", number),
+                ("bill_date", day(0).to_string().as_str()),
+                ("currency", "AED"),
+                ("line_1_description", "Charge"),
+                ("line_1_quantity", "1"),
+                ("line_1_unit_price", price),
+                ("line_1_vat", "standard"),
+                ("line_1_cost_code", cost_code),
+            ],
+        )
+        .await
+        .assert_status(303);
+    let bill = SupplierBill::query()
+        .order_by_desc(SupplierBill::ID)
+        .first(app.db())
+        .await
+        .unwrap()
+        .expect("the bill");
+    app.htmx()
+        .post(&format!("/supplier-bills/{}/submit", bill.id), &[])
+        .await
+        .assert_status(303);
+    SupplierBill::find_or_404(app.db(), bill.id).await.unwrap()
+}
+
+async fn approve_bill(app: &TestApp, by: &User, bill: &SupplierBill) {
+    app.acting_as(by);
+    app.htmx()
+        .post(
+            &format!("/supplier-bills/{}/transitions/approve", bill.id),
+            &[("reason", "")],
+        )
+        .await
+        .assert_status(303);
+}
+
+/// `FIN.RUL.24` with the 07 values: the bill that takes the month's actual of
+/// *Rent and utilities* to 100% of its line (approved by the owner, never by
+/// the accountant who prepared it) warns the accountants once; the owner is
+/// not told.
+#[renox::test]
+async fn a_month_reaching_100_percent_of_its_budget_line_warns_the_accountants_once() {
+    let app = manufacturing_booted().await;
+    let amal = person(&app, "Amal", ACCOUNTANT).await;
+    let bilal = person(&app, "Bilal", ACCOUNTANT).await;
+    let owner = person(&app, "Omar", OWNER).await;
+    let vendor = company(&app, "Dubai Utilities LLC").await;
+    let code = wl_parties::Party::find_or_404(app.db(), vendor.0)
+        .await
+        .unwrap()
+        .code;
+    approved_budget(&app, &amal, &owner, "rent_utilities", 500_000).await;
+
+    let first = bill(&app, &amal, &code, "UT-1", "4000", "utilities").await;
+    approve_bill(&app, &bilal, &first).await;
+    assert_eq!(count_messages(&app, VARIANCE).await, 0, "80% does not warn");
+
+    let second = bill(&app, &amal, &code, "UT-2", "1000", "utilities").await;
+    approve_bill(&app, &bilal, &second).await;
+    assert_eq!(messages_to(&app, VARIANCE, &amal).await.len(), 1);
+    assert_eq!(messages_to(&app, VARIANCE, &bilal).await.len(), 1);
+    assert!(messages_to(&app, VARIANCE, &owner).await.is_empty());
+
+    let third = bill(&app, &amal, &code, "UT-3", "300", "utilities").await;
+    approve_bill(&app, &bilal, &third).await;
+    assert_eq!(messages_to(&app, VARIANCE, &amal).await.len(), 1, "once");
+}
+
+/// `FIN.ACL.21` with the 07 values (`drawings_self_approve` off): a bill line
+/// coded *owner drawings* is approved by the owner, never by the accountant
+/// who recorded it; with a sole owner who enters it himself the drawing waits
+/// for a second owner.
+#[renox::test]
+async fn an_owner_drawing_is_never_approved_by_the_person_who_recorded_it() {
+    let app = manufacturing_booted().await;
+    let amal = person(&app, "Amal", ACCOUNTANT).await;
+    let omar = person(&app, "Omar", OWNER).await;
+    let osman = person(&app, "Osman", OWNER).await;
+    let vendor = company(&app, "Villa Decor LLC").await;
+    let code = wl_parties::Party::find_or_404(app.db(), vendor.0)
+        .await
+        .unwrap()
+        .code;
+
+    let drawing = bill(&app, &amal, &code, "VD-1", "2000", "owner_drawings").await;
+    let row = DrawingApproval::for_source(app.db(), &drawing.subject())
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(row.status, DrawingStatus::Requested);
+    let request_id = row.approval_request_id.expect("an approval request");
+    app.acting_as(&amal);
+    app.htmx()
+        .post(
+            &format!("/supplier-bills/{}/transitions/approve", drawing.id),
+            &[("reason", "")],
+        )
+        .await
+        .assert_status(422);
+    assert!(
+        approvals::approve(app.state(), request_id, &amal, "")
+            .await
+            .is_err(),
+        "the requester cannot approve their drawing"
+    );
+    approvals::approve(app.state(), request_id, &omar, "")
+        .await
+        .unwrap()
+        .expect("the approval runs");
+
+    // Omar records one himself: he is not told "approved", he waits for
+    // Osman (no self-approval in the 07 deployment).
+    let epi = entity(&app, "EPI").await;
+    let mut draft = BillDraft::new(vendor, "VD-2", day(0));
+    draft.legal_entity_id = Some(epi.id);
+    draft = draft.line(
+        BillLineDraft::new("Family", 50_000, VatCategory::Exempt).cost_code("owner_drawings"),
+    );
+    let own = supplier_bill::create(app.db(), &draft, Some(omar.id))
+        .await
+        .unwrap();
+    bill_submit::submit(app.state(), By::System(Some(omar.id)), own.id)
+        .await
+        .unwrap();
+    let waiting = DrawingApproval::for_source(app.db(), &own.subject())
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(waiting.status, DrawingStatus::Requested);
+    assert!(!waiting.self_approved);
+    let request = waiting.approval_request_id.expect("a request");
+    assert!(
+        approvals::approve(app.state(), request, &omar, "")
+            .await
+            .is_err()
+    );
+    approvals::approve(app.state(), request, &osman, "")
+        .await
+        .unwrap();
+    let done = DrawingApproval::for_source(app.db(), &own.subject())
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(
+        (done.status, done.approved_by),
+        (DrawingStatus::Approved, Some(osman.id))
     );
 }
