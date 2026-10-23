@@ -1362,7 +1362,10 @@ pub async fn invoice(state: &AppState, by: &AuthUser, id: i64) -> Result<Insuran
             if let Some(made) = books.draft(&state.db, draft).await? {
                 keep_bills(state, claim.id, claim.payer_bill_id, Some(made.0)).await?;
                 customer_invoice = Some(made.0);
-                let _issued = books.issue(state, made, None).await;
+                // The accountant who invoices the claim issues the customer's
+                // part too; where the module issues as the system it is
+                // issued already.
+                let _issued = books.issue(state, made, Some(by)).await;
             }
         }
     }
