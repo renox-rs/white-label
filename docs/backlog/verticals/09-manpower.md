@@ -2594,7 +2594,7 @@ The inbox shows a pending pay account as: *Approve a new pay account*, then the 
 #### Done when
 - [ ] Given a pay account requested by `hr@desertstar.example`, when `md@desertstar.example` opens `/approvals`, then *Waiting for you* shows *Approve a new pay account* with the worker's name, the last 4 digits (never the full number), who requested it and the date, with *Approve* and *Reject*.
 - [ ] Given the holder's name differs from the worker's, then the row shows the explanation.
-- [ ] Given `hr@desertstar.example` who requested it, then the account is in *My requests* as *Waiting for another approver* with no buttons, and a direct `POST .../transitions/approve` by HR answers 422 with the refusal text.
+- [ ] Given `hr@desertstar.example` who requested it (HR does not hold `pay_accounts.approve`), then the account is in *My requests* as *Waiting for another approver* with no buttons, and a direct `POST .../transitions/approve` by HR answers 403; given an approver who asked for the account himself, then his own approve answers 422 with the refusal text.
 - [ ] Given the MD presses *Approve*, then the row leaves the inbox of every approver, the account is *Cooling* and the requester's request is no longer open.
 - [ ] Given *Reject* without a reason, then it is refused in words; with a reason the account is *Rejected* and leaves the inbox.
 - [ ] Given `admin@desertstar.example`, then the same row is listed and can be decided.
