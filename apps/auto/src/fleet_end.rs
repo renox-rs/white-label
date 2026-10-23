@@ -289,7 +289,7 @@ pub async fn after_scheduled(state: &AppState, id: i64) -> Result {
         .termination_reason
         .clone()
         .unwrap_or_else(|| name.to_owned());
-    run_system(state, &contract, name, Some(&reason), input).await?;
+    run_system(state, &contract, name, Some(reason.as_str()), input).await?;
     Ok(())
 }
 

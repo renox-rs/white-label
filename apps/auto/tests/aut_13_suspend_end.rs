@@ -304,3 +304,49 @@ async fn aut_13_end_is_not_offered_to_users() {
     page.assert_ok().assert_see("Suspend");
     assert!(!page.text().contains("/end"), "no end button");
 }
+
+/// The advisor sees the bookings kept for a suspended contract on its page and
+/// confirms one; the page of the fleet account manager says why nothing new is
+/// booked.
+#[renox::test]
+async fn aut_13_the_page_lists_the_kept_bookings_for_the_advisor() {
+    let t = boot().await;
+    bay_and_service(&t).await;
+    let (contract, _van, plan) = active_contract(&t, 59_800).await;
+    let fatima = fatima(&t).await;
+    fleet_services::request_bookings(t.state(), &contract, today())
+        .await
+        .unwrap();
+    fleet_contracts::suspend(t.state(), &fatima, contract.id, "Unpaid invoices")
+        .await
+        .unwrap();
+
+    let sami = t.advisor_user().await;
+    t.app.acting_as(&sami);
+    let path = format!("/auto/fleet/{}", contract.id);
+    t.app
+        .get(&path)
+        .await
+        .assert_ok()
+        .assert_see("Suspended")
+        .assert_see("Unpaid invoices")
+        .assert_see("To confirm or cancel")
+        .assert_see("no new booking is made");
+    t.app
+        .htmx()
+        .post(&format!("/auto/fleet/plans/{}/confirm", plan.id), &[])
+        .await
+        .assert_ok();
+    t.app
+        .get(&path)
+        .await
+        .assert_ok()
+        .assert_see("Confirmed");
+    assert!(
+        FleetService::find_or_404(t.db(), plan.id)
+            .await
+            .unwrap()
+            .booking_confirmed_at
+            .is_some()
+    );
+}

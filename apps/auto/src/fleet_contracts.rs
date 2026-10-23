@@ -626,7 +626,7 @@ pub async fn suspend_by_decision(
         on: Some(today()),
         ..FleetInput::default()
     };
-    run_system(state, &contract, SUSPEND_BY_DECISION, Some(&reason), input).await
+    run_system(state, &contract, SUSPEND_BY_DECISION, Some(reason.as_str()), input).await
 }
 
 /// *Terminate*, the owner's decision in the review of a blocked fleet
@@ -658,7 +658,7 @@ pub async fn terminate_by_decision(
         reason: Some(reason.clone()),
         ..FleetInput::default()
     };
-    run_system(state, &contract, TERMINATE_BY_DECISION, Some(&reason), input).await
+    run_system(state, &contract, TERMINATE_BY_DECISION, Some(reason.as_str()), input).await
 }
 
 /// The daily run's part for the contracts in force (`end`, `flag_renewal`,
