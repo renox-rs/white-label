@@ -313,6 +313,9 @@ pub async fn check_in(state: &AppState, by: &AuthUser, new: NewJobCard) -> Resul
             .link_work_done(state, BookingId(booking), card.subject())
             .await?;
     }
+    // A vehicle under a fleet contract: the job is billed in its monthly
+    // invoice.
+    crate::fleet_billing::attach_job(state, &card).await?;
     JobCard::find_or_404(&state.db, card.id).await
 }
 
@@ -1236,6 +1239,8 @@ pub async fn deliver(
     input.next_service_odometer = delivery.next_service_odometer;
     let delivered = run(state, by, &card, DELIVER, None, input).await?;
     crate::billing::after_deliver(state, &delivered).await?;
+    // The service plan that booked the visit moves on.
+    crate::fleet_services::on_delivered(state, &delivered).await?;
     JobCard::find_or_404(&state.db, id).await
 }
 

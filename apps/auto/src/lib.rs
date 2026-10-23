@@ -12,6 +12,15 @@ pub mod claim_split;
 pub mod claims;
 mod db;
 pub mod estimate;
+pub mod fleet_billing;
+pub mod fleet_contract;
+pub mod fleet_contract_machine;
+pub mod fleet_contracts;
+pub mod fleet_daily;
+pub mod fleet_invoice;
+pub mod fleet_job;
+pub mod fleet_service;
+pub mod fleet_services;
 pub mod insurer;
 pub mod insurers;
 pub mod job_card;
@@ -28,6 +37,7 @@ pub mod reasons;
 pub mod seed;
 mod texts;
 mod texts_claims;
+mod texts_fleet;
 mod texts_jobs;
 mod texts_vehicles;
 pub mod vehicle;
@@ -40,6 +50,10 @@ use renox::prelude::*;
 pub use approval::{ApprovalStatus, EstimateApproval};
 pub use claim::{ClaimStatus, InsuranceClaim, RepairType};
 pub use claim_approval::{ApprovalKind, ApprovalOutcome, ApprovedLine, ClaimApproval};
+pub use fleet_contract::{FleetContract, FleetStatus};
+pub use fleet_invoice::FleetInvoice;
+pub use fleet_job::FleetJob;
+pub use fleet_service::FleetService;
 pub use insurer::Insurer;
 pub use job_card::{JobCard, JobCardStatus};
 pub use labour_line::{LabourLine, LabourPricing, LineStatus, WorkStatus};
@@ -95,6 +109,14 @@ const VIEWS: &[(&str, &str)] = &[
         "auto/insurer.html",
         include_str!("../views/auto/insurer.html"),
     ),
+    (
+        "auto/fleet_contracts.html",
+        include_str!("../views/auto/fleet_contracts.html"),
+    ),
+    (
+        "auto/fleet_contract.html",
+        include_str!("../views/auto/fleet_contract.html"),
+    ),
 ];
 
 /// A whole number with its thousands grouped: `52,000`.
@@ -147,7 +169,9 @@ impl Module for Auto {
             .view_data::<pages::claims::IndexPage>()
             .view_data::<pages::claims::ShowPage>()
             .view_data::<pages::insurers::IndexPage>()
-            .view_data::<pages::insurers::ShowPage>();
+            .view_data::<pages::insurers::ShowPage>()
+            .view_data::<pages::fleet::IndexPage>()
+            .view_data::<pages::fleet::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -165,7 +189,11 @@ impl Module for Auto {
             .model::<LabourOperation>()
             .model::<Insurer>()
             .model::<InsuranceClaim>()
-            .model::<ClaimApproval>();
+            .model::<ClaimApproval>()
+            .model::<FleetContract>()
+            .model::<FleetService>()
+            .model::<FleetJob>()
+            .model::<FleetInvoice>();
         // The job card: the machine, and the job card that the check-in of a
         // workshop booking opens.
         job_card_machine::register();
@@ -174,6 +202,12 @@ impl Module for Auto {
         // when its invoices are paid.
         claim_machine::register();
         claims::register_listeners(app);
+        // The fleet contract: the machine, the daily run (ends, renewals,
+        // the services that fall due, the monthly invoice) and the listener
+        // that frees a service plan when its booking is cancelled.
+        fleet_contract_machine::register();
+        fleet_daily::register(app);
+        fleet_services::register_listeners(app);
         // A bill or a document that names a vehicle or a job card shows its
         // plate or `JOB-00007`, not `auto.vehicle:7`.
         register_labels();
@@ -222,6 +256,14 @@ impl Module for Auto {
         );
         app.nav(
             "app",
+            NavLink::route("auto.fleet_contracts", "nav.fleet_contracts")
+                .icon("calendar-check")
+                .group("nav.app")
+                .order(86)
+                .permission(permissions::FLEET_CONTRACTS_MANAGE),
+        );
+        app.nav(
+            "app",
             NavLink::route("auto.insurers", "nav.insurers")
                 .icon("building-2")
                 .group("nav.app")
@@ -240,6 +282,13 @@ fn register_labels() {
     });
     register_subject_label(job_card::JOB_CARD_SUBJECT_TYPE, |db, id| {
         Box::pin(async move { Ok(JobCard::find(db, id).await?.map(|card| card.number())) })
+    });
+    register_subject_label(fleet_contract::FLEET_CONTRACT_SUBJECT_TYPE, |db, id| {
+        Box::pin(async move {
+            Ok(FleetContract::find(db, id)
+                .await?
+                .map(|contract| contract.number()))
+        })
     });
     register_subject_label(claim::INSURANCE_CLAIM_SUBJECT_TYPE, |db, id| {
         Box::pin(async move {

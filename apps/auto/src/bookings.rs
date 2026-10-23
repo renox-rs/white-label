@@ -74,6 +74,9 @@ pub async fn on_checked_in(state: &AppState, event: &BookingCheckedIn) -> Result
     booking_actions(state)
         .link_work_done(state, BookingId(event.booking.0), card.subject())
         .await?;
+    // A vehicle under a fleet contract: the job is billed in its monthly
+    // invoice.
+    crate::fleet_billing::attach_job(state, &card).await?;
     Ok(Some(JobCard::find_or_404(&state.db, card.id).await?))
 }
 

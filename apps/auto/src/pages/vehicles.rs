@@ -194,7 +194,8 @@ async fn party_options(
 ) -> Result<Json<Vec<renox::select::SelectOption>>> {
     if !(user.has_permission(permissions::VEHICLES_MANAGE)
         || user.has_permission(permissions::JOB_CARDS_ADVISE)
-        || user.has_permission(permissions::INSURANCE_MANAGE))
+        || user.has_permission(permissions::INSURANCE_MANAGE)
+        || user.has_permission(permissions::FLEET_CONTRACTS_MANAGE))
     {
         return Err(Error::Forbidden);
     }

@@ -34,6 +34,9 @@ pub mod money;
 /// The fixtures of the insurance claim tests.
 pub mod claimfx;
 
+/// The fixtures of the fleet contract tests.
+pub mod fleetfx;
+
 /// The stand-ins of the payer bills and the rate cards.
 pub mod payer;
 

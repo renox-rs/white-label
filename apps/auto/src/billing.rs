@@ -140,7 +140,9 @@ pub async fn bill(state: &AppState, job_card_id: i64) -> Result<Option<InvoiceId
     // payer bill and the customer's excess and private items,
     // `AUT.INS.04`); a fleet contract bills it in its monthly invoice
     // (`FIN.USG.01`).
-    if crate::claims::funds_job_card(&state.db, card.id).await? {
+    if crate::claims::funds_job_card(&state.db, card.id).await?
+        || crate::fleet_billing::bills_monthly(&state.db, card.id).await?
+    {
         return Ok(None);
     }
     let estimate = Estimate::load(&state.db, card.id).await?;

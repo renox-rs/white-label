@@ -4,6 +4,7 @@
 //! a signed-in user; each handler checks the permission of its action.
 
 pub mod claims;
+pub mod fleet;
 pub mod insurers;
 pub mod job_cards;
 pub mod labour;
@@ -30,6 +31,7 @@ pub fn routes() -> Routes {
         .merge(labour::routes())
         .merge(claims::routes())
         .merge(insurers::routes())
+        .merge(fleet::routes())
 }
 
 /// The app text `key` (without the `auto.` prefix).

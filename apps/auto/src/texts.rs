@@ -21,6 +21,7 @@ fn entries() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
         .chain(crate::texts_vehicles::TEXTS.iter())
         .chain(crate::texts_jobs::TEXTS.iter())
         .chain(crate::texts_claims::TEXTS.iter())
+        .chain(crate::texts_fleet::TEXTS.iter())
 }
 
 /// The text for `key`: the app's translation when it has one, else the
