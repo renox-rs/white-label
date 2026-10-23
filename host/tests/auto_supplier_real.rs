@@ -13,6 +13,7 @@ use auto::supplier_claims::{self, NewSupplierClaim};
 use auto::{PartLine, SupplierClaim, SupplierClaimStatus};
 use renox::chrono::TimeDelta;
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use support::autofx::{World, approved_job, boot, sent_of, shop};
 use support::company;
 use wl_inventory::movement::StockMovement;
@@ -198,4 +199,205 @@ async fn basma_user(w: &World) -> User {
         .await
         .unwrap()
         .expect("the branch manager exists")
+}
+
+/// The alternator that failed, fitted on the job card, in the workshop store.
+async fn fitted_alternator(w: &World, card: &auto::JobCard) -> (Item, Location) {
+    let workshop = Subject::new("scheduling.location", 1);
+    let mut item = Item::new("ALT-9", "Alternator", "pcs");
+    item.save(w.db()).await.unwrap();
+    let mut store = Location::new("WORKSHOP-1", "Workshop 1").in_scope(&workshop);
+    store.save(w.db()).await.unwrap();
+    let mut received = StockMovement::receive(
+        item.id,
+        None,
+        store.id,
+        1_000,
+        8_000,
+        45_000,
+        &Subject::new("inventory.goods_receipt", 900),
+        None,
+    );
+    received.save(w.db()).await.unwrap();
+    let mut fitted = PartLine {
+        job_card_id: card.id,
+        description: "Alternator".to_owned(),
+        item_code: Some("ALT-9".to_owned()),
+        quantity_milli: 1_000,
+        unit_price: 45_000,
+        approval: auto::LineStatus::Approved,
+        fitted_milli: 1_000,
+        ..PartLine::default()
+    };
+    fitted.save(w.db()).await.unwrap();
+    (item, store)
+}
+
+/// A closed warranty ticket of the job card and the claim raised from it.
+async fn raised(
+    w: &World,
+    s: &support::autofx::Shop,
+    card: &auto::JobCard,
+    supplier: PartyId,
+) -> SupplierClaim {
+    let ticket = task_creator(w.state())
+        .open(
+            w.state(),
+            OpenTicket::new(card.subject(), "warranty", "Alternator failed"),
+        )
+        .await
+        .unwrap()
+        .expect("ticketing is on");
+    task_creator(w.state())
+        .complete(w.state(), ticket.id, "Accepted: replace the alternator")
+        .await
+        .unwrap();
+    supplier_claims::raise(
+        w.state(),
+        &s.pia,
+        NewSupplierClaim::new(
+            ticket.id.0,
+            card.subject(),
+            supplier.0,
+            "Alternator",
+            45_000,
+            today() - TimeDelta::days(100),
+            12,
+            today() - TimeDelta::days(5),
+        )
+        .item("ALT-9", "Bosch"),
+    )
+    .await
+    .unwrap()
+}
+
+/// #407 point 3 through the real chain: the claim's Return to supplier bought on
+/// a purchase order is dispatched, the real supplier bill is approved, the real
+/// debit note is issued and wl-inventory's `SupplierReturnCredited` recovers the
+/// claim by itself. The issued note counts (wl-inventory credits on issue).
+#[renox::test]
+async fn aut_11_real_an_issued_debit_note_recovers_the_claim() {
+    use wl_inventory::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
+    use wl_invoicing::BillLineDraft;
+    use wl_invoicing::credit_notes::By;
+    use wl_invoicing::supplier_bill::{self, BillDraft};
+    use wl_kernel::invoicing::VatCategory;
+
+    let w = boot().await;
+    let s = shop(&w, None).await;
+    let job = approved_job(&w, &s, &[("Panel", 1_000, 10_000)], &[]).await;
+    let supplier: PartyId = company(&w.app, "Gulf Auto Spares").await;
+    let (item, store) = fitted_alternator(&w, &job.card).await;
+    let claim = raised(&w, &s, &job.card, supplier).await;
+
+    // The alternator was bought on this order at AED 450.
+    let mut order = PurchaseOrder::new(supplier, store.id);
+    order.status = PurchaseOrderStatus::Issued;
+    let mut tx = w.db().begin().await.unwrap();
+    order
+        .insert_in_state(&mut tx, PurchaseOrderStatus::Issued, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let mut po_line = PurchaseOrderLine::new(order.id, 1, item.id, 1_000, 45_000);
+    po_line.save(w.db()).await.unwrap();
+    let rts_id = claim.supplier_return_id.expect("a draft return");
+    wl_inventory::supplier_return::SupplierReturnLine::query()
+        .where_(wl_inventory::supplier_return::SupplierReturnLine::SUPPLIER_RETURN_ID.eq(rts_id))
+        .update(w.db(), &[("po_line_id", &Some(po_line.id))])
+        .await
+        .unwrap();
+
+    dispatch(
+        w.state(),
+        &s.pia,
+        rts_id,
+        &CollectionProof::DriverSignature("SIG-1".to_owned()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        SupplierClaim::find_or_404(w.db(), claim.id)
+            .await
+            .unwrap()
+            .status,
+        SupplierClaimStatus::Raised,
+        "dispatched is not credited"
+    );
+
+    let bill_line = BillLineDraft::new("Alternator", 45_000, VatCategory::Standard)
+        .quantity_milli(1_000)
+        .po_line(Subject::new(
+            wl_kernel::inventory::PURCHASE_ORDER_LINE_SUBJECT_TYPE,
+            po_line.id,
+        ));
+    let draft = BillDraft::new(supplier, "SUP-ALT-1", today()).line(bill_line);
+    let bill = supplier_bill::create(w.db(), &draft, None).await.unwrap();
+    wl_invoicing::bill_submit::submit(w.state(), By::System(None), bill.id)
+        .await
+        .unwrap();
+    wl_invoicing::bill_machine::approve(w.state(), By::System(None), bill.id, "")
+        .await
+        .unwrap();
+    let note = wl_invoicing::SupplierDebitNote::query()
+        .first(w.db())
+        .await
+        .unwrap()
+        .expect("the dispatch drafted a debit note");
+
+    wl_invoicing::debit_notes::issue(w.state(), By::System(None), note.id)
+        .await
+        .unwrap();
+
+    let rts = SupplierReturn::find_or_404(w.db(), rts_id).await.unwrap();
+    assert_eq!(rts.status, ReturnStatus::Credited);
+    let after = SupplierClaim::find_or_404(w.db(), claim.id).await.unwrap();
+    assert_eq!(
+        after.status,
+        SupplierClaimStatus::Recovered,
+        "recovered by the debit note, nobody pressed a button"
+    );
+}
+
+/// #407 point 4 on real tickets: the claim raised today is still raised 59 days
+/// later (nothing), 60 days later the purchaser and the branch manager each get
+/// one real task, once; the scheduled task runs the same chase.
+#[renox::test]
+async fn aut_11_real_the_purchaser_and_the_branch_manager_are_chased_at_sixty_days() {
+    let w = boot().await;
+    let s = shop(&w, None).await;
+    let job = approved_job(&w, &s, &[("Panel", 1_000, 10_000)], &[]).await;
+    let supplier: PartyId = company(&w.app, "Gulf Auto Spares").await;
+    let _ = fitted_alternator(&w, &job.card).await;
+    let claim = raised(&w, &s, &job.card, supplier).await;
+
+    assert_eq!(
+        auto::supplier_rules::chase(w.state(), today() + TimeDelta::days(59))
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(tasks(&w, "auto.supplier_chase:").await.is_empty());
+    assert_eq!(
+        auto::supplier_rules::chase(w.state(), today() + TimeDelta::days(60))
+            .await
+            .unwrap(),
+        1
+    );
+    for who in ["purchaser", "manager"] {
+        assert_eq!(
+            tasks(&w, &format!("auto.supplier_chase:{}:{who}", claim.id))
+                .await
+                .len(),
+            1,
+            "{who}"
+        );
+    }
+    assert_eq!(
+        auto::supplier_rules::chase(w.state(), today() + TimeDelta::days(61))
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(tasks(&w, "auto.supplier_chase:").await.len(), 2, "once");
 }
