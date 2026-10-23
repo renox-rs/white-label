@@ -301,17 +301,23 @@ pub(crate) fn register(app: &mut Registry) {
     );
     app.schedule()
         .every_minutes(JOB_EVERY_MINUTES, JOB, |state: AppState| async move {
-            expire_estimates(&state, now()).await.map(|_| ())
+            expire_estimates(&state, now()).await?;
+            crate::job_stops::retry_unfinished(&state, now())
+                .await
+                .map(|_| ())
         });
     app.command(
         JOB,
         "Decline the job cards whose estimate nobody answered in 7 days and ask the customer to collect the vehicle",
         |_args, state: AppState| async move {
             let done = expire_estimates(&state, now()).await?;
+            let retried = crate::job_stops::retry_unfinished(&state, now()).await?;
             println!(
-                "{} job cards declined, {} cancelled.",
+                "{} job cards declined, {} cancelled, {} closings finished, {} still failing.",
                 done.declined.len(),
-                done.cancelled.len()
+                done.cancelled.len(),
+                retried.finished.len(),
+                retried.failed.len()
             );
             Ok(())
         },

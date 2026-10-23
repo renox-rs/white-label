@@ -1067,3 +1067,46 @@ async fn aut_01_the_page_offers_the_cancel_and_shows_how_the_job_stopped() {
     unpaid.assert_status(422);
     assert!(unpaid.text().contains("not paid"), "{}", unpaid.text());
 }
+
+/// The invoice book is down when the cancel commits: the job card stays
+/// `cancelled` with its closing steps open, and the retry run finishes them
+/// once the book is back, once (one invoice, one event).
+#[renox::test]
+async fn aut_01_a_closing_that_failed_is_finished_by_the_retry_run() {
+    let t = boot().await;
+    let jc = jc10(&t).await;
+    let sami = t.advisor().await;
+
+    t.books.fail(true);
+    let _ = job_stops::cancel(t.state(), &sami, jc.card.id, customer_stopped()).await;
+    let card = t.reload(jc.card.id).await;
+    assert_eq!(card.status, JobCardStatus::Cancelled);
+    assert!(card.closing_done_at.is_none(), "the closing did not finish");
+    assert!(t.books.about(&card.subject()).is_empty());
+
+    // Just closed: the retry leaves it to the listener.
+    let early = job_stops::retry_unfinished(t.state(), renox::db::now())
+        .await
+        .unwrap();
+    assert!(early.finished.is_empty() && early.failed.is_empty());
+
+    let later = renox::db::now() + TimeDelta::minutes(job_stops::RETRY_AFTER_MINUTES + 1);
+    let still = job_stops::retry_unfinished(t.state(), later).await.unwrap();
+    assert_eq!(still.failed.len(), 1, "the book is still down");
+    assert!(t.reload(jc.card.id).await.closing_done_at.is_none());
+
+    t.books.fail(false);
+    let done = job_stops::retry_unfinished(t.state(), later).await.unwrap();
+    assert_eq!(done.finished, [jc.card.id]);
+    let card = t.reload(jc.card.id).await;
+    assert!(card.closing_done_at.is_some());
+    assert_eq!(t.books.about(&card.subject()).len(), 1);
+    assert_eq!(t.cancelled.all().len(), 1);
+    let booking = Booking::find_or_404(t.db(), jc.booking.id).await.unwrap();
+    assert_eq!(booking.status, BookingStatus::Cancelled);
+
+    let again = job_stops::retry_unfinished(t.state(), later).await.unwrap();
+    assert!(again.finished.is_empty());
+    assert_eq!(t.books.about(&card.subject()).len(), 1);
+    assert_eq!(t.cancelled.all().len(), 1);
+}

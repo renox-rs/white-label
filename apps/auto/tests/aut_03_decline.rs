@@ -359,3 +359,42 @@ async fn aut_03_a_collect_message_that_gives_up_is_shown_to_the_advisor() {
         .assert_ok()
         .assert_see("message asking the customer to collect the vehicle was not delivered");
 }
+
+/// The invoice book is down when the decline commits: the card stays
+/// `declined`, and the retry run bills the fee, closes the booking and asks the
+/// customer to collect once the book is back.
+#[renox::test]
+async fn aut_03_a_decline_that_failed_to_finish_is_finished_by_the_retry_run() {
+    let t = boot().await;
+    let (card, booking) = waiting(&t, 15_000, true).await;
+    let entered = at(day(-10), 10, 0);
+    entered_at(&t, &card, entered).await;
+
+    t.books.fail(true);
+    declines::expire_estimates(t.state(), entered + TimeDelta::days(7))
+        .await
+        .unwrap();
+    let declined = t.reload(card.id).await;
+    assert_eq!(declined.status, JobCardStatus::Declined);
+    assert!(declined.closing_done_at.is_none());
+    assert!(t.messages.of_type(COLLECT_TYPE).is_empty());
+
+    t.books.fail(false);
+    let later = renox::db::now() + TimeDelta::minutes(auto::job_stops::RETRY_AFTER_MINUTES + 1);
+    let done = auto::job_stops::retry_unfinished(t.state(), later)
+        .await
+        .unwrap();
+    assert_eq!(done.finished, [card.id]);
+    let declined = t.reload(card.id).await;
+    assert!(declined.closing_done_at.is_some());
+    assert_eq!(t.books.about(&card.subject()).len(), 1);
+    assert_eq!(t.messages.of_type(COLLECT_TYPE).len(), 1);
+    let booking = Booking::find_or_404(t.db(), booking.id).await.unwrap();
+    assert_eq!(booking.status, BookingStatus::Cancelled);
+
+    auto::job_stops::retry_unfinished(t.state(), later)
+        .await
+        .unwrap();
+    assert_eq!(t.books.about(&card.subject()).len(), 1);
+    assert_eq!(t.messages.of_type(COLLECT_TYPE).len(), 1);
+}

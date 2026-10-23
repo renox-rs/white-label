@@ -192,9 +192,15 @@ impl Invoiced {
 pub struct Books {
     invoices: Arc<Mutex<Vec<Invoiced>>>,
     payments: Arc<Mutex<Vec<(i64, i64)>>>,
+    failing: Arc<Mutex<bool>>,
 }
 
 impl Books {
+    /// Makes every further draft fail (or work again).
+    pub fn fail(&self, failing: bool) {
+        *self.failing.lock().unwrap() = failing;
+    }
+
     /// `amount` fils were paid on invoice `id`.
     pub fn pay(&self, id: i64, amount: i64) {
         self.payments.lock().unwrap().push((id, amount));
@@ -231,6 +237,14 @@ impl Invoicer for Books {
         _db: &'a Db,
         draft: InvoiceDraft,
     ) -> InvoiceFuture<'a, Option<InvoiceId>> {
+        if *self.failing.lock().unwrap() {
+            return Box::pin(async {
+                Err(Error::Status(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "the invoice book is down".to_owned(),
+                ))
+            });
+        }
         let mut all = self.invoices.lock().unwrap();
         let id = 100 + i64::try_from(all.len()).unwrap();
         all.push(Invoiced {

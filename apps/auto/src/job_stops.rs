@@ -38,7 +38,8 @@
 //! - Payment of the invoice and the release of the vehicle follow in
 //!   [`crate::release`].
 
-use renox::db::{Transaction, now};
+use renox::chrono::Duration;
+use renox::db::{DateTime, Transaction, now};
 use renox::prelude::*;
 use renox::state_machine::{Outcome, StateMachine, TransitionError, Transitioned};
 use serde::{Deserialize, Serialize};
@@ -778,6 +779,58 @@ pub async fn finish(state: &AppState, job_card_id: i64) -> Result<JobCard> {
                 booking: done.booking_id,
             })
             .await?;
+    }
+    Ok(done)
+}
+
+/// How long after its last change a closed job card waits before the retry
+/// takes it up, so the retry does not race the listener that just committed it.
+pub const RETRY_AFTER_MINUTES: i64 = 5;
+
+/// What the retry did.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Retried {
+    /// The job cards whose closing steps ran to the end now.
+    pub finished: Vec<i64>,
+    /// The job cards a step failed for again, with why; the next run tries them.
+    pub failed: Vec<(i64, String)>,
+}
+
+/// Runs the closing steps again for every declined or cancelled job card whose
+/// steps did not run to the end (`closing_done_at` empty) and that has been
+/// closed for [`RETRY_AFTER_MINUTES`] or more at `at`. [`finish`] and
+/// [`crate::declines::finish`] do each step once, so a step done before is not
+/// done twice. Without this a failed invoice, stock or booking step would leave
+/// the card closed with nothing following it.
+///
+/// # Errors
+///
+/// The database's errors; a card whose steps fail again is in
+/// [`Retried::failed`].
+pub async fn retry_unfinished(state: &AppState, at: DateTime) -> Result<Retried> {
+    let mut done = Retried::default();
+    let cards = JobCard::query()
+        .where_(JobCard::CLOSING_DONE_AT.is_null())
+        .where_(JobCard::STATUS.is_in([JobCardStatus::Cancelled, JobCardStatus::Declined]))
+        .order_by(JobCard::ID)
+        .get(&state.db)
+        .await?;
+    for card in cards {
+        if card
+            .updated_at
+            .is_some_and(|changed| changed + Duration::minutes(RETRY_AFTER_MINUTES) > at)
+        {
+            continue;
+        }
+        let result = if card.status == JobCardStatus::Cancelled {
+            finish(state, card.id).await
+        } else {
+            crate::declines::finish(state, card.id).await
+        };
+        match result {
+            Ok(_) => done.finished.push(card.id),
+            Err(error) => done.failed.push((card.id, error.to_string())),
+        }
     }
     Ok(done)
 }
