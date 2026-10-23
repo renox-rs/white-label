@@ -9,7 +9,9 @@
 //! | [`FLAG_RENEWAL`] | active | renewal_due | system | `end_within_window` |
 //! | [`RENEW`] | renewal_due | active | `fleet_contracts.manage` | `new_end_date`, `rates_set` |
 //! | [`END`] | active, suspended, renewal_due | ended | system (daily job) | `end_date_passed` |
-//! | [`TERMINATE`] / [`TERMINATE_SYSTEM`] | active, suspended, renewal_due | ended | `fleet_contracts.manage` / system (daily job) | a reason; `termination_dates`, `owner_approval` (slot) |
+//! | [`TERMINATE`] / [`TERMINATE_APPROVED`] | active, suspended, renewal_due | ended | `fleet_contracts.manage`, approved by the owner (`PLT.APR.01`) / the kernel after the approval | a reason; `termination_dates`, `not_scheduled`, `owner_approval` |
+//! | [`SCHEDULE_TERMINATION`] and its two twins by state, each with an `_approved` run | active / suspended / renewal_due | the same state | as above | as above |
+//! | [`TERMINATE_SYSTEM`] | active, suspended, renewal_due | ended | system (daily job, after the effective date) | a reason; `termination_dates`, `owner_approval` (the termination is scheduled) |
 //!
 //! Decisions:
 //!
@@ -23,22 +25,43 @@
 //! - `end` and `terminate` are declared with the effects of the state change
 //!   only (when it ended, the termination recorded); what follows an end -
 //!   future bookings cancelled, the last invoice drafted, the fleet contact
-//!   told, open job cards finished - is added by BL-AUT-13 (`end`) and
-//!   BL-AUT-12 (`terminate`) in the service, after the commit. `terminate` is
-//!   declared twice, for a user and for the system (the daily job runs it on
-//!   the first day after the effective date); the guard slot `owner_approval`
-//!   passes for now and is where BL-AUT-12 adds the owner's approval
-//!   (`PLT.APR.01`, not the requester).
+//!   told, open job cards finished - is [`crate::fleet_end`]'s, after the
+//!   commit (BL-AUT-13 for `end`, BL-AUT-12 for a termination).
+//! - **Termination is the owner's approval** (`PLT.APR.01`, the action
+//!   [`TERMINATE_ACTION`], BL-AUT-12): the manager's request is deferred by the
+//!   kernel as a request that a holder of `fleet_contracts.approve` other than
+//!   the requester decides, and the contract keeps its state until then. At
+//!   the approval the kernel runs `<request>_approved` with the input the
+//!   request kept. A transition has one end state, and 08 says the contract
+//!   *keeps its state* when the effective date is not before today (the daily
+//!   job ends it on the first run after that day) and *ends at the approval*
+//!   when it is: so the service picks the request by the effective date at the
+//!   time of the request - [`TERMINATE`] (ends at the approval) for a date
+//!   before today, [`SCHEDULE_TERMINATION`] (records the termination and marks
+//!   it *scheduled*, per state because a transition keeps one state) otherwise
+//!   - and, when a scheduled termination is approved after its effective date
+//!   passed, the approval's listener runs [`TERMINATE_SYSTEM`] at once.
+//!   `terminate_system` is the daily job's run on the first day after the
+//!   effective date; its guard `owner_approval` asks that the termination was
+//!   approved (it is scheduled).
+//! - The guard `owner_approval` of the user's run asks that the service found
+//!   the approval policy in force, so a policy taken away cannot let a
+//!   termination through unapproved; the approved run's asks that the request
+//!   names who asked.
 //! - A suspended contract keeps its vehicles and its job cards; new bookings
-//!   are not requested while it is suspended ([`crate::fleet_services`]).
+//!   are not requested while it is suspended ([`crate::fleet_services`]) and a
+//!   new booking for its vehicles is refused ([`crate::fleet_gate`]).
 
 use renox::chrono::NaiveDate;
 use renox::db::now;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 
+use wl_kernel::SubjectMachine;
+use wl_kernel::approvals::{self, PolicyDefault};
+
 use crate::db::set_fleet_contract;
-use crate::fleet_contract::{FleetContract, FleetStatus};
+use crate::fleet_contract::{FLEET_CONTRACT_SUBJECT_TYPE, FleetContract, FleetStatus};
 use crate::permissions;
 use crate::texts::english;
 
@@ -56,9 +79,31 @@ pub const RENEW: &str = "renew";
 pub const END: &str = "end";
 /// `active, suspended, renewal_due → ended`: terminated early, by a user.
 pub const TERMINATE: &str = "terminate";
+/// `active, suspended, renewal_due → ended`: the kernel runs it after the owner
+/// approved a termination whose effective date was before the day of the
+/// request.
+pub const TERMINATE_APPROVED: &str = "terminate_approved";
+/// `active → active`: a termination is requested; at the owner's approval it
+/// is recorded and the contract is marked *termination scheduled*.
+pub const SCHEDULE_TERMINATION: &str = "schedule_termination";
+/// `suspended → suspended`: as [`SCHEDULE_TERMINATION`].
+pub const SCHEDULE_TERMINATION_SUSPENDED: &str = "schedule_termination_suspended";
+/// `renewal_due → renewal_due`: as [`SCHEDULE_TERMINATION`].
+pub const SCHEDULE_TERMINATION_RENEWAL: &str = "schedule_termination_renewal_due";
+/// The kernel's run after the owner approved [`SCHEDULE_TERMINATION`].
+pub const SCHEDULE_TERMINATION_APPROVED: &str = "schedule_termination_approved";
+/// The kernel's run after the owner approved [`SCHEDULE_TERMINATION_SUSPENDED`].
+pub const SCHEDULE_TERMINATION_SUSPENDED_APPROVED: &str =
+    "schedule_termination_suspended_approved";
+/// The kernel's run after the owner approved [`SCHEDULE_TERMINATION_RENEWAL`].
+pub const SCHEDULE_TERMINATION_RENEWAL_APPROVED: &str =
+    "schedule_termination_renewal_due_approved";
 /// `active, suspended, renewal_due → ended`: terminated early, by the daily
 /// job on the first day after the effective date.
 pub const TERMINATE_SYSTEM: &str = "terminate_system";
+/// The approval action of a termination (`PLT.APR.01`, BL-AUT-12): the owner
+/// decides, whichever of the requests was made.
+pub const TERMINATE_ACTION: &str = "auto.fleet_terminate";
 
 /// What a run carries to the guards and effects.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,6 +135,16 @@ pub struct FleetInput {
     /// The last day of service ([`TERMINATE`]).
     #[serde(default)]
     pub effective_date: Option<NaiveDate>,
+    /// Why the contract is terminated: the kernel hands it to the approved run.
+    #[serde(default)]
+    pub reason: Option<String>,
+    /// The fleet asked for the early termination fee to be waived; the owner's
+    /// approval waives it ([`TERMINATE`]).
+    #[serde(default)]
+    pub waive_fee: bool,
+    /// The service found the approval policy of the termination in force.
+    #[serde(default)]
+    pub approval_ready: bool,
 }
 
 fn input_of(ctx: &TransitionCtx) -> FleetInput {
@@ -99,13 +154,6 @@ fn input_of(ctx: &TransitionCtx) -> FleetInput {
 /// `Ok` when `ok`, else the English text `key`.
 fn check(ok: bool, key: &str) -> std::result::Result<(), String> {
     if ok { Ok(()) } else { Err(english(key, &[])) }
-}
-
-/// A guard slot: it names a rule an issue adds and passes for now.
-fn slot(transition: Transition<FleetContract>, name: &'static str) -> Transition<FleetContract> {
-    transition.guard(name, |_c: &FleetContract, _ctx| {
-        Box::pin(async { Ok::<(), String>(()) })
-    })
 }
 
 /// The labour rate is agreed (`AUT.FLT.01`).
@@ -163,9 +211,74 @@ impl StateMachine for FleetContract {
             .transition(flag_renewal())
             .transition(renew())
             .transition(end())
-            .transition(terminate(TERMINATE, false))
-            .transition(terminate(TERMINATE_SYSTEM, true))
+            .transition(termination(TERMINATE, &IN_FORCE, FleetStatus::Ended, Run::User))
+            .transition(termination(
+                TERMINATE_APPROVED,
+                &IN_FORCE,
+                FleetStatus::Ended,
+                Run::Approved,
+            ))
+            .transition(termination(
+                SCHEDULE_TERMINATION,
+                &[Active],
+                Active,
+                Run::User,
+            ))
+            .transition(termination(
+                SCHEDULE_TERMINATION_APPROVED,
+                &[Active],
+                Active,
+                Run::Approved,
+            ))
+            .transition(termination(
+                SCHEDULE_TERMINATION_SUSPENDED,
+                &[Suspended],
+                Suspended,
+                Run::User,
+            ))
+            .transition(termination(
+                SCHEDULE_TERMINATION_SUSPENDED_APPROVED,
+                &[Suspended],
+                Suspended,
+                Run::Approved,
+            ))
+            .transition(termination(
+                SCHEDULE_TERMINATION_RENEWAL,
+                &[RenewalDue],
+                RenewalDue,
+                Run::User,
+            ))
+            .transition(termination(
+                SCHEDULE_TERMINATION_RENEWAL_APPROVED,
+                &[RenewalDue],
+                RenewalDue,
+                Run::Approved,
+            ))
+            .transition(termination(
+                TERMINATE_SYSTEM,
+                &IN_FORCE,
+                FleetStatus::Ended,
+                Run::System,
+            ))
     }
+}
+
+/// The states in which a contract is in force.
+const IN_FORCE: [FleetStatus; 3] = [
+    FleetStatus::Active,
+    FleetStatus::Suspended,
+    FleetStatus::RenewalDue,
+];
+
+/// Who runs a termination transition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Run {
+    /// The fleet account manager; the kernel defers it for the owner.
+    User,
+    /// The kernel, after the owner approved.
+    Approved,
+    /// The daily job, after the effective date.
+    System,
 }
 
 /// `activate`: vehicles, rates and the schedule are set and the signed
@@ -320,49 +433,124 @@ fn end() -> Transition<FleetContract> {
         })
 }
 
-/// `terminate`: the contract ends early with a reason, a notice date and an
-/// effective date (the last day of service).
-fn terminate(name: &'static str, system: bool) -> Transition<FleetContract> {
+/// A termination: the contract ends early with a reason, a notice date and an
+/// effective date (the last day of service), or, for the requests that keep
+/// the state, is recorded and marked *termination scheduled*.
+fn termination(
+    name: &'static str,
+    from: &[FleetStatus],
+    to: FleetStatus,
+    who: Run,
+) -> Transition<FleetContract> {
+    let ends = to == FleetStatus::Ended;
+    let label = match who {
+        Run::User if ends => "Terminate",
+        Run::User => "Request termination",
+        Run::Approved => "Terminate (approved)",
+        Run::System => "Terminate (effective date passed)",
+    };
     let transition = Transition::new(name)
-        .label("Terminate")
-        .from([
-            FleetStatus::Active,
-            FleetStatus::Suspended,
-            FleetStatus::RenewalDue,
-        ])
-        .to(FleetStatus::Ended)
+        .label(label)
+        .from(from.iter().copied())
+        .to(to)
         .reason_required();
-    let transition = if system {
-        transition.system()
-    } else {
+    let transition = if who == Run::User {
         transition.permission(permissions::FLEET_CONTRACTS_MANAGE)
+    } else {
+        transition.system()
     };
     let transition = with_termination_dates(transition);
-    slot(transition, "owner_approval").effect(|c: &FleetContract, ctx, tx| {
-        let id = c.id;
-        let input = input_of(ctx);
-        let reason = ctx.reason().map(str::to_owned);
-        Box::pin(async move {
-            set_fleet_contract(
-                tx,
-                id,
-                &[
-                    ("termination_reason", &reason),
-                    ("notice_date", &input.notice_date),
-                    ("effective_date", &input.effective_date),
-                    ("termination_scheduled", &false),
-                    ("termination_requested_by", &input.by),
-                    ("ended_at", &Some(now())),
-                ],
-            )
-            .await
+    let transition = if who == Run::System {
+        transition
+    } else {
+        transition.guard("not_scheduled", |c: &FleetContract, _ctx| {
+            let ok = !c.termination_scheduled;
+            Box::pin(async move { check(ok, "auto.fleet.problem.already_scheduled") })
         })
-    })
+    };
+    transition
+        .guard("owner_approval", move |c: &FleetContract, ctx| {
+            let input = input_of(ctx);
+            let ok = match who {
+                Run::User => input.approval_ready,
+                Run::Approved => input.by.is_some(),
+                Run::System => c.termination_scheduled,
+            };
+            Box::pin(async move { check(ok, "auto.fleet.problem.approval") })
+        })
+        .effect(move |c: &FleetContract, ctx, tx| {
+            let id = c.id;
+            let input = input_of(ctx);
+            let reason = ctx.reason().map(str::to_owned);
+            Box::pin(async move {
+                if who != Run::System {
+                    let approved_at = (who == Run::Approved).then(now);
+                    set_fleet_contract(
+                        tx,
+                        id,
+                        &[
+                            ("termination_reason", &reason),
+                            ("notice_date", &input.notice_date),
+                            ("effective_date", &input.effective_date),
+                            ("termination_scheduled", &!ends),
+                            ("termination_requested_by", &input.by),
+                            ("termination_fee_waived", &input.waive_fee),
+                            ("termination_approved_at", &approved_at),
+                        ],
+                    )
+                    .await?;
+                }
+                if ends {
+                    set_fleet_contract(
+                        tx,
+                        id,
+                        &[("termination_scheduled", &false), ("ended_at", &Some(now()))],
+                    )
+                    .await?;
+                }
+                Ok(())
+            })
+        })
+}
+
+/// The default approval policy of a termination (`PLT.APR.01`, BL-AUT-12): one
+/// step by a holder of `fleet_contracts.approve` (the owner), never the fleet
+/// account manager who asked. The decision also waives the early termination
+/// fee when the request asked for it.
+pub fn terminate_policy() -> PolicyDefault {
+    PolicyDefault::new(TERMINATE_ACTION).step_permission(permissions::FLEET_CONTRACTS_APPROVE)
+}
+
+/// The names of the requests that keep the state, by the state they are made
+/// in, with the run the kernel makes after the approval.
+pub fn schedule_request(status: FleetStatus) -> Option<&'static str> {
+    match status {
+        FleetStatus::Active => Some(SCHEDULE_TERMINATION),
+        FleetStatus::Suspended => Some(SCHEDULE_TERMINATION_SUSPENDED),
+        FleetStatus::RenewalDue => Some(SCHEDULE_TERMINATION_RENEWAL),
+        FleetStatus::Draft | FleetStatus::Ended => None,
+    }
+}
+
+/// The fleet contract in the kernel's registry, so the approvals can run the
+/// `_approved` transitions after the approval.
+pub fn subject_machine() -> SubjectMachine {
+    SubjectMachine::of::<FleetContract>(FLEET_CONTRACT_SUBJECT_TYPE)
+        .action(TERMINATE, TERMINATE_ACTION)
+        .action(SCHEDULE_TERMINATION, TERMINATE_ACTION)
+        .action(SCHEDULE_TERMINATION_SUSPENDED, TERMINATE_ACTION)
+        .action(SCHEDULE_TERMINATION_RENEWAL, TERMINATE_ACTION)
+        .build()
 }
 
 /// Registers the machine for `rnx state:diagram`.
 pub(crate) fn register() {
+    subject_machine().register();
     renox::state_machine::register::<FleetContract>();
+    terminate_policy().register();
+    approvals::register_subject_link(FLEET_CONTRACT_SUBJECT_TYPE, |id| {
+        format!("/auto/fleet/{id}")
+    });
 }
 
 #[cfg(test)]
@@ -396,10 +584,37 @@ mod tests {
             (RENEW, vec!["renewal_due"], "active"),
             (END, in_force.clone(), "ended"),
             (TERMINATE, in_force.clone(), "ended"),
+            (TERMINATE_APPROVED, in_force.clone(), "ended"),
+            (SCHEDULE_TERMINATION, vec!["active"], "active"),
+            (SCHEDULE_TERMINATION_APPROVED, vec!["active"], "active"),
+            (SCHEDULE_TERMINATION_SUSPENDED, vec!["suspended"], "suspended"),
+            (
+                SCHEDULE_TERMINATION_SUSPENDED_APPROVED,
+                vec!["suspended"],
+                "suspended",
+            ),
+            (
+                SCHEDULE_TERMINATION_RENEWAL,
+                vec!["renewal_due"],
+                "renewal_due",
+            ),
+            (
+                SCHEDULE_TERMINATION_RENEWAL_APPROVED,
+                vec!["renewal_due"],
+                "renewal_due",
+            ),
             (TERMINATE_SYSTEM, in_force, "ended"),
         ];
         assert_eq!(machine.transitions().len(), expected.len());
-        let system = [FLAG_RENEWAL, END, TERMINATE_SYSTEM];
+        let system = [
+            FLAG_RENEWAL,
+            END,
+            TERMINATE_SYSTEM,
+            TERMINATE_APPROVED,
+            SCHEDULE_TERMINATION_APPROVED,
+            SCHEDULE_TERMINATION_SUSPENDED_APPROVED,
+            SCHEDULE_TERMINATION_RENEWAL_APPROVED,
+        ];
         for (name, from, to) in expected {
             let transition = machine.find(name).unwrap();
             assert_eq!(transition.from_states(), from, "{name}");
@@ -434,13 +649,44 @@ mod tests {
         assert_eq!(guards(FLAG_RENEWAL), ["end_within_window"]);
         assert_eq!(guards(RENEW), ["new_end_date", "rates_set"]);
         assert_eq!(guards(END), ["end_date_passed"]);
-        assert_eq!(guards(TERMINATE), ["termination_dates", "owner_approval"]);
+        for name in [
+            TERMINATE,
+            TERMINATE_APPROVED,
+            SCHEDULE_TERMINATION,
+            SCHEDULE_TERMINATION_APPROVED,
+            SCHEDULE_TERMINATION_SUSPENDED,
+            SCHEDULE_TERMINATION_RENEWAL,
+        ] {
+            assert_eq!(
+                guards(name),
+                ["termination_dates", "not_scheduled", "owner_approval"],
+                "{name}"
+            );
+        }
         assert_eq!(
             guards(TERMINATE_SYSTEM),
             ["termination_dates", "owner_approval"]
         );
-        for name in [SUSPEND, TERMINATE, TERMINATE_SYSTEM] {
+        for name in [SUSPEND, TERMINATE, TERMINATE_SYSTEM, SCHEDULE_TERMINATION] {
             assert!(machine.find(name).unwrap().needs_reason(), "{name}");
         }
+    }
+
+    #[test]
+    fn a_termination_is_one_approval_action_whichever_request_is_made() {
+        let sub = subject_machine();
+        for name in [
+            TERMINATE,
+            SCHEDULE_TERMINATION,
+            SCHEDULE_TERMINATION_SUSPENDED,
+            SCHEDULE_TERMINATION_RENEWAL,
+        ] {
+            assert_eq!(sub.action_key(name), TERMINATE_ACTION, "{name}");
+        }
+        assert_eq!(
+            schedule_request(FleetStatus::Suspended),
+            Some(SCHEDULE_TERMINATION_SUSPENDED)
+        );
+        assert_eq!(schedule_request(FleetStatus::Ended), None);
     }
 }

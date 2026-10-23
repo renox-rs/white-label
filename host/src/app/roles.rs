@@ -471,6 +471,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             aut::LABOUR_MENU_MANAGE,
             aut::INSURANCE_MANAGE,
             aut::FLEET_CONTRACTS_MANAGE,
+            aut::FLEET_CONTRACTS_APPROVE,
             aut::SUPPLIER_CLAIMS_MANAGE,
             edu::ENROLMENTS_VIEW,
             edu::ENROLMENTS_MANAGE,
@@ -903,6 +904,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // Decides the liability of a vehicle incident when the branch
             // manager was involved (`AUT.ACL.22`).
             aut::JOB_CARDS_LIABILITY,
+            // Approves the early termination of a fleet contract and a waiver
+            // of its fee (`PLT.APR.01`, BL-AUT-12).
+            aut::FLEET_CONTRACTS_APPROVE,
             edu::ENROLMENTS_VIEW,
             edu::CERTIFICATES_VIEW,
             invoices::VIEW,

@@ -315,4 +315,109 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "auto.fleet.problem.invoicing_off",
         "Invoicing is not available.",
     ),
+    // Suspending, ending and terminating (BL-AUT-13, BL-AUT-12).
+    ("auto.fleet.terminate", "Terminate early"),
+    (
+        "auto.fleet.terminate_description",
+        "Ask to end the contract before its last day. The owner decides under Needs your action; nothing changes until then. The last day of service is still served.",
+    ),
+    ("auto.fleet.terminate_submit", "Ask the owner"),
+    ("auto.fleet.reason_placeholder", "Pick the reason"),
+    ("auto.fleet.reason_note", "More about the reason"),
+    ("auto.fleet.notice_date", "Notice given on"),
+    (
+        "auto.fleet.notice_date_hint",
+        "The day the fleet or the workshop gave notice.",
+    ),
+    ("auto.fleet.effective_date", "Last day of service"),
+    (
+        "auto.fleet.effective_date_hint",
+        "Still served at the contract rates. The contract ends on the first daily run after it.",
+    ),
+    ("auto.fleet.waive_fee", "Waive the early termination fee"),
+    (
+        "auto.fleet.waive_fee_hint",
+        "Only the owner's approval waives the fee.",
+    ),
+    (
+        "auto.fleet.termination_waits",
+        "Termination requested. It waits for the owner's approval.",
+    ),
+    ("auto.fleet.terminated", "Contract terminated."),
+    (
+        "auto.fleet.termination_pending",
+        "A termination waits for the owner's approval. The contract is unchanged until it is approved.",
+    ),
+    ("auto.fleet.termination.fleet_sold", "Fleet sold"),
+    ("auto.fleet.termination.non_payment", "Non-payment"),
+    ("auto.fleet.termination.breach", "Breach"),
+    ("auto.fleet.termination.agreement", "By agreement"),
+    (
+        "auto.fleet.bookings_suspended",
+        "The contract is suspended: no new booking is made for its vehicles. Confirm or cancel the bookings already made.",
+    ),
+    ("auto.fleet.booking_confirm", "Confirm the booking of"),
+    (
+        "auto.fleet.booking_confirm_message",
+        "The booking is kept.",
+    ),
+    ("auto.fleet.booking_confirmed_done", "Booking confirmed."),
+    ("auto.fleet.booking_cancel", "Cancel the booking of"),
+    (
+        "auto.fleet.booking_cancel_message",
+        "The booking is cancelled and the service is asked for again once the contract is resumed.",
+    ),
+    ("auto.fleet.booking_cancelled", "Booking cancelled."),
+    ("auto.fleet.booking_confirmed", "Confirmed"),
+    ("auto.fleet.booking_unconfirmed", "To confirm or cancel"),
+    ("auto.fleet.fee_line", "Early termination fee, fleet contract :contract"),
+    ("auto.fleet.notice_ended_title", "Fleet contract :contract has ended"),
+    (
+        "auto.fleet.notice_ended_body",
+        "Your service contract :contract (:title) ended after its last day of service, :date. Services are no longer booked under it, and the last invoice for the period up to that day is on its way. Job cards still open finish at the contract rates.",
+    ),
+    (
+        "auto.fleet.notice_terminated_title",
+        "Fleet contract :contract is terminated",
+    ),
+    (
+        "auto.fleet.notice_terminated_body",
+        "Your service contract :contract (:title) is terminated with the last day of service :date. Services are no longer booked under it, and the final invoice for the period up to that day is on its way. Job cards still open finish at the contract rates.",
+    ),
+    (
+        "auto.fleet.notice_task_title",
+        "Tell the fleet contact that :contract ended",
+    ),
+    (
+        "auto.fleet.notice_task_body",
+        "The message to the fleet contact of :contract could not be sent. Call or write to them: the contract ended and the last invoice is drafted.",
+    ),
+    (
+        "auto.fleet.problem.already_scheduled",
+        "A termination of this contract is scheduled already.",
+    ),
+    (
+        "auto.fleet.problem.approval",
+        "The termination needs the owner's approval, and no approval policy is in force.",
+    ),
+    (
+        "auto.fleet.problem.suspended_booking",
+        "Fleet contract :contract is suspended: no new booking is made for its vehicles.",
+    ),
+    (
+        "auto.fleet.problem.terminate_status",
+        "Only a contract in force can be terminated.",
+    ),
+    (
+        "auto.fleet.problem.reason",
+        "Pick the reason: fleet sold, non-payment, breach or agreement.",
+    ),
+    (
+        "auto.fleet.problem.no_booking",
+        "That service has no booking waiting.",
+    ),
+    (
+        "auto.fleet.problem.booking_kept",
+        "That booking cannot be cancelled any more: it has started or was cancelled.",
+    ),
 ];

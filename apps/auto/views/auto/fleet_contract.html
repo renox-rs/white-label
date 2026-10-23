@@ -48,6 +48,18 @@
           <rx-input name="labour_rate" :label="tx['fleet.labour_rate']" :hint="tx['fleet.rate_blank_hint']" :id="'fleet-renew-rate-' ~ id"/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_terminate">
+        <rx-action-sheet :id="'fleet-terminate-' ~ id" :label="tx['fleet.terminate']" :action="route('auto.fleet_terminate', id)"
+                         :title="tx['fleet.terminate']" :description="tx['fleet.terminate_description']" :submit-label="tx['fleet.terminate_submit']" icon="x">
+          <rx-select name="reason" :label="tx['fleet.reason']" :options="reason_options" :placeholder="tx['fleet.reason_placeholder']" :id="'fleet-terminate-reason-' ~ id" required/>
+          <rx-textarea name="note" :label="tx['fleet.reason_note']" :id="'fleet-terminate-note-' ~ id"/>
+          <rx-input name="notice_date" type="date" :label="tx['fleet.notice_date']" :hint="tx['fleet.notice_date_hint']" :value="today" :id="'fleet-terminate-notice-' ~ id" required/>
+          <rx-input name="effective_date" type="date" :label="tx['fleet.effective_date']" :hint="tx['fleet.effective_date_hint']" :id="'fleet-terminate-effective-' ~ id" required/>
+          <template rx-if="fee_waivable">
+            <rx-checkbox name="waive_fee" :label="tx['fleet.waive_fee']" :hint="tx['fleet.waive_fee_hint']" :id="'fleet-terminate-waive-' ~ id"/>
+          </template>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_invoice">
         <rx-action-sheet :id="'fleet-invoice-' ~ id" :label="tx['fleet.invoice']" :action="route('auto.fleet_invoice', id)"
                          :title="tx['fleet.invoice']" :description="tx['fleet.invoice_description']" :submit-label="tx['fleet.invoice']" icon="receipt">
@@ -57,6 +69,8 @@
       </template>
     </rx-page-header>
     <rx-alert rx-if="suspended_reason" kind="warning" :message="tx['fleet.suspended_because'] ~ ' ' ~ suspended_reason"/>
+    <rx-alert rx-if="termination_pending" kind="info" :message="tx['fleet.termination_pending']"/>
+    <rx-include template="wl-kernel/approval_card.html"/>
     <template rx-if="termination_scheduled">
       <rx-alert kind="warning" :message="tx['fleet.termination_scheduled'] ~ ' ' ~ termination"/>
     </template>
@@ -124,8 +138,20 @@
         <rx-column :label="tx['vehicles.plate']">{{ row.plate }}</rx-column>
         <rx-column :label="tx['fleet.service']">{{ row.service }}</rx-column>
         <rx-column :label="tx['fleet.booking']">{{ row.booking }}</rx-column>
+        <rx-column :label="tx['fields.status']" hide-narrow>{{ row.confirmed }}</rx-column>
         <rx-slot name="empty"><rx-empty :title="tx['fleet.bookings_empty']" icon="calendar-check"/></rx-slot>
       </rx-table>
+      <rx-alert rx-if="is_suspended" kind="warning" :message="tx['fleet.bookings_suspended']"/>
+      <template rx-if="can_decide_bookings">
+        <rx-stack rx-for="row in bookings">
+          <template rx-if="row.unconfirmed">
+            <rx-confirm :id="'fleet-booking-confirm-' ~ row.id" :label="tx['fleet.booking_confirm'] ~ ' ' ~ row.plate" :action="route('auto.fleet_booking_confirm', row.id)" method="POST"
+                        :title="tx['fleet.booking_confirm']" :message="tx['fleet.booking_confirm_message']" :confirm-label="tx['fleet.booking_confirm']" :cancel-label="tx['button_cancel']" icon="check"/>
+            <rx-confirm :id="'fleet-booking-cancel-' ~ row.id" :label="tx['fleet.booking_cancel'] ~ ' ' ~ row.plate" :action="route('auto.fleet_booking_cancel', row.id)" method="POST"
+                        :title="tx['fleet.booking_cancel']" :message="tx['fleet.booking_cancel_message']" :confirm-label="tx['fleet.booking_cancel']" :cancel-label="tx['button_cancel']" icon="x"/>
+          </template>
+        </rx-stack>
+      </template>
     </rx-card>
     <rx-card :title="tx['fleet.jobs']">
       <rx-table :rows="jobs" as="row" :key="row.job_card_id" :caption="tx['fleet.jobs']">

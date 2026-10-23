@@ -483,7 +483,7 @@ pub async fn recover(
             .filter(|r| !r.is_empty())
             .map(str::to_owned),
         replacement_received: Some(replacement),
-        approved_by: None,
+        ..SupplierInput::default()
     };
     let _outcome = claim
         .transition(RECOVER)

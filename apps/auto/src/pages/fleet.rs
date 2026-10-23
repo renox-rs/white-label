@@ -15,6 +15,9 @@
 //! | `POST /auto/fleet/{id}/suspend` | `auto.fleet_suspend` | `fleet_contracts.manage` |
 //! | `POST /auto/fleet/{id}/resume` | `auto.fleet_resume` | `fleet_contracts.manage` |
 //! | `POST /auto/fleet/{id}/renew` | `auto.fleet_renew` | `fleet_contracts.manage` |
+//! | `POST /auto/fleet/{id}/terminate` | `auto.fleet_terminate` | `fleet_contracts.manage` (the owner decides under "Needs your action") |
+//! | `POST /auto/fleet/plans/{plan_id}/confirm` | `auto.fleet_booking_confirm` | `job_cards.advise` or `fleet_contracts.manage` |
+//! | `POST /auto/fleet/plans/{plan_id}/cancel-booking` | `auto.fleet_booking_cancel` | `job_cards.advise` or `fleet_contracts.manage` |
 //! | `POST /auto/fleet/{id}/invoice` | `auto.fleet_invoice` | `fleet_contracts.manage` or `invoices.issue` |
 //! | `POST /auto/fleet/jobs/{job_card_id}/po` | `auto.fleet_po` | `fleet_contracts.manage` or `job_cards.advise` |
 //! | `GET /auto/fleet-vehicle-options` | `auto.fleet_vehicle_options` | `fleet_contracts.manage` |
@@ -25,6 +28,7 @@
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
+use wl_kernel::approvals::{self, ApprovalCard};
 
 use super::{
     Texts, invalid, parse_money, parse_number, parse_optional_date, parse_optional_id, party_name,
@@ -54,6 +58,10 @@ pub fn routes() -> Routes {
         .name("auto.fleet_vehicle_options")
         .post("/auto/fleet/plans/{plan_id}/remove", plan_remove)
         .name("auto.fleet_plan_remove")
+        .post("/auto/fleet/plans/{plan_id}/confirm", booking_confirm)
+        .name("auto.fleet_booking_confirm")
+        .post("/auto/fleet/plans/{plan_id}/cancel-booking", booking_cancel)
+        .name("auto.fleet_booking_cancel")
         .post("/auto/fleet/jobs/{job_card_id}/po", set_po)
         .name("auto.fleet_po")
         .get("/auto/fleet/{id}", show)
@@ -76,6 +84,8 @@ pub fn routes() -> Routes {
         .name("auto.fleet_resume")
         .post("/auto/fleet/{id}/renew", renew)
         .name("auto.fleet_renew")
+        .post("/auto/fleet/{id}/terminate", terminate)
+        .name("auto.fleet_terminate")
         .post("/auto/fleet/{id}/invoice", invoice)
         .name("auto.fleet_invoice")
         .require_auth()
@@ -98,6 +108,7 @@ pub(crate) fn status_kind(status: FleetStatus) -> &'static str {
 /// Whether `user` may see the contracts.
 fn may_view(user: &AuthUser) -> bool {
     user.has_permission(permissions::FLEET_CONTRACTS_MANAGE)
+        || user.has_permission(permissions::FLEET_CONTRACTS_APPROVE)
         || user.has_permission(permissions::JOB_CARDS_ADVISE)
         || user.has_permission(permissions::INVOICES_ISSUE)
 }
@@ -391,6 +402,11 @@ pub struct PlanRow {
     pub next_due: String,
     /// The booking asked for it, or a dash.
     pub booking: String,
+    /// Whether the advisor confirmed the booking kept while the contract is
+    /// suspended, in words.
+    pub confirmed: String,
+    /// Whether the booking is still waiting for the advisor's answer.
+    pub unconfirmed: bool,
     /// Whether the plan is in use, in words.
     pub active: String,
 }
@@ -468,6 +484,14 @@ pub(crate) struct ShowPage {
     can_renew: bool,
     can_invoice: bool,
     can_po: bool,
+    can_terminate: bool,
+    can_decide_bookings: bool,
+    is_suspended: bool,
+    termination_pending: bool,
+    approvals: Vec<ApprovalCard>,
+    reason_options: Vec<[String; 2]>,
+    today: String,
+    fee_waivable: bool,
     is_draft: bool,
     is_ended: bool,
     raw_fleet: String,
@@ -556,6 +580,15 @@ async fn plan_rows(
                     None => format!("#{booking}"),
                 },
             ),
+            confirmed: text(
+                lang,
+                if plan.booking_confirmed_at.is_some() {
+                    "fleet.booking_confirmed"
+                } else {
+                    "fleet.booking_unconfirmed"
+                },
+            ),
+            unconfirmed: plan.booking_id.is_some() && plan.booking_confirmed_at.is_none(),
             active: text(
                 lang,
                 if plan.active {
@@ -667,6 +700,20 @@ async fn show(
     );
     let plan_rows_now = plan_rows(&state, &lang, &plans).await?;
     let booking_rows = plan_rows(&state, &lang, &waiting).await?;
+    let subject = contract.subject();
+    let termination_pending = !approvals::pending_for(&state.db, &subject)
+        .await?
+        .is_empty();
+    let approval_cards = approvals::cards_for(&state.db, &subject, &user, &lang).await?;
+    let reason_options: Vec<[String; 2]> = TERMINATION_REASONS
+        .iter()
+        .map(|code| {
+            [
+                (*code).to_owned(),
+                text(&lang, &format!("fleet.termination.{code}")),
+            ]
+        })
+        .collect();
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         id: contract.id,
@@ -707,6 +754,17 @@ async fn show(
         can_invoice: (manage || user.has_permission(permissions::INVOICES_ISSUE))
             && status.is_in_force(),
         can_po: manage || user.has_permission(permissions::JOB_CARDS_ADVISE),
+        can_terminate: manage
+            && status.is_in_force()
+            && !contract.termination_scheduled
+            && !termination_pending,
+        can_decide_bookings: manage || user.has_permission(permissions::JOB_CARDS_ADVISE),
+        is_suspended: status == FleetStatus::Suspended,
+        termination_pending,
+        approvals: approval_cards,
+        reason_options,
+        today: wl_kernel::documents::today().to_string(),
+        fee_waivable: contract.early_termination_fee > 0,
         is_draft: status == FleetStatus::Draft,
         is_ended: status == FleetStatus::Ended,
         raw_fleet: contract.fleet_party_id.to_string(),
@@ -922,6 +980,89 @@ async fn renew(
     let rate = parse_money(&form.labour_rate)?;
     fleet_contracts::renew(&state, &user, id, end, (rate > 0).then_some(rate)).await?;
     done(&lang, "fleet.renewed")
+}
+
+/// The reasons a contract is terminated for (08 §7.1 *Fleet contract*
+/// `terminate`).
+pub const TERMINATION_REASONS: &[&str] = &["fleet_sold", "non_payment", "breach", "agreement"];
+
+/// The form of a termination.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct TerminateForm {
+    /// One of [`TERMINATION_REASONS`].
+    #[serde(default)]
+    pub reason: String,
+    /// More about the reason.
+    #[serde(default)]
+    pub note: String,
+    /// The day notice was given.
+    #[serde(default)]
+    pub notice_date: String,
+    /// The last day of service.
+    #[serde(default)]
+    pub effective_date: String,
+    /// The fleet asks for the early termination fee to be waived.
+    #[serde(default)]
+    pub waive_fee: String,
+}
+
+/// The reason as it is kept on the contract: the label, then the note.
+fn termination_reason(code: &str, note: &str) -> std::result::Result<String, Error> {
+    let code = code.trim();
+    if !TERMINATION_REASONS.contains(&code) {
+        return Err(invalid(&texts::english("auto.fleet.problem.reason", &[])));
+    }
+    let label = texts::english(&format!("auto.fleet.termination.{code}"), &[]);
+    let note = note.trim();
+    Ok(if note.is_empty() {
+        label
+    } else {
+        format!("{label}: {note}")
+    })
+}
+
+/// `POST /auto/fleet/{id}/terminate`: the request waits for the owner.
+async fn terminate(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<TerminateForm>,
+) -> Result<Response> {
+    require(&user, permissions::FLEET_CONTRACTS_MANAGE)?;
+    let reason = termination_reason(&form.reason, &form.note)?;
+    let notice = required_date(&form.notice_date, "auto.fleet.problem.termination_dates")?;
+    let effective = required_date(&form.effective_date, "auto.fleet.problem.termination_dates")?;
+    let waive = matches!(form.waive_fee.trim(), "1" | "on" | "true");
+    let asked =
+        fleet_contracts::terminate(&state, &user, id, &reason, notice, effective, waive).await?;
+    if asked.approval_request.is_some() {
+        done(&lang, "fleet.termination_waits")
+    } else {
+        done(&lang, "fleet.terminated")
+    }
+}
+
+/// `POST /auto/fleet/plans/{plan_id}/confirm`.
+async fn booking_confirm(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(plan_id): Path<i64>,
+) -> Result<Response> {
+    fleet_services::confirm_booking(&state, &user, plan_id).await?;
+    done(&lang, "fleet.booking_confirmed_done")
+}
+
+/// `POST /auto/fleet/plans/{plan_id}/cancel-booking`.
+async fn booking_cancel(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(plan_id): Path<i64>,
+) -> Result<Response> {
+    fleet_services::cancel_booking(&state, &user, plan_id).await?;
+    done(&lang, "fleet.booking_cancelled")
 }
 
 /// The form of a period to invoice.

@@ -29,7 +29,7 @@ use renox::db::now;
 use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_kernel::calendar::BusinessCalendar;
-use wl_kernel::documents::today;
+use wl_kernel::documents::{dubai_date, today};
 use wl_kernel::scheduling::{BookingCancelled, BookingId, ServiceBooking, booking_actions};
 
 use crate::db::refused;
@@ -37,6 +37,7 @@ use crate::fleet_contract::{FleetContract, FleetStatus};
 use crate::fleet_service::FleetService;
 use crate::job_card::JobCard;
 use crate::permissions;
+use crate::reasons::FLEET_SUSPENDED;
 use crate::texts::english;
 use crate::vehicle::Vehicle;
 
@@ -296,9 +297,18 @@ pub async fn request_bookings(
                 ));
         match booking_actions(state).book_service(state, request).await {
             Ok(booking) => {
+                // The day the booking is for: the first free slot may be a
+                // later day than the one asked for.
+                let day = booking_actions(state)
+                    .starts_at(state, booking)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map_or(wanted, dubai_date);
                 plan.booking_id = Some(booking.0);
-                plan.requested_for_date = Some(wanted);
+                plan.requested_for_date = Some(day);
                 plan.requested_at = Some(now());
+                plan.booking_confirmed_at = None;
                 plan.save(&state.db).await?;
                 run.booked.push((plan.id, booking));
             }
@@ -338,6 +348,7 @@ pub async fn on_delivered(state: &AppState, card: &JobCard) -> Result {
         plan.next_due_km = next_km;
         plan.booking_id = None;
         plan.requested_for_date = None;
+        plan.booking_confirmed_at = None;
         plan.save(&state.db).await?;
     }
     Ok(())
@@ -351,6 +362,7 @@ pub async fn on_delivered(state: &AppState, card: &JobCard) -> Result {
 pub async fn on_booking_cancelled(state: &AppState, event: &BookingCancelled) -> Result {
     let none: Option<i64> = None;
     let no_day: Option<NaiveDate> = None;
+    let no_time: Option<renox::db::DateTime> = None;
     FleetService::query()
         .where_(FleetService::BOOKING_ID.eq(Some(event.booking.0)))
         .update(
@@ -358,6 +370,7 @@ pub async fn on_booking_cancelled(state: &AppState, event: &BookingCancelled) ->
             &[
                 ("booking_id", &none),
                 ("requested_for_date", &no_day),
+                ("booking_confirmed_at", &no_time),
                 ("updated_at", &now()),
             ],
         )
@@ -377,11 +390,31 @@ pub async fn cancel_open_bookings(
     contract_id: i64,
     reason_code: &str,
 ) -> Result<usize> {
+    cancel_bookings_after(state, contract_id, reason_code, None).await
+}
+
+/// [`cancel_open_bookings`] limited to the bookings dated after `after`: a
+/// booking on the last day of service itself stays (BL-AUT-12, BL-AUT-13).
+///
+/// # Errors
+///
+/// The scheduling contract's errors.
+pub async fn cancel_bookings_after(
+    state: &AppState,
+    contract_id: i64,
+    reason_code: &str,
+    after: Option<NaiveDate>,
+) -> Result<usize> {
     let mut cancelled = 0;
     for plan in bookings_to_confirm(&state.db, contract_id).await? {
         let Some(booking) = plan.booking_id else {
             continue;
         };
+        if let Some(day) = after
+            && plan.requested_for_date.is_some_and(|date| date <= day)
+        {
+            continue;
+        }
         if booking_actions(state)
             .cancel_booking(state, BookingId(booking), reason_code)
             .await?
@@ -390,6 +423,74 @@ pub async fn cancel_open_bookings(
         }
     }
     Ok(cancelled)
+}
+
+/// Stops every service plan of the contract: the future schedules of a
+/// contract that ended are cancelled (BL-AUT-12, BL-AUT-13).
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn stop_all_plans(db: &Db, contract_id: i64) -> Result {
+    FleetService::query()
+        .where_(FleetService::CONTRACT_ID.eq(contract_id))
+        .where_(FleetService::ACTIVE.eq(true))
+        .update(db, &[("active", &false), ("updated_at", &now())])
+        .await?;
+    Ok(())
+}
+
+/// The advisor confirms the booking of plan `plan_id`, kept while the contract
+/// is suspended (BL-AUT-13).
+///
+/// # Errors
+///
+/// A 403 without `job_cards.advise` or `fleet_contracts.manage`; a 422 for a
+/// plan with no booking waiting.
+pub async fn confirm_booking(state: &AppState, by: &AuthUser, plan_id: i64) -> Result<FleetService> {
+    if !may_decide_booking(by) {
+        return Err(Error::Forbidden);
+    }
+    let mut plan = FleetService::find_or_404(&state.db, plan_id).await?;
+    if plan.booking_id.is_none() || !plan.active {
+        return Err(refused(english("auto.fleet.problem.no_booking", &[])));
+    }
+    plan.booking_confirmed_at = Some(now());
+    plan.save(&state.db).await?;
+    FleetService::find_or_404(&state.db, plan_id).await
+}
+
+/// The advisor cancels the booking of plan `plan_id`, kept while the contract
+/// is suspended (BL-AUT-13): the booking is cancelled for staff with the reason
+/// `fleet_suspended` and the plan is free to ask again once the contract is
+/// resumed.
+///
+/// # Errors
+///
+/// A 403 without `job_cards.advise` or `fleet_contracts.manage`; a 422 for a
+/// plan with no booking waiting, or one that cannot be cancelled any more.
+pub async fn cancel_booking(state: &AppState, by: &AuthUser, plan_id: i64) -> Result<FleetService> {
+    if !may_decide_booking(by) {
+        return Err(Error::Forbidden);
+    }
+    let plan = FleetService::find_or_404(&state.db, plan_id).await?;
+    let Some(booking) = plan.booking_id.filter(|_| plan.active) else {
+        return Err(refused(english("auto.fleet.problem.no_booking", &[])));
+    };
+    let done = booking_actions(state)
+        .cancel_booking_by_staff(state, BookingId(booking), FLEET_SUSPENDED, by.id)
+        .await?;
+    if !done {
+        return Err(refused(english("auto.fleet.problem.booking_kept", &[])));
+    }
+    FleetService::find_or_404(&state.db, plan_id).await
+}
+
+/// Whether `user` decides the bookings kept for a suspended contract: the
+/// service advisor, or the fleet account manager.
+fn may_decide_booking(user: &AuthUser) -> bool {
+    user.has_permission(permissions::JOB_CARDS_ADVISE)
+        || user.has_permission(permissions::FLEET_CONTRACTS_MANAGE)
 }
 
 /// Registers the listener that frees a plan when its booking is cancelled.

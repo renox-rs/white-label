@@ -41,10 +41,13 @@ pub struct FleetService {
     pub next_due_km: Option<i64>,
     /// The booking made for the service that fell due.
     pub booking_id: Option<i64>,
-    /// The day the booking was asked for.
+    /// The day the booking is for (its start, in Asia/Dubai).
     pub requested_for_date: Option<NaiveDate>,
     /// When the booking was asked for.
     pub requested_at: Option<DateTime>,
+    /// When the advisor confirmed the booking while the contract was suspended
+    /// (`BL-AUT-13`).
+    pub booking_confirmed_at: Option<DateTime>,
     /// Whether the plan is in use.
     pub active: bool,
     /// The user who made it.

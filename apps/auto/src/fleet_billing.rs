@@ -35,7 +35,7 @@ use crate::billing::{labour_draft_line, part_draft_line};
 use crate::db::refused;
 use crate::estimate::Estimate;
 use crate::fleet_contract::{FleetContract, FleetStatus};
-use crate::fleet_invoice::{FleetInvoice, KIND_MONTHLY};
+use crate::fleet_invoice::{FleetInvoice, KIND_FINAL, KIND_MONTHLY};
 use crate::fleet_job::FleetJob;
 use crate::job_card::{JobCard, JobCardStatus};
 use crate::labour_line::LineStatus;
@@ -59,9 +59,12 @@ pub async fn attach_job(state: &AppState, card: &JobCard) -> Result<Option<Fleet
     let Some(contract_id) = vehicle.fleet_contract_id else {
         return Ok(None);
     };
+    // A job card opened after the last day of service of the contract (its end
+    // date, or the effective date of a termination) is billed at the normal
+    // price tier (BL-AUT-12): it is not a fleet job.
     let in_force = FleetContract::find(&state.db, contract_id)
         .await?
-        .is_some_and(|contract| contract.status.is_in_force());
+        .is_some_and(|contract| contract.status.is_in_force() && today() <= last_day(&contract));
     if !in_force {
         return Ok(None);
     }
@@ -75,14 +78,55 @@ pub async fn attach_job(state: &AppState, card: &JobCard) -> Result<Option<Fleet
     Ok(Some(job))
 }
 
+/// The last day of service of `contract`: the effective date of a termination
+/// that was approved, else the end date.
+pub fn last_day(contract: &FleetContract) -> NaiveDate {
+    match contract.effective_date {
+        Some(effective) if contract.termination_reason.is_some() => {
+            effective.min(contract.end_date)
+        }
+        _ => contract.end_date,
+    }
+}
+
 /// Whether job card `job_card_id` is billed in a contract's monthly invoice
-/// and not on delivery.
+/// and not on delivery: it is a fleet job of a contract that is still in force.
+/// A job card that finishes after its contract ended is billed on delivery, at
+/// the rates it was priced at (BL-AUT-12).
 ///
 /// # Errors
 ///
 /// The database's errors.
 pub async fn bills_monthly(db: &Db, job_card_id: i64) -> Result<bool> {
-    Ok(FleetJob::of_job_card(db, job_card_id).await?.is_some())
+    let Some(job) = FleetJob::of_job_card(db, job_card_id).await? else {
+        return Ok(false);
+    };
+    Ok(FleetContract::find(db, job.contract_id)
+        .await?
+        .is_none_or(|contract| contract.status != FleetStatus::Ended))
+}
+
+/// The fleet job of `job_card_id` was billed on its own invoice `invoice_id`
+/// (it finished after its contract ended): the final invoice does not bill it
+/// again.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn mark_job_billed(db: &Db, job_card_id: i64, invoice_id: i64) -> Result {
+    FleetJob::query()
+        .where_(FleetJob::JOB_CARD_ID.eq(job_card_id))
+        .where_(FleetJob::INVOICE_ID.is_null())
+        .update(
+            db,
+            &[
+                ("invoice_id", &Some(invoice_id)),
+                ("invoiced_at", &Some(now())),
+                ("updated_at", &now()),
+            ],
+        )
+        .await?;
+    Ok(())
 }
 
 /// Records the fleet's PO reference of the job of job card `job_card_id`.
@@ -155,7 +199,7 @@ pub async fn unbilled_jobs(
             .delivered_at
             .map(dubai_date)
             .is_some_and(|day| day <= to);
-        if card.status == JobCardStatus::Delivered && delivered {
+        if card.status == JobCardStatus::Delivered && delivered && card.invoice_id.is_none() {
             found.push((job, card));
         }
     }
@@ -182,6 +226,26 @@ pub async fn invoice_period(
     to: NaiveDate,
     kind: &str,
 ) -> Result<FleetInvoice> {
+    invoice_period_until(state, by, contract_id, from, to, kind, to).await
+}
+
+/// [`invoice_period`] listing the jobs delivered up to `delivered_until`
+/// instead of the last day of the period: the final invoice of a contract that
+/// ended also bills the jobs that were delivered after its last day and before
+/// the run that ended it.
+///
+/// # Errors
+///
+/// As for [`invoice_period`].
+pub async fn invoice_period_until(
+    state: &AppState,
+    by: Option<&AuthUser>,
+    contract_id: i64,
+    from: NaiveDate,
+    to: NaiveDate,
+    kind: &str,
+    delivered_until: NaiveDate,
+) -> Result<FleetInvoice> {
     if let Some(user) = by
         && !(user.has_permission(permissions::FLEET_CONTRACTS_MANAGE)
             || user.has_permission(permissions::INVOICES_ISSUE))
@@ -203,7 +267,7 @@ pub async fn invoice_period(
             return Err(refused(english("auto.fleet.problem.period_gap", &[])));
         }
     }
-    let jobs = unbilled_jobs(&state.db, contract.id, to).await?;
+    let jobs = unbilled_jobs(&state.db, contract.id, delivered_until).await?;
     let mut draft =
         InvoiceDraft::new(PartyId(contract.fleet_party_id), contract.subject()).date_of_supply(to);
     let mut lines = 0_i64;
@@ -286,6 +350,40 @@ pub async fn invoice_period(
         )
         .await?;
     FleetInvoice::find_or_404(&state.db, record.id).await
+}
+
+/// The last consolidated invoice of an ended contract (BL-AUT-12, BL-AUT-13):
+/// from the day after the period invoiced last (or the contract's first day) to
+/// `last_day`, the last day of service, in one invoice of the kind
+/// [`KIND_FINAL`]. `None` when that period is empty (invoiced through already)
+/// or has nothing to bill and no invoice is recorded for it.
+///
+/// # Errors
+///
+/// As for [`invoice_period`].
+pub async fn invoice_final(
+    state: &AppState,
+    contract: &FleetContract,
+    last_day: NaiveDate,
+) -> Result<Option<FleetInvoice>> {
+    let from = match contract.invoiced_through_date {
+        Some(through) => through.succ_opt().unwrap_or(last_day),
+        None => contract.start_date,
+    };
+    if from > last_day || contract.status == FleetStatus::Draft {
+        return Ok(None);
+    }
+    let record = invoice_period_until(
+        state,
+        None,
+        contract.id,
+        from,
+        last_day,
+        KIND_FINAL,
+        today(),
+    )
+    .await?;
+    Ok(Some(record))
 }
 
 /// The monthly run of one contract (`AUT.RUL.05`, D = 1): drafts the invoice of

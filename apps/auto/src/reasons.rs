@@ -16,11 +16,22 @@ pub const DUPLICATE_CHECK_IN: &str = "duplicate_check_in";
 /// with the work done billed on the job card.
 pub const JOB_STOPPED: &str = "job_stopped";
 
+/// A fleet contract ended or was terminated: the bookings after its last day
+/// of service are cancelled by the system (`BL-AUT-12`, `BL-AUT-13`). The
+/// workshop's side.
+pub const FLEET_CONTRACT_ENDED: &str = "fleet_contract_ended";
+
+/// The advisor cancels a booking kept while the fleet contract is suspended
+/// (`BL-AUT-13`). The workshop's side.
+pub const FLEET_SUSPENDED: &str = "fleet_suspended";
+
 /// The codes 08 adds, each with its default *initiated by*.
 pub const SCHEDULING_REASON_CODES: &[(&str, Initiator)] = &[
     (ESTIMATE_DECLINED, Initiator::Party),
     (DUPLICATE_CHECK_IN, Initiator::Business),
     (JOB_STOPPED, Initiator::Party),
+    (FLEET_CONTRACT_ENDED, Initiator::Business),
+    (FLEET_SUSPENDED, Initiator::Business),
 ];
 
 #[cfg(test)]
@@ -32,7 +43,7 @@ mod tests {
         let mut codes: Vec<&str> = SCHEDULING_REASON_CODES.iter().map(|(c, _)| *c).collect();
         codes.sort_unstable();
         codes.dedup();
-        assert_eq!(codes.len(), 3);
+        assert_eq!(codes.len(), 5);
         let duplicate = SCHEDULING_REASON_CODES
             .iter()
             .find(|(code, _)| *code == DUPLICATE_CHECK_IN)

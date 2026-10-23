@@ -17,15 +17,18 @@
 use renox::chrono::NaiveDate;
 use renox::db::now;
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, TransitionError};
+use renox::state_machine::{Outcome, StateMachine, TransitionError};
 use wl_kernel::PartyId;
+use wl_kernel::approvals::submit::REQUEST_KEY;
+use wl_kernel::approvals::{ApprovalPolicy, announce};
 use wl_kernel::documents::today;
 use wl_kernel::parties::directory;
 
 use crate::db::refused;
 use crate::fleet_contract::{FleetContract, FleetStatus};
 use crate::fleet_contract_machine::{
-    ACTIVATE, END, FLAG_RENEWAL, FleetInput, RENEW, RESUME, SUSPEND, TERMINATE, TERMINATE_SYSTEM,
+    ACTIVATE, END, FLAG_RENEWAL, FleetInput, RENEW, RESUME, SUSPEND, TERMINATE, TERMINATE_ACTION,
+    TERMINATE_SYSTEM, schedule_request,
 };
 use crate::fleet_job::FleetJob;
 use crate::fleet_service::FleetService;
@@ -327,8 +330,14 @@ pub async fn add_vehicle(
         .await?
         .filter(|vehicle| vehicle.active)
         .ok_or_else(|| refused(english("auto.fleet.problem.vehicle", &[])))?;
-    if vehicle.fleet_contract_id.is_some_and(|other| other != id) {
-        return Err(refused(english("auto.fleet.problem.other_contract", &[])));
+    // A vehicle of a contract that ended is free to join another.
+    if let Some(other) = vehicle.fleet_contract_id.filter(|other| *other != id) {
+        let holds = FleetContract::find(&state.db, other)
+            .await?
+            .is_some_and(|contract| contract.status != FleetStatus::Ended);
+        if holds {
+            return Err(refused(english("auto.fleet.problem.other_contract", &[])));
+        }
     }
     Vehicle::query()
         .where_(Vehicle::ID.eq(vehicle.id))
@@ -514,15 +523,34 @@ pub async fn renew(
     run(state, by, &contract, RENEW, None, input).await
 }
 
-/// `terminate`: the contract ends early with a reason, a notice date and an
-/// effective date. The approval of the owner, the scheduled state and the
-/// effects on the effective date are BL-AUT-12's.
+/// What a request to terminate a contract came to.
+#[derive(Debug, Clone)]
+pub struct Termination {
+    /// The contract: as it was while the owner decides; `ended` when the
+    /// request was approved already and its effective date had passed.
+    pub contract: FleetContract,
+    /// The approval request that waits for the owner.
+    pub approval_request: Option<i64>,
+}
+
+/// `terminate`: the fleet account manager asks to end the contract early, with
+/// a reason, a notice date and an effective date (the last day of service),
+/// and whether the fleet asks for the early termination fee to be waived. The
+/// kernel defers the run as a request that a holder of
+/// `fleet_contracts.approve` other than the requester decides (`PLT.APR.01`,
+/// action `auto.fleet_terminate`); nothing happens until then and a rejected
+/// request leaves the contract as it is. At the approval an effective date
+/// before the day of the request ends the contract at once; any other date
+/// records the termination and marks the contract *termination scheduled*, and
+/// the daily job ends it on the first run after the effective date
+/// ([`crate::fleet_daily`]); the effects follow the end ([`crate::fleet_end`]).
 ///
 /// # Errors
 ///
 /// A 403 without `fleet_contracts.manage`; a 422 without a reason or the two
 /// dates, for an effective date before the notice date or inside an invoiced
-/// period, or in another state.
+/// period, a termination already scheduled, a contract that is not in force, or
+/// no approval policy in force.
 pub async fn terminate(
     state: &AppState,
     by: &AuthUser,
@@ -530,12 +558,50 @@ pub async fn terminate(
     reason: &str,
     notice_date: NaiveDate,
     effective_date: NaiveDate,
-) -> Result<FleetContract> {
+    waive_fee: bool,
+) -> Result<Termination> {
     let contract = load(state, by, id).await?;
+    if !contract.status.is_in_force() {
+        return Err(refused(english("auto.fleet.problem.terminate_status", &[])));
+    }
+    // A date before the day of the request ends the contract at the approval;
+    // any other keeps its state until the first run after the effective date.
+    let name = if effective_date < today() {
+        TERMINATE
+    } else {
+        schedule_request(contract.status)
+            .ok_or_else(|| refused(english("auto.fleet.problem.terminate_status", &[])))?
+    };
     let mut input = input_for(by);
     input.notice_date = Some(notice_date);
     input.effective_date = Some(effective_date);
-    run(state, by, &contract, TERMINATE, Some(reason), input).await
+    input.reason = Some(reason.trim().to_owned());
+    input.waive_fee = waive_fee;
+    // A policy taken away must not let a termination through unapproved.
+    let value = renox::serde_json::to_value(&input).unwrap_or(renox::serde_json::Value::Null);
+    input.approval_ready = ApprovalPolicy::for_action(&state.db, TERMINATE_ACTION, &value)
+        .await?
+        .is_some();
+    let outcome = contract
+        .transition(name)
+        .by(by)
+        .reason(reason)
+        .input(&input)
+        .run(state)
+        .await
+        .map_err(TransitionError::into_error)?;
+    announce(state, &outcome).await?;
+    let approval_request = match &outcome {
+        Outcome::Pending(pending) => pending
+            .data
+            .get(REQUEST_KEY)
+            .and_then(renox::serde_json::Value::as_i64),
+        Outcome::Done(_) => None,
+    };
+    Ok(Termination {
+        contract: FleetContract::find_or_404(&state.db, id).await?,
+        approval_request,
+    })
 }
 
 /// The daily run's part for the contracts in force (`end`, `flag_renewal`,

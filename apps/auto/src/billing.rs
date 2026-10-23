@@ -145,8 +145,8 @@ pub async fn bill(state: &AppState, job_card_id: i64) -> Result<Option<InvoiceId
     }
     // An insurance claim that funds the job card bills it (the insurer's
     // payer bill and the customer's excess and private items,
-    // `AUT.INS.04`); a fleet contract bills it in its monthly invoice
-    // (`FIN.USG.01`).
+    // `AUT.INS.04`); a fleet contract in force bills it in its monthly invoice
+    // (`FIN.USG.01`), one that ended bills it here.
     if crate::claims::funds_job_card(&state.db, card.id).await?
         || crate::fleet_billing::bills_monthly(&state.db, card.id).await?
     {
@@ -193,6 +193,10 @@ pub async fn bill(state: &AppState, job_card_id: i64) -> Result<Option<InvoiceId
             &[("invoice_id", &Some(id.0)), ("updated_at", &now())],
         )
         .await?;
+    // A job card of a fleet contract that ended before it was delivered is
+    // billed here, at the rates it was priced at, and not again in the final
+    // invoice (BL-AUT-12).
+    crate::fleet_billing::mark_job_billed(&state.db, card.id, id.0).await?;
     // The invoicing module issues a draft as the system only where it is set
     // to; otherwise the accountant issues it.
     let _issued = books.issue(state, id, None).await;

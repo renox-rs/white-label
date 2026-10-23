@@ -35,6 +35,9 @@ pub const LABOUR_MENU_MANAGE: &str = "labour_menu.manage";
 pub const INSURANCE_MANAGE: &str = "insurance.manage";
 /// Run fleet service contracts (`AUT.FLT.01`).
 pub const FLEET_CONTRACTS_MANAGE: &str = "fleet_contracts.manage";
+/// Approve the early termination of a fleet contract, and a waiver of its fee:
+/// the owner / GM, never the fleet account manager who asked (`PLT.APR.01`).
+pub const FLEET_CONTRACTS_APPROVE: &str = "fleet_contracts.approve";
 /// Raise and recover supplier warranty claims (`AUT.WAR.02`).
 pub const SUPPLIER_CLAIMS_MANAGE: &str = "supplier_claims.manage";
 /// Approve the write-off of a supplier warranty claim: the branch manager,

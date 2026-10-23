@@ -16,6 +16,30 @@ use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 
+/// A fleet contract was terminated early (08 §7.1 *Fleet contract*
+/// `terminate`): its last day of service passed, the future bookings were
+/// cancelled, the final invoice drafted and the fee invoiced. It is emitted
+/// once, after all that was done.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FleetContractTerminated {
+    /// The contract.
+    pub contract: Subject,
+    /// Its number, `FC-0001`.
+    pub number: String,
+    /// The fleet (a party).
+    pub fleet_party_id: i64,
+    /// Why: fleet sold, non-payment, breach or agreement.
+    pub reason: Option<String>,
+    /// The last day of service.
+    pub effective_date: Option<NaiveDate>,
+    /// The final consolidated invoice, when one was drafted.
+    pub final_invoice: Option<i64>,
+    /// The invoice of the early termination fee, when there is one.
+    pub fee_invoice: Option<i64>,
+}
+
+impl Event for FleetContractTerminated {}
+
 pub use crate::seed::FLEET_CONTRACT_SUBJECT_TYPE;
 
 /// Where a fleet contract stands (08 §7.1 *Fleet contract*).
@@ -97,6 +121,20 @@ pub struct FleetContract {
     pub termination_scheduled: bool,
     /// The user who asked for the termination.
     pub termination_requested_by: Option<i64>,
+    /// The fleet asked for the early termination fee to be waived; the owner's
+    /// approval of the termination waives it.
+    pub termination_fee_waived: bool,
+    /// The owner who approved the termination.
+    pub termination_approved_by: Option<i64>,
+    /// When the termination was approved.
+    pub termination_approved_at: Option<DateTime>,
+    /// The invoice of the early termination fee (wl-invoicing).
+    pub termination_fee_invoice_id: Option<i64>,
+    /// When the fleet contact was told that the contract ended.
+    pub contact_notified_at: Option<DateTime>,
+    /// When everything that follows the end was done (bookings cancelled,
+    /// the last invoice, the fee, the notice).
+    pub wound_down_at: Option<DateTime>,
     /// When the contract ended.
     pub ended_at: Option<DateTime>,
     /// The last day of the periods invoiced so far (`FIN.USG.01`).

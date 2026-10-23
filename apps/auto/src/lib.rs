@@ -23,6 +23,8 @@ pub mod fleet_contract;
 pub mod fleet_contract_machine;
 pub mod fleet_contracts;
 pub mod fleet_daily;
+pub mod fleet_end;
+pub mod fleet_gate;
 pub mod fleet_invoice;
 pub mod fleet_job;
 pub mod fleet_service;
@@ -284,6 +286,11 @@ impl Module for Auto {
         fleet_contract_machine::register();
         fleet_daily::register(app);
         fleet_services::register_listeners(app);
+        // What follows an end or a termination (bookings, the last invoice, the
+        // fee, the fleet contact told) and the gate that refuses a new booking
+        // for a suspended contract.
+        fleet_end::register(app);
+        fleet_gate::register(app);
         // The supplier warranty claim: the machine, and the listener that
         // recovers a claim when its return to supplier is credited.
         supplier_claim_machine::register();
