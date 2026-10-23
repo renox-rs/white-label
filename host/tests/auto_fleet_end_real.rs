@@ -12,6 +12,7 @@ mod support;
 use std::time::Duration;
 
 use auto::fleet_billing;
+use auto::fleet_contract::FleetContractTerminated;
 use auto::fleet_contracts;
 use auto::fleet_daily::run_daily_on;
 use auto::fleet_end::{NOTICE_TYPE, TERMINATION_TYPE};
@@ -19,7 +20,8 @@ use auto::fleet_invoice::{FleetInvoice, KIND_FINAL, KIND_MONTHLY};
 use auto::{FleetContract, FleetService, FleetStatus, JobCard, JobCardStatus};
 use renox::prelude::*;
 use support::autofx::{
-    FleetShop, World, boot, fleet_deliver, fleet_job, fleet_shop, sent_of, workshop,
+    FleetShop, Recorded, World, boot, boot_with, fleet_deliver, fleet_job, fleet_shop, record,
+    sent_of, workshop,
 };
 use wl_kernel::PartyId;
 use wl_kernel::approvals;
@@ -144,6 +146,33 @@ async fn aut_13_real_a_contract_that_ended_cancels_its_bookings_drafts_its_invoi
         .await
         .unwrap();
 
+    // On its last day the contract is still in force: the run of that day
+    // ends nothing (#409 point 2).
+    FleetContract::query()
+        .where_(FleetContract::ID.eq(shop.contract.id))
+        .update(w.db(), &[("end_date", &today())])
+        .await
+        .unwrap();
+    let early = run_daily_on(w.state(), today()).await.unwrap();
+    assert!(early.ended.is_empty(), "{early:?}");
+    assert_eq!(
+        contract_now(&w, shop.contract.id).await.status,
+        FleetStatus::RenewalDue,
+        "in force on its last day (the renewal reminder only)"
+    );
+    assert_eq!(
+        Booking::find_or_404(w.db(), booking.id)
+            .await
+            .unwrap()
+            .status,
+        BookingStatus::Booked
+    );
+    FleetContract::query()
+        .where_(FleetContract::ID.eq(shop.contract.id))
+        .update(w.db(), &[("end_date", &day(-1))])
+        .await
+        .unwrap();
+
     let run = run_daily_on(w.state(), today()).await.unwrap();
     assert_eq!(run.ended, [shop.contract.id], "{run:?}");
 
@@ -185,7 +214,8 @@ async fn aut_13_real_a_contract_that_ended_cancels_its_bookings_drafts_its_invoi
 /// with VAT) to the fleet; the contact is told.
 #[renox::test]
 async fn aut_12_real_a_terminated_contract_cancels_bookings_and_invoices_the_period_and_the_fee() {
-    let w = boot().await;
+    let terminated = Recorded::<FleetContractTerminated>::new();
+    let w = boot_with(|app| record(app, &terminated)).await;
     let shop = fleet_shop(&w, 50_100).await;
     let before = delivered(&w, &shop, 5).await;
     let monthly = fleet_billing::invoice_period(
@@ -202,6 +232,17 @@ async fn aut_12_real_a_terminated_contract_cancels_bookings_and_invoices_the_per
     assert_eq!(before.status, JobCardStatus::Delivered);
     let after_card = delivered(&w, &shop, 0).await;
     let booking = plan_booking(&w, &shop, day(5)).await;
+    // A booking on the effective day itself stays.
+    let on_the_day = service::book(
+        w.state(),
+        NewBooking::new(shop.fleet, shop.periodic.id, &[shop.bay.id], at(day(3), 14))
+            .for_subject(shop_van(&shop))
+            .at(workshop()),
+        Actor::staff(shop.sami.id),
+        renox::db::now(),
+    )
+    .await
+    .expect("the booking is made");
 
     let asked = fleet_contracts::terminate(
         w.state(),
@@ -235,6 +276,16 @@ async fn aut_12_real_a_terminated_contract_cancels_bookings_and_invoices_the_per
 
     let cancelled = Booking::find_or_404(w.db(), booking.id).await.unwrap();
     assert_eq!(cancelled.status, BookingStatus::Cancelled);
+    assert_ne!(
+        Booking::find_or_404(w.db(), on_the_day.id)
+            .await
+            .unwrap()
+            .status,
+        BookingStatus::Cancelled,
+        "the booking on the effective day stays"
+    );
+    let events = terminated.all();
+    assert_eq!(events.len(), 1, "FleetContractTerminated, once");
 
     let periods = FleetInvoice::of_contract(w.db(), shop.contract.id)
         .await
