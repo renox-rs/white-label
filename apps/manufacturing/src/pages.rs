@@ -31,6 +31,7 @@
 //! | `POST /manufacturing/conformity` | `manufacturing.conformity_flag` | `conformity.manage`; the item by its code, regulated, export only, the accepted kinds |
 //! | `GET /portal/manufacturing/orders` | `manufacturing.portal_orders` | a portal grant for the buyer's company (BL-MFG-06) |
 //! | `POST /portal/manufacturing/orders` | `manufacturing.portal_orders_upload` | as above; PO number, call-off number, note; a duplicate is refused naming the existing order's number and status |
+//! | `GET /manufacturing/aborted` | `manufacturing.aborted` | `work_orders.view`; the aborted work orders report, the loss for `work_orders.cost_view` (BL-MFG-01) |
 //! | `GET /manufacturing/exports` | `manufacturing.exports` | `exports.manage` (BL-MFG-12) |
 //! | `POST /manufacturing/exports/notes` | `manufacturing.exports_note` | `exports.manage`; the customer's contract note |
 //! | `GET /manufacturing/returns` | `manufacturing.returns` | `returned_goods.view` or `returned_goods.decide` (BL-MFG-07) |
@@ -135,6 +136,8 @@ pub fn routes() -> Routes {
         .name("manufacturing.portal_orders")
         .post("/portal/manufacturing/orders", crate::po_upload::post)
         .name("manufacturing.portal_orders_upload")
+        .get("/manufacturing/aborted", screens::aborted_page::show)
+        .name("manufacturing.aborted")
         .get("/manufacturing/exports", screens::exports_page::show)
         .name("manufacturing.exports")
         .post("/manufacturing/exports/notes", screens::exports_page::note)

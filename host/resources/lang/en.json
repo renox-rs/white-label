@@ -66,6 +66,7 @@
     "conformity": "Product conformity",
     "exports": "Export evidence",
     "returned_goods": "Returned goods",
+    "aborted_orders": "Aborted work orders",
     "inspections": "Returned lots to inspect",
     "absence": "Absence cases",
     "payroll": "Payroll runs",

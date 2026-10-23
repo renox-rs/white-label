@@ -1488,6 +1488,24 @@ const TEXTS: &[(&str, &str)] = &[
         "manufacturing.export.late_body",
         "Exit evidence for dispatch {{ dispatch }} was attached on {{ day }}, after the 5% VAT was flagged. Nothing is reversed; decide whether the zero rate can be restored.",
     ),
+    ("manufacturing.screen.aborted.title", "Aborted work orders"),
+    (
+        "manufacturing.screen.aborted.subtitle",
+        "Work orders stopped after material was issued, with the reason, who asked and who approved.",
+    ),
+    ("manufacturing.screen.aborted.order", "Work order"),
+    ("manufacturing.screen.aborted.loss", "Loss"),
+    ("manufacturing.screen.aborted.stopped", "Stopped on"),
+    ("manufacturing.screen.aborted.requested_by", "Asked by"),
+    ("manufacturing.screen.aborted.approved_by", "Approved by"),
+    (
+        "manufacturing.screen.aborted.empty",
+        "No aborted work orders",
+    ),
+    (
+        "manufacturing.screen.aborted.empty_text",
+        "A work order that is aborted after material was issued is listed here.",
+    ),
     ("manufacturing.screen.exports.title", "Export evidence"),
     (
         "manufacturing.screen.exports.subtitle",

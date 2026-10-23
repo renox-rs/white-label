@@ -1,0 +1,21 @@
+{#- manufacturing: the aborted work orders with the reason, who asked, who
+    approved and, for who may see costs, the loss (BL-MFG-01). Replace it with
+    resources/views/manufacturing/aborted.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['aborted.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['aborted.title']" :subtitle="tx['aborted.subtitle']"/>
+    <rx-table :rows="rows" as="row" :key="row.number" :caption="tx['aborted.title']" card>
+      <rx-column :label="tx['aborted.order']">
+        <rx-stack>
+          <span><a href="{{ row.url }}">{{ row.number }}</a> - {{ row.item }}</span>
+          <span class="rx-subtitle">{{ row.reason }}</span>
+          <span rx-if="row.loss">{{ tx['aborted.loss'] }}: {{ row.loss }}</span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['aborted.stopped']" hide-narrow>{{ row.stopped }}</rx-column>
+      <rx-column :label="tx['aborted.requested_by']" hide-narrow>{{ row.requested_by }}</rx-column>
+      <rx-column :label="tx['aborted.approved_by']" hide-narrow>{{ row.approved_by }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['aborted.empty']" :message="tx['aborted.empty_text']" icon="factory"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

@@ -16,6 +16,7 @@
 //! - **On a phone (390 px)** the pages are a stack of cards and tables inside
 //!   `rx-table` wrappers; the columns that do not fit are `hide-narrow`.
 
+pub(crate) mod aborted_page;
 pub(crate) mod conformity_page;
 pub(crate) mod exports_page;
 pub(crate) mod inspections_page;
@@ -63,6 +64,10 @@ pub(crate) const VIEWS: &[(&str, &str)] = &[
     (
         "manufacturing/conformity.html",
         include_str!("../../views/manufacturing/conformity.html"),
+    ),
+    (
+        "manufacturing/aborted.html",
+        include_str!("../../views/manufacturing/aborted.html"),
     ),
     (
         "manufacturing/exports.html",

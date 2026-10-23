@@ -82,6 +82,7 @@ impl Module for Manufacturing {
             .view_data::<screens::recall_page::RecallPage>()
             .view_data::<screens::conformity_page::ConformityPage>()
             .view_data::<screens::exports_page::ExportsPage>()
+            .view_data::<screens::aborted_page::AbortedPage>()
             .view_data::<screens::returns_page::ReturnsPage>()
             .view_data::<screens::inspections_page::InspectionsPage>()
             .view_data::<po_upload::OrdersPage>()
@@ -133,6 +134,14 @@ impl Module for Manufacturing {
                 .group("nav.app")
                 .order(12)
                 .permission(permissions::CONFORMITY_MANAGE),
+        );
+        app.nav(
+            "app",
+            NavLink::route("manufacturing.aborted", "nav.aborted_orders")
+                .icon("octagon-x")
+                .group("nav.app")
+                .order(16)
+                .permission(permissions::WORK_ORDERS_VIEW),
         );
         app.nav(
             "app",

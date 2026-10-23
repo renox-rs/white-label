@@ -112,6 +112,18 @@ async fn an_abort_posts_the_real_movements_and_the_page_shows_the_outcome() {
     // While it waits the page says so and the buttons are disabled.
     let waiting = browse(&app, &planner, &format!("/manufacturing/work-orders/{id}")).await;
     waiting.assert_see("Abort pending");
+    // The production manager finds the request under "Needs your action" on
+    // the dashboard with a link to the work order; the planner who asked
+    // does not.
+    browse(&app, &manager, "/dashboard")
+        .await
+        .assert_ok()
+        .assert_see("Needs your action")
+        .assert_see("1 approval waiting for you")
+        .assert_see(&format!(r#"href="/manufacturing/work-orders/{id}""#));
+    browse(&app, &planner, "/dashboard")
+        .await
+        .assert_dont_see("approval waiting for you");
     let request = ApprovalRequest::query()
         .first(app.db())
         .await
@@ -160,6 +172,19 @@ async fn an_abort_posts_the_real_movements_and_the_page_shows_the_outcome() {
     page.assert_see("wrong BOM");
     page.assert_see("Returned to the store");
     page.assert_see("Loss");
+    // The aborted work orders report lists it with the reason, who asked and
+    // who approved; the loss only to who may see costs.
+    let report = browse(&app, &manager, "/manufacturing/aborted").await;
+    report.assert_ok();
+    report.assert_see("Aborted work orders");
+    report.assert_see(&done.number);
+    report.assert_see("wrong BOM");
+    report.assert_see("Amal");
+    report.assert_see("Mona");
+    report.assert_see("Loss:");
+    let planner_report = browse(&app, &planner, "/manufacturing/aborted").await;
+    planner_report.assert_see(&done.number);
+    planner_report.assert_dont_see("Loss:");
     let for_planner = browse(&app, &planner, &format!("/manufacturing/work-orders/{id}")).await;
     for_planner.assert_see("wrong BOM");
     for_planner.assert_dont_see("Loss");
