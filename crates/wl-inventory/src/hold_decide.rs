@@ -243,6 +243,21 @@ pub async fn settle(state: &AppState, hold_id: i64) -> Result {
     if hold.status != HoldStatus::Open {
         return Ok(());
     }
+    // A vertical may keep a lot from being released (07: an NCR is open on
+    // it); asked before the transaction, which holds the only connection.
+    let mut kept = BTreeSet::new();
+    for line in lines_of(&state.db, hold.id).await? {
+        if let Some(lot_id) = line.lot_id
+            && wl_kernel::lot_disposal::lot_release_blocked(
+                state,
+                &Subject::new(LOT_SUBJECT_TYPE, lot_id),
+            )
+            .await?
+            .is_some()
+        {
+            kept.insert(lot_id);
+        }
+    }
     let mut tx = state.db.begin().await?;
     let lines = lines_of(&mut tx, hold.id).await?;
     let lots: BTreeSet<i64> = lines.iter().filter_map(|line| line.lot_id).collect();
@@ -263,6 +278,11 @@ pub async fn settle(state: &AppState, hold_id: i64) -> Result {
             continue;
         }
         let left = balance::lot_left(&mut tx, lot_id).await?;
+        // The lot stays held while an NCR is open on it, unless nothing is
+        // left (then it is discarded as before).
+        if left > 0 && kept.contains(&lot_id) {
+            continue;
+        }
         let result = if left <= 0 {
             lot.transition(lot::DISCARD)
                 .by_system()

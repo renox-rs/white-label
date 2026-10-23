@@ -32,6 +32,7 @@ pub mod landed_cost;
 pub mod landed_draft;
 pub mod location;
 pub mod lot;
+pub mod lot_disposal;
 pub mod match_source;
 pub mod movement;
 pub mod pages;
@@ -696,6 +697,8 @@ impl Module for WlInventory {
         // `StockHoldService`: a vertical automation places a hold on the
         // stock at a location (06: an out-of-range reading).
         wl_kernel::inventory::provide_stock_hold_service(app, hold_service::InventoryHolds);
+        // 07 Manufacturing: an NCR returns, scraps or releases a failed lot.
+        lot_disposal::register(app);
         hold_service::register_types();
         // `STK.RUL.06`: the storekeeper is told when stock runs short, and
         // after H hours gets a task and the manager is told.

@@ -632,7 +632,9 @@ pub async fn cancel(
     if kept == Some(KeptGoods::ReceiveAgain) {
         reopen_receipts(state, &ret, user.id).await?;
     }
-    Ok(SupplierReturn::find_or_404(&state.db, ret.id).await?)
+    let cancelled = SupplierReturn::find_or_404(&state.db, ret.id).await?;
+    crate::lot_disposal::announce_cancelled(state, &cancelled).await?;
+    Ok(cancelled)
 }
 
 /// Opens a draft goods receipt on each purchase order the kept goods of the

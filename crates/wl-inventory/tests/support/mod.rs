@@ -709,6 +709,7 @@ struct Fakes {
     with_parties: bool,
     received: Arc<Mutex<Vec<GoodsReceived>>>,
     dispatched: Arc<Mutex<Vec<SupplierReturnDispatched>>>,
+    cancelled_returns: Arc<Mutex<Vec<wl_kernel::lot_disposal::SupplierReturnCancelled>>>,
     credited: Arc<Mutex<Vec<SupplierReturnCredited>>>,
     tickets: TicketDesk,
     costs: CostDesk,
@@ -756,6 +757,7 @@ impl Module for Fakes {
         wl_kernel::inventory::provide_supplier_incidents(app, self.incidents.clone());
         record(app, &self.received);
         record(app, &self.dispatched);
+        record(app, &self.cancelled_returns);
         record(app, &self.credited);
         record(app, &self.holds);
         record(app, &self.lots_held);
@@ -788,6 +790,8 @@ pub struct Booted {
     pub received: Recorded<GoodsReceived>,
     /// `SupplierReturnDispatched`.
     pub dispatched: Recorded<SupplierReturnDispatched>,
+    /// `SupplierReturnCancelled`.
+    pub cancelled_returns: Recorded<wl_kernel::lot_disposal::SupplierReturnCancelled>,
     /// Every `PurchaseOrderRevised`.
     pub revised: Recorded<PurchaseOrderRevised>,
     /// Every `LandedCostAllocated`.
@@ -1854,6 +1858,7 @@ pub async fn boot_with_parties() -> Booted {
 async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: bool) -> Booted {
     let received = Arc::new(Mutex::new(Vec::new()));
     let dispatched = Arc::new(Mutex::new(Vec::new()));
+    let cancelled_returns = Arc::new(Mutex::new(Vec::new()));
     let revised = Arc::new(Mutex::new(Vec::new()));
     let allocated = Arc::new(Mutex::new(Vec::new()));
     let adjusted = Arc::new(Mutex::new(Vec::new()));
@@ -1925,6 +1930,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         bills: (!with_invoicing).then(|| bills.clone()),
         received: received.clone(),
         dispatched: dispatched.clone(),
+        cancelled_returns: cancelled_returns.clone(),
         credited: credited.clone(),
         tickets: tickets.clone(),
         costs: costs.clone(),
@@ -2065,6 +2071,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         app,
         received: Recorded(received),
         dispatched: Recorded(dispatched),
+        cancelled_returns: Recorded(cancelled_returns),
         revised: Recorded(revised),
         allocated: Recorded(allocated),
         adjusted: Recorded(adjusted),
