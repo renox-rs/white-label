@@ -191,6 +191,15 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "auto.jobs.transition.cancel_approved",
         "Cancelled (approved by the branch manager)",
     ),
+    // Voiding a job card opened in error.
+    (
+        "auto.void.problem.recorded",
+        "A labour or part line is recorded on this job card. A job card is voided only before any labour or part is recorded: cancel it instead, or decline it if the customer left.",
+    ),
+    (
+        "auto.void.problem.claim",
+        "This job card is linked to insurance claim :claim. Void the claim first when nothing was sent to the insurer, or cancel it; then the job card can be dealt with.",
+    ),
     // Releasing the vehicle.
     ("auto.release.title", "Release the vehicle"),
     (

@@ -27,6 +27,7 @@ pub mod job_card;
 pub mod job_card_machine;
 pub mod job_cards;
 pub mod job_stops;
+pub mod job_void;
 pub mod labour_line;
 pub mod labour_menu;
 pub mod labour_operation;
@@ -225,6 +226,7 @@ impl Module for Auto {
         // the purchaser's task and the booking follow the cancel, and the
         // booking asks the job card what was done.
         job_stops::register(app);
+        job_void::listen(app);
         // The insurance claim: the machine, and the listeners that settle it
         // when its invoices are paid.
         claim_machine::register();

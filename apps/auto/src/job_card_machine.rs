@@ -15,7 +15,7 @@
 //! | [`FAIL_QC`] | quality_check | in_progress | `job_cards.qc` | a reason (the findings) |
 //! | [`DELIVER`] | ready | delivered | `job_cards.advise` | `qc_checklist_complete`, `added_work_approved`, `substitute_closed` and `payment_cleared` (slots) |
 //! | [`CANCEL`] / [`CANCEL_APPROVED`] / [`CANCEL_SYSTEM`] | inspecting, awaiting_approval, in_progress, awaiting_parts, quality_check | cancelled | `job_cards.advise`, approved by the branch manager (`AUT.ACL.21`) / the kernel after the approval / system (a claim) | a reason; `work_done_recorded`, `acknowledged`, `approved_if_below_work_done` |
-//! | [`VOID`] | checked_in | voided | `job_cards.advise` | a reason; `nothing_recorded`, `no_claim_linked` (slots) |
+//! | [`VOID`] / `void_approved` | checked_in | voided | `job_cards.advise` (the kernel's void) | a reason; no labour or part line and no open claim (the reverse handler, [`crate::job_void`]) |
 //!
 //! Decisions:
 //!
@@ -29,8 +29,7 @@
 //!   declined, the job goes on) are two transitions of the one `decline` of the
 //!   spec table.
 //! - The guards marked *slot* pass for now: they are the places where the
-//!   issues of the negative flows add their rules (BL-AUT-02 `void`,
-//!   BL-AUT-03 `decline`, BL-AUT-04 `wait_parts` and `parts_arrived`,
+//!   issues of the negative flows add their rules (BL-AUT-03 `decline`, BL-AUT-04 `wait_parts` and `parts_arrived`,
 //!   BL-AUT-05 .. BL-AUT-07 `deliver`, `pass_qc` and `approve`). A slot keeps
 //!   its name so that a test names the guard that refused. The three guards of
 //!   `cancel` (BL-AUT-01) read what the service recorded in the input
@@ -65,6 +64,7 @@ use crate::texts::english;
 use crate::vehicle::Vehicle;
 use wl_kernel::SubjectMachine;
 use wl_kernel::approvals::{self, PolicyDefault};
+use wl_kernel::voids;
 
 /// `checked_in → inspecting`: the technician starts diagnosing.
 pub const START_INSPECTION: &str = "start_inspection";
@@ -116,8 +116,8 @@ pub const CANCEL_ACTION: &str = "auto.job_card_cancel";
 /// The input key the approval policy of `cancel` reads: 1 when the branch
 /// manager must approve, 0 when not.
 pub const NEEDS_APPROVAL_KEY: &str = "needs_approval";
-/// `checked_in → voided`: the job card was opened in error.
-pub const VOID: &str = "void";
+/// `checked_in → voided`: the job card was opened in error (the kernel's void).
+pub const VOID: &str = voids::VOID;
 
 /// What a run carries to the guards and effects.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -210,7 +210,7 @@ impl StateMachine for JobCard {
             AwaitingApproval, AwaitingParts, Cancelled, CheckedIn, Declined, Delivered, InProgress,
             Inspecting, QualityCheck, Ready, Voided,
         };
-        Machine::new()
+        let machine = Machine::new()
             .initial([CheckedIn])
             .state(CheckedIn)
             .tone("neutral")
@@ -254,8 +254,13 @@ impl StateMachine for JobCard {
             .transition(deliver())
             .transition(cancel(CANCEL, CancelBy::Advisor))
             .transition(cancel(CANCEL_APPROVED, CancelBy::Approval))
-            .transition(cancel(CANCEL_SYSTEM, CancelBy::System))
-            .transition(void())
+            .transition(cancel(CANCEL_SYSTEM, CancelBy::System));
+        // `void` and `void_approved`, the kernel's, with the job card's rule on
+        // top (BL-AUT-02).
+        voids::transitions::<JobCard, _>(crate::job_card::JOB_CARD_SUBJECT_TYPE, [CheckedIn])
+            .into_iter()
+            .map(void_rules)
+            .fold(machine, Machine::transition)
     }
 }
 
@@ -731,16 +736,12 @@ pub fn cancel_policy() -> PolicyDefault {
         .step_permission(permissions::JOB_CARDS_APPROVE)
 }
 
-/// `void`: the job card was opened in error.
-fn void() -> Transition<JobCard> {
-    let transition = Transition::new(VOID)
-        .label("Void")
-        .permission(permissions::JOB_CARDS_ADVISE)
-        .from([JobCardStatus::CheckedIn])
-        .to(JobCardStatus::Voided)
-        .reason_required();
-    let transition = slot(transition, "nothing_recorded");
-    slot(transition, "no_claim_linked").effect(|c: &JobCard, ctx, tx| {
+/// What `void` adds to the kernel's guards (BL-AUT-02): the reason and the
+/// closing time are kept on the job card. That no labour or part line exists
+/// and no insurance claim is linked (`PLT.ACL.09`) is the void's reverse
+/// handler's ([`crate::job_void`]): guards cannot read the database.
+fn void_rules(transition: Transition<JobCard>) -> Transition<JobCard> {
+    transition.effect(|c: &JobCard, ctx, tx| {
         let id = c.id;
         let reason = ctx.reason().map(str::to_owned);
         Box::pin(async move {
@@ -768,6 +769,7 @@ pub(crate) fn register() {
     subject_machine().register();
     renox::state_machine::register::<JobCard>();
     cancel_policy().register();
+    crate::job_void::register();
     approvals::register_subject_link(crate::job_card::JOB_CARD_SUBJECT_TYPE, |id| {
         format!("/auto/job-cards/{id}")
     });
@@ -843,6 +845,7 @@ mod tests {
             (CANCEL_APPROVED, open.clone(), "cancelled"),
             (CANCEL_SYSTEM, open, "cancelled"),
             (VOID, vec!["checked_in"], "voided"),
+            ("void_approved", vec!["checked_in"], "voided"),
         ];
         assert_eq!(machine.transitions().len(), expected.len());
         let system = [
@@ -852,6 +855,7 @@ mod tests {
             PARTS_ARRIVED,
             CANCEL_APPROVED,
             CANCEL_SYSTEM,
+            "void_approved",
         ];
         for (name, from, to) in expected {
             let transition = machine.find(name).unwrap();
@@ -916,7 +920,13 @@ mod tests {
                 "{name}"
             );
         }
-        assert_eq!(guards(VOID), ["nothing_recorded", "no_claim_linked"]);
+        for name in [VOID, "void_approved"] {
+            assert_eq!(
+                guards(name),
+                ["permission_held", "not_given_to_third_party"],
+                "{name}"
+            );
+        }
         for name in [
             DECLINE,
             DECLINE_SYSTEM,

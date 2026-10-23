@@ -41,7 +41,7 @@ use crate::estimate::Estimate;
 use crate::job_card::{FUEL_LEVELS, JobCard, JobCardStatus, QC_KEYS, QcCheck};
 use crate::job_card_machine::{
     APPROVE, APPROVE_SYSTEM, DECLINE, DECLINE_ADDED, DECLINE_ADDED_SYSTEM, DECLINE_SYSTEM,
-    DELIVER, FAIL_QC, FINISH_WORK, JobInput, PASS_QC, SEND_ESTIMATE, START_INSPECTION, VOID,
+    DELIVER, FAIL_QC, FINISH_WORK, JobInput, PASS_QC, SEND_ESTIMATE, START_INSPECTION,
     WAIT_PARTS,
 };
 use crate::labour_line::{LabourLine, LabourPricing, LineStatus, WorkStatus};
@@ -1045,7 +1045,18 @@ pub async fn decline(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> 
 /// state.
 pub async fn void(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> Result<JobCard> {
     let card = load(state, by, id, permissions::JOB_CARDS_ADVISE).await?;
-    run(state, by, &card, VOID, Some(reason), input_for(by)).await
+    // The kernel's void: the reverse handler of the job card refuses a card
+    // with lines or an open claim, and `RecordVoided` cancels the booking.
+    match wl_kernel::voids::void(state, by, &card.subject(), reason)
+        .await
+        .map_err(TransitionError::into_error)?
+    {
+        wl_kernel::voids::VoidOutcome::Voided(_) => {}
+        wl_kernel::voids::VoidOutcome::Pending(_) => {
+            return Err(refused(english("auto.stop.problem.approval", &[])));
+        }
+    }
+    JobCard::find_or_404(&state.db, id).await
 }
 
 /// `wait_parts`: the job waits for parts.
