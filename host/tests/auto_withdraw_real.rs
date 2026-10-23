@@ -27,16 +27,17 @@ async fn aut_08_real_a_withdrawn_claim_bills_the_work_done_to_the_customer_only(
     let s = shop(&w, None).await;
     let job = approved_job(&w, &s, &[("Panel repair", 6_000, 20_000)], &[0]).await;
 
-    let cancelled = claims::withdraw(
-        w.state(),
-        &s.carla,
-        job.claim.id,
-        Withdrawal::new("Withdrawn by the customer")
-            .document("withdrawal-letter-80")
-            .stop(),
-    )
-    .await
-    .unwrap();
+    let cancelled = w
+        .at_noon(claims::withdraw(
+            w.state(),
+            &s.carla,
+            job.claim.id,
+            Withdrawal::new("Withdrawn by the customer")
+                .document("withdrawal-letter-80")
+                .stop(),
+        ))
+        .await
+        .unwrap();
     assert_eq!(cancelled.status, ClaimStatus::Cancelled);
 
     let letters = sent_of(&w, "auto.claim_withdrawal_letter").await;
@@ -74,14 +75,14 @@ async fn aut_08_real_an_unsigned_private_estimate_is_cancelled_after_seven_days(
     let w = boot().await;
     let s = shop(&w, None).await;
     let job = approved_job(&w, &s, &[("Panel repair", 6_000, 20_000)], &[0]).await;
-    claims::withdraw(
+    w.at_noon(claims::withdraw(
         w.state(),
         &s.carla,
         job.claim.id,
         Withdrawal::new("Withdrawn by the customer")
             .document("withdrawal-letter-80")
             .continue_privately(),
-    )
+    ))
     .await
     .unwrap();
     let card = JobCard::find_or_404(w.db(), job.card.id).await.unwrap();
@@ -164,14 +165,14 @@ async fn aut_08_real_a_withdrawal_letter_that_gives_up_opens_a_task_for_the_coor
     let s = shop(&w, None).await;
     let job = approved_job(&w, &s, &[("Panel repair", 6_000, 20_000)], &[0]).await;
 
-    claims::withdraw(
+    w.at_noon(claims::withdraw(
         w.state(),
         &s.carla,
         job.claim.id,
         Withdrawal::new("Withdrawn by the customer")
             .document("withdrawal-letter-80")
             .stop(),
-    )
+    ))
     .await
     .unwrap();
     w.app.run_all_jobs().await;

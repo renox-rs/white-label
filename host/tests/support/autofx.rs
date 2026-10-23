@@ -108,6 +108,26 @@ impl World {
         self.app.db()
     }
 
+    /// Runs `work` with the clock at the next 12:00 in Dubai: inside every
+    /// send window and outside the quiet hours (21:00-08:00, `NTF.RUL.02`), so
+    /// a message the work sends does not wait for the morning whatever the hour
+    /// the test runs at. Jobs run with [`TestApp::run_all_jobs`] after it still
+    /// see the same time (the clock stays moved).
+    pub async fn at_noon<F: std::future::Future>(&self, work: F) -> F::Output {
+        self.app.travel_back();
+        let calendar = wl_kernel::BusinessCalendar::default();
+        let local = calendar.local(renox::db::now()).naive_local();
+        let mut noon = local.date().and_hms_opt(12, 0, 0).expect("a time");
+        if noon <= local {
+            noon += TimeDelta::days(1);
+        }
+        let ahead = (calendar.from_local(noon) - renox::db::now())
+            .to_std()
+            .expect("ahead");
+        self.app.travel(ahead);
+        self.app.at_travelled_time(work).await
+    }
+
     /// A user with the host role `role`, as the user the services take.
     pub async fn staff(&self, name: &str, role: &str) -> (User, AuthUser) {
         let user = person(&self.app, name, role).await;
