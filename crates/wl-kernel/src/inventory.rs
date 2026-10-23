@@ -75,6 +75,13 @@ pub const RECALL_LINE_SUBJECT_TYPE: &str = "inventory.recall_line";
 /// The subject type of a pending issue.
 pub const PENDING_ISSUE_SUBJECT_TYPE: &str = "inventory.pending_issue";
 
+/// The subject type of a dispatch.
+pub const DISPATCH_SUBJECT_TYPE: &str = "inventory.dispatch";
+
+/// The subject type of a dispatch line (what `wl-delivery` hands back as the
+/// source line of a delivery's item).
+pub const DISPATCH_LINE_SUBJECT_TYPE: &str = "inventory.dispatch_line";
+
 /// One line of a posted goods receipt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GoodsReceivedLine {
@@ -1374,3 +1381,104 @@ pub struct RecallClosed {
 }
 
 impl Event for RecallClosed {}
+
+/// One line of a dispatch, as the dispatch events carry it (wl-inventory §6).
+/// Quantities are thousandths of the item's base unit, value is fils.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchedLine {
+    /// The dispatch line, `inventory.dispatch_line:4`.
+    pub line: Subject,
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The lot the line was picked from, `inventory.lot:2`.
+    pub lot: Option<Subject>,
+    /// The line of the source it fulfils (a sales order line), when it has one.
+    pub source_line: Option<Subject>,
+    /// The quantity sent.
+    pub quantity_milli: i64,
+    /// The quantity the recipient accepted; 0 until the proof of delivery.
+    pub delivered_milli: i64,
+    /// The quantity the recipient refused; it is *in return* until it is
+    /// received back into quarantine.
+    pub refused_milli: i64,
+    /// The refusal reason's code, when something was refused.
+    pub refusal_reason: Option<String>,
+    /// The value of the quantity sent (the cost it left stock at), in fils.
+    pub value: i64,
+}
+
+/// A dispatch left (`dispatch`, `DispatchSent`): `wl-delivery` creates the
+/// delivery for an own-delivery hand-over.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchSent {
+    /// The dispatch, `inventory.dispatch:3`.
+    pub dispatch: Subject,
+    /// The record it fulfils (a sales order).
+    pub source: Subject,
+    /// The recipient, when it is a party.
+    pub recipient: Option<PartyId>,
+    /// `own_delivery`, `courier` or `collection`.
+    pub handover: String,
+    /// The delivery `wl-delivery` was asked for, for an own delivery.
+    pub delivery: Option<i64>,
+    /// The courier's tracking number.
+    pub tracking_number: Option<String>,
+    /// The lines.
+    pub lines: Vec<DispatchedLine>,
+}
+
+impl Event for DispatchSent {}
+
+/// A dispatch was confirmed delivered (`confirm_delivery`,
+/// `DispatchDelivered`): the source fulfils and bills the delivered quantity
+/// only; the refused quantity is *in return*.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchDelivered {
+    /// The dispatch.
+    pub dispatch: Subject,
+    /// The record it fulfils.
+    pub source: Subject,
+    /// The recipient, when it is a party.
+    pub recipient: Option<PartyId>,
+    /// The lines with the delivered and the refused quantity.
+    pub lines: Vec<DispatchedLine>,
+}
+
+impl Event for DispatchDelivered {}
+
+/// A dispatch was lost (`mark_lost`, `DispatchLost`) and its value is held as
+/// a loss while the claim runs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchLost {
+    /// The dispatch.
+    pub dispatch: Subject,
+    /// The record it fulfils.
+    pub source: Subject,
+    /// The recipient, when it is a party.
+    pub recipient: Option<PartyId>,
+    /// Whether the dispatch was `delivered` (under review) when it was lost:
+    /// the source then reverses its fulfilment.
+    pub was_delivered: bool,
+    /// The value held as a loss, in fils.
+    pub value: i64,
+    /// The lines (delivered quantity 0 when the dispatch had been delivered).
+    pub lines: Vec<DispatchedLine>,
+}
+
+impl Event for DispatchLost {}
+
+/// A delivered dispatch was reopened because its delivery was reversed
+/// (`reverse`, `DispatchReversed`): the source reverses its fulfilment.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchReversed {
+    /// The dispatch.
+    pub dispatch: Subject,
+    /// The record it fulfils.
+    pub source: Subject,
+    /// The recipient, when it is a party.
+    pub recipient: Option<PartyId>,
+    /// The lines (delivered quantity 0; the refused quantity is unchanged).
+    pub lines: Vec<DispatchedLine>,
+}
+
+impl Event for DispatchReversed {}
