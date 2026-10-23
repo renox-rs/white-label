@@ -50,6 +50,7 @@
                          :title="tx['obsolete']" :description="tx['obsolete_description']" :submit-label="tx['obsolete']" icon="archive" danger/>
       </template>
     </rx-row>
+    <rx-alert rx-if="actions.edit.shown and actions.edit.blocked" kind="info" :message="actions.edit.blocked"/>
     <rx-alert rx-if="actions.new_version.shown and actions.new_version.blocked" kind="info" :message="actions.new_version.blocked"/>
     <rx-card :title="tx['details']">
       <rx-infolist columns="2">

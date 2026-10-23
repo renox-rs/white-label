@@ -451,6 +451,12 @@ async fn the_bom_pages_show_the_versions_lines_and_the_actions_for_the_person() 
     let released = visible(&t.browse(&keeper, &format!("/boms/{first}")).await.text());
     assert!(released.contains("A released bill is locked"));
     assert!(released.contains("New version"));
+    // The reason "Change the bill" is disabled is on the page, not only in
+    // the button's tooltip.
+    assert!(
+        released.contains("Only a draft can be changed."),
+        "{released}"
+    );
     assert!(released.contains("AED 20.13"), "{released}");
     assert!(!released.contains("Add a component"));
     post(&t, &keeper, &format!("/boms/{first}/new-version"), &[])
