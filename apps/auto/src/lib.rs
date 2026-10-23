@@ -35,10 +35,15 @@ pub mod parts;
 pub mod permissions;
 pub mod reasons;
 pub mod seed;
+pub mod supplier_claim;
+pub mod supplier_claim_machine;
+pub mod supplier_claims;
+pub mod supplier_terms;
 mod texts;
 mod texts_claims;
 mod texts_fleet;
 mod texts_jobs;
+mod texts_supplier;
 mod texts_vehicles;
 pub mod vehicle;
 pub mod vehicles;
@@ -59,6 +64,7 @@ pub use job_card::{JobCard, JobCardStatus};
 pub use labour_line::{LabourLine, LabourPricing, LineStatus, WorkStatus};
 pub use labour_operation::LabourOperation;
 pub use part_line::{PartCondition, PartLine};
+pub use supplier_claim::{SupplierAnswer, SupplierClaim, SupplierClaimStatus};
 pub use vehicle::{Emirate, Vehicle};
 
 /// The templates of the pages, under the names the pages ask for. An app
@@ -117,6 +123,14 @@ const VIEWS: &[(&str, &str)] = &[
         "auto/fleet_contract.html",
         include_str!("../views/auto/fleet_contract.html"),
     ),
+    (
+        "auto/supplier_claims.html",
+        include_str!("../views/auto/supplier_claims.html"),
+    ),
+    (
+        "auto/supplier_claim.html",
+        include_str!("../views/auto/supplier_claim.html"),
+    ),
 ];
 
 /// A whole number with its thousands grouped: `52,000`.
@@ -171,7 +185,9 @@ impl Module for Auto {
             .view_data::<pages::insurers::IndexPage>()
             .view_data::<pages::insurers::ShowPage>()
             .view_data::<pages::fleet::IndexPage>()
-            .view_data::<pages::fleet::ShowPage>();
+            .view_data::<pages::fleet::ShowPage>()
+            .view_data::<pages::supplier_claims::IndexPage>()
+            .view_data::<pages::supplier_claims::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -193,7 +209,8 @@ impl Module for Auto {
             .model::<FleetContract>()
             .model::<FleetService>()
             .model::<FleetJob>()
-            .model::<FleetInvoice>();
+            .model::<FleetInvoice>()
+            .model::<SupplierClaim>();
         // The job card: the machine, and the job card that the check-in of a
         // workshop booking opens.
         job_card_machine::register();
@@ -208,6 +225,10 @@ impl Module for Auto {
         fleet_contract_machine::register();
         fleet_daily::register(app);
         fleet_services::register_listeners(app);
+        // The supplier warranty claim: the machine, and the listener that
+        // recovers a claim when its return to supplier is credited.
+        supplier_claim_machine::register();
+        supplier_claims::register_listeners(app);
         // A bill or a document that names a vehicle or a job card shows its
         // plate or `JOB-00007`, not `auto.vehicle:7`.
         register_labels();
@@ -264,6 +285,14 @@ impl Module for Auto {
         );
         app.nav(
             "app",
+            NavLink::route("auto.supplier_claims", "nav.supplier_claims")
+                .icon("handshake")
+                .group("nav.app")
+                .order(87)
+                .permission(permissions::SUPPLIER_CLAIMS_MANAGE),
+        );
+        app.nav(
+            "app",
             NavLink::route("auto.insurers", "nav.insurers")
                 .icon("building-2")
                 .group("nav.app")
@@ -288,6 +317,13 @@ fn register_labels() {
             Ok(FleetContract::find(db, id)
                 .await?
                 .map(|contract| contract.number()))
+        })
+    });
+    register_subject_label(supplier_claim::SUPPLIER_CLAIM_SUBJECT_TYPE, |db, id| {
+        Box::pin(async move {
+            Ok(SupplierClaim::find(db, id)
+                .await?
+                .map(|claim| claim.number()))
         })
     });
     register_subject_label(claim::INSURANCE_CLAIM_SUBJECT_TYPE, |db, id| {

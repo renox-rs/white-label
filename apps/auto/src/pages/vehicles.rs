@@ -6,7 +6,7 @@
 //! | `POST /auto/vehicles` | `auto.vehicle_create` | `vehicles.manage` |
 //! | `GET /auto/vehicles/{id}` | `auto.vehicle` | `vehicles.view` |
 //! | `POST /auto/vehicles/{id}` | `auto.vehicle_update` | `vehicles.manage` |
-//! | `GET /auto/parties/options` | `auto.party_options` | `vehicles.manage` or `job_cards.advise` |
+//! | `GET /auto/parties/options` | `auto.party_options` | `vehicles.manage`, `job_cards.advise`, `insurance.manage`, `fleet_contracts.manage` or `supplier_claims.manage` |
 //!
 //! The list is searched by plate, VIN, make or model and narrowed to fleet
 //! or private vehicles with link tabs. The owner is picked from the parties
@@ -195,7 +195,8 @@ async fn party_options(
     if !(user.has_permission(permissions::VEHICLES_MANAGE)
         || user.has_permission(permissions::JOB_CARDS_ADVISE)
         || user.has_permission(permissions::INSURANCE_MANAGE)
-        || user.has_permission(permissions::FLEET_CONTRACTS_MANAGE))
+        || user.has_permission(permissions::FLEET_CONTRACTS_MANAGE)
+        || user.has_permission(permissions::SUPPLIER_CLAIMS_MANAGE))
     {
         return Err(Error::Forbidden);
     }

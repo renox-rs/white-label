@@ -26,6 +26,7 @@ use wl_kernel::invoicing::provide_invoicer;
 use wl_kernel::parties::provide_directory;
 use wl_kernel::payer_bills::provide_payer_bills;
 use wl_kernel::rate_cards::provide_rate_cards;
+use wl_kernel::tickets::provide_task_creator;
 use wl_scheduling::WlScheduling;
 
 /// The stand-ins of the parties and the invoice book.
@@ -43,9 +44,13 @@ pub mod payer;
 /// The stand-in of the stock service.
 pub mod stock;
 
+/// The stand-in of the ticket book.
+pub mod tickets;
+
 pub use money::{Books, People};
 pub use payer::{Cards, PayerBooks};
 pub use stock::Stock;
+pub use tickets::Tickets;
 
 /// The pages extend the app's layout; a package test has no app, so it
 /// brings the smallest one.
@@ -90,6 +95,7 @@ struct Harness {
     stock: Stock,
     payer_books: PayerBooks,
     cards: Cards,
+    tickets: Tickets,
 }
 
 impl Module for Harness {
@@ -103,6 +109,7 @@ impl Module for Harness {
         provide_stock_service(app, self.stock.clone());
         provide_payer_bills(app, self.payer_books.clone());
         provide_rate_cards(app, self.cards.clone());
+        provide_task_creator(app, self.tickets.clone());
     }
 
     fn routes(&self) -> Routes {
@@ -131,6 +138,8 @@ pub struct Garage {
     pub payer_books: PayerBooks,
     /// The rate cards of the insurers.
     pub cards: Cards,
+    /// The warranty tickets.
+    pub tickets: Tickets,
     who: Arc<Mutex<Option<renox::AuthUser>>>,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
@@ -145,6 +154,7 @@ pub async fn boot() -> Garage {
     let who = Arc::new(Mutex::new(None));
     let (people, books, stock) = (People::default(), Books::default(), Stock::default());
     let (payer_books, cards) = (PayerBooks::default(), Cards::default());
+    let tickets = Tickets::default();
     let mut scheduling_module = WlScheduling::new();
     for (code, initiated_by) in auto::reasons::SCHEDULING_REASON_CODES {
         scheduling_module = scheduling_module.reason_code(code, *initiated_by);
@@ -162,6 +172,7 @@ pub async fn boot() -> Garage {
             stock: stock.clone(),
             payer_books: payer_books.clone(),
             cards: cards.clone(),
+            tickets: tickets.clone(),
         });
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
@@ -178,6 +189,7 @@ pub async fn boot() -> Garage {
         stock,
         payer_books,
         cards,
+        tickets,
         who,
         _views: views,
     }

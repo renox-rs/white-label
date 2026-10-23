@@ -8,6 +8,7 @@ pub mod fleet;
 pub mod insurers;
 pub mod job_cards;
 pub mod labour;
+pub mod supplier_claims;
 pub mod vehicles;
 
 use std::collections::BTreeMap;
@@ -32,6 +33,7 @@ pub fn routes() -> Routes {
         .merge(claims::routes())
         .merge(insurers::routes())
         .merge(fleet::routes())
+        .merge(supplier_claims::routes())
 }
 
 /// The app text `key` (without the `auto.` prefix).
