@@ -2,10 +2,12 @@
 #![warn(missing_docs)]
 
 pub mod abort;
+pub mod conformity;
 pub mod cost;
 mod db;
 pub mod disputes;
 pub mod events;
+pub mod exports;
 pub mod incidents;
 pub mod issue;
 pub mod material_hold;
@@ -16,7 +18,9 @@ pub mod pages;
 pub mod permissions;
 pub mod pick_list;
 pub mod plant;
+pub mod po_upload;
 pub mod portal;
+pub mod recalls;
 pub mod report;
 mod screens;
 mod texts;
@@ -29,6 +33,7 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use abort::AbortLine;
+pub use conformity::ItemFlag;
 pub use events::{
     NcrCancelled, NcrClosed, NcrDispositioned, NcrRaised, NcrReopened, WorkOrderAborted,
     WorkOrderCancelled, WorkOrderCompleted, WorkOrderReleased, WorkOrderUnlinked,
@@ -37,6 +42,7 @@ pub use issue::MaterialIssue;
 pub use ncr::{Cause, Disposition, Ncr, NcrDecision, NcrStatus, Origin};
 pub use pick_list::PickLine;
 pub use plant::{Line, Plant};
+pub use recalls::{ProductionParties, RepickFlag};
 pub use report::{ProductionReport, ReportStatus};
 pub use work_order::{WorkOrder, WorkOrderSource, WorkOrderStatus};
 
@@ -66,6 +72,11 @@ impl Module for Manufacturing {
             .view_data::<screens::work_order_page::WorkOrderPage>()
             .view_data::<screens::ncrs_page::NcrsPage>()
             .view_data::<screens::ncr_page::NcrPage>()
+            .view_data::<screens::recall_page::RecallsPage>()
+            .view_data::<screens::recall_page::RecallPage>()
+            .view_data::<screens::conformity_page::ConformityPage>()
+            .view_data::<screens::exports_page::ExportsPage>()
+            .view_data::<po_upload::OrdersPage>()
             .view_data::<portal::InvoicesPage>();
         wl_kernel::approvals::register_subject_link(ncr::SUBJECT_TYPE, |id| {
             screens::ncr_page::url(id)
@@ -99,6 +110,42 @@ impl Module for Manufacturing {
                 .order(10)
                 .permission(permissions::NCRS_VIEW),
         );
+        app.nav(
+            "app",
+            NavLink::route("manufacturing.recalls", "nav.recalls")
+                .icon("triangle-alert")
+                .group("nav.app")
+                .order(11)
+                .permission(permissions::RECALLS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("manufacturing.conformity", "nav.conformity")
+                .icon("shield-check")
+                .group("nav.app")
+                .order(12)
+                .permission(permissions::CONFORMITY_MANAGE),
+        );
+        app.nav(
+            "app",
+            NavLink::route("manufacturing.exports", "nav.exports")
+                .icon("ship")
+                .group("nav.app")
+                .order(13)
+                .permission(permissions::EXPORTS_MANAGE),
+        );
+        // `MFG.RUL.08`: the evidence of the exports, every day at 08:00.
+        app.schedule()
+            .daily_at(
+                exports::RUN_AT,
+                exports::TASK,
+                |state: AppState| async move {
+                    exports::run_daily(&state, wl_kernel::documents::today())
+                        .await
+                        .map(|_| ())
+                },
+            )
+            .timezone("Asia/Dubai");
         app.model::<Plant>()
             .model::<Line>()
             .model::<WorkOrder>()
@@ -108,7 +155,12 @@ impl Module for Manufacturing {
             .model::<AbortLine>()
             .model::<Ncr>()
             .model::<NcrDecision>()
-            .model::<disputes::NcrLink>();
+            .model::<disputes::NcrLink>()
+            .model::<RepickFlag>()
+            .model::<ItemFlag>()
+            .model::<po_upload::PoUpload>()
+            .model::<exports::ExportWatch>()
+            .model::<exports::ContractNote>();
         work_order::register();
         ncr::register();
         report::register(app);
@@ -128,6 +180,14 @@ impl Module for Manufacturing {
         // The supplier scorecard counts the NCRs caused by the supplier.
         wl_kernel::inventory::provide_supplier_incidents(app, incidents::NcrIncidents);
         disputes::listen(app);
+        // `TracePartyResolver` for 07: a dispatch and a work order are their
+        // customer; a dispatch that has not left is flagged for a re-pick.
+        wl_kernel::inventory::provide_trace_party_resolver(app, recalls::ProductionParties);
+        recalls::listen(app);
+        // `MFG.ACL.11`: the item flags and the certificates of the regulated
+        // items, asked at `pick` and `dispatch`, at order `submit` and by the
+        // nightly look-ahead.
+        conformity::register(app);
         // A lot with an NCR open on it is not released (§7.1 *NCR*).
         wl_kernel::lot_disposal::provide_lot_release_guard(app, ncrs::NcrReleaseGuard);
         app.schedule()

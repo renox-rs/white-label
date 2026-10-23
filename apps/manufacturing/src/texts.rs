@@ -966,6 +966,295 @@ const TEXTS: &[(&str, &str)] = &[
         "manufacturing.screen.ncr.fact.customer_says",
         "The customer says",
     ),
+    // The recall by customer (BL-MFG-10).
+    (
+        "manufacturing.recall.repick_title",
+        "Re-pick {{ dispatch }}: a lot on it is recalled",
+    ),
+    (
+        "manufacturing.recall.repick_body",
+        "Dispatch {{ dispatch }} has not left and holds a lot of recall {{ recall }}, which is held. Pick the line again from lots that are not held, or cancel the dispatch.",
+    ),
+    ("manufacturing.screen.recalls.title", "Recalls"),
+    (
+        "manufacturing.screen.recalls.subtitle",
+        "What each recall reached: the customers, the work orders and the dispatches.",
+    ),
+    ("manufacturing.screen.recalls.recall", "Recall"),
+    ("manufacturing.screen.recalls.opened", "Opened"),
+    ("manufacturing.screen.recalls.empty", "No recalls"),
+    (
+        "manufacturing.screen.recalls.empty_text",
+        "A recall opened in the stock pages appears here.",
+    ),
+    ("manufacturing.screen.recall.title", "Recall"),
+    ("manufacturing.screen.recall.open_recall", "Open the recall"),
+    ("manufacturing.screen.recall.tab.customers", "Customers"),
+    (
+        "manufacturing.screen.recall.tab.bring_back",
+        "To bring back",
+    ),
+    ("manufacturing.screen.recall.tab.repick", "To re-pick"),
+    ("manufacturing.screen.recall.customer", "Customer"),
+    ("manufacturing.screen.recall.quantity", "Quantity"),
+    ("manufacturing.screen.recall.day", "Date"),
+    ("manufacturing.screen.recall.notice", "Notice"),
+    ("manufacturing.screen.recall.note", "Note"),
+    (
+        "manufacturing.screen.recall.empty",
+        "No customer reached yet",
+    ),
+    (
+        "manufacturing.screen.recall.empty_text",
+        "No dispatch or work order of a customer got a recalled lot.",
+    ),
+    (
+        "manufacturing.screen.recall.unknown_customer",
+        "Customer not known",
+    ),
+    (
+        "manufacturing.screen.recall.summary",
+        "{{ customer }}: {{ shipped }} shipped, {{ held }} not shipped",
+    ),
+    (
+        "manufacturing.screen.recall.bring_back_alert",
+        "Goods of this recall left the plant and are not delivered yet: bring them back by hand.",
+    ),
+    (
+        "manufacturing.screen.recall.bring_back_note",
+        "On its way: bring it back",
+    ),
+    (
+        "manufacturing.screen.recall.repick_asked",
+        "Re-pick asked of the storekeeper",
+    ),
+    (
+        "manufacturing.screen.recall.bring_back_empty",
+        "Nothing to bring back",
+    ),
+    (
+        "manufacturing.screen.recall.bring_back_empty_text",
+        "No dispatch of this recall is on its way to a customer.",
+    ),
+    (
+        "manufacturing.screen.recall.repick_empty",
+        "Nothing to re-pick",
+    ),
+    (
+        "manufacturing.screen.recall.repick_empty_text",
+        "No dispatch that has not left holds a lot of this recall.",
+    ),
+    ("manufacturing.screen.recall_status.open", "Open"),
+    ("manufacturing.screen.recall_status.traced", "Traced"),
+    ("manufacturing.screen.recall_status.closed", "Closed"),
+    ("manufacturing.screen.shipping.shipped", "Shipped"),
+    ("manufacturing.screen.shipping.not_shipped", "Not shipped"),
+    ("manufacturing.screen.notice.pending", "Not told yet"),
+    ("manufacturing.screen.notice.sent", "Told"),
+    ("manufacturing.screen.notice.waived", "Not needed"),
+    // Product conformity (BL-MFG-11).
+    (
+        "manufacturing.conformity.kind",
+        "{{ kind }} is not a conformity certificate kind.",
+    ),
+    (
+        "manufacturing.conformity.code",
+        "Give the code of the item.",
+    ),
+    (
+        "manufacturing.conformity.unknown_item",
+        "There is no item with the code {{ code }}.",
+    ),
+    (
+        "manufacturing.conformity.planned_line",
+        "Order {{ order }}, line {{ line }}",
+    ),
+    (
+        "manufacturing.conformity.export_only",
+        "{{ item }} is export only: it cannot be sold for delivery in the UAE.",
+    ),
+    (
+        "manufacturing.screen.conformity.title",
+        "Product conformity",
+    ),
+    (
+        "manufacturing.screen.conformity.subtitle",
+        "The items that need a conformity certificate to leave the plant, and the export only items.",
+    ),
+    ("manufacturing.screen.conformity.new", "Flag an item"),
+    (
+        "manufacturing.screen.conformity.new_hint",
+        "A regulated item is dispatched only while one of its accepted certificates is valid; an export only item is not sold for delivery in the UAE.",
+    ),
+    ("manufacturing.screen.conformity.new_save", "Save the flags"),
+    ("manufacturing.screen.conformity.code", "Item code"),
+    (
+        "manufacturing.screen.conformity.code_hint",
+        "The code of the item in the stock pages.",
+    ),
+    ("manufacturing.screen.conformity.regulated", "Regulated"),
+    ("manufacturing.screen.conformity.export_only", "Export only"),
+    ("manufacturing.screen.conformity.item", "Item"),
+    (
+        "manufacturing.screen.conformity.certificates",
+        "Certificates on file",
+    ),
+    (
+        "manufacturing.screen.conformity.empty",
+        "No item is flagged",
+    ),
+    (
+        "manufacturing.screen.conformity.empty_text",
+        "Flag the items that are regulated or export only.",
+    ),
+    ("manufacturing.screen.conformity.yes", "Yes"),
+    ("manufacturing.screen.conformity.no", "No"),
+    (
+        "manufacturing.screen.conformity.done",
+        "The flags are saved.",
+    ),
+    (
+        "manufacturing.screen.conformity_kind.ecas_certificate",
+        "ECAS certificate",
+    ),
+    (
+        "manufacturing.screen.conformity_kind.eqm_licence",
+        "Emirates Quality Mark licence",
+    ),
+    (
+        "manufacturing.screen.conformity_kind.food_contact_certificate",
+        "Food-contact certificate",
+    ),
+    ("manufacturing.screen.doc_validity.valid", "Valid"),
+    ("manufacturing.screen.doc_validity.expiring", "Expires soon"),
+    ("manufacturing.screen.doc_validity.expired", "Expired"),
+    (
+        "manufacturing.screen.doc_validity.pending",
+        "Waits for review",
+    ),
+    ("manufacturing.screen.doc_validity.rejected", "Rejected"),
+    // Export evidence and the VAT correction (BL-MFG-12, MFG.RUL.08).
+    (
+        "manufacturing.export.warn_title",
+        "Exit evidence missing for {{ dispatch }}: {{ days }} days",
+    ),
+    (
+        "manufacturing.export.warn_body",
+        "Dispatch {{ dispatch }} left on {{ left }} and no customs exit certificate, bill of lading or airway bill is attached. Invoices at the zero rate: {{ invoices }}. After {{ flag }} days the zero rate no longer holds.",
+    ),
+    (
+        "manufacturing.export.task_title",
+        "5% VAT due on export {{ dispatch }}: correct the invoice",
+    ),
+    (
+        "manufacturing.export.task_body",
+        "Dispatch {{ dispatch }} left more than {{ days }} days ago without exit evidence, so the zero rate no longer holds. Zero-rated invoices: {{ invoices }}. Issue a credit note and a standard-rated invoice. Customer contract note: {{ note }}",
+    ),
+    (
+        "manufacturing.export.no_note",
+        "none on file; check the contract on whether the VAT is recharged",
+    ),
+    (
+        "manufacturing.export.late_title",
+        "Evidence received after correction for {{ dispatch }}",
+    ),
+    (
+        "manufacturing.export.late_body",
+        "Exit evidence for dispatch {{ dispatch }} was attached on {{ day }}, after the 5% VAT was flagged. Nothing is reversed; decide whether the zero rate can be restored.",
+    ),
+    ("manufacturing.screen.exports.title", "Export evidence"),
+    (
+        "manufacturing.screen.exports.subtitle",
+        "Zero-rated export dispatches and the proof that the goods left the UAE within 90 days.",
+    ),
+    ("manufacturing.screen.exports.dispatch", "Dispatch"),
+    ("manufacturing.screen.exports.left", "Left on"),
+    ("manufacturing.screen.exports.days", "Days"),
+    ("manufacturing.screen.exports.evidence", "Evidence"),
+    ("manufacturing.screen.exports.attach", "Attach evidence"),
+    ("manufacturing.screen.exports.note", "Contract note"),
+    ("manufacturing.screen.exports.note_edit", "Contract note"),
+    (
+        "manufacturing.screen.exports.note_hint",
+        "Whether the 5% VAT is recharged to this customer when the zero rate is lost.",
+    ),
+    ("manufacturing.screen.exports.note_save", "Save the note"),
+    (
+        "manufacturing.screen.exports.note_done",
+        "The note is saved.",
+    ),
+    (
+        "manufacturing.screen.exports.empty",
+        "No export dispatch yet",
+    ),
+    (
+        "manufacturing.screen.exports.empty_text",
+        "A dispatch billed at the zero rate appears here once it has left.",
+    ),
+    (
+        "manufacturing.screen.export_state.waiting",
+        "Waiting for evidence",
+    ),
+    (
+        "manufacturing.screen.export_state.warned",
+        "Warned at day 60",
+    ),
+    ("manufacturing.screen.export_state.vat_due", "5% VAT due"),
+    (
+        "manufacturing.screen.export_state.evidence",
+        "Evidence received",
+    ),
+    (
+        "manufacturing.screen.export_state.evidence_late",
+        "5% VAT due; evidence received after correction",
+    ),
+    // The buyer's PO upload (BL-MFG-06).
+    ("manufacturing.po.empty", "Give the customer PO number."),
+    (
+        "manufacturing.po.duplicate",
+        "PO {{ po }} is already used by order {{ number }} ({{ status }}). Send a new PO number, or a call-off number if this is a call-off against it.",
+    ),
+    (
+        "manufacturing.po.duplicate_call_off",
+        "PO {{ po }} with call-off {{ call_off }} is already used by order {{ number }} ({{ status }}). Send another call-off number.",
+    ),
+    (
+        "manufacturing.po.uploaded",
+        "PO {{ po }} was uploaded already.",
+    ),
+    (
+        "manufacturing.po.told_title",
+        "Customer PO {{ po }} uploaded",
+    ),
+    (
+        "manufacturing.po.told_body",
+        "A buyer uploaded PO {{ po }} (call-off {{ call_off }}) in the portal. Enter the order.",
+    ),
+    ("manufacturing.screen.po.title", "Purchase orders"),
+    (
+        "manufacturing.screen.po.subtitle",
+        "Send your purchase order; each PO number and call-off number is used once.",
+    ),
+    ("manufacturing.screen.po.new", "Upload a PO"),
+    (
+        "manufacturing.screen.po.new_hint",
+        "A call-off against a blanket PO has its own call-off number.",
+    ),
+    ("manufacturing.screen.po.new_save", "Send the PO"),
+    ("manufacturing.screen.po.number", "PO number"),
+    ("manufacturing.screen.po.call_off", "Call-off number"),
+    (
+        "manufacturing.screen.po.call_off_hint",
+        "Only for a call-off against a blanket PO.",
+    ),
+    ("manufacturing.screen.po.note", "Note"),
+    ("manufacturing.screen.po.day", "Sent on"),
+    ("manufacturing.screen.po.empty", "No PO sent yet"),
+    (
+        "manufacturing.screen.po.empty_text",
+        "The purchase orders you send appear here.",
+    ),
+    ("manufacturing.screen.po.done", "The PO was sent."),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

@@ -58,10 +58,22 @@ pub const NCRS_DISPOSITION: &str = "ncrs.disposition";
 pub const NCRS_APPROVE: &str = "ncrs.approve";
 /// Keep the plants and the production lines.
 pub const PLANTS_MANAGE: &str = "plants.manage";
+/// Flag the items that are regulated or export only and name the certificate
+/// kinds that count for each (`MFG.ACL.11`, onboarding C-02).
+pub const CONFORMITY_MANAGE: &str = "conformity.manage";
+/// See the export dispatches and their evidence, and keep the customers'
+/// contract notes (`MFG.RUL.08`; the accountant, the production manager).
+pub const EXPORTS_MANAGE: &str = "exports.manage";
 
 /// The permission of `STK.ACL.02` (wl-inventory's `stock.approve`): the
 /// second step of an abort whose scrap is above the limit.
 pub const STOCK_APPROVE: &str = "stock.approve";
+
+/// The permission of wl-inventory's `recalls.manage`: opens a recall and
+/// decides its lines (the general manager, the production manager).
+pub const RECALLS_MANAGE: &str = "recalls.manage";
+/// The permission of wl-inventory's `recalls.view`: reads the recalls.
+pub const RECALLS_VIEW: &str = "recalls.view";
 
 /// The role of the production planner.
 pub const PLANNER_ROLE: &str = "production_planner";
@@ -71,6 +83,8 @@ pub const PRODUCTION_MANAGER_ROLE: &str = "production_manager";
 pub const QC_ROLE: &str = "qc_inspector";
 /// The role of the storekeeper.
 pub const STOREKEEPER_ROLE: &str = "storekeeper";
+/// The role of the accountant, told about an export without evidence.
+pub const ACCOUNTANT_ROLE: &str = "accountant";
 /// The role of the line supervisor.
 pub const SUPERVISOR_ROLE: &str = "supervisor";
 /// The role of sales, told what became of the order's work.
@@ -92,6 +106,8 @@ pub const ALL: &[&str] = &[
     NCRS_DISPOSITION,
     NCRS_APPROVE,
     PLANTS_MANAGE,
+    CONFORMITY_MANAGE,
+    EXPORTS_MANAGE,
 ];
 
 #[cfg(test)]

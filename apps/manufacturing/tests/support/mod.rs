@@ -21,9 +21,10 @@ use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::{TestApp, TestResponse};
 use wl_kernel::inventory::{
-    ConsumeRequest, Consumed, ConsumedLot, ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE,
-    LOT_SUBJECT_TYPE, PENDING_ISSUE_SUBJECT_TYPE, StockChoice, StockFuture, StockLot,
-    StockNegative, StockService, provide_stock_service,
+    ConsumeRequest, Consumed, ConsumedLot, DispatchDirectory, DispatchFacts, ITEM_SUBJECT_TYPE,
+    LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE, LotTrace, PENDING_ISSUE_SUBJECT_TYPE, StockChoice,
+    StockFuture, StockLot, StockNegative, StockService, TraceFuture, TracedHolder, TracedRecall,
+    provide_dispatch_directory, provide_lot_trace, provide_stock_service,
 };
 use wl_kernel::lot_disposal::{
     DispatchLots, DispatchedLot, LotDisposal, LotFacts, LotFuture, ReturnLot, ScrapLot, Scrapped,
@@ -32,6 +33,7 @@ use wl_kernel::lot_disposal::{
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
 };
+use wl_kernel::portal::{PortalFuture, PortalUser, PortalUsers, provide_portal_users};
 use wl_kernel::production::{
     BillsOfMaterials, BomComponent, BomVersion, OrderLineInfo, OrderLines, ProduceOutput,
     ProductionFuture, ProductionStock, ReturnMaterial, VoidOutput, WasteMaterial, provide_boms,
@@ -572,7 +574,7 @@ impl LotDisposal for Lots {
 /// The lots behind the dispatch lines, as wl-inventory's `DispatchLots`
 /// would tell them.
 #[derive(Clone, Default)]
-pub struct Dispatches(Arc<Mutex<Vec<DispatchRow>>>);
+pub struct Dispatches(Arc<Mutex<Vec<DispatchRow>>>, Arc<Mutex<Vec<DispatchFacts>>>);
 
 /// A dispatch line with the lots it sent.
 type DispatchRow = (Subject, Vec<DispatchedLot>);
@@ -592,6 +594,73 @@ impl Dispatches {
             })
             .collect();
         self.0.lock().unwrap().push((origin, rows));
+    }
+}
+
+impl Dispatches {
+    /// Dispatch `id` (`DSP-{id}`) of order `order` for party `recipient` is
+    /// `status`; it left on `left` when it did.
+    pub fn directory(
+        &self,
+        id: i64,
+        status: &str,
+        order: i64,
+        recipient: Option<i64>,
+        left: Option<NaiveDate>,
+    ) {
+        self.1.lock().unwrap().push(DispatchFacts {
+            dispatch: Subject::new("inventory.dispatch", id),
+            number: format!("DSP-{id}"),
+            status: status.to_owned(),
+            source: Subject::new("sales.sales_order", order),
+            recipient: recipient.map(PartyId),
+            dispatched_on: left,
+            lines: Vec::new(),
+        });
+    }
+
+    /// Dispatch `id` is `status` now.
+    pub fn set_status(&self, id: i64, status: &str) {
+        for facts in self.1.lock().unwrap().iter_mut() {
+            if facts.dispatch.subject_id == id {
+                facts.status = status.to_owned();
+            }
+        }
+    }
+}
+
+impl DispatchDirectory for Dispatches {
+    fn facts<'a>(
+        &'a self,
+        _state: &'a AppState,
+        dispatch: &'a Subject,
+    ) -> TraceFuture<'a, Option<DispatchFacts>> {
+        Box::pin(async move {
+            Ok(self
+                .1
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|facts| &facts.dispatch == dispatch)
+                .cloned())
+        })
+    }
+
+    fn left_by<'a>(
+        &'a self,
+        _state: &'a AppState,
+        day: NaiveDate,
+    ) -> TraceFuture<'a, Vec<DispatchFacts>> {
+        Box::pin(async move {
+            Ok(self
+                .1
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|facts| facts.dispatched_on.is_some_and(|on| on <= day))
+                .cloned()
+                .collect())
+        })
     }
 }
 
@@ -858,8 +927,190 @@ impl Notifier for Recording {
     }
 }
 
+/// The recalls of wl-inventory, as `LotTrace` gives them: the lines a test
+/// sets for a recall.
+#[derive(Clone, Default)]
+#[allow(clippy::type_complexity)]
+pub struct Recalls(Arc<Mutex<Vec<(TracedRecall, Vec<TracedHolder>)>>>);
+
+impl Recalls {
+    /// Recall `id` (`RCL-{id}`) with `lines`.
+    pub fn put(&self, id: i64, lines: Vec<TracedHolder>) {
+        self.0.lock().unwrap().push((
+            TracedRecall {
+                recall: Subject::new("inventory.recall", id),
+                number: format!("RCL-{id}"),
+                status: "traced".to_owned(),
+                reason: "Contaminated resin".to_owned(),
+                opened_on: None,
+            },
+            lines,
+        ));
+    }
+}
+
+/// A line of a trace: `subject` of `party` with the delivery status.
+pub fn holder(
+    line: i64,
+    subject: Subject,
+    party: Option<i64>,
+    lot: i64,
+    delivery_status: &str,
+) -> TracedHolder {
+    TracedHolder {
+        line: Subject::new("inventory.recall_line", line),
+        subject: Some(subject),
+        party: party.map(PartyId),
+        lot: Some(Subject::new(LOT_SUBJECT_TYPE, lot)),
+        location: None,
+        quantity_milli: 5_000,
+        on: None,
+        kind: "dispatch".to_owned(),
+        mark: wl_kernel::inventory::TraceMark::Confirmed,
+        sales: 1,
+        delivery_status: Some(delivery_status.to_owned()),
+        notice: "pending".to_owned(),
+    }
+}
+
+impl LotTrace for Recalls {
+    fn holders<'a>(
+        &'a self,
+        _state: &'a AppState,
+        recall: &'a Subject,
+    ) -> TraceFuture<'a, Vec<TracedHolder>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(known, _)| &known.recall == recall)
+                .map(|(_, lines)| lines.clone())
+                .unwrap_or_default())
+        })
+    }
+
+    fn recalls<'a>(&'a self, _state: &'a AppState) -> TraceFuture<'a, Vec<TracedRecall>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|(recall, _)| recall.clone())
+                .collect())
+        })
+    }
+}
+
+/// The buyers of the portal: the users acting for a party.
+#[derive(Clone, Default)]
+pub struct Buyers(Arc<Mutex<Vec<(i64, i64)>>>);
+
+impl Buyers {
+    /// `user` acts for `party`.
+    pub fn add(&self, party: i64, user: i64) {
+        self.0.lock().unwrap().push((party, user));
+    }
+}
+
+impl PortalUsers for Buyers {
+    fn parties_of<'a>(
+        &'a self,
+        _db: &'a Db,
+        user: i64,
+        _on: NaiveDate,
+    ) -> PortalFuture<'a, Vec<PortalUser>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(_, known)| *known == user)
+                .map(|(party, _)| PortalUser {
+                    user_id: user,
+                    person: PartyId(user),
+                    acting_for: PartyId(*party),
+                    roles: vec!["approver".to_owned()],
+                })
+                .collect())
+        })
+    }
+
+    fn users_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+        _on: NaiveDate,
+    ) -> PortalFuture<'a, Vec<PortalUser>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(known, _)| *known == party.0)
+                .map(|(_, user)| PortalUser {
+                    user_id: *user,
+                    person: PartyId(*user),
+                    acting_for: party,
+                    roles: vec!["approver".to_owned()],
+                })
+                .collect())
+        })
+    }
+}
+
+/// The customer POs wl-sales holds: `(customer, PO, call-off, order number,
+/// status)`, compared trimmed and case-insensitive as wl-sales does.
+#[derive(Clone, Default)]
+#[allow(clippy::type_complexity)]
+pub struct PoOrders(Arc<Mutex<Vec<(i64, String, String, String, String)>>>);
+
+impl PoOrders {
+    /// Order `number` (in `status`) of `customer` holds `po` with `call_off`.
+    pub fn hold(&self, customer: i64, po: &str, call_off: &str, number: &str, status: &str) {
+        self.0.lock().unwrap().push((
+            customer,
+            po.trim().to_lowercase(),
+            call_off.trim().to_lowercase(),
+            number.to_owned(),
+            status.to_owned(),
+        ));
+    }
+}
+
+impl wl_kernel::sales::CustomerPoCheck for PoOrders {
+    fn holder<'a>(
+        &'a self,
+        _state: &'a AppState,
+        customer: PartyId,
+        po: &'a str,
+        call_off: &'a str,
+    ) -> wl_kernel::sales::SalesFuture<'a, Option<wl_kernel::sales::PoHolder>> {
+        Box::pin(async move {
+            let (po, call_off) = (po.trim().to_lowercase(), call_off.trim().to_lowercase());
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(c, p, o, _, _)| *c == customer.0 && *p == po && *o == call_off)
+                .map(|(_, _, _, number, status)| wl_kernel::sales::PoHolder {
+                    number: number.clone(),
+                    status: status.clone(),
+                }))
+        })
+    }
+}
+
 /// Provides the fakes.
 struct Fakes {
+    po_orders: PoOrders,
+    recalls: Recalls,
+    buyers: Buyers,
     stock: Stock,
     lots: Lots,
     dispatches: Dispatches,
@@ -884,6 +1135,10 @@ impl Module for Fakes {
         provide_production_stock(app, self.stock.clone());
         provide_lot_disposal(app, self.lots.clone());
         provide_dispatch_lots(app, self.dispatches.clone());
+        provide_dispatch_directory(app, self.dispatches.clone());
+        wl_kernel::sales::provide_customer_po_check(app, self.po_orders.clone());
+        provide_lot_trace(app, self.recalls.clone());
+        provide_portal_users(app, self.buyers.clone());
         provide_boms(app, self.boms.clone());
         provide_order_lines(app, self.lines.clone());
         provide_task_creator(app, self.tickets.clone());
@@ -904,8 +1159,14 @@ pub struct Booted {
     pub stock: Stock,
     /// The lots of the inventory.
     pub lots: Lots,
-    /// The lots behind the dispatch lines.
+    /// The lots behind the dispatch lines, and the dispatches.
     pub dispatches: Dispatches,
+    /// The recalls and their traces.
+    pub recalls: Recalls,
+    /// The customer POs wl-sales holds.
+    pub po_orders: PoOrders,
+    /// The portal buyers of the customers.
+    pub buyers: Buyers,
     /// The BOMs.
     pub boms: Boms,
     /// The sales order lines.
@@ -1229,7 +1490,13 @@ pub async fn boot() -> Booted {
     let cancelled = Recorded::default();
     let completed = Recorded::default();
     let voided = Recorded::default();
+    let recalls = Recalls::default();
+    let po_orders = PoOrders::default();
+    let buyers = Buyers::default();
     let fakes = Fakes {
+        recalls: recalls.clone(),
+        po_orders: po_orders.clone(),
+        buyers: buyers.clone(),
         stock: stock.clone(),
         lots: lots.clone(),
         dispatches: dispatches.clone(),
@@ -1336,6 +1603,9 @@ pub async fn boot() -> Booted {
         stock,
         lots,
         dispatches,
+        recalls,
+        po_orders,
+        buyers,
         boms,
         lines,
         tickets,

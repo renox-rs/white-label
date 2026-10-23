@@ -27,6 +27,14 @@
 //! | `POST /manufacturing/ncrs/{id}/reopen` | `manufacturing.ncr_reopen` | `ncrs.disposition` |
 //! | `POST /manufacturing/ncrs/{id}/cancel` | `manufacturing.ncr_cancel` | `ncrs.disposition` |
 //! | `POST /manufacturing/ncrs/{id}/cause` | `manufacturing.ncr_cause` | `ncrs.raise` (BL-MFG-15) |
+//! | `GET /manufacturing/conformity` | `manufacturing.conformity` | a permission of the vertical (BL-MFG-11) |
+//! | `POST /manufacturing/conformity` | `manufacturing.conformity_flag` | `conformity.manage`; the item by its code, regulated, export only, the accepted kinds |
+//! | `GET /portal/manufacturing/orders` | `manufacturing.portal_orders` | a portal grant for the buyer's company (BL-MFG-06) |
+//! | `POST /portal/manufacturing/orders` | `manufacturing.portal_orders_upload` | as above; PO number, call-off number, note; a duplicate is refused naming the existing order's number and status |
+//! | `GET /manufacturing/exports` | `manufacturing.exports` | `exports.manage` (BL-MFG-12) |
+//! | `POST /manufacturing/exports/notes` | `manufacturing.exports_note` | `exports.manage`; the customer's contract note |
+//! | `GET /manufacturing/recalls` | `manufacturing.recalls` | `recalls.view` or `recalls.manage` (BL-MFG-10) |
+//! | `GET /manufacturing/recalls/{id}` | `manufacturing.recall` | as the list: the customers a recall reached |
 //!
 //! The lists and the record page answer a page when the request names
 //! `text/html` and JSON otherwise ([`wl_kernel::negotiate`]); the actions
@@ -113,6 +121,22 @@ pub fn routes() -> Routes {
         .name("manufacturing.ncr_cancel")
         .post("/manufacturing/ncrs/{id}/cause", cause_ncr)
         .name("manufacturing.ncr_cause")
+        .get("/manufacturing/conformity", screens::conformity_page::show)
+        .name("manufacturing.conformity")
+        .post("/manufacturing/conformity", screens::conformity_page::flag)
+        .name("manufacturing.conformity_flag")
+        .get("/portal/manufacturing/orders", crate::po_upload::show)
+        .name("manufacturing.portal_orders")
+        .post("/portal/manufacturing/orders", crate::po_upload::post)
+        .name("manufacturing.portal_orders_upload")
+        .get("/manufacturing/exports", screens::exports_page::show)
+        .name("manufacturing.exports")
+        .post("/manufacturing/exports/notes", screens::exports_page::note)
+        .name("manufacturing.exports_note")
+        .get("/manufacturing/recalls", screens::recall_page::list)
+        .name("manufacturing.recalls")
+        .get("/manufacturing/recalls/{id}", screens::recall_page::show)
+        .name("manufacturing.recall")
 }
 
 /// A 303 to `path`.

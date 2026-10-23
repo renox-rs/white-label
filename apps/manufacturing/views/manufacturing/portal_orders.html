@@ -1,0 +1,29 @@
+{#- manufacturing portal: the buyer uploads a customer PO with its call-off
+    number; a duplicate is refused with the number and status of the existing
+    order only. Replace it with resources/views/manufacturing/portal_orders.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['po.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['po.title']" :subtitle="tx['po.subtitle']"/>
+    <rx-form-errors/>
+    <rx-row>
+      <rx-action-sheet id="upload-po" :label="tx['po.new']" :action="route('manufacturing.portal_orders_upload')"
+                       :title="tx['po.new']" :description="tx['po.new_hint']" :submit-label="tx['po.new_save']" variant="primary" icon="upload">
+        <rx-input name="po" type="text" :label="tx['po.number']" id="upload-po-number" required/>
+        <rx-input name="call_off" type="text" :label="tx['po.call_off']" :hint="tx['po.call_off_hint']" id="upload-po-call-off"/>
+        <rx-textarea name="note" :label="tx['po.note']" id="upload-po-note"/>
+      </rx-action-sheet>
+    </rx-row>
+    <rx-table :rows="rows" as="row" :key="row.po ~ row.call_off" :caption="tx['po.title']" card>
+      <rx-column :label="tx['po.number']">
+        <rx-stack>
+          <span>{{ row.po }}</span>
+          <span class="rx-subtitle">{{ row.call_off }}</span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['po.note']" hide-narrow>{{ row.note }}</rx-column>
+      <rx-column :label="tx['po.day']" hide-narrow>{{ row.day }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['po.empty']" :message="tx['po.empty_text']" icon="file-up"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>
