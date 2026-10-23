@@ -226,6 +226,7 @@ pub(crate) struct ShowPage {
     attend_rows: Vec<AttendRow>,
     mark_options: Vec<[String; 2]>,
     student_options: Vec<[String; 2]>,
+    guest_options: Vec<[String; 2]>,
     can_roster: bool,
     can_excuse: bool,
     can_correct: bool,
@@ -351,6 +352,26 @@ async fn show(
         });
         student_options.push([student.enrolment.id.to_string(), label]);
     }
+    // The package students who could take this session as guests: active
+    // package enrolments not on the roster already.
+    let mut guest_options: Vec<[String; 2]> = Vec::new();
+    if scheduled {
+        let on_roster: Vec<i64> = students.iter().map(|s| s.enrolment.id).collect();
+        for e in crate::enrolment::Enrolment::query()
+            .where_(crate::enrolment::Enrolment::KIND.eq(EnrolmentKind::Package))
+            .where_(
+                crate::enrolment::Enrolment::STATUS.eq(crate::enrolment::EnrolmentStatus::Active),
+            )
+            .order_by(crate::enrolment::Enrolment::ID)
+            .get(&state.db)
+            .await?
+        {
+            if !on_roster.contains(&e.id) {
+                let name = party_name(&state, &lang.locale, e.student_party_id).await;
+                guest_options.push([e.id.to_string(), format!("{} · {name}", e.number())]);
+            }
+        }
+    }
     let mark_options: Vec<[String; 2]> = [Mark::Present, Mark::Late, Mark::Absent, Mark::Excused]
         .iter()
         .map(|mark| {
@@ -435,6 +456,7 @@ async fn show(
         attend_rows,
         mark_options,
         student_options,
+        guest_options,
         can_roster: scheduled
             && (user.has_permission(permissions::ENROLMENTS_MANAGE)
                 || user.has_permission(permissions::BATCHES_MANAGE)),

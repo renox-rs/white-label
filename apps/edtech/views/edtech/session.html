@@ -22,10 +22,12 @@
         </rx-action-sheet>
       </template>
       <template rx-if="can_roster">
-        <rx-action-sheet :id="'session-student-' ~ id" :label="tx['attendance.add']" :action="route('edtech.session_student', id)"
-                         :title="tx['attendance.add']" :description="tx['attendance.add_description']" :submit-label="tx['attendance.add']" icon="plus">
-          <rx-input name="enrolment" type="number" :label="tx['attendance.enrolment']" :id="'session-student-enrolment-' ~ id" required/>
-        </rx-action-sheet>
+        <template rx-if="guest_options">
+          <rx-action-sheet :id="'session-student-' ~ id" :label="tx['attendance.add']" :action="route('edtech.session_student', id)"
+                           :title="tx['attendance.add']" :description="tx['attendance.add_description']" :submit-label="tx['attendance.add']" icon="plus">
+            <rx-select name="enrolment" :label="tx['attendance.enrolment']" :options="guest_options" :id="'session-student-enrolment-' ~ id" required/>
+          </rx-action-sheet>
+        </template>
         <rx-action-sheet :id="'session-notice-' ~ id" :label="tx['attendance.record_notice']" :action="route('edtech.session_notice', id)"
                          :title="tx['attendance.record_notice']" :description="tx['attendance.record_notice_description']" :submit-label="tx['attendance.record_notice']" icon="calendar">
           <rx-select name="enrolment" :label="tx['attendance.student']" :options="student_options" :id="'session-notice-student-' ~ id" required/>
