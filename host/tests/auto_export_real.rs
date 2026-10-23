@@ -136,3 +136,158 @@ async fn aut_14_real_the_accountant_is_told_and_gets_the_correction_task() {
     assert!(kept.vat_flagged_at.is_some() && kept.late_evidence_notified_at.is_some());
     assert_eq!(sent_of(&w, NOTICE_TYPE).await.len(), 2);
 }
+
+/// #410 point 2 with the real notifier and ticketing: an airway bill or an exit
+/// certificate stops the rule like a bill of lading: no notice at 60 days, no
+/// task at 90.
+#[renox::test]
+async fn aut_14_real_any_one_piece_of_evidence_stops_the_rule() {
+    let w = boot().await;
+    let s = shop(&w, None).await;
+    let customer = tenant(&w.app, "Gulf Movers Trading").await;
+    for (reference, kind, number) in [
+        (142, AIRWAY_BILL, "AW-1"),
+        (143, auto::export_sale::EXIT_CERTIFICATE, "EX-1"),
+    ] {
+        let invoice = export_invoice(&w, &s.aisha, customer, reference).await;
+        let sale = export_sales::record(w.state(), &s.aisha, invoice.0, today())
+            .await
+            .unwrap();
+        export_sales::attach_evidence(w.state(), &s.aisha, sale.id, kind, number)
+            .await
+            .unwrap();
+    }
+    for days in [60, 90, 91] {
+        export_rule::run_daily(w.state(), today() + TimeDelta::days(days))
+            .await
+            .unwrap();
+    }
+    assert!(sent_of(&w, NOTICE_TYPE).await.is_empty());
+    assert!(tasks(&w, "auto.export_vat").await.is_empty());
+}
+
+/// #410 point 3 on the real modules: the 08:00 run fails (the notice cannot be
+/// stored); after the fifth attempt the Owner / GM and the company admin are
+/// told through the real notifier and the owner has a real task; the admin
+/// runs it again once the cause is gone, the alert closes, the owner's task is
+/// completed and the notice goes out.
+#[renox::test]
+async fn aut_14_real_a_failed_run_alerts_the_owner_and_the_admin_and_a_rerun_closes_it() {
+    use host::roles::{ADMIN, OWNER};
+    use renox::state_machine::StateMachine;
+    use wl_kernel::automation::{MAX_ATTEMPTS, RuleRun, transitions};
+    use wl_kernel::compliance::{AlertKind, ComplianceAlert, occurrence_key, schedule_subject};
+
+    let w = boot().await;
+    let s = shop(&w, None).await;
+    let (owner_user, _) = w.staff("Omar", OWNER).await;
+    let (admin_user, admin) = w.staff("Ada", ADMIN).await;
+    let customer = tenant(&w.app, "Gulf Movers Trading").await;
+    let invoice = export_invoice(&w, &s.aisha, customer, 150).await;
+    let sale = export_sales::record(w.state(), &s.aisha, invoice.0, today())
+        .await
+        .unwrap();
+    let on = today() + TimeDelta::days(60);
+
+    renox::db::sql(
+        "CREATE TRIGGER refuse_notice BEFORE INSERT ON wl_notify_messages WHEN NEW.type_key = 'auto.export_notice' \
+         BEGIN SELECT RAISE(ABORT, 'refused for the test'); END",
+    )
+    .execute(w.db())
+    .await
+    .unwrap();
+    for attempt in 0..MAX_ATTEMPTS {
+        export_rule::run_daily(w.state(), on).await.unwrap();
+        if attempt + 1 < MAX_ATTEMPTS {
+            assert!(
+                ComplianceAlert::open(w.db())
+                    .await
+                    .unwrap()
+                    .iter()
+                    .all(|a| a.rule != export_rule::RULE),
+                "no alert before the fifth failure"
+            );
+        }
+        RuleRun::query()
+            .update(
+                w.db(),
+                &[(
+                    "next_attempt_at",
+                    &Some(renox::db::now() - TimeDelta::hours(1)),
+                )],
+            )
+            .await
+            .unwrap();
+    }
+    let alerts: Vec<_> = ComplianceAlert::open(w.db())
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|a| a.rule == export_rule::RULE)
+        .collect();
+    assert_eq!(alerts.len(), 1, "{alerts:?}");
+    assert_eq!(alerts[0].kind, AlertKind::Failed);
+    let told = sent_of(&w, wl_kernel::compliance::service::NOTIFICATION_TYPE).await;
+    let recipients: Vec<_> = told.iter().filter_map(|m| m.user_id).collect();
+    assert!(
+        recipients.contains(&owner_user.id) && recipients.contains(&admin_user.id),
+        "the owner and the company admin: {recipients:?}"
+    );
+    assert!(
+        !recipients.contains(&s.aisha.id),
+        "not the accountant: {recipients:?}"
+    );
+    let owner_task = || async {
+        wl_ticketing::Ticket::query()
+            .get(w.db())
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|t| t.assignee_user_id == Some(owner_user.id))
+            .expect("the owner has a task")
+    };
+    assert!(!matches!(
+        owner_task().await.status,
+        wl_ticketing::TicketStatus::Closed | wl_ticketing::TicketStatus::Resolved
+    ));
+    assert!(sent_of(&w, NOTICE_TYPE).await.is_empty());
+
+    renox::db::sql("DROP TRIGGER refuse_notice")
+        .execute(w.db())
+        .await
+        .unwrap();
+    let failed = RuleRun::find_occurrence(
+        w.db(),
+        export_rule::RULE,
+        &schedule_subject(),
+        &occurrence_key(export_rule::RULE, on),
+    )
+    .await
+    .unwrap()
+    .expect("the run is kept");
+    let _outcome = failed
+        .transition(transitions::RERUN)
+        .by(&admin)
+        .run(w.state())
+        .await
+        .unwrap();
+    export_rule::run_daily(w.state(), on).await.unwrap();
+    assert!(
+        ComplianceAlert::open(w.db())
+            .await
+            .unwrap()
+            .into_iter()
+            .all(|a| a.rule != export_rule::RULE),
+        "the rerun closed the alert"
+    );
+    assert!(matches!(
+        owner_task().await.status,
+        wl_ticketing::TicketStatus::Closed | wl_ticketing::TicketStatus::Resolved
+    ));
+    assert_eq!(
+        sent_of(&w, NOTICE_TYPE).await.len(),
+        1,
+        "the notice went out"
+    );
+    let _ = sale;
+}
