@@ -111,7 +111,9 @@ async fn the_account_page_shows_what_the_customer_owes_against_the_limit() {
         .await
         .assert_ok()
         .assert_see("AED 50,000.00")
-        .assert_see("AED 46,000.00");
+        .assert_see("AED 46,000.00")
+        // The status column says something for an account in good standing.
+        .assert_see("Account in good standing");
     let page = t.app.get(&format!("/credit/accounts/{CUSTOMER}")).await;
     page.assert_ok()
         .assert_see("AED 38,000.00")

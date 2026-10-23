@@ -129,7 +129,7 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             flag: if on_hold {
                 text(&lang, "credit.on_hold")
             } else {
-                String::new()
+                text(&lang, "credit.not_on_hold")
             },
         });
     }
