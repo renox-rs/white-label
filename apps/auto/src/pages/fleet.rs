@@ -655,6 +655,18 @@ async fn show(
         ),
         _ => none.clone(),
     };
+    let notice_text = texts::t_with(
+        &lang,
+        "auto.insurers.days",
+        &[("days", &contract.notice_period_days)],
+    );
+    let renewal_window_text = texts::t_with(
+        &lang,
+        "auto.insurers.days",
+        &[("days", &contract.renewal_window_days)],
+    );
+    let plan_rows_now = plan_rows(&state, &lang, &plans).await?;
+    let booking_rows = plan_rows(&state, &lang, &waiting).await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         id: contract.id,
@@ -668,17 +680,9 @@ async fn show(
         labour_rate: money_text(contract.labour_rate),
         price_tier: contract.price_tier.clone().unwrap_or_else(|| none.clone()),
         inclusions: contract.inclusions.clone().unwrap_or_else(|| none.clone()),
-        notice: texts::t_with(
-            &lang,
-            "auto.insurers.days",
-            &[("days", &contract.notice_period_days)],
-        ),
+        notice: notice_text,
         fee: money_text(contract.early_termination_fee),
-        renewal_window: texts::t_with(
-            &lang,
-            "auto.insurers.days",
-            &[("days", &contract.renewal_window_days)],
-        ),
+        renewal_window: renewal_window_text,
         signed: contract
             .signed_document
             .clone()
@@ -690,8 +694,8 @@ async fn show(
         termination,
         termination_scheduled: contract.termination_scheduled,
         vehicles: vehicle_rows,
-        plans: plan_rows(&state, &lang, &plans).await?,
-        bookings: plan_rows(&state, &lang, &waiting).await?,
+        plans: plan_rows_now,
+        bookings: booking_rows,
         jobs: job_rows,
         invoices: invoice_rows,
         vehicle_options,

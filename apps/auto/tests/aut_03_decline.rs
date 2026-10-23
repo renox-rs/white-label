@@ -11,6 +11,7 @@ use auto::{ClaimStatus, InsuranceClaim, JobCard, JobCardStatus};
 use renox::chrono::TimeDelta;
 use renox::db::DateTime;
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use support::claimfx::orient;
 use support::{Garage, Messages, at, boot, day};
 use wl_kernel::notify::{

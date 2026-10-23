@@ -21,7 +21,6 @@
 //!   the approval of a branch manager other than the requester (`PLT.APR.01`).
 
 use renox::db::now;
-use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 
