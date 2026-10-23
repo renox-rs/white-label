@@ -6,7 +6,6 @@ ALTER TABLE "wl_sales_sales_orders" DROP COLUMN hold_limit;
 ALTER TABLE "wl_sales_sales_orders" DROP COLUMN hold_overdue;
 ALTER TABLE "wl_sales_sales_orders" DROP COLUMN hold_open_balance;
 ALTER TABLE "wl_sales_sales_orders" DROP COLUMN hold_reason;
-ALTER TABLE "wl_sales_sales_orders" DROP COLUMN state_before_hold;
 ALTER TABLE "wl_sales_sales_orders" DROP COLUMN credit_gate;
 DROP INDEX IF EXISTS "wl_sales_account_hold_sources_source";
 DROP TABLE IF EXISTS "wl_sales_account_hold_sources";

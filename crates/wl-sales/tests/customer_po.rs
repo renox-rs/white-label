@@ -170,7 +170,7 @@ async fn a_cancelled_order_keeps_its_number_used() {
     let first = placed(&t, &by, CUSTOMER, "PO-8812", "").await;
     t.app
         .post(
-            &format!("/sales-orders/{}/transitions/cancel", first.id),
+            &format!("/sales-orders/{}/cancel", first.id),
             &[("reason", "Customer withdrew")],
         )
         .await

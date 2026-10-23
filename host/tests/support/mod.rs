@@ -266,6 +266,60 @@ const LOGISTICS_CLIENT: &str = concat!(
     "/../clients/demo-logistics/client.toml"
 );
 
+/// The demo F&B client (06 F&B).
+const FNB_CLIENT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../clients/demo-fnb/client.toml"
+);
+
+/// The F&B host with the clock fixed at noon, `wl:install` and the seeds run
+/// as the demo does (without the demo company): the 06 values as a fresh
+/// deployment has them.
+pub async fn fnb_booted() -> TestApp {
+    fnb_booted_with(host::Tuning::default()).await
+}
+
+/// [`fnb_booted`] with the shared modules tuned (for example a bouncing e-mail
+/// provider).
+pub async fn fnb_booted_with(tuning: host::Tuning) -> TestApp {
+    let config = wl_kernel::ClientConfig::load(FNB_CLIENT).expect("the F&B client");
+    let app = TestApp::new(
+        host::app_for_tuned(config, tuning)
+            .expect("the app")
+            .provide(noon_clock())
+            .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
+/// The F&B host with the notification module changed by `tune` and `module`
+/// added (consents, a clock of its own, providers): nothing else is faked.
+pub async fn fnb_booted_rigged(
+    tune: impl FnOnce(wl_notify::WlNotify) -> wl_notify::WlNotify + 'static,
+    module: impl Module,
+) -> TestApp {
+    let config = wl_kernel::ClientConfig::load(FNB_CLIENT).expect("the F&B client");
+    let app = TestApp::new(
+        host::app_for_tuned(config, host::Tuning::default().notify(tune))
+            .expect("the app")
+            .module(module)
+            .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
 /// The logistics host, with `wl:install` and the seeds run as the demo does.
 pub async fn logistics_booted() -> TestApp {
     logistics_booted_with(host::Tuning::default()).await

@@ -35,6 +35,10 @@ pub use app::edtech_demo;
 pub use app::edtech_money;
 pub use app::edtech_seed;
 pub use app::edtech_settings;
+pub use app::fnb_compliance;
+pub use app::fnb_demo;
+pub use app::fnb_seed;
+pub use app::fnb_settings;
 pub use app::logistics_demo;
 pub use app::logistics_rules;
 pub use app::logistics_seed;
@@ -87,6 +91,7 @@ pub const DEMO_COMMANDS: &[&str] = &[
     app::logistics_demo::COMMAND,
     app::manpower_demo::COMMAND,
     app::clinics_demo::COMMAND,
+    app::fnb_demo::COMMAND,
     app::edtech_demo::COMMAND,
 ];
 
@@ -189,6 +194,13 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // HR and the accountant see the confidential labour cases and grievances
     // of a manpower agency (BL-MPW-20); the accountant of 04 does not.
     app::manpower_seed::grant_roles(&client_app);
+    // The cashier, accountant and storekeeper of a F&B client hold the 06
+    // permissions of the shared roles (06 §3.1).
+    app::fnb_seed::grant_roles(&client_app);
+    // The compliance-critical rules and the connections with a manual
+    // fallback of a F&B client (BL-FNB-17).
+    app::fnb_compliance::register_critical(&client_app);
+    app::fnb_compliance::register_integrations(&client_app);
     // The owner of an EdTech centre decides the override of a document block
     // (BL-EDU-17).
     app::edtech_settings::grant_roles(&client_app);
@@ -264,6 +276,12 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
         app = app.module(app::logistics_rules::LogisticsRules);
         app = app.module(app::logistics_demo::LogisticsDemo);
     }
+    // The F&B client's failure reasons for the rider, and its demo company, in
+    // local only (`fnb:demo`, and `db:seed`).
+    if client_app == app::fnb_seed::FNB {
+        app = app.module(app::fnb_seed::FnbSeed);
+        app = app.module(app::fnb_demo::FnbDemo);
+    }
     // The page that shows the shared modules' settings of this client.
     let app = app
         .module(app::negative_flow::NegativeFlow::new(&client_app, entities))
@@ -305,13 +323,14 @@ pub const VERTICALS: &[&str] = &[
     "manpower",
     "manufacturing",
     "logistics",
+    "fnb",
     "edtech",
 ];
 
 /// The refusal of a vertical app that is not built.
 fn unbuilt_vertical(name: &str) -> ConfigError {
     ConfigError(format!(
-        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction`, `clinics`, `manpower`, `manufacturing`, `logistics` and `edtech`"
+        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction`, `clinics`, `manpower`, `manufacturing`, `logistics`, `fnb` and `edtech`"
     ))
 }
 
@@ -335,6 +354,7 @@ fn mount_vertical(app: renox::App, name: &str) -> Result<renox::App, ConfigError
         "manpower" => Ok(app.module(manpower::Manpower)),
         "manufacturing" => Ok(app.module(manufacturing::Manufacturing)),
         "logistics" => Ok(app.module(logistics::Logistics)),
+        "fnb" => Ok(app.module(app::fnb_seed::module())),
         "edtech" => Ok(app.module(edtech::EdTech)),
         other => Err(unbuilt_vertical(other)),
     }
@@ -358,6 +378,7 @@ fn enable(
             app::clinics_seed::register_documents(client_app);
             app::edtech_seed::register_documents(client_app);
             app::logistics_seed::register_documents(client_app);
+            app::fnb_compliance::register_documents(client_app);
             if client_app == app::construction_seed::CONSTRUCTION {
                 app::construction_seed::register_documents();
             }
@@ -368,7 +389,9 @@ fn enable(
             Ok(app.module(wl_documents::WlDocuments))
         }
         "notify" => {
-            let module = if client_app == app::edtech_seed::EDTECH {
+            let module = if client_app == app::fnb_seed::FNB {
+                app::fnb_compliance::notify(wl_notify::WlNotify::new())
+            } else if client_app == app::edtech_seed::EDTECH {
                 app::edtech_settings::notify_for()
             } else {
                 app::clinics_seed::notify_for(client_app)
@@ -401,6 +424,8 @@ fn enable(
             Ok(
                 app.module(if client_app == app::construction_seed::CONSTRUCTION {
                     app::construction_seed::inventory(module)
+                } else if client_app == app::fnb_seed::FNB {
+                    app::fnb_seed::inventory_for(client_app, module)
                 } else {
                     app::clinics_money::inventory(client_app, module)
                 }),

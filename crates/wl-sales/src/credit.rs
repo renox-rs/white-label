@@ -28,6 +28,21 @@
 //! - [`credit_recheck`] runs `hold` itself on a failure, so every caller (a
 //!   dispatch note in `wl-inventory`, the counter collection, a vertical)
 //!   behaves the same; [`Checker`] is the kernel's `CreditChecker`.
+//!
+//! **One implementation of the limit and the exposure** (the merge of the F6
+//! amendment re-check, BL-SAL-05, with BL-SAL-10). The amendment asks the
+//! kernel's `CreditExposure` for the position of the customer without the
+//! order ([`check_after_amend`], `SAL.RUL.01`); this module provides it
+//! ([`Exposures`]) from the same [`exposure_of`] and [`figures`] the dispatch
+//! check uses, so a limit is never computed twice. A test or a deployment that
+//! provides its own `CreditExposure` replaces it. The amendment's hold is the
+//! same `hold` transition ([`HOLD`]) with the same [`HoldInput`], so the order
+//! keeps in `held_from` the state a release returns it to (`confirmed`,
+//! `partially_fulfilled` or `pending_acceptance`), and the notice and the
+//! accountant's task are those of every hold (`SalesOrderCreditHeld` listener
+//! in `sales_orders`). Only the limit (own and group) is re-checked on an
+//! amendment that raises the total; overdue and the account's hold are
+//! checked when the goods leave.
 
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
@@ -35,13 +50,18 @@ use wl_kernel::PartyId;
 use wl_kernel::cheques::cheques;
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{InvoiceSummary, invoicer};
-use wl_kernel::sales::{CreditChecker, CreditFailure, CreditVerdict, SalesFuture, SalesOrderId};
+use wl_kernel::sales::{
+    CreditChecker, CreditExposure, CreditFailure, CreditPosition, CreditVerdict, SalesFuture,
+    SalesOrderId, credit_exposure,
+};
 
 use crate::config::config_of;
 use crate::customer_account::{CreditGroup, CustomerAccount};
 use crate::sale_line::{SaleLine, ratio_half_up};
-use crate::sales_order::{SalesOrder, SalesOrderStatus};
-use crate::sales_order_machine::{HOLD, HoldInput};
+use crate::sales_order::{PAYMENT_ON_ACCOUNT, SalesOrder, SalesOrderStatus};
+pub use crate::sales_order_machine::HOLD;
+use crate::sales_order_machine::HoldInput;
+use crate::texts::english;
 
 /// The currency of the exposure: the only one the customer accounts use.
 const CURRENCY: &str = "AED";
@@ -169,14 +189,27 @@ pub async fn overdue_of(state: &AppState, party: PartyId, grace: i64) -> Result<
         .sum())
 }
 
-/// Checks `order_value` fils (on top of the exposure without the order
-/// `except`) against the account's limits, overdue balance and on-hold flag.
-pub async fn assess(
+/// What the account owes, apart from the order `except`, and what stands
+/// against it: the figures of a check without the order's own value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Figures {
+    /// What the customer owes without the order.
+    pub exposure: i64,
+    /// The overdue balance beyond the grace days.
+    pub overdue: i64,
+    /// The exposure of the whole credit group without the order, when the
+    /// group has a combined limit.
+    pub group_exposure: Option<i64>,
+    /// The group's combined limit.
+    pub group_limit: Option<i64>,
+}
+
+/// The [`Figures`] of `account`, leaving the order `except` out.
+pub async fn figures(
     state: &AppState,
     account: &CustomerAccount,
-    order_value: i64,
     except: Option<i64>,
-) -> Result<Assessment> {
+) -> Result<Figures> {
     let config = config_of(state);
     let own = exposure_of(state, account.party(), except).await?.total();
     let overdue = overdue_of(
@@ -200,6 +233,29 @@ pub async fn assess(
         }
         _ => (None, None),
     };
+    Ok(Figures {
+        exposure: own,
+        overdue,
+        group_exposure,
+        group_limit,
+    })
+}
+
+/// Checks `order_value` fils (on top of the exposure without the order
+/// `except`) against the account's limits, overdue balance and on-hold flag.
+pub async fn assess(
+    state: &AppState,
+    account: &CustomerAccount,
+    order_value: i64,
+    except: Option<i64>,
+) -> Result<Assessment> {
+    let config = config_of(state);
+    let Figures {
+        exposure: own,
+        overdue,
+        group_exposure,
+        group_limit,
+    } = figures(state, account, except).await?;
     let failure = if account.is_on_hold(&state.db).await? {
         Some(CreditFailure::AccountOnHold)
     } else if config.hold_on_overdue && overdue > 0 {
@@ -225,6 +281,94 @@ pub async fn assess(
         group_exposure,
         group_limit,
     })
+}
+
+/// The kernel's [`CreditExposure`]: the position of a customer with a
+/// customer account, from the same figures the dispatch check uses.
+pub(crate) struct Exposures;
+
+impl CreditExposure for Exposures {
+    fn position<'a>(
+        &'a self,
+        state: &'a AppState,
+        party: wl_kernel::PartyId,
+        _currency: &'a str,
+        excluding: &'a wl_kernel::Subject,
+    ) -> SalesFuture<'a, Option<CreditPosition>> {
+        Box::pin(async move {
+            if !config_of(state).credit_check {
+                return Ok(None);
+            }
+            let Some(account) = CustomerAccount::of_party(&state.db, party.0).await? else {
+                return Ok(None);
+            };
+            let found = figures(state, &account, Some(excluding.subject_id)).await?;
+            Ok(Some(CreditPosition {
+                exposure: found.exposure,
+                limit: account.credit_limit,
+                group_exposure: found.group_exposure,
+                group_limit: found.group_limit,
+            }))
+        })
+    }
+}
+
+/// Whether `exposure` (without the order) plus the order at `total` is over
+/// `limit`.
+pub fn over(exposure: i64, total: i64, limit: Option<i64>) -> bool {
+    limit.is_some_and(|limit| exposure + total > limit)
+}
+
+/// Re-runs the credit check of the amended order `order_id` whose total was
+/// `old_gross` fils (`SAL.RUL.01`); puts it on hold when the check fails.
+/// Returns whether the order is now on hold because of this check. Only an
+/// order on account whose total went up is checked, and an order already on
+/// hold stays on hold: its release is still needed.
+///
+/// # Errors
+///
+/// A database error, or the notifier's.
+pub async fn check_after_amend(state: &AppState, order_id: i64, old_gross: i64) -> Result<bool> {
+    let order = SalesOrder::find_or_404(&state.db, order_id).await?;
+    if order.payment_mode != PAYMENT_ON_ACCOUNT || order.gross_total <= old_gross {
+        return Ok(false);
+    }
+    let subject = order.subject();
+    let Some(position) = credit_exposure(state)
+        .position(state, order.party(), &order.currency, &subject)
+        .await?
+    else {
+        return Ok(false);
+    };
+    let own = over(position.exposure, order.gross_total, position.limit);
+    let group = match position.group_exposure {
+        Some(exposure) => over(exposure, order.gross_total, position.group_limit),
+        None => false,
+    };
+    if !(own || group) || order.status == SalesOrderStatus::CreditHold {
+        return Ok(false);
+    }
+    let hold = HoldInput {
+        reason: CreditFailure::Limit,
+        open_balance: position.exposure + order.gross_total,
+        overdue: 0,
+        limit: if own {
+            position.limit
+        } else {
+            position.group_limit
+        },
+    };
+    let reason = english("wl_sales.credit.amend_hold_reason", &[]);
+    let _ = order
+        .transition(HOLD)
+        .by_system()
+        .input(&hold)
+        .reason(reason)
+        .meta(renox::serde_json::to_value(hold).unwrap_or_default())
+        .run(state)
+        .await
+        .map_err(|e| e.into_error())?;
+    Ok(true)
 }
 
 /// The check an order on account goes through at `submit` and `accept`: the
@@ -387,6 +531,27 @@ mod tests {
             30_000
         );
         assert_eq!(undelivered_value(&[]), 0);
+    }
+
+    #[test]
+    fn the_exposure_is_the_rest_plus_the_order_at_its_new_total() {
+        // 36,000 without the order + 4,800 = 40,800.
+        assert!(!over(3_600_000, 480_000, Some(5_000_000)));
+        assert!(over(3_600_000, 480_000, Some(4_050_000)));
+        assert!(!over(3_600_000, 480_000, None));
+        assert!(!over(3_600_000, 480_000, Some(4_080_000)));
+    }
+
+    #[test]
+    fn hold_is_a_system_transition_into_credit_hold() {
+        let machine = SalesOrder::machine();
+        let t = machine.find(HOLD).expect(HOLD);
+        assert!(t.is_system());
+        assert_eq!(t.to_state(), Some("credit_hold"));
+        assert_eq!(
+            t.from_states(),
+            ["pending_acceptance", "confirmed", "partially_fulfilled"]
+        );
     }
 
     #[test]

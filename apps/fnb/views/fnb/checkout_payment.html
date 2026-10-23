@@ -1,0 +1,18 @@
+{#- fnb: the payment choice of the brand's checkout: online payment always, cash
+    on delivery unless it was turned off for the customer (`FNB.RUL.14`), then
+    with the line "Online payment only for this order". Replace it with
+    resources/views/fnb/checkout_payment.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['checkout_title']">
+  <rx-stack>
+    <rx-page-header :title="tx['checkout_title']" :subtitle="tx['checkout_subtitle']"/>
+    <div rx-if="closed" id="kitchen-closed"><rx-alert kind="error" :message="tx['ordering.closed_text']"/></div>
+    <div rx-if="gateway_down and not closed" id="gateway-down"><rx-alert kind="warning" :message="tx['checkout_gateway_down']"/></div>
+    <rx-card rx-if="not closed" :title="tx['checkout_methods']">
+      <rx-stack>
+        <p rx-if="online" id="pay-online">{{ tx['pay_online'] }}</p>
+        <p rx-if="cash_on_delivery" id="pay-cash">{{ tx['pay_cash'] }}</p>
+        <p rx-if="not cash_on_delivery and not closed and not gateway_down" id="online-only">{{ tx['online_only'] }}</p>
+      </rx-stack>
+    </rx-card>
+  </rx-stack>
+</rx-page>

@@ -62,6 +62,13 @@ pub const ORDER_CREDIT_HOLD: &str = "sales.order_credit_hold";
 /// went on hold after a bounced cheque (`SAL.RUL.05`).
 pub const ACCOUNT_ON_HOLD: &str = "sales.account_on_hold";
 
+/// The customer is told that the online payment of an order failed (BL-SAL-03).
+pub const ORDER_PAYMENT_FAILED: &str = "sales.order_payment_failed";
+
+/// The customer is told that a payment for an order that cannot take it is
+/// refunded (`SAL.RUL.06`).
+pub const ORDER_LATE_PAYMENT: &str = "sales.order_late_payment_refunded";
+
 /// The owner of a lead is told that its win was reverted.
 pub const LEAD_WIN_REVERTED: &str = "sales.lead_win_reverted";
 
@@ -112,6 +119,8 @@ pub(crate) fn register_types() {
     notify::register_type(english_type(LOYALTY_CLOSED, "loyalty_closed"));
     notify::register_type(english_type(ADJUSTMENT_REJECTED, "adjustment_rejected"));
     notify::register_type(english_type(ADJUSTMENT_RETURNED, "adjustment_returned"));
+    notify::register_type(english_type(ORDER_PAYMENT_FAILED, "order_payment_failed"));
+    notify::register_type(english_type(ORDER_LATE_PAYMENT, "order_late_payment"));
     notify::register_type(english_type(ORDER_CREDIT_HOLD, "order_credit_hold"));
     notify::register_type(english_type(ACCOUNT_ON_HOLD, "account_on_hold"));
 }
@@ -189,7 +198,17 @@ pub(crate) async fn order_credit_held(
     let limit = order
         .hold_limit
         .map_or_else(|| "-".to_owned(), |fils| format!("AED {}", aed(fils)));
-    let audience = credit_audience(state, order.party_id).await?;
+    let mut audience = credit_audience(state, order.party_id).await?;
+    // A customer without an account rep: the user who entered the order.
+    if let Some(entered) = order.created_by
+        && !audience.contains(&entered)
+        && crate::customer_account::CustomerAccount::of_party(&state.db, order.party_id)
+            .await?
+            .is_none_or(|account| account.sales_rep_id.is_none())
+    {
+        audience.insert(0, entered);
+    }
+    open_credit_task(state, order, &reason).await?;
     if audience.is_empty() {
         return Ok(());
     }
@@ -207,6 +226,39 @@ pub(crate) async fn order_credit_held(
         request = request.to_user(user);
     }
     notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// The task of the accountant role for an order on credit hold: review the
+/// account and release the order or ask for payment. One per order and
+/// revision.
+async fn open_credit_task(
+    state: &AppState,
+    order: &crate::sales_order::SalesOrder,
+    reason: &str,
+) -> Result {
+    let config = crate::config::config_of(state);
+    let role = if config.accountant_role.is_empty() {
+        wl_kernel::COMPANY_ADMIN_ROLE
+    } else {
+        config.accountant_role.as_str()
+    };
+    let (title, body) = {
+        let total = format!("AED {}", aed(order.gross_total));
+        let params: [(&str, &dyn std::fmt::Display); 3] = [
+            ("number", &order.number),
+            ("total", &total),
+            ("reason", &reason),
+        ];
+        (
+            english("wl_sales.credit.task_title", &params),
+            english("wl_sales.credit.task_body", &params),
+        )
+    };
+    let key = format!("sales.credit_hold:{}:{}", order.id, order.revision);
+    let task = wl_kernel::role_tasks::RoleTask::new(order.subject(), role, &title, &key)
+        .description(&body);
+    wl_kernel::role_tasks::open(state, task).await?;
     Ok(())
 }
 
@@ -512,6 +564,41 @@ pub(crate) async fn loyalty_closed(
         .data(json!({
             "code": account.code,
             "points": points,
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the customer of `order` that the online payment failed and that a new
+/// order can be placed (the failed order cannot be retried).
+pub(crate) async fn order_payment_failed(
+    state: &AppState,
+    order: &crate::sales_order::SalesOrder,
+) -> Result {
+    let request = NotifyRequest::new(ORDER_PAYMENT_FAILED, order.subject())
+        .to_party(order.party())
+        .subject_label(&order.number)
+        .data(json!({
+            "number": order.number,
+            "total": aed(order.gross_total),
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the customer of `order` that the payment of `amount` fils, which the
+/// order could not take, is on its way back.
+pub(crate) async fn order_late_payment(
+    state: &AppState,
+    order: &crate::sales_order::SalesOrder,
+    amount: i64,
+) -> Result {
+    let request = NotifyRequest::new(ORDER_LATE_PAYMENT, order.subject())
+        .to_party(order.party())
+        .subject_label(&order.number)
+        .data(json!({
+            "number": order.number,
+            "amount": aed(amount),
         }));
     notify::notifier(state).notify(state, request).await?;
     Ok(())

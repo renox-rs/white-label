@@ -168,10 +168,10 @@ async fn a_bounced_cheque_holds_the_account_its_group_and_the_orders_not_yet_dis
     }
     let (h1, h2) = (reload(&t, o1.id).await, reload(&t, o2.id).await);
     assert_eq!(h1.status, SalesOrderStatus::CreditHold);
-    assert_eq!(h1.state_before_hold.as_deref(), Some("confirmed"));
+    assert_eq!(h1.held_from.as_deref(), Some("confirmed"));
     assert_eq!(h1.hold_reason.as_deref(), Some("account_on_hold"));
     assert_eq!(h2.status, SalesOrderStatus::CreditHold);
-    assert_eq!(h2.state_before_hold.as_deref(), Some("partially_fulfilled"));
+    assert_eq!(h2.held_from.as_deref(), Some("partially_fulfilled"));
     assert_eq!(
         reload(&t, delivered.id).await.status,
         SalesOrderStatus::Fulfilled

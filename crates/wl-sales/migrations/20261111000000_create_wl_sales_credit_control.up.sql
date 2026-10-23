@@ -59,7 +59,6 @@ CREATE UNIQUE INDEX "wl_sales_account_hold_sources_source" ON "wl_sales_account_
 
 -- What an order on hold remembers (BL-SAL-10).
 ALTER TABLE "wl_sales_sales_orders" ADD COLUMN credit_gate INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE "wl_sales_sales_orders" ADD COLUMN state_before_hold TEXT;
 ALTER TABLE "wl_sales_sales_orders" ADD COLUMN hold_reason TEXT;
 ALTER TABLE "wl_sales_sales_orders" ADD COLUMN hold_open_balance INTEGER;
 ALTER TABLE "wl_sales_sales_orders" ADD COLUMN hold_overdue INTEGER;

@@ -19,6 +19,12 @@
 //! | `mark_lost` and `found` (the loss pending the claim) | [`crate::dispatch_loss`] | #243 |
 //! | `reverse` (a delivery reversal reopens the dispatch) | [`crate::dispatch_reverse`] | #244 |
 //! | the kernel events and the listeners of `wl-delivery`'s events | [`crate::dispatch_events`] | all |
+//! | `cancel_by_system`, `started_lines`, the sale line a line fulfils | [`crate::dispatch_pick`], this file | BL-STK-26 (#245) |
+//!
+//! **Merged with the sales cancellation base** (BL-STK-26): the base's smaller
+//! `Dispatch` is this one. The sale line a dispatch line fulfils is its source
+//! line of type [`SALE_LINE_SUBJECT_TYPE`] (the base's `sale_line_id`, moved by
+//! migration `20261114000000`); `cancel` needs a reason, as the base's did.
 //!
 //! Not built here: `return` (comes with the dispatch return issue) and
 //! `discard` (BL-STK-23, #242, which needs `DeliveryDiscarded` of BL-DLV-07).
@@ -81,6 +87,18 @@ pub enum DispatchStatus {
     /// Not shipped (terminal).
     Cancelled,
 }
+
+impl DispatchStatus {
+    /// Whether the goods are still in the store: `draft` and `picked`.
+    pub fn in_store(self) -> bool {
+        matches!(self, DispatchStatus::Draft | DispatchStatus::Picked)
+    }
+}
+
+/// The subject type of a sale line of `wl-sales`, as a dispatch line names
+/// the line it fulfils (BL-STK-26): the cancellation of a sale line finds its
+/// goods by it.
+pub const SALE_LINE_SUBJECT_TYPE: &str = "sales.sale_line";
 
 /// How the goods are handed over (§4 `dispatch`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -257,6 +275,14 @@ impl DispatchLine {
         }
     }
 
+    /// The sale line (in `wl-sales`) this line fulfils, if it names one.
+    pub fn sale_line_id(&self) -> Option<i64> {
+        match (self.source_line_type.as_deref(), self.source_line_id) {
+            (Some(SALE_LINE_SUBJECT_TYPE), Some(id)) => Some(id),
+            _ => None,
+        }
+    }
+
     /// The refused quantity still *in return*: neither received back nor
     /// reported missing.
     pub fn in_return_milli(&self) -> i64 {
@@ -297,6 +323,11 @@ impl NewDispatchLine {
     pub fn lot(mut self, lot_id: i64) -> Self {
         self.lot_id = Some(lot_id);
         self
+    }
+
+    /// Fulfilling the sale line `sale_line_id` of the source order.
+    pub fn for_sale_line(self, sale_line_id: i64) -> Self {
+        self.for_line(Subject::new(SALE_LINE_SUBJECT_TYPE, sale_line_id))
     }
 
     /// Fulfilling `line` of the source.
@@ -422,6 +453,35 @@ pub async fn of_source(db: &Db, source: &Subject) -> Result<Vec<Dispatch>> {
         .order_by(Dispatch::ID)
         .get(db)
         .await
+}
+
+/// Of the sale lines `lines` of `source`, those with goods picked or
+/// dispatched: fulfilment has started (BL-SAL-05, BL-SAL-08). A vertical's
+/// `FulfilmentProgress` adds this to what its own kitchen or workshop has
+/// started.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn started_lines(db: &Db, source: &Subject, lines: &[i64]) -> Result<Vec<i64>> {
+    let mut started = Vec::new();
+    for dispatch in of_source(db, source).await? {
+        if matches!(
+            dispatch.status,
+            DispatchStatus::Draft | DispatchStatus::Cancelled
+        ) {
+            continue;
+        }
+        for line in lines_of(db, dispatch.id).await? {
+            if let Some(sale_line) = line.sale_line_id()
+                && lines.contains(&sale_line)
+                && !started.contains(&sale_line)
+            {
+                started.push(sale_line);
+            }
+        }
+    }
+    Ok(started)
 }
 
 /// The dispatch whose delivery is `source` (a `wl-delivery` event names the

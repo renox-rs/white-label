@@ -248,7 +248,7 @@ async fn show(
                 &lang,
                 &format!(
                     "orders.status.{}",
-                    order.state_before_hold.as_deref().unwrap_or("confirmed")
+                    order.held_from.as_deref().unwrap_or("confirmed")
                 ),
             ),
         });

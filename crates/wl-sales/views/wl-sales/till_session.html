@@ -1,0 +1,35 @@
+{#- wl-sales: a till session: the float, the sales on it, what the till should
+    hold and what was counted. Counting closes it and makes the till's cash
+    handover; a closed session is reopened with a reason or marked reviewed.
+    Replace it with resources/views/wl-sales/till_session.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="session.till">
+  <rx-stack>
+    <rx-page-header :title="session.till" :subtitle="session.date" :back="route('wl_sales.till_sessions')" :back-label="tx['till.title']"
+                    :badge="session.status_label" :badge-kind="session.status_kind">
+      <rx-action-sheet rx-if="can_count" id="count-till-session" :label="tx['till.count']" :action="route('wl_sales.till_session_count', session.id)"
+                       :title="tx['till.count_title']" :description="tx['till.count_description']" :submit-label="tx['till.count']" variant="primary" icon="calculator">
+        <rx-input name="counted" :label="tx['till.counted_amount']" id="count-till-session-counted" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_reopen" id="reopen-till-session" :label="tx['till.reopen']" :action="route('wl_sales.till_session_reopen', session.id)"
+                       :title="tx['till.reopen_title']" :description="tx['till.reopen_description']" :submit-label="tx['till.reopen']" icon="rotate-ccw">
+        <rx-textarea name="reason" :label="tx['till.reason']" id="reopen-till-session-reason" required/>
+      </rx-action-sheet>
+      <rx-confirm rx-if="can_review" id="review-till-session" :label="tx['till.review']" :action="route('wl_sales.till_session_review', session.id)" method="POST"
+                  :title="tx['till.review']" :message="tx['till.review_message']" :confirm-label="tx['till.review']" :cancel-label="tx['cancel']" icon="check"/>
+    </rx-page-header>
+    <rx-card :title="tx['till.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['till.cashier']" :value="session.cashier"/>
+        <rx-entry :label="tx['till.location']" :value="session.location" :placeholder="tx['till.none']"/>
+        <rx-entry :label="tx['till.float']" :value="float"/>
+        <rx-entry :label="tx['till.cash_sales']" :value="cash_sales"/>
+        <rx-entry :label="tx['till.card_sales']" :value="card_sales"/>
+        <rx-entry :label="tx['till.expected']" :value="session.expected"/>
+        <rx-entry :label="tx['till.counted']" :value="session.counted" :placeholder="tx['till.none']"/>
+        <rx-entry :label="tx['till.variance']" :value="session.variance" :placeholder="tx['till.none']"/>
+        <rx-entry rx-if="reopened" :label="tx['till.reopened_times']" :value="reopened"/>
+        <rx-entry rx-if="last_reason" :label="tx['till.last_reason']" :value="last_reason"/>
+      </rx-infolist>
+    </rx-card>
+  </rx-stack>
+</rx-page>

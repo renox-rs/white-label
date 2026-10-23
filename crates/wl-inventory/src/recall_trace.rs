@@ -781,6 +781,27 @@ impl LotTrace for InventoryTrace {
         })
     }
 
+    fn waive<'a>(
+        &'a self,
+        state: &'a AppState,
+        line: &'a Subject,
+        reason: &'a str,
+        by: Option<i64>,
+    ) -> TraceFuture<'a, bool> {
+        Box::pin(async move {
+            let (RECALL_LINE_SUBJECT_TYPE, Some(by)) = (line.subject_type.as_str(), by) else {
+                return Ok(false);
+            };
+            let found =
+                crate::recall_line::RecallLine::find_or_404(&state.db, line.subject_id).await?;
+            if found.notice_status != NoticeStatus::Pending {
+                return Ok(false);
+            }
+            crate::recall_notice::waive_by(state, by, line.subject_id, reason).await?;
+            Ok(true)
+        })
+    }
+
     fn places<'a>(
         &'a self,
         state: &'a AppState,

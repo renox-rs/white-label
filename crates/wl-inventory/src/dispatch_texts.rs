@@ -20,6 +20,14 @@ pub(crate) const DISPATCH_TEXTS: &[(&str, &str)] = &[
         "Line {{ position }}: {{ item }} is lot-tracked; name the lot.",
     ),
     (
+        "wl_inventory.dispatch.cancel_task_title",
+        "{{ dispatch }}: a cancelled order line, goods already dispatched",
+    ),
+    (
+        "wl_inventory.dispatch.cancel_task_body",
+        "Sale line {{ line }} of the order was cancelled after {{ dispatch }} left (now {{ status }}). The dispatch is not changed: the goods follow the delivery, returned or refused. Follow it up with the delivery.",
+    ),
+    (
         "wl_inventory.dispatch.not_draft",
         "Only a draft dispatch can be picked.",
     ),

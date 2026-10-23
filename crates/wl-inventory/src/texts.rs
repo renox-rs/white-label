@@ -766,6 +766,22 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_inventory.hold.placed", "Stock hold placed."),
     (
+        "wl_inventory.batch.bad_request",
+        "A batch needs a quantity above zero, an expiry day and at least one ingredient lot.",
+    ),
+    (
+        "wl_inventory.batch.lot_short",
+        "Lot {{ lot }} has {{ left }} at the kitchen; the batch used {{ used }}.",
+    ),
+    (
+        "wl_inventory.batch.wrong_lot",
+        "Lot {{ lot }} is not a lot of an item that can go into the batch.",
+    ),
+    (
+        "wl_inventory.batch.on_hold",
+        "Lot {{ lot }} is on hold: decide the hold line instead of wasting the lot.",
+    ),
+    (
         "wl_inventory.hold.warning",
         "{{ location }} is on {{ reason }} hold.",
     ),

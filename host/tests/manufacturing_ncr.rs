@@ -8,7 +8,7 @@
 
 mod manufacturing_support;
 
-use host::roles::{PRODUCTION_MANAGER, QC_INSPECTOR, STOREKEEPER};
+use host::roles::{PROCUREMENT, PRODUCTION_MANAGER, QC_INSPECTOR};
 use manufacturing::ncrs::{close_key, redisposition_key};
 use manufacturing::{Disposition, Ncr, NcrStatus};
 use manufacturing_support::{Floor, boot, browse, floor, person, post};
@@ -118,14 +118,15 @@ async fn quarantine(app: &TestApp) -> Location {
 /// Lot L7 (100 kg at AED 30) is returned for credit: a real draft Return to
 /// supplier for supplier 7 from the quarantine location lists 100 kg at AED
 /// 30 with the NCR as its source; the stock moved to quarantine; the
-/// storekeeper dispatches it (AED 3,000) and QC gets the task to close, the
+/// procurement officer (who dispatches every Return to supplier;
+/// the storekeeper does not hold `supplier_returns.manage`) dispatches it (AED 3,000) and QC gets the task to close, the
 /// emptied lot is rejected and QC closes the NCR.
 #[renox::test]
 async fn a_returned_ncr_follows_its_return_to_supplier_to_the_close() {
     let app = boot().await;
     let f = floor(&app).await;
     let qc = person(&app, "Ines", QC_INSPECTOR, Some(f.plant.scope())).await;
-    let keeper = person(&app, "Karim", STOREKEEPER, None).await;
+    let keeper = person(&app, "Karim", PROCUREMENT, None).await;
     let lot = received(&app, &f, "L7", 3_000, LotStatus::Quarantine).await;
     let ncr = raise(&app, &f, &qc, &lot, "100").await;
 
@@ -209,7 +210,7 @@ async fn a_returned_ncr_follows_its_return_to_supplier_to_the_close() {
 }
 
 /// 30 kg of lot L9 are returned; while the Return to supplier is `draft` the
-/// lot is not released; the storekeeper cancels it (the supplier refuses
+/// lot is not released; procurement cancels it (the supplier refuses
 /// collection) and the NCR is open again with a task for QC and the earlier
 /// disposition in its history; QC scraps the 30 kg then (AED 240 at the
 /// item's average cost: no approval) and the wastage is posted.
@@ -218,7 +219,7 @@ async fn a_cancelled_return_reopens_the_ncr_and_the_lot_stays_kept_meanwhile() {
     let app = boot().await;
     let f = floor(&app).await;
     let qc = person(&app, "Ines", QC_INSPECTOR, Some(f.plant.scope())).await;
-    let keeper = person(&app, "Karim", STOREKEEPER, None).await;
+    let keeper = person(&app, "Karim", PROCUREMENT, None).await;
     let lot = received(&app, &f, "L9", 3_000, LotStatus::Quarantine).await;
     let subject = Subject::new("inventory.lot", lot.id);
     let ncr = raise(&app, &f, &qc, &lot, "30").await;

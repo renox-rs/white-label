@@ -96,12 +96,24 @@ const ACTION_LABELS: &[(&str, &str)] = &[
         "Accept a deduction from the retention above the limit",
     ),
     ("construction.variation_abandon", "Abandon a variation"),
+    (
+        "delivery.deliver_short",
+        "Approve a delivery with a cash difference",
+    ),
+    ("delivery.discard", "Approve discarding returned goods"),
+    ("delivery.mark_lost", "Mark a delivery as lost"),
+    (
+        "delivery.reverse_delivery",
+        "Approve reversing a delivered order",
+    ),
     ("documents.block_override", "Override a document block"),
     ("edtech.terminate", "Terminate a running batch"),
     (
         "edtech.withdraw",
         "Withdraw an enrolment and refund the student",
     ),
+    ("fnb.batch_discard", "Approve discarding a production batch"),
+    ("fnb.payout_void", "Void a payout statement"),
     ("hr.cancel_onboarding", "Cancel an onboarding"),
     (
         "hr.record_death",
@@ -146,7 +158,7 @@ const ACTION_LABELS: &[(&str, &str)] = &[
     ),
     ("invoicing.void", "Void an invoice"),
     ("invoicing.write_off", "Write off an invoice"),
-    ("kernel.late_entry", "Approve a late attendance entry"),
+    ("kernel.late_entry", "Approve a late entry"),
     (
         "loyalty.adjustment_over_limit",
         "Adjust loyalty points above the limit",
@@ -190,6 +202,17 @@ const ACTION_LABELS: &[(&str, &str)] = &[
         "Clear the hold on a customer account",
     ),
     ("sales.order_release", "Release an order from a credit hold"),
+    ("sales.order_amend", "Approve a change to an order"),
+    ("sales.order_cancel", "Approve cancelling an order"),
+    (
+        "sales.order_cancel_line",
+        "Approve cancelling a line of an order",
+    ),
+    (
+        "sales.order_cancel_remaining",
+        "Approve cancelling the rest of an order",
+    ),
+    ("sales.return_refund", "Approve a refund after completion"),
     ("sales.void", "Void a sale"),
 ];
 

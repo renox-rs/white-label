@@ -1066,6 +1066,10 @@ pub async fn fail(
             attempt: input.attempt_number,
         })
         .await
+        .map_err(TransitionError::Failed)?;
+    // `WRK.RUL.16` for a perishable delivery, `WRK.RUL.08` when it is on.
+    crate::attempted::after_failed_attempt(state, delivery.id, false)
+        .await
         .map_err(TransitionError::Failed)
 }
 

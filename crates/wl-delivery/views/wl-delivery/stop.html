@@ -22,6 +22,22 @@
     <rx-card rx-if="stop.can_complete and cod.blocked" :title="tx['cod.blocked_title']">
       <p>{{ cod.blocked }}</p>
     </rx-card>
+    <rx-card rx-if="discard.waiting" :title="tx['attempted.waiting_title']">
+      <p>{{ tx['attempted.waiting'] }}</p>
+    </rx-card>
+    <rx-form rx-if="discard.pending and not discard.waiting" :action="'/driver/stops/' ~ delivery.id ~ '/discard'" novalidate>
+      <rx-card :title="tx['attempted.discard_task']">
+        <p>{{ tx['attempted.discard_task_text'] }}</p>
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-input name="photo" :label="tx['attempted.discard_photo']" id="discard-photo" required/>
+          <rx-textarea name="reason" :label="tx['attempted.discard_reason']" id="discard-reason" required/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['attempted.discard']" variant="secondary"/>
+        </div>
+      </rx-card>
+    </rx-form>
     <rx-form rx-if="stop.can_complete and cod.pending" :action="'/driver/stops/' ~ delivery.id ~ '/no-answer'" novalidate>
       <rx-card :title="tx['cod.no_answer']">
         <rx-form-grid columns="2">

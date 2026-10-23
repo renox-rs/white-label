@@ -15,32 +15,43 @@
 //!     partially_fulfilled | fulfilled --reverse_fulfilment--> partially_fulfilled
 //!     partially_fulfilled | fulfilled --reverse_fulfilment_all--> confirmed
 //!     fulfilled --close--> closed
-//!     confirmed --cancel_line--> confirmed
-//!     partially_fulfilled --cancel_line_partly--> partially_fulfilled
+//!     confirmed | partially_fulfilled --cancel_line--> same state, or fulfilled
+//!     partially_fulfilled --cancel_remaining--> fulfilled
+//!     pending_acceptance | credit_hold | confirmed | partially_fulfilled --amend--> same state
 //!     draft --submit_hold--> credit_hold
 //!     pending_acceptance --accept_hold--> credit_hold
-//!     confirmed | partially_fulfilled --hold--> credit_hold
+//!     pending_acceptance | confirmed | partially_fulfilled --hold--> credit_hold
 //!     credit_hold --release--> confirmed
 //!     credit_hold --release_partly--> partially_fulfilled
+//!     credit_hold --release_pending--> pending_acceptance
 //! ```
 //!
-//! `cancel_line` is the part of the spec's `cancel_line` that BL-SAL-23 needs
-//! (open quantity of one line cancelled, a reason, a state that stays); the
-//! outcome per line, the approval when fulfilment started, the refund and the
-//! credit note, and the move to `fulfilled` when nothing is open (use
-//! `cancel_remaining`) come with BL-SAL-06 and BL-SAL-09.
-//! `submit_hold`, `accept_hold` and `hold` are the credit check's three ways
-//! into `credit_hold` (BL-SAL-10, see [`crate::credit`]): the spec's `submit`,
-//! `accept` and `hold` with the target `credit_hold`. `release` (BL-SAL-11) is
-//! two transitions for its two targets, `release` (→ `confirmed`) and
-//! `release_partly` (→ `partially_fulfilled`), each with the system twin the
-//! kernel runs once a second credit releaser approved
-//! (`release_approved`, `release_partly_approved`); the service picks by the
-//! state stored before the hold. `amend` and `cancel_remaining` come with
-//! their issues (BL-SAL-05 to BL-SAL-09). `confirm_payment`, `payment_failed`,
+//! `cancel` (with its approval twin, [`crate::cancel_lines`], BL-SAL-07: it
+//! needs the plan of the cancellation as its input, so the generic transition
+//! route cannot run it), `amend` (a family of four, [`crate::amend`]) and
+//! `cancel_line` / `cancel_remaining` (a family of four,
+//! [`crate::cancel_lines`], BL-SAL-08 and BL-SAL-09) have the `_approved` twin
+//! the kernel runs at the last yes.
+//!
+//! **The credit hold is one design** (BL-SAL-05 and BL-SAL-10, see
+//! [`crate::credit`]). `submit_hold`, `accept_hold` and `hold` are the ways
+//! into `credit_hold`: the credit check at `submit` and `accept`, and the
+//! system's `hold` (the re-check at dispatch, a bounced cheque, an amendment
+//! that raised the total over the limit). Every hold stores in `held_from` the
+//! state the order returns to (`confirmed` for one held at `submit` or
+//! `accept`, which was never confirmed; the state it was in for `hold`) and
+//! the reason and the figures. `release` (BL-SAL-11) is three transitions for
+//! its three targets (`release` to `confirmed`, `release_partly` to
+//! `partially_fulfilled`, `release_pending` to `pending_acceptance`), each
+//! with the system twin the kernel runs once a second credit releaser approved
+//! (`_approved`); the service picks by `held_from`. `confirm_payment`, `payment_failed`,
 //! `fulfil`, `fulfil_last`, `reverse_fulfilment`, `reverse_fulfilment_all` and
 //! `close` are system transitions (the gateway, the hand-over, the invoicing
 //! state); the rest are by users.
+//!
+//! `submit_online` also stamps the payment window (`payment_due_at`) and
+//! every submit takes one use of the order's promo code; `payment_failed`
+//! gives that use back (BL-SAL-02, BL-SAL-03).
 //!
 //! The inputs carry what a guard needs and an effect cannot fetch (no
 //! `AppState`): the line count and totals, the amount paid, and for a
@@ -57,8 +68,9 @@ use wl_kernel::sales::{CreditFailure, FulfilledLine, SALES_ORDER_SUBJECT_TYPE};
 use crate::permissions;
 use crate::po_number::{PoKey, Reference};
 use crate::policy;
+use crate::promo_code::PromoCode;
 use crate::sale_line::SaleLine;
-use crate::sales_order::{FulfilmentRecord, SalesOrder, SalesOrderStatus};
+use crate::sales_order::{FulfilmentRecord, OrderPaymentStatus, SalesOrder, SalesOrderStatus};
 use crate::texts::english;
 
 /// `draft → confirmed`: a channel with no acceptance and no prepayment.
@@ -77,7 +89,8 @@ pub const PAYMENT_FAILED: &str = "payment_failed";
 pub const ACCEPT: &str = "accept";
 /// `pending_acceptance → rejected`: the seller refused.
 pub const REJECT: &str = "reject";
-/// `draft | pending_acceptance | credit_hold | confirmed → cancelled`.
+/// `draft | pending_acceptance | credit_hold | confirmed → cancelled`; declared
+/// with the other cancellations in [`crate::cancel_lines`].
 pub const CANCEL: &str = "cancel";
 /// `confirmed | partially_fulfilled → partially_fulfilled`: quantities handed
 /// over, some still open.
@@ -93,18 +106,13 @@ pub const REVERSE_FULFILMENT: &str = "reverse_fulfilment";
 pub const REVERSE_FULFILMENT_ALL: &str = "reverse_fulfilment_all";
 /// `fulfilled → closed`: everything fulfilled is invoiced.
 pub const CLOSE: &str = "close";
-/// `confirmed → confirmed`: open quantity of one line cancelled.
-pub const CANCEL_LINE: &str = "cancel_line";
-/// `partially_fulfilled → partially_fulfilled`: open quantity of one line
-/// cancelled.
-pub const CANCEL_LINE_PARTLY: &str = "cancel_line_partly";
-
 /// `draft → credit_hold`: the credit check at `submit` failed.
 pub const SUBMIT_HOLD: &str = "submit_hold";
 /// `pending_acceptance → credit_hold`: the credit check at `accept` failed.
 pub const ACCEPT_HOLD: &str = "accept_hold";
-/// `confirmed | partially_fulfilled → credit_hold`: the re-check at dispatch
-/// failed, or a bounced cheque (`SAL.RUL.05`).
+/// `pending_acceptance | confirmed | partially_fulfilled → credit_hold`: the
+/// re-check at dispatch failed, a bounced cheque (`SAL.RUL.05`) or an
+/// amendment over the limit (`SAL.RUL.01`).
 pub const HOLD: &str = "hold";
 
 /// `credit_hold → confirmed`: a credit releaser asks to release an order held
@@ -113,10 +121,16 @@ pub const RELEASE: &str = "release";
 /// `credit_hold → partially_fulfilled`: the same for an order held from
 /// `partially_fulfilled`.
 pub const RELEASE_PARTLY: &str = "release_partly";
+/// `credit_hold → pending_acceptance`: the same for an order held from
+/// `pending_acceptance` (an amendment over the limit while it waited for
+/// acceptance).
+pub const RELEASE_PENDING: &str = "release_pending";
 /// The twin of [`RELEASE`] the kernel runs at the approval.
 pub const RELEASE_APPROVED: &str = "release_approved";
 /// The twin of [`RELEASE_PARTLY`] the kernel runs at the approval.
 pub const RELEASE_PARTLY_APPROVED: &str = "release_partly_approved";
+/// The twin of [`RELEASE_PENDING`] the kernel runs at the approval.
+pub const RELEASE_PENDING_APPROVED: &str = "release_pending_approved";
 
 /// What a hold takes: the failure and the figures the order keeps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,6 +177,10 @@ pub struct SubmitInput {
     /// PO number per customer* is on and the order has a reference).
     #[serde(default)]
     pub po: Option<Reference>,
+    /// The minutes the gateway has to confirm an online payment
+    /// (`submit_online` only); 0 for the other submits.
+    #[serde(default)]
+    pub window_minutes: i64,
 }
 
 /// What `confirm_payment` takes.
@@ -208,17 +226,6 @@ pub struct CloseInput {
     pub invoiced: bool,
 }
 
-/// What `cancel_line` takes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CancelLineInput {
-    /// The sale line.
-    pub line: i64,
-    /// The open quantity cancelled, in thousandths.
-    pub quantity_milli: i64,
-    /// Why the quantity is not acceptable, found by the service.
-    pub problem: Option<String>,
-}
-
 /// A guard that fails with the English `key` unless `ok`.
 fn check(ok: bool, key: &str) -> std::result::Result<(), String> {
     if ok { Ok(()) } else { Err(english(key, &[])) }
@@ -234,7 +241,7 @@ fn reason_of(ctx: &renox::state_machine::TransitionCtx) -> Option<String> {
 
 /// Adds `quantity` to the cancelled quantity of line `line` of order
 /// `order`, in one statement. Fails when it would leave more than is open.
-async fn move_cancelled(
+pub(crate) async fn move_cancelled(
     tx: &mut renox::db::Transaction,
     order: i64,
     line: i64,
@@ -305,7 +312,7 @@ impl StateMachine for SalesOrder {
             AwaitingPayment, Cancelled, Closed, Confirmed, CreditHold, Draft, Fulfilled,
             PartiallyFulfilled, PendingAcceptance, Rejected,
         };
-        Machine::new()
+        let machine = Machine::new()
             .initial([Draft])
             .state(Draft)
             .tone("neutral")
@@ -345,21 +352,24 @@ impl StateMachine for SalesOrder {
             .transition(payment_failed())
             .transition(accept())
             .transition(reject())
-            .transition(cancel())
             .transition(fulfil(FULFIL, PartiallyFulfilled))
             .transition(fulfil(FULFIL_LAST, Fulfilled))
             .transition(reverse(REVERSE_FULFILMENT, PartiallyFulfilled))
             .transition(reverse(REVERSE_FULFILMENT_ALL, Confirmed))
             .transition(close())
-            .transition(cancel_line(CANCEL_LINE, Confirmed))
-            .transition(cancel_line(CANCEL_LINE_PARTLY, PartiallyFulfilled))
             .transition(submit(SUBMIT_HOLD, "Submit", CreditHold))
             .transition(accept_hold())
             .transition(hold())
             .transition(release(RELEASE, Confirmed, false))
             .transition(release(RELEASE_PARTLY, PartiallyFulfilled, false))
+            .transition(release(RELEASE_PENDING, PendingAcceptance, false))
             .transition(release(RELEASE_APPROVED, Confirmed, true))
             .transition(release(RELEASE_PARTLY_APPROVED, PartiallyFulfilled, true))
+            .transition(release(RELEASE_PENDING_APPROVED, PendingAcceptance, true));
+        // The changes of a placed order: amend (BL-SAL-05) and cancel a line or
+        // the remaining lines (BL-SAL-08, BL-SAL-09).
+        let machine = crate::amend::add_to(machine);
+        crate::cancel_lines::add_to(machine)
     }
 }
 
@@ -368,6 +378,7 @@ impl StateMachine for SalesOrder {
 fn submit(name: &str, label: &str, to: SalesOrderStatus) -> Transition<SalesOrder> {
     let confirms = to == SalesOrderStatus::Confirmed;
     let holds = to == SalesOrderStatus::CreditHold;
+    let online = to == SalesOrderStatus::AwaitingPayment;
     Transition::new(name)
         .label(label)
         .tone("primary")
@@ -392,6 +403,7 @@ fn submit(name: &str, label: &str, to: SalesOrderStatus) -> Transition<SalesOrde
         })
         .effect(move |order: &SalesOrder, ctx, tx| {
             let (id, party_id) = (order.id, order.party_id);
+            let promo = order.promo_code_id;
             let input = ctx.input_as::<SubmitInput>().ok();
             Box::pin(async move {
                 let Some(input) = input else {
@@ -427,6 +439,26 @@ fn submit(name: &str, label: &str, to: SalesOrderStatus) -> Transition<SalesOrde
                     .insert(&mut *tx)
                     .await?;
                 }
+                if online {
+                    // The gateway has the payment window from now (BL-SAL-03).
+                    let due = Some(now() + renox::chrono::TimeDelta::minutes(input.window_minutes));
+                    SalesOrder::query()
+                        .where_(SalesOrder::ID.eq(id))
+                        .update(
+                            &mut *tx,
+                            &[
+                                (
+                                    "payment_status",
+                                    &OrderPaymentStatus::Pending.as_str().to_owned(),
+                                ),
+                                ("payment_due_at", &due),
+                            ],
+                        )
+                        .await?;
+                }
+                if let Some(promo) = promo {
+                    take_promo_use(tx, promo).await?;
+                }
                 Ok(())
             })
         })
@@ -449,7 +481,7 @@ async fn write_hold(
         .update(
             &mut *tx,
             &[
-                ("state_before_hold", &before),
+                ("held_from", &before),
                 ("hold_reason", &reason),
                 ("hold_open_balance", &balance),
                 ("hold_overdue", &overdue),
@@ -495,6 +527,7 @@ pub fn subject_machine() -> SubjectMachine {
     SubjectMachine::of::<SalesOrder>(SALES_ORDER_SUBJECT_TYPE)
         .action(RELEASE, policy::RELEASE_ACTION)
         .action(RELEASE_PARTLY, policy::RELEASE_ACTION)
+        .action(RELEASE_PENDING, policy::RELEASE_ACTION)
         .scope(|_order: &SalesOrder| renox::auth::permissions::Scope::global())
         .build()
 }
@@ -504,7 +537,6 @@ pub fn subject_machine() -> SubjectMachine {
 /// deferred as an approval request; the order's creator cannot ask
 /// (`SAL.ACL.03`).
 fn release(name: &str, to: SalesOrderStatus, approved: bool) -> Transition<SalesOrder> {
-    let partly = to == SalesOrderStatus::PartiallyFulfilled;
     let transition: Transition<SalesOrder> = if approved {
         Transition::new(name).system()
     } else {
@@ -517,14 +549,16 @@ fn release(name: &str, to: SalesOrderStatus, approved: bool) -> Transition<Sales
         .from([SalesOrderStatus::CreditHold])
         .to(to)
         .guard("held_from_this_state", move |o: &SalesOrder, _ctx| {
-            let held_partly = o.state_before_hold.as_deref()
-                == Some(SalesOrderStatus::PartiallyFulfilled.as_str());
-            Box::pin(async move {
-                check(
-                    held_partly == partly,
-                    "wl_sales.orders.problem.release_state",
-                )
-            })
+            // The target follows the state stored before the hold.
+            let held = o.held_from.as_deref();
+            let target = if held == Some(SalesOrderStatus::PartiallyFulfilled.as_str()) {
+                SalesOrderStatus::PartiallyFulfilled
+            } else if held == Some(SalesOrderStatus::PendingAcceptance.as_str()) {
+                SalesOrderStatus::PendingAcceptance
+            } else {
+                SalesOrderStatus::Confirmed
+            };
+            Box::pin(async move { check(target == to, "wl_sales.orders.problem.release_state") })
         })
         .guard("not_the_creator", |o: &SalesOrder, ctx| {
             let creator = ctx
@@ -532,9 +566,9 @@ fn release(name: &str, to: SalesOrderStatus, approved: bool) -> Transition<Sales
                 .is_some_and(|actor| Some(actor.id) == o.created_by);
             Box::pin(async move { check(!creator, "wl_sales.orders.problem.release_creator") })
         })
-        .effect(|order: &SalesOrder, _ctx, tx| {
+        .effect(move |order: &SalesOrder, _ctx, tx| {
             let id = order.id;
-            let first = order.confirmed_at.is_none();
+            let first = order.confirmed_at.is_none() && to != SalesOrderStatus::PendingAcceptance;
             Box::pin(async move {
                 let stamp = Some(now());
                 SalesOrder::query()
@@ -552,14 +586,16 @@ fn release(name: &str, to: SalesOrderStatus, approved: bool) -> Transition<Sales
         })
 }
 
-/// `hold`: a confirmed or partly fulfilled order on account goes on credit
-/// hold. Its reservations stay.
+/// `hold`: an order on account that waits for acceptance, is confirmed or
+/// partly fulfilled goes on credit hold. Its reservations stay; `held_from`
+/// keeps the state it returns to when released.
 fn hold() -> Transition<SalesOrder> {
     Transition::new(HOLD)
         .label("Hold")
         .tone("warning")
         .system()
         .from([
+            SalesOrderStatus::PendingAcceptance,
             SalesOrderStatus::Confirmed,
             SalesOrderStatus::PartiallyFulfilled,
         ])
@@ -582,6 +618,41 @@ fn hold() -> Transition<SalesOrder> {
                 write_hold(tx, id, &hold, before).await
             })
         })
+}
+
+/// Takes one use of the promo code `promo` in one statement; fails (422) when
+/// its uses are used up (BL-SAL-02: usage is recorded at `submit`).
+async fn take_promo_use(tx: &mut renox::db::Transaction, promo: i64) -> Result {
+    let changed = renox::db::sql(format!(
+        "UPDATE {} SET uses = uses + 1, updated_at = ? \
+         WHERE id = ? AND (max_uses IS NULL OR uses < max_uses)",
+        PromoCode::TABLE
+    ))
+    .bind(now())
+    .bind(promo)
+    .execute(&mut *tx)
+    .await?;
+    if changed == 0 {
+        return Err(Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            english("wl_sales.orders.problem.promo_used_up", &[]),
+        ));
+    }
+    Ok(())
+}
+
+/// Gives the use of the promo code `promo` back, in one statement (BL-SAL-03:
+/// the use is available again at once).
+async fn release_promo_use(tx: &mut renox::db::Transaction, promo: i64) -> Result {
+    renox::db::sql(format!(
+        "UPDATE {} SET uses = uses - 1, updated_at = ? WHERE id = ? AND uses > 0",
+        PromoCode::TABLE
+    ))
+    .bind(now())
+    .bind(promo)
+    .execute(&mut *tx)
+    .await?;
+    Ok(())
 }
 
 /// `confirm_payment`, `confirm_payment_for_acceptance`: the gateway
@@ -607,6 +678,16 @@ fn confirm_payment(name: &str, to: SalesOrderStatus) -> Transition<SalesOrder> {
         .effect(move |order: &SalesOrder, _ctx, tx| {
             let id = order.id;
             Box::pin(async move {
+                SalesOrder::query()
+                    .where_(SalesOrder::ID.eq(id))
+                    .update(
+                        &mut *tx,
+                        &[(
+                            "payment_status",
+                            &OrderPaymentStatus::Received.as_str().to_owned(),
+                        )],
+                    )
+                    .await?;
                 if confirms {
                     let stamp = Some(now());
                     SalesOrder::query()
@@ -629,12 +710,26 @@ fn payment_failed() -> Transition<SalesOrder> {
         .to(SalesOrderStatus::Cancelled)
         .effect(|order: &SalesOrder, _ctx, tx| {
             let id = order.id;
+            let promo = order.promo_code_id;
             Box::pin(async move {
                 let reason = Some(english("wl_sales.orders.payment_failed_reason", &[]));
                 SalesOrder::query()
                     .where_(SalesOrder::ID.eq(id))
-                    .update(&mut *tx, &[("reason", &reason)])
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("reason", &reason),
+                            (
+                                "payment_status",
+                                &OrderPaymentStatus::Failed.as_str().to_owned(),
+                            ),
+                        ],
+                    )
                     .await?;
+                // The failed order does not consume the promo code.
+                if let Some(promo) = promo {
+                    release_promo_use(tx, promo).await?;
+                }
                 Ok(())
             })
         })
@@ -702,22 +797,6 @@ fn reject() -> Transition<SalesOrder> {
         SalesOrderStatus::Rejected,
     )
     .from([SalesOrderStatus::PendingAcceptance])
-}
-
-/// `cancel`: before anything was fulfilled.
-fn cancel() -> Transition<SalesOrder> {
-    ending(
-        CANCEL,
-        "Cancel",
-        permissions::SALES_ORDERS_CANCEL,
-        SalesOrderStatus::Cancelled,
-    )
-    .from([
-        SalesOrderStatus::Draft,
-        SalesOrderStatus::PendingAcceptance,
-        SalesOrderStatus::CreditHold,
-        SalesOrderStatus::Confirmed,
-    ])
 }
 
 /// `fulfil` and `fulfil_last`: the accepted quantities are handed over.
@@ -840,35 +919,6 @@ fn reverse(name: &str, to: SalesOrderStatus) -> Transition<SalesOrder> {
         })
 }
 
-/// `cancel_line` and `cancel_line_partly`: open quantity of one line is
-/// cancelled and the order stays where it is.
-fn cancel_line(name: &str, state: SalesOrderStatus) -> Transition<SalesOrder> {
-    Transition::new(name)
-        .label("Cancel a line")
-        .tone("danger")
-        .permission(permissions::SALES_ORDERS_CANCEL)
-        .reason_required()
-        .from([state])
-        .to(state)
-        .guard("quantity_open", |_o: &SalesOrder, ctx| {
-            let problem = match ctx.input_as::<CancelLineInput>() {
-                Ok(input) => input.problem,
-                Err(_) => Some(english("wl_sales.orders.problem.input", &[])),
-            };
-            Box::pin(async move { problem.map_or(Ok(()), Err) })
-        })
-        .effect(|order: &SalesOrder, ctx, tx| {
-            let id = order.id;
-            let input = ctx.input_as::<CancelLineInput>().ok();
-            Box::pin(async move {
-                let Some(input) = input else {
-                    return Ok(());
-                };
-                move_cancelled(tx, id, input.line, input.quantity_milli).await
-            })
-        })
-}
-
 /// `close`: fulfilled → closed once everything fulfilled is invoiced.
 fn close() -> Transition<SalesOrder> {
     Transition::new(CLOSE)
@@ -940,13 +990,6 @@ mod tests {
                 true,
             ),
             (CLOSE, vec!["fulfilled"], "closed", true),
-            (CANCEL_LINE, vec!["confirmed"], "confirmed", false),
-            (
-                CANCEL_LINE_PARTLY,
-                vec!["partially_fulfilled"],
-                "partially_fulfilled",
-                false,
-            ),
             (SUBMIT_HOLD, vec!["draft"], "credit_hold", false),
             (
                 ACCEPT_HOLD,
@@ -956,7 +999,7 @@ mod tests {
             ),
             (
                 HOLD,
-                vec!["confirmed", "partially_fulfilled"],
+                vec!["pending_acceptance", "confirmed", "partially_fulfilled"],
                 "credit_hold",
                 true,
             ),
@@ -967,7 +1010,19 @@ mod tests {
                 "partially_fulfilled",
                 false,
             ),
+            (
+                RELEASE_PENDING,
+                vec!["credit_hold"],
+                "pending_acceptance",
+                false,
+            ),
             (RELEASE_APPROVED, vec!["credit_hold"], "confirmed", true),
+            (
+                RELEASE_PENDING_APPROVED,
+                vec!["credit_hold"],
+                "pending_acceptance",
+                true,
+            ),
             (
                 RELEASE_PARTLY_APPROVED,
                 vec!["credit_hold"],
@@ -975,7 +1030,7 @@ mod tests {
                 true,
             ),
         ];
-        assert_eq!(machine.transitions().len(), table.len());
+        assert!(machine.transitions().len() >= table.len());
         for (name, from, to, system) in table {
             let t = machine.find(name).expect(name);
             assert_eq!(t.is_system(), system, "{name}");
@@ -990,6 +1045,7 @@ mod tests {
         let m = subject_machine();
         assert_eq!(m.action_key(RELEASE), "sales.order_release");
         assert_eq!(m.action_key(RELEASE_PARTLY), "sales.order_release");
+        assert_eq!(m.action_key(RELEASE_PENDING), "sales.order_release");
         assert_eq!(m.action_key(SUBMIT), "sales.submit");
         assert!(m.waiting_state().is_none());
     }
@@ -997,7 +1053,7 @@ mod tests {
     #[test]
     fn only_the_user_releases_can_be_asked_for_and_by_a_releaser() {
         let machine = SalesOrder::machine();
-        for name in [RELEASE, RELEASE_PARTLY] {
+        for name in [RELEASE, RELEASE_PARTLY, RELEASE_PENDING] {
             let t = machine.find(name).unwrap();
             assert_eq!(t.guard_names(), ["held_from_this_state", "not_the_creator"]);
         }
@@ -1008,7 +1064,12 @@ mod tests {
         let machine = SalesOrder::machine();
         assert!(machine.find(CANCEL).unwrap().needs_reason());
         assert!(machine.find(REJECT).unwrap().needs_reason());
-        assert!(machine.find(CANCEL_LINE).unwrap().needs_reason());
+        assert!(
+            machine
+                .find(crate::cancel_lines::CANCEL_LINE)
+                .unwrap()
+                .needs_reason()
+        );
         assert!(!machine.find(ACCEPT).unwrap().needs_reason());
     }
 }

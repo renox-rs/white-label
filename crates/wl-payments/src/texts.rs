@@ -1438,6 +1438,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_payments.cash.note", "Note"),
     ("wl_payments.cash.holder", "Holder"),
+    ("wl_payments.cash.responsible", "Responsible person"),
     ("wl_payments.cash.period", "Period"),
     ("wl_payments.cash.kind", "Kind"),
     ("wl_payments.cash.source", "Source"),

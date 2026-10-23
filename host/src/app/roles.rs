@@ -7,6 +7,7 @@ use accounting::permissions as acc;
 use clinics::permissions as cln;
 use construction::permissions as con;
 use edtech::permissions as edu;
+use fnb::permissions as fnb_perm;
 use logistics::permissions as log;
 use manpower::permissions as mpw;
 use manufacturing::permissions as mfg;
@@ -199,6 +200,22 @@ pub const PRODUCTION_MANAGER: &str = mfg::PRODUCTION_MANAGER_ROLE;
 /// The QC inspector: sees the work orders of the plant, releases lots, raises
 /// and dispositions NCRs (07 §3.1).
 pub const QC_INSPECTOR: &str = mfg::QC_ROLE;
+/// The owner / operations director of an F&B client: sees every brand, outlet
+/// and margin, approves refunds and write-offs (06 §3.1).
+pub const OPERATIONS_DIRECTOR: &str = fnb_perm::OPERATIONS_DIRECTOR_ROLE;
+/// The area manager of an F&B client: oversees several outlets, their orders,
+/// food cost and approvals (06 §3.1).
+pub const AREA_MANAGER: &str = fnb_perm::AREA_MANAGER_ROLE;
+/// The outlet / kitchen manager: runs one kitchen, accepts and dispatches
+/// orders, closes a failed delivery, approves a refund and turns cash on
+/// delivery back on (06 §3.1, `FNB.ACL.17`, `FNB.RUL.14`).
+pub const KITCHEN_MANAGER: &str = fnb_perm::KITCHEN_MANAGER_ROLE;
+/// The head chef: recipes, production, quality (06 §3.1).
+pub const HEAD_CHEF: &str = fnb_perm::HEAD_CHEF_ROLE;
+/// The line cook: sees and bumps the tickets of their station (06 §3.1).
+pub const LINE_COOK: &str = fnb_perm::LINE_COOK_ROLE;
+/// The menu manager: menus, prices and promotions (06 §3.1).
+pub const MENU_MANAGER: &str = fnb_perm::MENU_MANAGER_ROLE;
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -329,6 +346,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::SALES_ORDERS_CREATE,
             sales::SALES_ORDERS_ACCEPT,
             sales::SALES_ORDERS_CANCEL,
+            sales::SALES_ORDERS_AMEND,
+            sales::SALES_ORDERS_APPROVE,
             sales::RETURNS_REQUEST,
             sales::RETURNS_HANDLE,
             sales::LOYALTY_VIEW,
@@ -391,6 +410,43 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // approved by a second user (`LOG.ACL.13`).
             log::REMITTANCES_REQUEST_ACCOUNT,
             log::REMITTANCES_DISPUTE,
+            // 06: the company admin holds the order, kitchen and cash on
+            // delivery permissions too.
+            fnb_perm::ORDERS_VIEW,
+            fnb_perm::ORDERS_MANAGE,
+            fnb_perm::ORDERS_CANCEL,
+            fnb_perm::ORDERS_AMEND,
+            fnb_perm::ORDERS_REFUND_REQUEST,
+            fnb_perm::KDS_WORK,
+            fnb_perm::CUSTOMERS_COD,
+            fnb_perm::RECONCILIATION_VIEW,
+            fnb_perm::RECONCILIATION_MANAGE,
+            fnb_perm::LATE_ORDERS_ENTER,
+            fnb_perm::REPORTS_VIEW,
+            fnb_perm::RIDER_FAULTS_VIEW,
+            // Production batches, the cold units' temperature holds and the
+            // recall trace (BL-FNB-11, BL-FNB-12, BL-FNB-13).
+            fnb_perm::PRODUCTION_VIEW,
+            fnb_perm::PRODUCTION_MANAGE,
+            fnb_perm::TEMPERATURE_VIEW,
+            fnb_perm::TEMPERATURE_LOG,
+            fnb_perm::COLD_UNITS_MANAGE,
+            fnb_perm::RECALL_TRACE_VIEW,
+            fnb_perm::RECALL_TRACE_DECIDE,
+            // The outlet channels, the paper orders and the daily closing
+            // (BL-FNB-14, BL-FNB-15), and the till sessions they count in.
+            fnb_perm::OUTLET_CHANNELS_VIEW,
+            fnb_perm::OUTLET_CHANNELS_MANAGE,
+            fnb_perm::PAPER_ORDERS_ENTER,
+            fnb_perm::CLOSING_VIEW,
+            fnb_perm::CLOSING_SUBMIT,
+            fnb_perm::CLOSING_APPROVE,
+            fnb_perm::CLOSING_REOPEN,
+            fnb_perm::CLOSING_CUTOFF,
+            sales::POS_OPEN_TILL,
+            sales::POS_CLOSE_TILL,
+            sales::POS_REOPEN_TILL,
+            sales::POS_REVIEW,
             attendance::VIEW,
             attendance::MARK,
             attendance::SELF_CHECK_IN,
@@ -499,6 +555,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             mfg::NCRS_DISPOSITION,
             mfg::NCRS_APPROVE,
             mfg::PLANTS_MANAGE,
+            mfg::CONFORMITY_MANAGE,
+            mfg::EXPORTS_MANAGE,
             prp::UNITS_VIEW,
             prp::UNITS_MANAGE,
             prp::UNITS_RESERVE,
@@ -1029,11 +1087,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::STOCK_ADJUST,
             inventory::STOCK_HOLD,
             inventory::LOTS_RELEASE,
-            // 07 §3.1: issues materials to the work orders.
+            inventory::DISPATCH_MANAGE,
             mfg::WORK_ORDERS_VIEW,
             mfg::WORK_ORDERS_ISSUE,
-            // 07 §4.3: dispatches the Return to supplier an NCR asks for.
-            inventory::SUPPLIER_RETURNS_MANAGE,
         ],
     ),
     (
@@ -1554,6 +1610,209 @@ pub const ROLES: &[(&str, &[&str])] = &[
             log::REMITTANCES_REQUEST_ACCOUNT,
             // It disputes a paid statement in the portal (`LOG.ACL.12`).
             log::REMITTANCES_DISPUTE,
+        ],
+    ),
+    (
+        OPERATIONS_DIRECTOR,
+        &[
+            hr::LEAVE_REQUEST,
+            // The owner reads the settings pages of the deployment
+            // (`/settings/negative-flow`, `/settings/compliance`).
+            SETTINGS_VIEW,
+            fnb_perm::ORDERS_VIEW,
+            // Reads the reports and the payout statements; as a second holder
+            // of the reconciliation permission approves the void of a matched
+            // statement (`PLT.ACL.09`).
+            fnb_perm::REPORTS_VIEW,
+            fnb_perm::RECONCILIATION_VIEW,
+            fnb_perm::RECONCILIATION_MANAGE,
+            // Sees the batches and the cold units, opens a recall with the
+            // head chef and decides the public notice (§7.2 *Recall owner*).
+            fnb_perm::PRODUCTION_VIEW,
+            fnb_perm::TEMPERATURE_VIEW,
+            fnb_perm::RECALL_TRACE_VIEW,
+            fnb_perm::RECALL_TRACE_DECIDE,
+            // Sees the outlets' channels and closings.
+            fnb_perm::OUTLET_CHANNELS_VIEW,
+            fnb_perm::CLOSING_VIEW,
+            inventory::RECALLS_VIEW,
+            inventory::RECALLS_MANAGE,
+            sales::SALES_ORDERS_VIEW,
+            sales::SALES_ORDERS_APPROVE,
+            delivery::VIEW,
+            delivery::RUNS_VIEW,
+            delivery::POD_VIEW,
+            payments::VIEW,
+            payments::REFUNDS_APPROVE,
+            payments::CASH_VIEW,
+            payments::CASH_WRITE_OFF,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::STOCK_APPROVE,
+            invoices::VIEW,
+            invoices::BUDGETS_VIEW,
+            invoices::BUDGETS_APPROVE,
+            // The forecast the alert (`FIN.RUL.23`) points to, and every
+            // owner drawing, whatever its amount (`FIN.ACL.21`, BL-FNB-16).
+            invoices::CASHFLOW_VIEW,
+            invoices::DRAWINGS_APPROVE,
+            wl_kernel::permissions::APPROVALS_VIEW,
+        ],
+    ),
+    (
+        AREA_MANAGER,
+        &[
+            hr::LEAVE_REQUEST,
+            fnb_perm::ORDERS_VIEW,
+            fnb_perm::ORDERS_MANAGE,
+            fnb_perm::CUSTOMERS_COD,
+            fnb_perm::REPORTS_VIEW,
+            fnb_perm::RECONCILIATION_VIEW,
+            fnb_perm::PRODUCTION_VIEW,
+            fnb_perm::TEMPERATURE_VIEW,
+            fnb_perm::RECALL_TRACE_VIEW,
+            // Resumes an outlet's channels, reopens and approves the daily
+            // closing, changes the cut-off, approves a late entry into a
+            // submitted closing (`PLT.ACL.10`) and reviews the till sessions
+            // (BL-FNB-14, BL-FNB-15).
+            fnb_perm::OUTLET_CHANNELS_VIEW,
+            fnb_perm::OUTLET_CHANNELS_MANAGE,
+            fnb_perm::CLOSING_VIEW,
+            fnb_perm::CLOSING_APPROVE,
+            fnb_perm::CLOSING_REOPEN,
+            fnb_perm::CLOSING_CUTOFF,
+            wl_kernel::permissions::LATE_ENTRIES_APPROVE,
+            sales::POS_REOPEN_TILL,
+            sales::POS_REVIEW,
+            sales::SALES_ORDERS_VIEW,
+            sales::SALES_ORDERS_APPROVE,
+            delivery::VIEW,
+            delivery::RUNS_VIEW,
+            delivery::POD_VIEW,
+            payments::VIEW,
+            payments::REFUNDS_APPROVE,
+            payments::CASH_VIEW,
+            payments::CASH_COUNT,
+            payments::CASH_WRITE_OFF,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::STOCK_APPROVE,
+            wl_kernel::permissions::APPROVALS_VIEW,
+        ],
+    ),
+    (
+        KITCHEN_MANAGER,
+        &[
+            hr::LEAVE_REQUEST,
+            fnb_perm::ORDERS_VIEW,
+            fnb_perm::ORDERS_MANAGE,
+            fnb_perm::ORDERS_CANCEL,
+            fnb_perm::ORDERS_AMEND,
+            fnb_perm::KDS_WORK,
+            fnb_perm::CUSTOMERS_COD,
+            // The failed deliveries and refunds reports, and the rider fault
+            // entries of the riders (BL-FNB-08).
+            fnb_perm::REPORTS_VIEW,
+            fnb_perm::RIDER_FAULTS_VIEW,
+            // Sees the batches, logs the cold units' readings and sets the
+            // units up, reads the recall trace; as the chef's deputy decides
+            // the lines of a temperature hold and approves a discard above
+            // the wastage limit (BL-FNB-11, BL-FNB-12, BL-FNB-13).
+            fnb_perm::PRODUCTION_VIEW,
+            fnb_perm::TEMPERATURE_VIEW,
+            fnb_perm::TEMPERATURE_LOG,
+            fnb_perm::COLD_UNITS_MANAGE,
+            fnb_perm::RECALL_TRACE_VIEW,
+            // Resumes the outlet's channels after an outage, enters the paper
+            // orders as late entries and submits the daily closing after the
+            // cut-off (BL-FNB-14, BL-FNB-15).
+            fnb_perm::OUTLET_CHANNELS_VIEW,
+            fnb_perm::OUTLET_CHANNELS_MANAGE,
+            fnb_perm::PAPER_ORDERS_ENTER,
+            fnb_perm::CLOSING_VIEW,
+            fnb_perm::CLOSING_SUBMIT,
+            inventory::LOTS_RELEASE,
+            // Accepts and amends orders, cancels and approves a started line
+            // (`SAL.ACL.05`), approves a return and a refund above the limit
+            // (`SAL.ACL.06`).
+            sales::SALES_ORDERS_VIEW,
+            sales::SALES_ORDERS_CREATE,
+            sales::SALES_ORDERS_ACCEPT,
+            sales::SALES_ORDERS_CANCEL,
+            sales::SALES_ORDERS_AMEND,
+            sales::SALES_ORDERS_APPROVE,
+            sales::RETURNS_REQUEST,
+            sales::RETURNS_HANDLE,
+            sales::RETURNS_APPROVE,
+            sales::POS_SELL,
+            // The rider's runs and deliveries: assigns, dispatches, returns a
+            // failed delivery's food, approves a cash difference.
+            delivery::VIEW,
+            delivery::DISPATCH,
+            delivery::MANAGE,
+            delivery::RUNS_VIEW,
+            delivery::RUNS_DISPATCH,
+            delivery::POD_VIEW,
+            delivery::REVERSE,
+            delivery::APPROVE_COD_DIFFERENCE,
+            // Approves a refund a cashier asked for (`FNB.ACL.17`,
+            // `FIN.ACL.04`) and counts the rider's cash.
+            payments::VIEW,
+            payments::REFUNDS_APPROVE,
+            payments::CASH_VIEW,
+            payments::CASH_COUNT,
+            // Writes off a rider's or a till's shortage up to AED 20; above
+            // it the area manager approves (`FIN.ACL.06`, BL-FNB-16).
+            payments::CASH_WRITE_OFF,
+            // Stock of the kitchen: wastage above the limit needs this role
+            // (`STK.ACL.02`); the dispatcher task of a cancelled line is theirs.
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::STOCK_ADJUST,
+            inventory::STOCK_HOLD,
+            inventory::STOCK_APPROVE,
+            inventory::DISPATCH_MANAGE,
+        ],
+    ),
+    (
+        HEAD_CHEF,
+        &[
+            hr::LEAVE_REQUEST,
+            fnb_perm::ORDERS_VIEW,
+            fnb_perm::KDS_WORK,
+            // Plans, starts, finishes and discards the production batches,
+            // logs the readings, and with the owner opens a recall and tells
+            // the customers (§3.1, §7.2 *Recall owner*).
+            fnb_perm::PRODUCTION_VIEW,
+            fnb_perm::PRODUCTION_MANAGE,
+            fnb_perm::TEMPERATURE_VIEW,
+            fnb_perm::TEMPERATURE_LOG,
+            fnb_perm::RECALL_TRACE_VIEW,
+            fnb_perm::RECALL_TRACE_DECIDE,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::STOCK_HOLD,
+            inventory::LOTS_RELEASE,
+            inventory::RECALLS_VIEW,
+            inventory::RECALLS_MANAGE,
+        ],
+    ),
+    (
+        LINE_COOK,
+        &[
+            hr::LEAVE_REQUEST,
+            fnb_perm::KDS_WORK,
+            // Logs the fridge and freezer readings (`WRK.CHK.01`).
+            fnb_perm::TEMPERATURE_VIEW,
+            fnb_perm::TEMPERATURE_LOG,
+        ],
+    ),
+    (
+        MENU_MANAGER,
+        &[
+            hr::LEAVE_REQUEST,
+            fnb_perm::ORDERS_VIEW,
+            inventory::ITEMS_VIEW,
         ],
     ),
     (HSE_OFFICER, &[attendance::VIEW]),

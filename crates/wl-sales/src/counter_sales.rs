@@ -66,8 +66,16 @@ impl NewCounterSale {
     }
 }
 
-/// Opens a cart for the cashier `cashier` (a user id).
+/// Opens a cart for the cashier `cashier` (a user id). A cart that names no
+/// till session is rung up on the cashier's open one, so the cash it takes
+/// counts toward the till's expected cash (`SAL.POS.01`).
 pub async fn open(state: &AppState, cashier: i64, new: NewCounterSale) -> Result<CounterSale> {
+    let till_session = match new.till_session {
+        Some(id) => Some(id),
+        None => crate::till_session::TillSession::open_of_cashier(&state.db, cashier)
+            .await?
+            .map(|session| session.id),
+    };
     let number = RECEIPT_SERIES
         .next_allowing_gaps(&state.db, None, None, wl_kernel::documents::today())
         .await?;
@@ -77,7 +85,7 @@ pub async fn open(state: &AppState, cashier: i64, new: NewCounterSale) -> Result
             number,
             legal_entity_id: new.legal_entity,
             party_id: new.party.map(|p| p.0),
-            till_session_id: new.till_session,
+            till_session_id: till_session,
             cashier_user_id: cashier,
             currency: DEFAULT_CURRENCY.to_owned(),
             ..CounterSale::default()

@@ -1,0 +1,82 @@
+{#- fnb: the daily closing of an outlet and a business day: the sales by channel
+    (paper orders included), the cash count of the till, the sheets that submit
+    it after the cut-off, approve it or reopen it (the area manager), the
+    cut-off of the outlet and the sheet that enters a paper order as a late
+    entry. A late entry into the submitted closing waits for the area manager.
+    Replace it with resources/views/fnb/closing.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="outlet.name ~ ' / ' ~ date">
+  <rx-stack>
+    <rx-page-header :title="outlet.name ~ ' / ' ~ date" :subtitle="tx['closing.title']" :back="route('fnb.closings')" :back-label="tx['closing.title']"
+                    :badge="status" :badge-kind="status_kind">
+      <rx-action-sheet rx-if="can_submit" id="closing-submit" :label="tx['closing.submit']" :action="route('fnb.closing_submit', closing.id)"
+                       :title="tx['closing.submit_title']" :description="tx['closing.submit_description']" :submit-label="tx['closing.submit']" variant="primary" icon="check">
+        <rx-input name="counted" :label="tx['closing.cash']" id="closing-submit-counted" required/>
+        <rx-select name="cashier" :label="tx['closing.cashier']" :hint="tx['closing.cashier_hint']" id="closing-submit-cashier" :options="cashiers" :selected="''" :placeholder="tx['closing.cashier']"/>
+        <rx-checkbox name="checklist" :label="tx['closing.checklist']" id="closing-submit-checklist"/>
+      </rx-action-sheet>
+      <rx-confirm rx-if="can_approve" id="closing-approve" :label="tx['closing.approve']" :action="route('fnb.closing_approve', closing.id)" method="POST"
+                  :title="tx['closing.approve_title']" :message="tx['closing.approve_message']" :confirm-label="tx['closing.approve']" icon="check"/>
+      <rx-action-sheet rx-if="can_reopen" id="closing-reopen" :label="tx['closing.reopen']" :action="route('fnb.closing_reopen', closing.id)"
+                       :title="tx['closing.reopen_title']" :description="tx['closing.reopen_description']" :submit-label="tx['closing.reopen']" icon="rotate-ccw">
+        <rx-textarea name="reason" :label="tx['closing.reason']" id="closing-reopen-reason" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_paper" id="closing-paper" :label="tx['channels.paper_add']" :action="route('fnb.paper_order_enter')"
+                       :title="tx['channels.paper_title']" :description="tx['channels.paper_description']" :submit-label="tx['channels.paper_add']" icon="file-pen-line">
+        <input type="hidden" name="outlet" value="{{ outlet.id }}"/>
+        <input type="hidden" name="back" value="closing"/>
+        <rx-input name="reference" :label="tx['channels.paper_reference']" id="closing-paper-reference" required/>
+        <rx-select name="channel" :label="tx['channels.paper_channel']" id="closing-paper-channel" :options="paper_channels" :selected="'counter'"/>
+        <rx-input name="amount" :label="tx['channels.paper_amount']" id="closing-paper-amount" required/>
+        <rx-select name="method" :label="tx['channels.paper_method']" id="closing-paper-method" :options="methods" :selected="'cash'"/>
+        <rx-input name="occurred_on" type="date" :label="tx['channels.paper_day']" :value="today" id="closing-paper-day" required/>
+        <rx-input name="occurred_time" :label="tx['channels.paper_time']" :hint="tx['channels.paper_time_hint']" id="closing-paper-time" required/>
+        <rx-textarea name="reason" :label="tx['channels.paper_reason']" id="closing-paper-reason"/>
+        <rx-input name="outage_reference" :label="tx['channels.paper_outage']" id="closing-paper-outage"/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-card rx-if="notes" :title="tx['closing.notes']">
+      <rx-stack>
+        <p rx-for="note in notes">{{ note }}</p>
+      </rx-stack>
+    </rx-card>
+    <rx-card :title="tx['closing.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['closing.outlet']" :value="outlet.name"/>
+        <rx-entry :label="tx['closing.date']" :value="date"/>
+        <rx-entry :label="tx['closing.orders']" :value="orders"/>
+        <rx-entry :label="tx['closing.sales']" :value="sales"/>
+        <rx-entry :label="tx['closing.late_count']" :value="late_count"/>
+        <rx-entry :label="tx['closing.opens_at']" :value="opens_at"/>
+        <rx-entry :label="tx['closing.expected']" :value="expected" :placeholder="tx['closing.none']"/>
+        <rx-entry :label="tx['closing.counted']" :value="counted" :placeholder="tx['closing.none']"/>
+        <rx-entry :label="tx['closing.variance']" :value="variance" :placeholder="tx['closing.none']"/>
+        <rx-entry :label="tx['closing.checklist_done']" :value="tx['closing.yes'] if closing.checklist_done else tx['closing.no']"/>
+        <rx-entry rx-if="closing.reopen_count" :label="tx['closing.reopened_times']" :value="closing.reopen_count"/>
+        <rx-entry rx-if="closing.reopen_reason" :label="tx['closing.last_reason']" :value="closing.reopen_reason"/>
+        <rx-entry :label="tx['closing.cutoff']" :value="cutoff"/>
+        <rx-entry rx-if="cutoff_pending" :label="tx['closing.cutoff_pending']" :value="cutoff_pending ~ ' / ' ~ tx['closing.cutoff_from'] ~ ' ' ~ cutoff_from"/>
+      </rx-infolist>
+      <rx-action-sheet rx-if="can_cutoff" id="outlet-cutoff" :label="tx['closing.cutoff_set']" :action="route('fnb.outlet_cutoff', outlet.id)"
+                       :title="tx['closing.cutoff_title']" :description="tx['closing.cutoff_description']" :submit-label="tx['closing.cutoff_set']" icon="clock">
+        <rx-input name="time" :label="tx['closing.cutoff_time']" :value="cutoff" id="outlet-cutoff-time" required/>
+      </rx-action-sheet>
+    </rx-card>
+    <rx-card :title="tx['closing.channels']">
+      <rx-table :rows="channels" as="channel" :key="channel.channel" :caption="tx['closing.channels']">
+        <rx-column :label="tx['closing.channel']">{{ channel.channel }}</rx-column>
+        <rx-column :label="tx['closing.orders']" align="num">{{ channel.orders }}</rx-column>
+        <rx-column :label="tx['closing.sales']" align="num">{{ channel.gross }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['closing.no_sales']" icon="calendar-check"/></rx-slot>
+      </rx-table>
+    </rx-card>
+    <rx-card rx-if="paper" :title="tx['closing.paper_orders']">
+      <rx-table :rows="paper" as="order" :key="order.reference" :caption="tx['closing.paper_orders']">
+        <rx-column :label="tx['channels.paper_reference']">{{ order.reference }}</rx-column>
+        <rx-column :label="tx['channels.paper_channel']" hide-narrow>{{ order.channel }}</rx-column>
+        <rx-column :label="tx['channels.paper_amount']" align="num">{{ order.amount }}</rx-column>
+        <rx-column :label="tx['channels.paper_business_time']" hide-narrow>{{ order.business_time }}</rx-column>
+        <rx-column :label="tx['channels.paper_flag']"><rx-badge rx-if="order.late" kind="warning" :text="tx['channels.yes']"/></rx-column>
+      </rx-table>
+    </rx-card>
+  </rx-stack>
+</rx-page>

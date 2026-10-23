@@ -13,6 +13,7 @@
 pub mod alerts;
 pub mod connection;
 pub mod def;
+pub mod devices;
 pub mod events;
 pub mod queue;
 pub mod reconcile;
@@ -23,15 +24,16 @@ use renox::prelude::*;
 
 pub use connection::{ConnectionStatus, IntegrationConnection, transitions};
 pub use def::{
-    DEFAULT_DOWN_AFTER_MINUTES, Delivery, DueFn, EntryFn, Inbound, IntegrationDef, Match, MatchFn,
-    Outbound, SendFn, all, call_failed, down_at, get, register, retry_wait,
+    DEFAULT_DOWN_AFTER_MINUTES, Delivery, DeviceSpec, DueFn, EntryFn, Inbound, IntegrationDef,
+    Match, MatchFn, Outbound, SendFn, all, call_failed, down_at, get, register, retry_wait,
 };
+pub use devices::{DeviceBeat, DeviceSettings};
 pub use events::IntegrationStatusChanged;
 pub use queue::{CallStatus, QueuedCall};
 pub use reconcile::{Line, LineKind, Reconciliation};
 pub use service::{
     Received, Report, Submitted, disable, drain, enable, ensure, go_down, receive, report_failure,
-    report_success, run_due, run_queue, submit,
+    report_failure_since, report_success, run_due, run_queue, submit,
 };
 
 /// The subject type of a connection, for rule runs and alerts.
@@ -81,6 +83,7 @@ pub async fn report_outcome(
 /// Registers the models and the connection's machine.
 pub(crate) fn register_models(app: &mut Registry) {
     app.model::<IntegrationConnection>()
+        .model::<DeviceBeat>()
         .model::<QueuedCall>()
         .model::<Reconciliation>();
     renox::state_machine::register::<IntegrationConnection>();
@@ -108,9 +111,23 @@ pub async fn install(db: &Db) -> Result<usize> {
 
 /// Stores the row of `def`.
 pub(crate) async fn create_row(db: &Db, def: &IntegrationDef) -> Result<IntegrationConnection> {
-    IntegrationConnection::create(
+    let device = def.device_spec();
+    let created = IntegrationConnection::create(
         db,
         IntegrationConnection {
+            kind: if device.is_some() {
+                connection::KIND_DEVICE
+            } else {
+                connection::KIND_SERVICE
+            }
+            .to_owned(),
+            scope: device.and_then(|d| d.scope.clone()),
+            heartbeat_seconds: device.map_or(connection::DEFAULT_HEARTBEAT_SECONDS, |d| {
+                d.heartbeat_seconds
+            }),
+            window_start: device.and_then(|d| d.window).map(|w| w.0),
+            window_end: device.and_then(|d| d.window).map(|w| w.1),
+            grouped: device.is_some_and(|d| d.grouped),
             key: def.key().to_owned(),
             module: def.module().to_owned(),
             owner_role: def.owner_role_name().to_owned(),
@@ -122,5 +139,18 @@ pub(crate) async fn create_row(db: &Db, def: &IntegrationDef) -> Result<Integrat
             ..Default::default()
         },
     )
-    .await
+    .await?;
+    if let Some(device) = def.device_spec() {
+        // The devices expected to send heartbeats; a connection of one
+        // device is that device.
+        let names = if device.devices.is_empty() {
+            vec![def.key().to_owned()]
+        } else {
+            device.devices.clone()
+        };
+        for name in names {
+            devices::ensure_device(db, def.key(), &name).await?;
+        }
+    }
+    Ok(created)
 }

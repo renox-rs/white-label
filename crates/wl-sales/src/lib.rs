@@ -9,11 +9,13 @@ pub mod acquisition_daily;
 pub mod adjustment;
 pub mod adjustment_machine;
 pub mod adjustments;
+pub mod amend;
 pub mod attribution;
 pub mod bill_links;
 pub mod block;
 pub mod budget;
 pub mod campaign;
+pub mod cancel_lines;
 pub mod closure;
 pub mod config;
 pub mod cost_entry;
@@ -41,6 +43,11 @@ pub mod loyalty_rules;
 pub mod machine;
 pub mod merge;
 pub mod notices;
+pub mod online_payment;
+pub mod order_change;
+pub mod order_changes;
+mod order_directory;
+mod order_notices;
 pub mod package;
 pub mod package_machine;
 pub mod package_reopen;
@@ -64,8 +71,13 @@ pub mod sales_returns;
 pub mod seed;
 pub mod segment;
 pub mod segments;
+pub mod settle;
 pub mod terms;
 mod texts;
+mod texts_changes;
+mod texts_till;
+pub mod till_session;
+pub mod till_sessions;
 pub mod voids;
 
 use renox::db::Migration;
@@ -92,17 +104,21 @@ pub use loyalty_account::{AccountStatus, Enrolment, LoyaltyAccount};
 pub use loyalty_attach::MemberRef;
 pub use loyalty_points::{LoyaltyEarning, LoyaltyReview, PointsKind, PointsMovement};
 pub use loyalty_programme::{EarnKind, LoyaltyProgramme, NewProgramme};
+pub use order_change::{OrderChange, OrderRevision, OrderSettlement};
 pub use package::{MovementKind, Package, PackageMovement, PackageStatus};
 pub use package_reopen::{PackageRefusal, PackageReopening};
 pub use promo_code::PromoCode;
 pub use redemption::{Redemption, RedemptionStatus};
 pub use retention::{BroadcastState, CampaignBroadcast, CampaignGuard, CampaignGuards};
 pub use sale_line::SaleLine;
-pub use sales_order::{FulfilmentRecord, SalesOrder, SalesOrderStatus};
+pub use sales_order::{
+    FulfilmentRecord, OrderPayment, OrderPaymentStatus, SalesOrder, SalesOrderStatus,
+};
 pub use sales_return::{ReturnKind, ReturnResolution, ReturnStatus, SalesReturn, SalesReturnLine};
 pub use segment::{MatchMode, Rule, Segment, SegmentRefused};
 pub use segments::{SegmentRule, SegmentRules};
 pub use terms::{LoyaltyTermsChange, TermsChange};
+pub use till_session::{TillSession, TillSessionStatus};
 
 /// The campaign services under the names of the plan: `campaigns::delete`
 /// and `campaigns::run_daily`.
@@ -167,6 +183,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-sales/credit_account.html"),
     ),
     (
+        "wl-sales/sales_order_revision.html",
+        include_str!("../views/wl-sales/sales_order_revision.html"),
+    ),
+    (
         "wl-sales/sales_returns.html",
         include_str!("../views/wl-sales/sales_returns.html"),
     ),
@@ -193,6 +213,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-sales/portal_loyalty.html",
         include_str!("../views/wl-sales/portal_loyalty.html"),
+    ),
+    (
+        "wl-sales/till_sessions.html",
+        include_str!("../views/wl-sales/till_sessions.html"),
+    ),
+    (
+        "wl-sales/till_session.html",
+        include_str!("../views/wl-sales/till_session.html"),
     ),
     (
         "wl-sales/segments.html",
@@ -228,16 +256,33 @@ pub mod permissions {
     pub const LEADS_MANAGE: &str = "leads.manage";
     /// Ring up and complete counter sales.
     pub const POS_SELL: &str = "pos.sell";
+    /// Open a till session (the drawer of a shift or a day) with a float.
+    pub const POS_OPEN_TILL: &str = "pos.open_till";
+    /// Count and close a till session.
+    pub const POS_CLOSE_TILL: &str = "pos.close_till";
+    /// Reopen a closed till session for a correction, with a reason.
+    pub const POS_REOPEN_TILL: &str = "pos.reopen_till";
+    /// Mark a closed till session reviewed (a manager or the accountant).
+    pub const POS_REVIEW: &str = "pos.review";
     /// See sales orders.
     pub const SALES_ORDERS_VIEW: &str = "sales_orders.view";
     /// Enter, edit and submit sales orders.
     pub const SALES_ORDERS_CREATE: &str = "sales_orders.create";
     /// Accept or reject an order that waits for the seller.
     pub const SALES_ORDERS_ACCEPT: &str = "sales_orders.accept";
-    /// Cancel a sales order.
+    /// Cancel a sales order, one of its lines or its remaining lines.
     pub const SALES_ORDERS_CANCEL: &str = "sales_orders.cancel";
+    /// Amend a sales order as a new revision (`SAL.ACL.02`, `SAL.ACL.05`).
+    pub const SALES_ORDERS_AMEND: &str = "sales_orders.amend";
+    /// Approve an amendment or a cancellation after fulfilment started, a
+    /// manual discount beyond the limit, a *finish to stock* or *scrap*
+    /// outcome and a waived cancellation fee (`SAL.ACL.02`, `SAL.ACL.05`).
+    pub const SALES_ORDERS_APPROVE: &str = "sales_orders.approve";
     /// Request a sales return.
     pub const RETURNS_REQUEST: &str = "returns.request";
+    /// Approve a refund or credit after completion with nothing returned above
+    /// the limit (`SAL.ACL.06`); never the person who recorded it.
+    pub const RETURNS_APPROVE: &str = "returns.approve";
     /// Receive, resolve, reject and reverse sales returns.
     pub const RETURNS_HANDLE: &str = "returns.handle";
     /// See the loyalty programme, its accounts and the review list.
@@ -384,6 +429,127 @@ impl WlSales {
         self
     }
 
+    /// Whether an external order number (an aggregator's, a website's) may be
+    /// used once per channel (§7, default on). Off, no check is made.
+    pub fn unique_external_order_number(mut self, on: bool) -> Self {
+        self.config.unique_external_order_number = on;
+        self
+    }
+
+    /// The minutes an order paid online waits for the gateway before it is
+    /// cancelled as *payment failed* (§7, default 15).
+    pub fn online_payment_window_minutes(mut self, minutes: i64) -> Self {
+        assert!(minutes >= 1, "the payment window is at least a minute");
+        self.config.online_payment_window_minutes = minutes;
+        self
+    }
+
+    /// The role told when a payment is refunded as late (`SAL.RUL.06`; 06: the
+    /// outlet manager). The company admin when not set.
+    pub fn order_manager_role(mut self, role: &str) -> Self {
+        self.config.order_manager_role = role.to_owned();
+        self
+    }
+
+    /// The channels whose orders are changed on the channel's own system, so
+    /// `amend` is not offered (§7, default: the aggregators).
+    pub fn aggregator_channels(mut self, channels: &[&str]) -> Self {
+        self.config.aggregator_channels =
+            channels.iter().map(|c| c.trim().to_lowercase()).collect();
+        self
+    }
+
+    /// The manual discount above which a change needs a manager
+    /// (`SAL.ACL.02`), in percent of the line (default 10; 07, 08: 5).
+    pub fn manual_discount_limit_percent(mut self, percent: i64) -> Self {
+        assert!(percent >= 0, "a limit is zero or more");
+        self.config.manual_discount_limit_bps = percent * 100;
+        self
+    }
+
+    /// The outcomes offered when a started line is cancelled, narrowed to
+    /// what the vertical can do (06: `return_to_stock`, `scrap`; 08:
+    /// `return_to_stock`). Unknown names are left out.
+    pub fn cancel_outcomes(mut self, outcomes: &[&str]) -> Self {
+        self.config.cancel_outcomes = outcomes
+            .iter()
+            .filter(|o| wl_kernel::sales::LineOutcomeKind::parse(o).is_some())
+            .map(|o| o.trim().to_owned())
+            .collect();
+        self
+    }
+
+    /// The default cancellation fee on a started line, in percent of the
+    /// line value with VAT (§7, default 0).
+    pub fn cancellation_fee_percent(mut self, percent: i64) -> Self {
+        assert!(percent >= 0, "a fee is zero or more");
+        self.config.cancellation_fee_bps = percent * 100;
+        self
+    }
+
+    /// The default cancellation fee on a started line as a fixed amount in
+    /// fils, used when no percentage is set (§7, default 0).
+    pub fn cancellation_fee_amount(mut self, fils: i64) -> Self {
+        assert!(fils >= 0, "a fee is zero or more");
+        self.config.cancellation_fee_amount = fils;
+        self
+    }
+
+    /// The VAT category of a cancellation fee line: `standard` (default),
+    /// `zero_rated` or `exempt`. Open item A-04 decides it.
+    pub fn cancellation_fee_vat(mut self, category: &str) -> Self {
+        self.config.cancellation_fee_vat = category.to_owned();
+        self
+    }
+
+    /// The value, in fils, above which cancelling a paid order needs a manager
+    /// (`SAL.ACL.01`; default AED 50).
+    pub fn cancel_approval_limit(mut self, fils: i64) -> Self {
+        assert!(fils >= 0, "a limit is zero or more");
+        self.config.cancel_approval_limit = fils;
+        self
+    }
+
+    /// The value, in fils, above which a refund or credit after completion
+    /// with nothing returned needs a manager (`SAL.ACL.06`; default AED 50).
+    pub fn refund_approval_limit(mut self, fils: i64) -> Self {
+        assert!(fils >= 0, "a limit is zero or more");
+        self.config.refund_approval_limit = fils;
+        self
+    }
+
+    /// The complaint categories of a *no goods* return (stored names; default
+    /// cold, late, missing_item, wrong_item, quality, service_not_delivered,
+    /// other).
+    pub fn complaint_categories(mut self, categories: &[&str]) -> Self {
+        self.config.complaint_categories =
+            categories.iter().map(|c| c.trim().to_lowercase()).collect();
+        self
+    }
+
+    /// The responsible parties of a *no goods* return (stored names; default
+    /// business, driver_or_rider, aggregator, supplier, customer).
+    pub fn responsible_parties(mut self, parties: &[&str]) -> Self {
+        self.config.responsible_parties = parties.iter().map(|c| c.trim().to_lowercase()).collect();
+        self
+    }
+
+    /// The role told (mail and task) when an order goes on credit hold,
+    /// with the customer's sales rep (`SAL.RUL.01`; default `accountant`);
+    /// the company admin when set to nothing.
+    pub fn accountant_role(mut self, role: &str) -> Self {
+        self.config.accountant_role = role.to_owned();
+        self
+    }
+
+    /// The role that owns the orders of the channels that are not website or
+    /// portal, told when a payment link of an amendment expires (06: the
+    /// outlet manager owns the website orders; this is the sales rep).
+    pub fn sales_rep_role(mut self, role: &str) -> Self {
+        self.config.sales_rep_role = role.to_owned();
+        self
+    }
+
     /// The earning sales per member per day before the account is listed
     /// for the manager's review (§7, default 5).
     pub fn loyalty_daily_sales_limit(mut self, limit: i64) -> Self {
@@ -522,13 +688,6 @@ impl WlSales {
         self
     }
 
-    /// The role told of a credit hold, with the customer's sales rep
-    /// (default `accountant`).
-    pub fn accountant_role(mut self, role: &str) -> Self {
-        self.config.accountant_role = role.to_owned();
-        self
-    }
-
     /// The module's settings.
     pub fn config(&self) -> &SalesConfig {
         &self.config
@@ -592,8 +751,11 @@ impl Module for WlSales {
             .view_data::<pages::counter_sales::ShowPage>()
             .view_data::<pages::credit::IndexPage>()
             .view_data::<pages::credit::ShowPage>()
+            .view_data::<pages::till_sessions::IndexPage>()
+            .view_data::<pages::till_sessions::ShowPage>()
             .view_data::<pages::sales_orders::IndexPage>()
             .view_data::<pages::sales_orders::ShowPage>()
+            .view_data::<pages::sales_orders::RevisionPage>()
             .view_data::<pages::sales_returns::IndexPage>()
             .view_data::<pages::sales_returns::ShowPage>()
             .view_data::<pages::loyalty::IndexPage>()
@@ -632,6 +794,7 @@ impl Module for WlSales {
         app.model::<CustomerAccount>();
         app.model::<AccountHoldSource>();
         app.model::<AccountHoldClearing>();
+        app.model::<till_session::TillSession>();
         app.model::<SalesOrder>();
         app.model::<FulfilmentRecord>();
         app.model::<po_number::PoKey>();
@@ -661,9 +824,15 @@ impl Module for WlSales {
         package_reopen::register(app);
         // The counter sale: its machine and the `CounterSaleCompleted` event.
         counter_sales::register(app);
+        // The till session: its machine, `TillSessionClosed` and the kernel's
+        // `TillDesk`.
+        till_sessions::register(app);
         // The sales order: its machine, its events and the kernel's
         // `OrderFulfilment`.
         sales_orders::register(app);
+        // The 07 vertical's contracts the sales order answers.
+        wl_kernel::production::provide_order_lines(app, order_directory::Lines);
+        wl_kernel::sales::provide_customer_po_check(app, order_directory::PoCheck);
         // `SAL.RUL.05`: a bounced cheque holds the customer account, and
         // *Clear account hold* with another releaser's approval.
         account_hold::register(app);
@@ -728,6 +897,14 @@ impl Module for WlSales {
         );
         app.nav(
             "app",
+            NavLink::route("wl_sales.till_sessions", "nav.till_sessions")
+                .icon("banknote")
+                .group("nav.app")
+                .order(56)
+                .permission(permissions::POS_OPEN_TILL),
+        );
+        app.nav(
+            "app",
             NavLink::route("wl_sales.sales_orders", "nav.sales_orders")
                 .icon("clipboard-list")
                 .group("nav.app")
@@ -737,7 +914,7 @@ impl Module for WlSales {
         app.nav(
             "app",
             NavLink::route("wl_sales.credit_accounts", "nav.credit_accounts")
-                .icon("landmark")
+                .icon("credit-card")
                 .group("nav.app")
                 .order(52)
                 .permission(permissions::CREDIT_VIEW),

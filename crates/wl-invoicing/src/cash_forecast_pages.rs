@@ -78,11 +78,18 @@ pub(crate) fn whole_text(fils: i64) -> String {
 
 /// The links to `documents` with a name for people each (`INV-2026-0003`),
 /// for those that have a page.
-async fn document_links(db: &Db, documents: &[Subject]) -> Result<Vec<(String, String)>> {
+async fn document_links(
+    db: &Db,
+    user: &AuthUser,
+    documents: &[Subject],
+) -> Result<Vec<(String, String)>> {
     let mut links = Vec::new();
     for document in documents {
         let href = document_link(document);
-        if !href.is_empty() {
+        // A bill is a link only for who may open it.
+        let openable = document.subject_type != "invoicing.supplier_bill"
+            || user.has_permission_anywhere(permissions::SUPPLIER_BILLS_VIEW);
+        if !href.is_empty() && openable {
             links.push((
                 wl_kernel::documents::subject_text(db, document).await?,
                 href,
@@ -509,6 +516,10 @@ async fn index(
                     .iter()
                     .map(|d| (d.to_string(), document_link(d)))
                     .filter(|(_, href)| !href.is_empty())
+                    .filter(|(_, href)| {
+                        !href.starts_with("/supplier-bills/")
+                            || user.has_permission_anywhere(permissions::SUPPLIER_BILLS_VIEW)
+                    })
                     .collect(),
             })
             .collect(),
@@ -646,7 +657,7 @@ async fn cell(
                 amount: amount_text("AED", line.amount),
                 flags,
                 links: if open {
-                    document_links(&state.db, &line.documents).await?
+                    document_links(&state.db, &user, &line.documents).await?
                 } else {
                     Vec::new()
                 },
@@ -666,7 +677,7 @@ async fn cell(
                 date: String::new(),
                 amount: amount_text("AED", memo.amount),
                 flags: vec![t("cash.flag.not_counted")],
-                links: document_links(&state.db, &memo.documents).await?,
+                links: document_links(&state.db, &user, &memo.documents).await?,
             });
         }
     }

@@ -36,7 +36,7 @@ async fn a_dispatch_over_the_limit_holds_the_order_and_tells_the_accountant_and_
     assert_eq!(verdict, CreditVerdict::Failed(CreditFailure::Limit));
     let held = reload(&t, order.id).await;
     assert_eq!(held.status, SalesOrderStatus::CreditHold);
-    assert_eq!(held.state_before_hold.as_deref(), Some("confirmed"));
+    assert_eq!(held.held_from.as_deref(), Some("confirmed"));
     assert_eq!(held.hold_reason.as_deref(), Some("limit"));
     assert_eq!(held.hold_open_balance, Some(5_400_000));
     assert_eq!(held.hold_limit, Some(5_000_000));
@@ -171,10 +171,7 @@ async fn an_order_held_while_partly_fulfilled_remembers_that_state() {
     );
     let held = reload(&t, order.id).await;
     assert_eq!(held.status, SalesOrderStatus::CreditHold);
-    assert_eq!(
-        held.state_before_hold.as_deref(),
-        Some("partially_fulfilled")
-    );
+    assert_eq!(held.held_from.as_deref(), Some("partially_fulfilled"));
     // Only what is not yet delivered counts as the order's value.
     assert_eq!(held.hold_open_balance, Some(5_200_000));
 }
@@ -219,7 +216,7 @@ async fn an_order_over_the_limit_at_submit_goes_on_hold_unconfirmed() {
 
     let held = reload(&t, order.id).await;
     assert_eq!(held.status, SalesOrderStatus::CreditHold);
-    assert_eq!(held.state_before_hold.as_deref(), Some("confirmed"));
+    assert_eq!(held.held_from.as_deref(), Some("confirmed"));
     assert!(held.confirmed_at.is_none());
     assert!(credit.confirmed.lock().unwrap().is_empty());
     assert_eq!(credit.held.lock().unwrap().len(), 1);
@@ -260,7 +257,7 @@ async fn accepting_an_order_over_the_limit_puts_it_on_hold_and_the_generic_route
         .assert_status(303);
     let held = reload(&t, order.id).await;
     assert_eq!(held.status, SalesOrderStatus::CreditHold);
-    assert_eq!(held.state_before_hold.as_deref(), Some("confirmed"));
+    assert_eq!(held.held_from.as_deref(), Some("confirmed"));
     assert!(credit.confirmed.lock().unwrap().is_empty());
 }
 

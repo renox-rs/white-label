@@ -223,7 +223,8 @@ mod tests {
                 "has_lines",
                 "tenders_match_total",
                 "known_methods",
-                "account_allowed"
+                "account_allowed",
+                "account_not_on_hold"
             ]
         );
         assert_eq!(machine.initial_states(), ["open"]);

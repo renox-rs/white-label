@@ -11,6 +11,18 @@
           <rx-textarea name="reason" :label="tx['reason']" :hint="tx['reason_hint']" id="disable-connection-reason" required/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_configure">
+        <rx-action-sheet id="device-settings" :label="tx['settings']" :action="route('wl_kernel.integrations.settings', key)" :title="tx['settings_title']" :submit-label="tx['save']" icon="settings">
+          <rx-input name="heartbeat_seconds" :label="tx['interval_seconds']" :value="interval_value" id="device-settings-interval" required/>
+          <rx-input name="window_from" :label="tx['window_from']" :value="window_from" :hint="tx['window_hint']" id="device-settings-from"/>
+          <rx-input name="window_to" :label="tx['window_to']" :value="window_to" id="device-settings-to"/>
+          <rx-input name="down_after_minutes" :label="tx['down_after_minutes']" :value="down_after_value" id="device-settings-down-after" required/>
+          <rx-checkbox name="grouped" :label="tx['group_checkbox']" :checked="grouped_value" id="device-settings-grouped"/>
+        </rx-action-sheet>
+        <rx-action-sheet id="device-beat" :label="tx['beat']" :action="route('wl_kernel.integrations.beat', key)" :title="tx['beat_title']" :submit-label="tx['beat']" icon="activity">
+          <rx-input name="device" :label="tx['device_name']" :hint="tx['beat_hint']" id="device-beat-device"/>
+        </rx-action-sheet>
+      </template>
       <rx-confirm rx-if="can_enable" id="enable-connection" :label="tx['enable']" :action="route('wl_kernel.integrations.enable', key)" method="POST" :title="tx['enable_title']" :message="tx['enable_message']" :confirm-label="tx['enable']" :cancel-label="tx['cancel']" icon="plug"/>
     </rx-page-header>
     <rx-alert rx-if="is_down" kind="error" :message="fallback"/>
@@ -23,7 +35,20 @@
       <rx-entry :label="tx['disabled_reason']" :value="disabled_reason"/>
       <rx-entry :label="tx['fallback']" :value="fallback"/>
       <rx-entry :label="tx['screens']" :value="screens"/>
+      <rx-entry rx-if="is_device" :label="tx['scope']" :value="scope"/>
+      <rx-entry rx-if="is_device" :label="tx['heartbeat_interval']" :value="heartbeat"/>
+      <rx-entry rx-if="is_device" :label="tx['window']" :value="window"/>
+      <rx-entry rx-if="is_device" :label="tx['grouped']" :value="grouped_text"/>
     </rx-infolist>
+    <template rx-if="is_device">
+      <h2>{{ tx['devices'] }}</h2>
+      <rx-table :rows="devices" as="device" :key="device.name" :caption="tx['devices']" card>
+        <rx-column :label="tx['device_name']">{{ device.name }}</rx-column>
+        <rx-column :label="tx['last_heartbeat']" hide-narrow>{{ device.last_heartbeat }}</rx-column>
+        <rx-column :label="tx['device_state']"><rx-badge :text="device.state_label" :kind="device.state_kind"/></rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['devices_empty']" icon="inbox"/></rx-slot>
+      </rx-table>
+    </template>
     <h2>{{ tx['queue'] }}</h2>
     <rx-table :rows="queue" as="call" :key="call.id" :caption="tx['queue']" card>
       <rx-column :label="tx['call']">{{ call.kind }}</rx-column>

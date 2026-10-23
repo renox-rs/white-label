@@ -39,6 +39,10 @@ pub const PICK: &str = "pick";
 /// The `cancel` transition's name.
 pub const CANCEL: &str = "cancel";
 
+/// The system's `cancel_by_system` transition's name (a sales order line
+/// cancelled with the outcome *return to stock*, [`crate::sales_cancel`]).
+pub const CANCEL_BY_SYSTEM: &str = "cancel_by_system";
+
 /// What a `pick` run carries to its guards: the first thing that stands in
 /// the way, `None` when nothing does.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -201,7 +205,7 @@ async fn pick_in(tx: &mut Transaction, dispatch: Dispatch, by: Option<i64>) -> R
 
 /// `pick` and `cancel`.
 pub(crate) fn add_to(machine: Machine<Dispatch>) -> Machine<Dispatch> {
-    use DispatchStatus::{Cancelled, Draft, Picked};
+    use DispatchStatus::{Draft, Picked};
     let pick = Transition::new(PICK)
         .label("Pick")
         .tone("primary")
@@ -218,13 +222,27 @@ pub(crate) fn add_to(machine: Machine<Dispatch>) -> Machine<Dispatch> {
         let by = pick_input(ctx).and_then(|input| input.by);
         Box::pin(async move { pick_in(tx, dispatch, by).await })
     });
-    let cancel = Transition::new(CANCEL)
-        .label("Cancel")
-        .permission_in(permissions::DISPATCH_MANAGE, |dispatch: &Dispatch| {
-            dispatch.scope()
-        })
-        .from([Draft, Picked])
-        .to(Cancelled)
+    let cancel = cancel_rules(
+        Transition::new(CANCEL)
+            .label("Cancel")
+            .permission_in(permissions::DISPATCH_MANAGE, |dispatch: &Dispatch| {
+                dispatch.scope()
+            })
+            .reason_required(),
+    );
+    let by_system = cancel_rules(Transition::new(CANCEL_BY_SYSTEM).label("Cancel").system());
+    machine
+        .transition(pick)
+        .transition(cancel)
+        .transition(by_system)
+}
+
+/// What `cancel` and `cancel_by_system` share: from `draft` or `picked` to
+/// `cancelled`, the reason kept.
+fn cancel_rules(transition: Transition<Dispatch>) -> Transition<Dispatch> {
+    transition
+        .from([DispatchStatus::Draft, DispatchStatus::Picked])
+        .to(DispatchStatus::Cancelled)
         .effect(|dispatch: &Dispatch, ctx, tx| {
             let id = dispatch.id;
             let reason = ctx.reason().map(str::to_owned);
@@ -239,8 +257,7 @@ pub(crate) fn add_to(machine: Machine<Dispatch>) -> Machine<Dispatch> {
                     .await?;
                 Ok(())
             })
-        });
-    machine.transition(pick).transition(cancel)
+        })
 }
 
 /// `user` picks dispatch `id`. Refused with the first problem before
@@ -308,6 +325,26 @@ pub async fn cancel(
         run = run.reason(reason);
     }
     let _outcome = run.run(state).await?;
+    Ok(Dispatch::find_or_404(&state.db, id).await?)
+}
+
+/// Cancels the draft or picked dispatch `id` as the system, for `reason`.
+///
+/// # Errors
+///
+/// `NotFrom` unless `draft` or `picked`.
+pub async fn cancel_by_system(
+    state: &AppState,
+    id: i64,
+    reason: &str,
+) -> std::result::Result<Dispatch, TransitionError> {
+    let dispatch = Dispatch::find_or_404(&state.db, id).await?;
+    let _outcome = dispatch
+        .transition(CANCEL_BY_SYSTEM)
+        .by_system()
+        .reason(reason)
+        .run(state)
+        .await?;
     Ok(Dispatch::find_or_404(&state.db, id).await?)
 }
 

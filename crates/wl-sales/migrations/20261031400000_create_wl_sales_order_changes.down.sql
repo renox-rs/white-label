@@ -1,0 +1,13 @@
+ALTER TABLE "wl_sales_sale_lines" DROP COLUMN cancel_reason;
+ALTER TABLE "wl_sales_sale_lines" DROP COLUMN fee_waived;
+ALTER TABLE "wl_sales_sale_lines" DROP COLUMN cancel_fee;
+ALTER TABLE "wl_sales_sale_lines" DROP COLUMN cancel_outcome;
+ALTER TABLE "wl_sales_sale_lines" DROP COLUMN held_milli;
+ALTER TABLE "wl_sales_sales_orders" DROP COLUMN held_from;
+DROP INDEX IF EXISTS "wl_sales_order_settlements_due";
+DROP INDEX IF EXISTS "wl_sales_order_settlements_order";
+DROP TABLE IF EXISTS "wl_sales_order_settlements";
+DROP INDEX IF EXISTS "wl_sales_order_changes_order";
+DROP TABLE IF EXISTS "wl_sales_order_changes";
+DROP INDEX IF EXISTS "wl_sales_order_revisions_revision";
+DROP TABLE IF EXISTS "wl_sales_order_revisions";

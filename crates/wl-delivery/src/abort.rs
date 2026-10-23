@@ -24,8 +24,9 @@
 //!   reported missing.
 //!
 //! The perishable policy (`WRK.RUL.16`) and the reattempt of a non-perishable
-//! stop (`WRK.RUL.08`) react to the failed attempts and are BL-DLV-07's
-//! (Launch 06); 03 has no perishable deliveries.
+//! stop (`WRK.RUL.08`) react to the failed attempts
+//! ([`crate::attempted::after_failed_attempt`], BL-DLV-07); 03 has no
+//! perishable deliveries.
 
 use renox::db::{DateTime, Transaction};
 use renox::prelude::*;
@@ -341,6 +342,13 @@ pub async fn abort_run(
                 reason: RUN_ABORTED_REASON.to_owned(),
                 attempt: *number,
             })
+            .await
+            .map_err(TransitionError::Failed)?;
+    }
+    // A perishable stop follows `WRK.RUL.16` at once (return or discard per
+    // the policy for an abort); the others `WRK.RUL.08` when it is on.
+    for delivery in &open {
+        crate::attempted::after_failed_attempt(state, delivery.id, true)
             .await
             .map_err(TransitionError::Failed)?;
     }

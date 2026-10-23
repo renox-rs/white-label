@@ -86,8 +86,52 @@ fn lost_type() -> NotificationTypeDef {
         )
 }
 
+/// The dispatchers are told a perishable stop failed and what the policy
+/// decided (`WRK.RUL.16`).
+pub const PERISHABLE_FAILED: &str = "delivery.perishable_failed";
+/// The dispatchers are told a delivery was returned to the origin.
+pub const DELIVERY_RETURNED: &str = "delivery.returned";
+/// The dispatchers are told perishable goods were discarded.
+pub const DELIVERY_DISCARDED: &str = "delivery.discarded";
+
+fn perishable_failed_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(PERISHABLE_FAILED, "delivery")
+        .group("delivery")
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_delivery.notices.perishable_failed_subject")),
+            english("wl_delivery.notices.perishable_failed_body"),
+        )
+}
+
+fn returned_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(DELIVERY_RETURNED, "delivery")
+        .group("delivery")
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_delivery.notices.returned_subject")),
+            english("wl_delivery.notices.returned_body"),
+        )
+}
+
+fn discarded_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(DELIVERY_DISCARDED, "delivery")
+        .group("delivery")
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_delivery.notices.discarded_subject")),
+            english("wl_delivery.notices.discarded_body"),
+        )
+}
+
 /// Registers the module's notification types with the kernel registry.
 pub(crate) fn register_types() {
+    notify::register_type(perishable_failed_type());
+    notify::register_type(returned_type());
+    notify::register_type(discarded_type());
     notify::register_type(delayed_type());
     notify::register_type(aborted_type());
     notify::register_type(disputed_type());
@@ -154,6 +198,64 @@ pub(crate) async fn lost(
     to_dispatchers(state, request).await
 }
 
+/// Tells the dispatchers (the origin's managers) that the perishable
+/// `delivery` failed and what follows: the goods are discarded with a photo
+/// (`discard`), or go back to the origin.
+///
+/// # Errors
+///
+/// Database errors and the notifier's.
+pub(crate) async fn perishable_failed(
+    state: &AppState,
+    delivery: &Delivery,
+    discard: bool,
+) -> Result<()> {
+    let request = NotifyRequest::new(PERISHABLE_FAILED, delivery.delivery_id().subject())
+        .subject_label(&delivery.number)
+        .data(json!({
+            "number": delivery.number,
+            "action": english(if discard {
+                "wl_delivery.notices.action_discard"
+            } else {
+                "wl_delivery.notices.action_return"
+            }),
+            "link": format!("/deliveries/{}", delivery.id),
+        }));
+    to_dispatchers(state, request).await
+}
+
+/// Tells the dispatchers that `delivery` went back to the origin.
+///
+/// # Errors
+///
+/// Database errors and the notifier's.
+pub(crate) async fn returned(state: &AppState, delivery: &Delivery) -> Result<()> {
+    let request = NotifyRequest::new(DELIVERY_RETURNED, delivery.delivery_id().subject())
+        .subject_label(&delivery.number)
+        .data(json!({
+            "number": delivery.number,
+            "link": format!("/deliveries/{}", delivery.id),
+        }));
+    to_dispatchers(state, request).await
+}
+
+/// Tells the dispatchers that the goods of `delivery` were discarded for
+/// `reason`.
+///
+/// # Errors
+///
+/// Database errors and the notifier's.
+pub(crate) async fn discarded(state: &AppState, delivery: &Delivery, reason: &str) -> Result<()> {
+    let request = NotifyRequest::new(DELIVERY_DISCARDED, delivery.delivery_id().subject())
+        .subject_label(&delivery.number)
+        .data(json!({
+            "number": delivery.number,
+            "reason": reason,
+            "link": format!("/deliveries/{}", delivery.id),
+        }));
+    to_dispatchers(state, request).await
+}
+
 /// Tells the recipient of `delivery` that its run was aborted.
 ///
 /// # Errors
@@ -204,7 +306,15 @@ mod tests {
 
     #[test]
     fn the_types_have_english_templates() {
-        for def in [delayed_type(), aborted_type(), disputed_type(), lost_type()] {
+        for def in [
+            delayed_type(),
+            aborted_type(),
+            disputed_type(),
+            lost_type(),
+            perishable_failed_type(),
+            returned_type(),
+            discarded_type(),
+        ] {
             assert!(def.template_for(NotifyChannel::Email, "en").is_some());
         }
         assert!(

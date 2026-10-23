@@ -12,8 +12,8 @@
 //! - The credit note or the refund is made by the caller (wl-invoicing's
 //!   credit note flow, wl-payments' refund) and named when the return is
 //!   resolved; the approval of a refund after completion with nothing
-//!   returned (`SAL.ACL.06`, BL-SAL-14) and the stock movements of
-//!   `wl-inventory` (BL-SAL-13, BL-SAL-15) are not built here.
+//!   returned (`SAL.ACL.06`, BL-SAL-14, [`crate::sales_returns`]) is built;
+//!   the stock movements of `wl-inventory` (BL-SAL-13, BL-SAL-15) are not.
 
 use renox::db::DateTime;
 use renox::prelude::*;
@@ -115,6 +115,8 @@ pub struct SalesReturn {
     pub responsible_party: Option<String>,
     /// Why it was rejected or reversed.
     pub closing_reason: Option<String>,
+    /// The complaint ticket it was raised from (`wl-ticketing`), if any.
+    pub ticket_id: Option<i64>,
     /// The user who requested it.
     pub requested_by: Option<i64>,
     /// The user who resolved it.
@@ -197,6 +199,10 @@ pub struct SalesReturnLine {
     pub sale_line_id: i64,
     /// The quantity, in thousandths.
     pub quantity_milli: i64,
+    /// The value of this line of the return with VAT, in fils; 0 on a row
+    /// made before it was stored (then it is worked out from the quantity).
+    /// The cap of a *no goods* refund is a value per sale line (BL-SAL-14).
+    pub refund_value: i64,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

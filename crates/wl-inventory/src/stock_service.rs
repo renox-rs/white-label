@@ -19,10 +19,19 @@
 //! lot-tracked item is taken from the `released` lots only, first expiry
 //! first, and held quantity is never consumed, at any location.
 //!
+//! At a location set to `allow_consumption` (BL-STK-19, `STK.RUL.06`), an
+//! item that is **not** lot-tracked may be consumed below zero: the short
+//! part posts too, at the current average cost (which a negative balance does
+//! not change), and [`StockNegative`] follows without a pending issue. The
+//! next receipt covers the negative quantity first and the difference
+//! between its cost and the cost used goes to the price variance
+//! ([`crate::price_variance`]). Held quantity is still never consumed: while
+//! any quantity of the item is held at the location, what is beyond the
+//! available quantity becomes a pending issue, as under `block`; a
+//! lot-tracked item does the same. A manual issue never goes below zero.
+//!
 //! Decisions: the movement's source is the cost object when there is one,
-//! else the location; a manual issue costs the item's average cost; the
-//! location's `allow_consumption` policy comes with BL-STK-19, so every
-//! location blocks negative stock here.
+//! else the location; a manual issue costs the item's average cost.
 
 use renox::db::Transaction;
 use renox::prelude::*;
@@ -35,7 +44,7 @@ use wl_kernel::inventory::{
 
 use crate::balance::{self, Candidate};
 use crate::item::{Item, quantity_text, value_of};
-use crate::location::{Location, LocationType};
+use crate::location::{Location, LocationType, NegativeStockPolicy};
 use crate::lot::{Lot, LotStatus};
 use crate::movement::{MovementType, StockMovement};
 use crate::pending_issue;
@@ -225,7 +234,21 @@ pub async fn consume(state: &AppState, request: ConsumeRequest) -> Result<Consum
         let first = candidates.remove(position);
         candidates.insert(0, first);
     }
-    let (taken, short) = plan(&candidates, request.quantity_milli);
+    let (mut taken, mut short) = plan(&candidates, request.quantity_milli);
+    // `allow_consumption`: the short part of an item that is not lot-tracked
+    // posts below zero unless some of it is held here.
+    let mut below_zero = 0;
+    if short > 0
+        && location.negative_stock_policy == NegativeStockPolicy::AllowConsumption
+        && !item.lot_tracked
+    {
+        let found = balance::balance(&mut tx, item.id, location.id, None).await?;
+        if found.held_milli <= 0 {
+            taken.push((None, short));
+            below_zero = short;
+            short = 0;
+        }
+    }
     let mut posted = 0;
     let mut lots = Vec::new();
     for (lot_id, quantity) in taken {
@@ -277,6 +300,17 @@ pub async fn consume(state: &AppState, request: ConsumeRequest) -> Result<Consum
         None
     };
     tx.commit().await?;
+    if below_zero > 0 {
+        state
+            .emit(StockNegative {
+                item: Subject::new(ITEM_SUBJECT_TYPE, item.id),
+                location: Subject::new(LOCATION_SUBJECT_TYPE, location.id),
+                quantity_milli: below_zero,
+                source: Some(request.source.clone()),
+                pending_issue: None,
+            })
+            .await?;
+    }
     if let Some(pending) = &pending {
         state
             .emit(StockNegative {

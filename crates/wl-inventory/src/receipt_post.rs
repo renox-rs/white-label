@@ -614,6 +614,19 @@ async fn post_in(
         };
         let on_hand = movement::on_hand_everywhere_in(tx, item.id).await?;
         let value = value_of(line.accepted_qty_milli, line.unit_cost);
+        // The negative quantity this covers (`allow_consumption`, BL-STK-19)
+        // had been used at the average cost: the difference is the price
+        // variance, posted after the commit.
+        crate::price_variance::record_in(
+            tx,
+            &item,
+            receipt.location_id,
+            receipt.id,
+            line.id,
+            line.accepted_qty_milli,
+            line.unit_cost,
+        )
+        .await?;
         let mut moved = StockMovement::receive(
             item.id,
             lot_id,

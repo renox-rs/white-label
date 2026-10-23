@@ -3,8 +3,10 @@
 
 #![allow(dead_code)]
 
+pub mod changes;
 pub mod credit;
 pub mod floor;
+pub mod online;
 pub mod retention;
 pub mod sell;
 pub mod shop;
@@ -126,6 +128,10 @@ pub async fn boot_pair(sales: WlSales, first: impl Module, second: impl Module) 
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .expect("wl:install runs");
     app.kernel()
         .call("sales:install", Vec::<String>::new())
         .await

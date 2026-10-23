@@ -113,10 +113,7 @@ async fn an_order_held_at_dispatch_returns_to_partially_fulfilled_without_a_seco
     let (t, credit) = boot().await;
     let maker = seller(&t).await;
     let order = held_at_dispatch(&t, &credit, &maker, true).await;
-    assert_eq!(
-        order.state_before_hold.as_deref(),
-        Some("partially_fulfilled")
-    );
+    assert_eq!(order.held_from.as_deref(), Some("partially_fulfilled"));
     let confirmations = credit.confirmed.lock().unwrap().len();
     assert_eq!(confirmations, 1);
     let (b, e) = (releaser(&t, "Bina").await, releaser(&t, "Essa").await);

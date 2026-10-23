@@ -32,6 +32,52 @@ pub const ALL_ABSORBERS: [CodAbsorber; 4] = [
     CodAbsorber::Driver,
 ];
 
+/// What happens to a perishable delivery after a failed attempt (`WRK.RUL.16`,
+/// §7): *return* (the goods go back to the origin, which decides reuse or
+/// wastage) or *discard* (destroyed with a photo, wastage recorded).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PerishableAction {
+    /// Back to the origin.
+    Return,
+    /// Destroyed with a photo.
+    Discard,
+}
+
+impl PerishableAction {
+    /// The stored name: `return` or `discard`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PerishableAction::Return => "return",
+            PerishableAction::Discard => "discard",
+        }
+    }
+}
+
+/// The perishable policy of one source type: what follows a failed visit and
+/// what follows a run `abort` (06: *return* for own-rider deliveries, and
+/// *discard* only when the rider cannot bring the food back).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PerishablePolicy {
+    /// After a failed visit.
+    pub on_failed_visit: PerishableAction,
+    /// After the run was aborted.
+    pub on_abort: PerishableAction,
+}
+
+impl Default for PerishablePolicy {
+    /// The module default: *discard* (cooked food) in both cases.
+    fn default() -> Self {
+        PerishablePolicy {
+            on_failed_visit: PerishableAction::Discard,
+            on_abort: PerishableAction::Discard,
+        }
+    }
+}
+
+/// The wastage value above which a discard needs a second person (`STK.ACL.02`,
+/// §7: AED 1,000; 06: AED 200), in fils.
+pub const DEFAULT_DISCARD_APPROVAL_FILS: i64 = 100_000;
+
 /// The settings. `Default` is the §7 defaults.
 #[derive(Debug, Clone)]
 pub struct DeliverySettings {
@@ -64,6 +110,17 @@ pub struct DeliverySettings {
     /// The role that gets the dispatcher's tasks (a missing item at run
     /// close); the company admin when nobody holds it.
     dispatcher_role: String,
+    /// The perishable policy per source type; missing takes the default.
+    perishable: BTreeMap<String, PerishablePolicy>,
+    /// The wastage value above which a discard needs a second person.
+    discard_approval_fils: i64,
+    /// The delivery promise per source type, in minutes: the perishable
+    /// hand-over window when the source gives none.
+    promise: BTreeMap<String, i64>,
+    /// Whether `WRK.RUL.08` reattempts or returns a failed non-perishable
+    /// delivery by itself (off: a dispatcher does it, and 03 shipments follow
+    /// their own rule).
+    attempt_rule: bool,
 }
 
 /// The role of the dispatcher's tasks unless a client names another.
@@ -83,6 +140,10 @@ impl Default for DeliverySettings {
             hand_over_counts_cash: true,
             extra_abort_reasons: Vec::new(),
             dispatcher_role: DEFAULT_DISPATCHER_ROLE.to_owned(),
+            perishable: BTreeMap::new(),
+            discard_approval_fils: DEFAULT_DISCARD_APPROVAL_FILS,
+            promise: BTreeMap::new(),
+            attempt_rule: false,
         }
     }
 }
@@ -146,6 +207,66 @@ impl DeliverySettings {
     /// Sets the role that gets the dispatcher's tasks.
     pub fn set_dispatcher_role(&mut self, role: &str) {
         self.dispatcher_role = role.to_owned();
+    }
+
+    /// Sets what follows a failed visit and a run `abort` for perishable
+    /// deliveries of `source_type` (`WRK.RUL.16`).
+    pub fn set_perishable_policy(
+        &mut self,
+        source_type: &str,
+        on_failed_visit: PerishableAction,
+        on_abort: PerishableAction,
+    ) {
+        self.perishable.insert(
+            source_type.to_owned(),
+            PerishablePolicy {
+                on_failed_visit,
+                on_abort,
+            },
+        );
+    }
+
+    /// The perishable policy of `source_type`: the client's, else the module
+    /// default (*discard*). The rule reads it at the failed attempt.
+    pub fn perishable_policy(&self, source_type: &str) -> PerishablePolicy {
+        self.perishable
+            .get(source_type)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// Sets the wastage value, in fils, above which a discard needs a second
+    /// person (`STK.ACL.02`).
+    pub fn set_discard_approval_fils(&mut self, fils: i64) {
+        self.discard_approval_fils = fils.max(0);
+    }
+
+    /// The wastage value above which a discard needs a second person.
+    pub fn discard_approval_fils(&self) -> i64 {
+        self.discard_approval_fils
+    }
+
+    /// Sets the delivery promise of `source_type` in minutes: the perishable
+    /// hand-over window when the source's request gives none.
+    pub fn set_promise_minutes(&mut self, source_type: &str, minutes: i64) {
+        self.promise.insert(source_type.to_owned(), minutes.max(1));
+    }
+
+    /// The delivery promise of `source_type` in minutes, if set.
+    pub fn promise_minutes(&self, source_type: &str) -> Option<i64> {
+        self.promise.get(source_type).copied()
+    }
+
+    /// Turns `WRK.RUL.08` on: a failed non-perishable delivery is reattempted
+    /// while attempts remain and its reason allows, else returned once the
+    /// goods are back.
+    pub fn set_attempt_rule(&mut self, on: bool) {
+        self.attempt_rule = on;
+    }
+
+    /// Whether `WRK.RUL.08` acts by itself.
+    pub fn attempt_rule(&self) -> bool {
+        self.attempt_rule
     }
 
     /// The role that gets the dispatcher's tasks.

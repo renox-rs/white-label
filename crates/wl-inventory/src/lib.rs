@@ -3,11 +3,13 @@
 
 mod arrival;
 pub mod balance;
+pub mod batch_stock;
 pub mod bom;
 mod bom_screens;
 mod bom_texts;
 pub mod chase;
 pub mod config;
+pub mod delivery_wastage;
 pub mod dispatch;
 pub mod dispatch_deliver;
 mod dispatch_deliver_pages;
@@ -43,6 +45,7 @@ pub mod pending_issue;
 pub mod po_issue;
 pub mod po_revise;
 pub mod preferred_change;
+pub mod price_variance;
 pub mod production_stock;
 pub mod purchase_order;
 pub mod purchase_request;
@@ -60,6 +63,7 @@ pub mod reorder;
 pub mod return_credit;
 pub mod return_dispatch;
 pub mod return_note;
+pub mod sales_cancel;
 pub mod scope_stock;
 mod screen_texts;
 mod screens;
@@ -147,7 +151,9 @@ pub mod permissions {
     /// Reverse a posted goods receipt.
     pub const GOODS_RECEIPTS_REVERSE: &str = "goods_receipts.reverse";
     /// Pick, dispatch, cancel and confirm dispatches at the user's own
-    /// locations; record the refused goods received back (`STK.DSP.01`).
+    /// locations; record the refused goods received back (`STK.DSP.01`), and
+    /// be given the task when a sales cancellation arrives for a dispatch that
+    /// has left.
     pub const DISPATCH_MANAGE: &str = "dispatch.manage";
     /// Manage returns to supplier.
     pub const SUPPLIER_RETURNS_MANAGE: &str = "supplier_returns.manage";
@@ -509,18 +515,18 @@ impl Module for WlInventory {
                 &[permissions::STOCK_ADJUST][..],
             ),
             (
-                "wl_inventory.recalls",
-                "nav.recalls",
-                "triangle-alert",
-                69,
-                &[permissions::RECALLS_VIEW, permissions::RECALLS_MANAGE][..],
-            ),
-            (
                 "wl_inventory.dispatches",
                 "nav.dispatches",
                 "truck",
                 70,
                 &[permissions::DISPATCH_MANAGE][..],
+            ),
+            (
+                "wl_inventory.recalls",
+                "nav.recalls",
+                "triangle-alert",
+                69,
+                &[permissions::RECALLS_VIEW, permissions::RECALLS_MANAGE][..],
             ),
             (
                 "wl_inventory.boms",
@@ -574,6 +580,9 @@ impl Module for WlInventory {
         app.model::<Lot>();
         app.model::<StockMovement>();
         app.model::<Transfer>();
+        app.model::<dispatch::Dispatch>();
+        app.model::<dispatch::DispatchLine>();
+        app.model::<sales_cancel::CancelEffect>();
         app.model::<TransferLine>();
         app.model::<StockHold>();
         app.model::<StockHoldLine>();
@@ -588,6 +597,7 @@ impl Module for WlInventory {
         app.model::<BomLine>();
         app.model::<Dispatch>();
         app.model::<DispatchLine>();
+        app.model::<price_variance::PriceVariance>();
         app.model::<GoodsReceipt>();
         app.model::<GoodsReceiptLine>();
         app.model::<SupplierReturn>();
@@ -705,6 +715,9 @@ impl Module for WlInventory {
             app,
             dispatch_directory::InventoryDispatches,
         );
+        // `BatchStock`: a production batch consumes its ingredient lots and
+        // makes its output lot (06 F&B).
+        wl_kernel::inventory::provide_batch_stock(app, batch_stock::InventoryBatches);
         hold_service::register_types();
         // `STK.RUL.06`: the storekeeper is told when stock runs short, and
         // after H hours gets a task and the manager is told.
@@ -756,6 +769,10 @@ impl Module for WlInventory {
         dispatch_deliver::register(app);
         dispatch_loss::register(app);
         dispatch_reverse::register(app);
+        // BL-STK-26: a cancelled order line gives its goods back or scraps them.
+        sales_cancel::register(app);
+        // A discarded perishable delivery is wastage with the source as reference.
+        wl_kernel::delivery::provide_delivery_wastage(app, delivery_wastage::InventoryWastage);
         hold_decide::register(app);
         // `STK.RUL.07`: the deciders of an open hold are reminded every H
         // hours and the escalation role told every 2 x H.

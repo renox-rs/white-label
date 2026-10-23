@@ -87,6 +87,9 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
         // [`super::clinics_money::invoicing`].
         super::clinics_seed::CLINICS => super::clinics_money::invoicing(module, entities),
         "manpower" => super::manpower_seed::invoicing(module, entities),
+        // 06 `FIN.RUL.23`, `FIN.RUL.24`, `FIN.ACL.21` (BL-FNB-16): see
+        // [`super::fnb_seed::invoicing`].
+        super::fnb_seed::FNB => super::fnb_seed::invoicing(module, entities),
         // The 10 money values (BL-EDU-18): see [`super::edtech_money::invoicing`].
         super::edtech_seed::EDTECH => super::edtech_money::invoicing(module, entities),
         // 03 `FIN.ACL.15`, `FIN.RUL.14`, `FIN.RUL.15`, `FIN.RUL.23`,
@@ -167,6 +170,9 @@ pub fn payments_for(client_app: &str) -> WlPayments {
         "logistics" => super::logistics_seed::payments(module),
         "construction" => super::construction_seed::payments(module),
         "manpower" => super::manpower_seed::payments(module),
+        // 06: pending payments, late payments, refund retry, shortage
+        // write-off and chargebacks (BL-FNB-16).
+        super::fnb_seed::FNB => super::fnb_seed::payments(module),
         // 04: a bounced cheque adds no fee; the billing role decides with the
         // engagement manager (BL-ACC-24).
         "accounting" => super::accounting_seed::payments(module),
@@ -190,6 +196,8 @@ pub fn delivery_for(client_app: &str) -> wl_delivery::WlDelivery {
     let module = wl_delivery::WlDelivery::new();
     match client_app {
         "logistics" => super::logistics_seed::delivery(module),
+        // 06: own-rider deliveries are perishable (`WRK.RUL.16`), BL-DLV-10.
+        "fnb" => super::fnb_seed::delivery(module),
         _ => module,
     }
 }
@@ -599,6 +607,9 @@ async fn show(State(state): State<AppState>) -> Result<Response> {
     // client name Property's tickets, leases and cheques.
     let rows = if settings.client_app == super::logistics_seed::LOGISTICS {
         super::logistics_settings::money_rows(&settings.entities)
+    } else if settings.client_app == super::fnb_seed::FNB {
+        // The 06 client has its own table (BL-FNB-16).
+        super::fnb_settings::money_rows(&settings.entities)
     } else {
         rows(&settings.client_app, &settings.entities)
     };

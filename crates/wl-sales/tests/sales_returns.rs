@@ -371,7 +371,7 @@ async fn a_return_is_rejected_with_a_reason_and_only_handlers_act() {
 }
 
 #[renox::test]
-async fn a_return_with_no_goods_is_resolved_from_requested_and_a_channel_refund_reverses() {
+async fn a_return_with_no_goods_needs_a_complaint_and_a_channel_refund_is_for_aggregator_orders() {
     let (t, seen) = boot().await;
     t.app.acting_as(&clerk(&t).await);
     let (sale, lines) = sold(&t).await;
@@ -406,6 +406,8 @@ async fn a_return_with_no_goods_is_resolved_from_requested_and_a_channel_refund_
         .post(&resolve, &[("resolution", "refunded_by_channel")])
         .await
         .assert_status(422);
+    // The channel refunds only on an order of an aggregator channel: a
+    // counter sale has none (BL-SAL-14).
     t.app
         .post(
             &resolve,
@@ -416,26 +418,9 @@ async fn a_return_with_no_goods_is_resolved_from_requested_and_a_channel_refund_
             ],
         )
         .await
-        .assert_status(303);
-    let done = reload(&t, &r).await;
-    assert_eq!(done.status, ReturnStatus::Resolved);
-    assert_eq!(done.complaint_category.as_deref(), Some("cold"));
-    assert_eq!(done.responsible_party.as_deref(), Some("aggregator"));
-
-    let reverse = format!("/sales-returns/{}/transitions/reverse", r.id);
-    t.app
-        .post(&reverse, &[("reason", "")])
-        .await
         .assert_status(422);
-    t.app
-        .post(&reverse, &[("reason", "Statement voided")])
-        .await
-        .assert_status(303);
-    assert_eq!(reload(&t, &r).await.status, ReturnStatus::Reversed);
-    let events = seen.reversed.lock().unwrap().clone();
-    assert_eq!(events.len(), 1);
-    assert_eq!(events[0].reason, "Statement voided");
-    assert_eq!(events[0].value, 5_250);
+    assert_eq!(reload(&t, &r).await.status, ReturnStatus::Requested);
+    assert!(seen.reversed.lock().unwrap().is_empty());
 
     // A refund that is not made by the channel is never reversed, and goods
     // cannot be refunded by the channel.

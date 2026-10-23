@@ -79,7 +79,7 @@ pub(crate) fn register_type() {
 }
 
 /// The accepted documents whose expiry date is before `today` and whose
-/// kind has `blocks` (A3), oldest id first, with the kind. Documents that
+/// kind has `blocks` or is compliance-critical (A3), oldest id first, with the kind. Documents that
 /// already have an [`ExpiredLog`] row are left out by [`handle`].
 async fn due(
     state: &AppState,
@@ -102,7 +102,11 @@ async fn due(
             continue;
         };
         let blocks = kind.blocks(db).await?;
-        if blocks.is_empty() || ExpiredLog::is_logged(db, document.id).await? {
+        // A kind that blocks nothing is still watched when it is
+        // compliance-critical: its expiry alerts the owner (06 health card).
+        if (blocks.is_empty() && !kind.compliance_critical)
+            || ExpiredLog::is_logged(db, document.id).await?
+        {
             continue;
         }
         due.push((

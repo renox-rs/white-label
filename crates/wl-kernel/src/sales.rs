@@ -819,6 +819,8 @@ pub const SALES_ORDER_SUBJECT_TYPE: &str = "sales.sales_order";
 pub const SALES_RETURN_SUBJECT_TYPE: &str = "sales.sales_return";
 /// The subject type of a loyalty account, for [`Subject`] references.
 pub const LOYALTY_ACCOUNT_SUBJECT_TYPE: &str = "sales.loyalty_account";
+/// The subject type of a till session, for [`Subject`] references.
+pub const TILL_SESSION_SUBJECT_TYPE: &str = "sales.till_session";
 
 /// Defines a typed id of a sales record: a plain number in JSON, a
 /// [`Subject`] on demand.
@@ -893,6 +895,176 @@ pub struct CounterSaleCompleted {
 
 impl Event for CounterSaleCompleted {}
 
+/// A till session was counted and closed (`close`, wl-sales §4.3,
+/// `SAL.POS.01`). `wl-payments` creates the till's cash handover from it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TillSessionClosed {
+    /// The till session (`sales.till_session:<id>`).
+    pub session: i64,
+    /// The till (register) the session ran on, e.g. `T1`. The cash holder.
+    pub till: String,
+    /// The session's cashier: the person recoveries are taken from.
+    pub cashier_user: i64,
+    /// The trading day of the session (Asia/Dubai).
+    pub date: NaiveDate,
+    /// The cash the till should hold, in fils.
+    pub expected: i64,
+    /// The cash counted in the session, in fils.
+    pub counted: i64,
+    /// The outlet or branch of the till, which bears a written-off loss.
+    pub location: Option<String>,
+    /// The legal entity of the cash.
+    pub legal_entity_id: Option<i64>,
+}
+
+impl TillSessionClosed {
+    /// The session as a [`Subject`].
+    pub fn session_subject(&self) -> Subject {
+        Subject::new(TILL_SESSION_SUBJECT_TYPE, self.session)
+    }
+
+    /// Counted less expected (negative: a shortage), in fils.
+    pub fn variance(&self) -> i64 {
+        self.counted - self.expected
+    }
+}
+
+impl Event for TillSessionClosed {}
+
+/// A till session as a vertical reads it (wl-sales §4.3).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TillView {
+    /// The session (`sales.till_session:<id>`).
+    pub id: i64,
+    /// The till (register) it runs on.
+    pub till: String,
+    /// The outlet or branch of the till.
+    pub location: Option<String>,
+    /// The trading day.
+    pub business_date: NaiveDate,
+    /// `open`, `counting`, `closed` or `reviewed`.
+    pub status: String,
+    /// The cashier of the session.
+    pub cashier_user: i64,
+    /// The opening float, in fils.
+    pub float: i64,
+    /// The cash taken by counter sales on the session, in fils.
+    pub cash_sales: i64,
+    /// The card payments taken by counter sales on the session, in fils.
+    pub card_sales: i64,
+    /// The cash the till should hold (float plus cash sales), in fils.
+    pub expected: i64,
+    /// The cash counted at the close, in fils.
+    pub counted: Option<i64>,
+    /// Counted less expected, in fils (negative: a shortage).
+    pub variance: Option<i64>,
+}
+
+/// What opens a till session.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpenTill {
+    /// The till (register), e.g. `T1`.
+    pub till: String,
+    /// The outlet or branch.
+    pub location: Option<String>,
+    /// The legal entity of the cash.
+    pub legal_entity_id: Option<i64>,
+    /// The trading day.
+    pub business_date: NaiveDate,
+    /// The cashier of the session.
+    pub cashier_user: i64,
+    /// The opening float, in fils.
+    pub float: i64,
+}
+
+/// What a vertical may ask of the till sessions without depending on
+/// `wl-sales`: open one, read it, count and close it, reopen it and mark it
+/// reviewed. A `by` of `None` runs the system twin of the transition (a seed,
+/// a job, or a vertical that checked its own permission first). `wl-sales`
+/// provides it; without it [`till_desk`] gives [`NoTillDesk`], which knows no
+/// session.
+pub trait TillDesk: Send + Sync + 'static {
+    /// Opens a session; `None` when the sales module is off. 422 when the
+    /// till already has a session for that day.
+    fn open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _by: Option<&'a AuthUser>,
+        _till: OpenTill,
+    ) -> SalesFuture<'a, Option<TillView>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// The session `id`, or `None`.
+    fn find<'a>(&'a self, _state: &'a AppState, _id: i64) -> SalesFuture<'a, Option<TillView>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// The session of `till` for the trading day `date`, or `None`.
+    fn of_day<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _till: &'a str,
+        _date: NaiveDate,
+    ) -> SalesFuture<'a, Option<TillView>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Counts the session `id` and closes it with the `counted` cash
+    /// (`start_count` and `close`); emits [`TillSessionClosed`] after the
+    /// commit.
+    fn submit_count<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _by: Option<&'a AuthUser>,
+        _id: i64,
+        _counted: i64,
+    ) -> SalesFuture<'a, TillView> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Reopens a closed session, with the reason.
+    fn reopen<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _by: Option<&'a AuthUser>,
+        _id: i64,
+        _reason: &'a str,
+    ) -> SalesFuture<'a, TillView> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Marks a closed session reviewed.
+    fn review<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _by: Option<&'a AuthUser>,
+        _id: i64,
+    ) -> SalesFuture<'a, TillView> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+}
+
+/// The desk when the `sales` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoTillDesk;
+
+impl TillDesk for NoTillDesk {}
+
+/// Makes `desk` the app's [`TillDesk`]; `wl-sales` calls it in `register`.
+pub fn provide_till_desk(app: &mut Registry, desk: impl TillDesk) {
+    let desk: Arc<dyn TillDesk> = Arc::new(desk);
+    app.provide(desk);
+}
+
+/// The app's [`TillDesk`], or [`NoTillDesk`] when none is provided.
+pub fn till_desk(state: &AppState) -> Arc<dyn TillDesk> {
+    match state.provided::<Arc<dyn TillDesk>>() {
+        Some(desk) => Arc::clone(&desk),
+        None => Arc::new(NoTillDesk),
+    }
+}
+
 /// A sales order reached `confirmed` for the first time.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SalesOrderConfirmed {
@@ -958,6 +1130,10 @@ pub struct SalesOrderCancelled {
     pub party: PartyId,
     /// The reason.
     pub reason: String,
+    /// The outcome and fee of each line whose fulfilment had started
+    /// (BL-SAL-07); empty when nothing had started.
+    #[serde(default)]
+    pub outcomes: Vec<LineOutcome>,
 }
 
 impl Event for SalesOrderCancelled {}
@@ -999,8 +1175,18 @@ pub struct ReturnResolved {
     pub resolution: String,
     /// The value returned with VAT, in fils.
     pub value: i64,
+    /// The same value without VAT, in fils, as the lines returned carry it
+    /// (a zero-rated line has none).
+    #[serde(default)]
+    pub net_value: i64,
     /// The credit note issued for it, when there is one.
     pub credit_note: Option<i64>,
+    /// The complaint category of a *no goods* return (BL-SAL-14).
+    #[serde(default)]
+    pub complaint_category: Option<String>,
+    /// The responsible party of a *no goods* return (BL-SAL-14).
+    #[serde(default)]
+    pub responsible_party: Option<String>,
 }
 
 impl Event for ReturnResolved {}
@@ -1156,9 +1342,594 @@ pub struct SalesOrderLineCancelled {
     pub quantity_milli: i64,
     /// The reason.
     pub reason: String,
+    /// What happens to the started goods of the line (BL-SAL-08); `None`
+    /// when the line's fulfilment had not started.
+    #[serde(default)]
+    pub outcome: Option<LineOutcomeKind>,
+    /// The cancellation fee on the line, in fils (0 when none or waived).
+    #[serde(default)]
+    pub fee: i64,
+    /// Whether the manager waived the fee.
+    #[serde(default)]
+    pub fee_waived: bool,
 }
 
 impl Event for SalesOrderLineCancelled {}
+
+/// What happens to the goods of a line whose fulfilment had started when the
+/// line (or the order) is cancelled (wl-sales §4.2 *Cancelling after
+/// fulfilment started*). `wl-inventory` and the vertical act on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LineOutcomeKind {
+    /// Picked goods go back to stock and the reservation is released.
+    ReturnToStock,
+    /// The work order runs to the end and its output goes to free stock.
+    FinishToStock,
+    /// Work in progress or prepared goods are written off.
+    Scrap,
+}
+
+impl LineOutcomeKind {
+    /// Every outcome, in the order the screens offer them.
+    pub const ALL: [LineOutcomeKind; 3] = [
+        LineOutcomeKind::ReturnToStock,
+        LineOutcomeKind::FinishToStock,
+        LineOutcomeKind::Scrap,
+    ];
+
+    /// The stored name: `return_to_stock`, `finish_to_stock` or `scrap`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LineOutcomeKind::ReturnToStock => "return_to_stock",
+            LineOutcomeKind::FinishToStock => "finish_to_stock",
+            LineOutcomeKind::Scrap => "scrap",
+        }
+    }
+
+    /// The outcome called `text`.
+    pub fn parse(text: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|kind| kind.as_str() == text.trim())
+    }
+
+    /// Whether choosing it needs a manager on its own (`SAL.ACL.05`: *finish
+    /// to stock* and *scrap*).
+    pub fn needs_manager(self) -> bool {
+        !matches!(self, LineOutcomeKind::ReturnToStock)
+    }
+}
+
+/// The outcome of one started line of a cancellation, as the events carry it
+/// (BL-SAL-07, BL-SAL-08, BL-SAL-09).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LineOutcome {
+    /// The sale line.
+    pub line: i64,
+    /// What happens to its goods.
+    pub kind: LineOutcomeKind,
+    /// The cancellation fee on the line, in fils (0 when none or waived).
+    pub fee: i64,
+    /// Whether the manager waived the fee.
+    pub fee_waived: bool,
+}
+
+/// One line of an order changed by an amendment (`SalesOrderAmended`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AmendedLine {
+    /// The sale line (its id in `wl-sales`).
+    pub line: i64,
+    /// The quantity before, in thousandths (0 for an added line).
+    pub quantity_before_milli: i64,
+    /// The quantity after, in thousandths.
+    pub quantity_after_milli: i64,
+    /// The unit price before, in fils.
+    pub unit_price_before: i64,
+    /// The unit price after, in fils.
+    pub unit_price_after: i64,
+    /// The part of the added quantity held back from fulfilment until the
+    /// payment link of a prepaid increase is paid, in thousandths.
+    pub held_milli: i64,
+}
+
+/// A sales order was amended: a new revision is in force (BL-SAL-05).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SalesOrderAmended {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The customer.
+    pub party: PartyId,
+    /// The new revision.
+    pub revision: i64,
+    /// The lines that changed.
+    pub lines: Vec<AmendedLine>,
+    /// The total with VAT before, in fils.
+    pub value_before: i64,
+    /// The total with VAT after, in fils.
+    pub value_after: i64,
+    /// The reason.
+    pub reason: String,
+}
+
+impl Event for SalesOrderAmended {}
+
+/// Quantities held back by a prepaid increase are released to fulfilment
+/// (BL-SAL-06): the payment link was paid.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SalesOrderLinesReleased {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The customer.
+    pub party: PartyId,
+    /// The lines and the quantities now released.
+    pub lines: Vec<FulfilledLine>,
+}
+
+impl Event for SalesOrderLinesReleased {}
+
+/// What the vertical knows about the fulfilment of an order: which lines
+/// have started (goods picked, a work order or production batch started,
+/// the kitchen started the line). The module that does the work provides
+/// it (`wl-inventory` for picking, the vertical for its own); the default
+/// knows no started line (BL-SAL-05, BL-SAL-08, BL-SAL-09).
+pub trait FulfilmentProgress: Send + Sync + 'static {
+    /// Of the sale lines `lines` of `order`, those whose fulfilment started.
+    fn started_lines<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _order: SalesOrderId,
+        _lines: &'a [i64],
+    ) -> SalesFuture<'a, Vec<i64>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// The progress when nothing provides one: no line has started.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoFulfilmentProgress;
+
+impl FulfilmentProgress for NoFulfilmentProgress {}
+
+/// Makes `progress` the app's [`FulfilmentProgress`].
+pub fn provide_fulfilment_progress(app: &mut Registry, progress: impl FulfilmentProgress) {
+    let progress: Arc<dyn FulfilmentProgress> = Arc::new(progress);
+    app.provide(progress);
+}
+
+/// The app's [`FulfilmentProgress`], or [`NoFulfilmentProgress`] when none is
+/// provided.
+pub fn fulfilment_progress(state: &AppState) -> Arc<dyn FulfilmentProgress> {
+    match state.provided::<Arc<dyn FulfilmentProgress>>() {
+        Some(progress) => Arc::clone(&progress),
+        None => Arc::new(NoFulfilmentProgress),
+    }
+}
+
+/// A sales order was placed through a channel that needs the seller to accept
+/// it, or its online payment was confirmed on such a channel: it waits in
+/// `pending_acceptance` (06: the order is `placed`). `SalesOrderConfirmed`
+/// follows when the seller accepts it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SalesOrderPlaced {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The customer.
+    pub party: PartyId,
+    /// The channel it came through.
+    pub channel: String,
+}
+
+impl Event for SalesOrderPlaced {}
+
+/// One line of a sales order, as a vertical reads it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrderLineView {
+    /// The sale line (its id in `wl-sales`).
+    pub id: i64,
+    /// The position, from 1.
+    pub line_no: i64,
+    /// The code of the item as sold.
+    pub item_code: String,
+    /// The description as sold.
+    pub description: String,
+    /// Whether the line is an item (a loyalty redemption line is not).
+    pub is_item: bool,
+    /// The quantity, in thousandths.
+    pub quantity_milli: i64,
+    /// The quantity handed over, in thousandths.
+    pub fulfilled_milli: i64,
+    /// The quantity cancelled, in thousandths.
+    pub cancelled_milli: i64,
+    /// The price of one unit before VAT, in fils.
+    pub unit_price: i64,
+    /// The line with VAT, in fils.
+    pub gross: i64,
+}
+
+impl OrderLineView {
+    /// The quantity still open, in thousandths.
+    pub fn open_milli(&self) -> i64 {
+        (self.quantity_milli - self.fulfilled_milli - self.cancelled_milli).max(0)
+    }
+}
+
+/// A sales order, as a vertical reads it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrderView {
+    /// The order.
+    pub id: SalesOrderId,
+    /// The number, e.g. `SO-2026-0001`.
+    pub number: String,
+    /// The customer.
+    pub party: PartyId,
+    /// The channel it came through.
+    pub channel: String,
+    /// The number in the channel's own system (an aggregator's).
+    pub external_number: Option<String>,
+    /// `on_account`, `online`, `cash_on_delivery`, `cash` or `card`.
+    pub payment_mode: String,
+    /// Whether it was paid online in full before it was placed.
+    pub prepaid: bool,
+    /// The ISO currency code.
+    pub currency: String,
+    /// The total with VAT, in fils.
+    pub gross_total: i64,
+    /// The legal entity whose order it is.
+    pub legal_entity: Option<i64>,
+    /// The order's status, by its stored name.
+    pub status: String,
+    /// The revision in force (1 until the order is amended).
+    pub revision: i64,
+    /// What was refunded after the order was handed over, in fils (sales
+    /// returns of kind *no goods*, BL-SAL-14).
+    pub refunded_amount: i64,
+    /// Whether the channel is an aggregator's: its orders are changed on the
+    /// aggregator's own tablet and it refunds its customer itself.
+    pub aggregator: bool,
+    /// The lines, in order.
+    pub lines: Vec<OrderLineView>,
+}
+
+/// An order cancelled by its vertical as the system, with no approval: the
+/// vertical decided it (06: a failed own-rider delivery, `close_failed`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CancelByVertical {
+    /// The order.
+    pub order: SalesOrderId,
+    /// Why; the reason of the events and of the stock movements.
+    pub reason: String,
+    /// What happens to the goods of each line the fulfilment had started.
+    pub outcomes: Vec<(i64, LineOutcomeKind)>,
+    /// Keep what the customer paid: `wl-sales` requests no refund and
+    /// drafts no fee document; the vertical decides the refund itself.
+    pub keep_payment: bool,
+    /// The user the cancellation is on behalf of, if any.
+    pub by: Option<i64>,
+}
+
+/// What a change asked of the sales order did (06: `amend`, `cancel_line`,
+/// `cancel`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeOutcome {
+    /// The change is made.
+    Done,
+    /// A manager must approve first (`SAL.ACL.01`, `SAL.ACL.05`): the request
+    /// `request` waits and nothing changed yet. The vertical hears of the
+    /// change when it is made (`SalesOrderAmended`, `SalesOrderLineCancelled`,
+    /// `SalesOrderCancelled`).
+    Waiting {
+        /// The approval request (`ApprovalRequest` id).
+        request: i64,
+    },
+}
+
+/// The new quantity and price of one line of an amendment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmendChange {
+    /// The sale line.
+    pub line: i64,
+    /// The quantity it will have, in thousandths (0 drops the line).
+    pub quantity_milli: i64,
+    /// The price of one unit before VAT, in fils.
+    pub unit_price: i64,
+}
+
+/// A line an amendment adds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmendAdd {
+    /// The item code.
+    pub item_code: String,
+    /// The description.
+    pub description: String,
+    /// The quantity, in thousandths.
+    pub quantity_milli: i64,
+    /// The price of one unit before VAT, in fils.
+    pub unit_price: i64,
+    /// The sale line whose VAT category the new line takes (a substitute is
+    /// taxed as the item it replaces); `None`: standard rated.
+    pub vat_like: Option<i64>,
+}
+
+/// An amendment of a placed order as a new revision (BL-SAL-05).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmendOrder {
+    /// The order.
+    pub order: SalesOrderId,
+    /// Why.
+    pub reason: String,
+    /// The revision the user saw; 0 when not given.
+    pub seen_revision: i64,
+    /// The lines that change; the discount of a line stays.
+    pub changes: Vec<AmendChange>,
+    /// The lines that are added.
+    pub added: Vec<AmendAdd>,
+}
+
+/// A cancelled line (BL-SAL-08).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CancelLine {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The sale line.
+    pub line: i64,
+    /// The quantity cancelled, in thousandths; 0 cancels all that is open.
+    pub quantity_milli: i64,
+    /// Why.
+    pub reason: String,
+    /// What happens to the goods when the line's fulfilment started.
+    pub outcome: Option<LineOutcomeKind>,
+}
+
+/// A cancelled order, as a user asks for it (BL-SAL-07).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CancelOrder {
+    /// The order.
+    pub order: SalesOrderId,
+    /// Why.
+    pub reason: String,
+    /// What happens to the goods of each line the fulfilment had started.
+    pub outcomes: Vec<(i64, LineOutcomeKind)>,
+}
+
+/// A refund after completion with nothing coming back, raised and resolved
+/// at once by the vertical as the system (BL-SAL-14): 06 reverses a delivery.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoGoodsRefund {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The sale lines and the amount with VAT refunded of each, in fils.
+    pub lines: Vec<(i64, i64)>,
+    /// The complaint category (a stored name of the sales settings).
+    pub category: String,
+    /// The responsible party (a stored name of the sales settings).
+    pub party: String,
+    /// Why, in words.
+    pub reason: String,
+    /// Resolve by credit note only: no refund payment is asked (cash on
+    /// delivery that nobody paid).
+    pub credit_only: bool,
+}
+
+/// A refund an aggregator made to its customer itself and deducted from its
+/// payout, recorded by the vertical as the system (BL-SAL-14, resolution
+/// *refunded by the channel*): no approval, no refund payment, no credit note.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelRefund {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The sale lines and the amount with VAT refunded of each, in fils.
+    pub lines: Vec<(i64, i64)>,
+    /// The complaint category (a stored name of the sales settings).
+    pub category: String,
+    /// The responsible party (a stored name of the sales settings).
+    pub party: String,
+    /// Why, in words (the aggregator's reason).
+    pub reason: String,
+}
+
+/// What a vertical may ask of the sales orders without depending on
+/// `wl-sales`: read an order with its lines, accept or reject it as a user,
+/// cancel it as the system, change it as a user (amend, cancel a line or the
+/// order) and refund it after completion. `wl-sales` provides it; without that module
+/// [`order_desk`] gives [`NoSalesOrderDesk`], which knows no order.
+pub trait SalesOrderDesk: Send + Sync + 'static {
+    /// The order `order` with its lines, or `None`.
+    fn find<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _order: SalesOrderId,
+    ) -> SalesFuture<'a, Option<OrderView>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Accepts the order that waits in `pending_acceptance` as `user`
+    /// (`sales_orders.accept`).
+    fn accept<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _user: &'a AuthUser,
+        _order: SalesOrderId,
+    ) -> SalesFuture<'a, ()> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Rejects the order that waits in `pending_acceptance` as `user`, with a
+    /// reason (`sales_orders.accept`).
+    fn reject<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _user: &'a AuthUser,
+        _order: SalesOrderId,
+        _reason: &'a str,
+    ) -> SalesFuture<'a, ()> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Cancels the whole order as the system (see [`CancelByVertical`]).
+    fn cancel<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: CancelByVertical,
+    ) -> SalesFuture<'a, ()> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Amends the order as `user` (`sales_orders.amend`); a started line asks
+    /// a manager first.
+    fn amend<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _user: &'a AuthUser,
+        _request: AmendOrder,
+    ) -> SalesFuture<'a, ChangeOutcome> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Cancels one line as `user` (`sales_orders.cancel`); a started line
+    /// needs an outcome and a manager.
+    fn cancel_line<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _user: &'a AuthUser,
+        _request: CancelLine,
+    ) -> SalesFuture<'a, ChangeOutcome> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Cancels the whole order as `user` (`sales_orders.cancel`); a started
+    /// line needs an outcome, and a started line or a paid order above the
+    /// limit needs a manager.
+    fn cancel_order<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _user: &'a AuthUser,
+        _request: CancelOrder,
+    ) -> SalesFuture<'a, ChangeOutcome> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Raises a *no goods* return of the handed-over order and resolves it as
+    /// the system, with a refund or by credit note only. Returns the return's
+    /// id.
+    fn refund_no_goods<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: NoGoodsRefund,
+    ) -> SalesFuture<'a, i64> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// The order of `channel` whose number in the channel's own system is
+    /// `number` (trimmed, case-insensitive), with its lines, or `None`.
+    fn find_external<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _channel: &'a str,
+        _number: &'a str,
+    ) -> SalesFuture<'a, Option<OrderView>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Records a refund the aggregator made itself: raises a *no goods* return
+    /// of the order and resolves it *refunded by the channel* as the system.
+    /// Returns the return's id.
+    fn refund_by_channel<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: ChannelRefund,
+    ) -> SalesFuture<'a, i64> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Takes the channel refund `sales_return` back as the system (a voided
+    /// statement, or a refund the aggregator reversed): the order's amount
+    /// refunded goes down; no money moves.
+    fn reverse_by_channel<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _sales_return: i64,
+        _reason: &'a str,
+    ) -> SalesFuture<'a, ()> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+}
+
+/// The desk when the `sales` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoSalesOrderDesk;
+
+impl SalesOrderDesk for NoSalesOrderDesk {}
+
+/// Makes `desk` the app's [`SalesOrderDesk`]; `wl-sales` calls it in
+/// `register`.
+pub fn provide_order_desk(app: &mut Registry, desk: impl SalesOrderDesk) {
+    let desk: Arc<dyn SalesOrderDesk> = Arc::new(desk);
+    app.provide(desk);
+}
+
+/// The app's [`SalesOrderDesk`], or [`NoSalesOrderDesk`] when none is
+/// provided.
+pub fn order_desk(state: &AppState) -> Arc<dyn SalesOrderDesk> {
+    match state.provided::<Arc<dyn SalesOrderDesk>>() {
+        Some(desk) => Arc::clone(&desk),
+        None => Arc::new(NoSalesOrderDesk),
+    }
+}
+
+/// What a customer account owes and may owe (`SAL.RUL.01`, BL-SAL-10): the
+/// exposure counts the open orders, invoices and cheques, without the order
+/// being checked; the caller adds that order at the total it has now.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreditPosition {
+    /// The customer's exposure without the order being checked, in fils.
+    pub exposure: i64,
+    /// The customer's credit limit, in fils; `None` when it has none.
+    pub limit: Option<i64>,
+    /// The exposure of the customer's group without that order, when the
+    /// limit is combined.
+    pub group_exposure: Option<i64>,
+    /// The group's combined limit.
+    pub group_limit: Option<i64>,
+}
+
+/// The credit position of a customer. The module that holds the credit
+/// limits provides it (BL-SAL-10); the default knows none, so no order is
+/// held for credit.
+pub trait CreditExposure: Send + Sync + 'static {
+    /// The position of `party` in `currency` without the order `excluding`,
+    /// or `None` without a limit.
+    fn position<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _party: PartyId,
+        _currency: &'a str,
+        _excluding: &'a Subject,
+    ) -> SalesFuture<'a, Option<CreditPosition>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The exposure when nothing provides one: no customer has a limit.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoCreditExposure;
+
+impl CreditExposure for NoCreditExposure {}
+
+/// Makes `exposure` the app's [`CreditExposure`].
+pub fn provide_credit_exposure(app: &mut Registry, exposure: impl CreditExposure) {
+    let exposure: Arc<dyn CreditExposure> = Arc::new(exposure);
+    app.provide(exposure);
+}
+
+/// The app's [`CreditExposure`], or [`NoCreditExposure`] when none is
+/// provided.
+pub fn credit_exposure(state: &AppState) -> Arc<dyn CreditExposure> {
+    match state.provided::<Arc<dyn CreditExposure>>() {
+        Some(exposure) => Arc::clone(&exposure),
+        None => Arc::new(NoCreditExposure),
+    }
+}
 
 /// A loyalty redemption to price (`DiscountEngine::quote_redemption`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,0 +1,25 @@
+{#- wl-sales: an earlier revision of a sales order, kept as it was and never
+    changed. Replace it with resources/views/wl-sales/sales_order_revision.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="tx['revisions.read_only']" :back="route('wl_sales.sales_order', order_id)" :back-label="tx['revisions.back']"/>
+    <rx-card :title="tx['revisions.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['amend.revision']" :value="revision"/>
+        <rx-entry :label="tx['counter.total']" :value="total"/>
+        <rx-entry :label="tx['revisions.when']" :value="replaced_on"/>
+        <rx-entry :label="tx['orders.reason']" :value="reason"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="lines" as="line" :key="line.line_no" :caption="tx['counter.lines']" card>
+      <rx-column :label="tx['orders.line_no']" hide-narrow>{{ line.line_no }}</rx-column>
+      <rx-column :label="tx['counter.description']">{{ line.description }}</rx-column>
+      <rx-column :label="tx['counter.quantity']" hide-narrow>{{ line.quantity }}</rx-column>
+      <rx-column :label="tx['counter.unit_price']" hide-narrow>{{ line.price }}</rx-column>
+      <rx-column :label="tx['counter.discount']" hide-narrow>{{ line.discount }}</rx-column>
+      <rx-column :label="tx['counter.total']">{{ line.gross }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['counter.no_lines']" icon="inbox"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

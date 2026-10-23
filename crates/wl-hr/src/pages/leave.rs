@@ -152,7 +152,7 @@ fn sick_note_text(lang: &Lang, request: &LeaveRequest) -> String {
 
 /// `GET /hr/leave`: the user's own leave.
 async fn my_leave(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
-    if !user.has_permission(permissions::LEAVE_REQUEST) {
+    if !user.has_permission_anywhere(permissions::LEAVE_REQUEST) {
         return Err(Error::Forbidden);
     }
     let day = today();
@@ -241,7 +241,7 @@ async fn request(
     lang: Lang,
     Valid(form): Valid<RequestForm>,
 ) -> Result<Response> {
-    if !user.has_permission(permissions::LEAVE_REQUEST) {
+    if !user.has_permission_anywhere(permissions::LEAVE_REQUEST) {
         return Err(Error::Forbidden);
     }
     let Some(employee) = employee_of(&state.db, user.id).await? else {
