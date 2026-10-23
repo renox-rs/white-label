@@ -126,6 +126,13 @@ fn aut_base_the_roles_hold_the_permissions_of_the_spec() {
     assert!(grants(roles::OWNER).contains(&aut::FLEET_CONTRACTS_APPROVE));
     assert!(!grants(roles::FLEET_ACCOUNT_MANAGER).contains(&aut::FLEET_CONTRACTS_APPROVE));
     assert!(!grants(roles::SERVICE_ADVISOR).contains(&aut::FLEET_CONTRACTS_APPROVE));
+    // The export sales (BL-AUT-14): the accountant registers them and attaches
+    // their exit evidence, the owner reads them, the advisor has no part in it.
+    assert!(grants(roles::ACCOUNTANT).contains(&aut::EXPORT_SALES_MANAGE));
+    assert!(grants(roles::ACCOUNTANT).contains(&aut::EXPORT_SALES_VIEW));
+    assert!(grants(roles::OWNER).contains(&aut::EXPORT_SALES_VIEW));
+    assert!(!grants(roles::OWNER).contains(&aut::EXPORT_SALES_MANAGE));
+    assert!(!grants(roles::SERVICE_ADVISOR).contains(&aut::EXPORT_SALES_VIEW));
     assert!(grants(roles::STOREKEEPER).contains(&aut::JOB_CARDS_VIEW));
     assert!(grants(roles::ADMIN).contains(&aut::LABOUR_MENU_MANAGE));
 }
