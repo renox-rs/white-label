@@ -61,6 +61,12 @@ pub struct SaleLine {
     pub fulfilled_milli: i64,
     /// The quantity cancelled (sales orders), in thousandths.
     pub cancelled_milli: i64,
+    /// The quantity of the open part set aside in stock (back-orders on),
+    /// in thousandths.
+    pub reserved_milli: i64,
+    /// The quantity of the open part that could not be reserved and waits
+    /// for stock, in thousandths.
+    pub backordered_milli: i64,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

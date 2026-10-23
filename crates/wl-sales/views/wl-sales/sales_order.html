@@ -46,6 +46,7 @@
       <rx-column :label="tx['counter.description']">{{ line.description }}</rx-column>
       <rx-column :label="tx['counter.quantity']" hide-narrow>{{ line.quantity }}</rx-column>
       <rx-column :label="tx['orders.fulfilled']" hide-narrow>{{ line.fulfilled }}</rx-column>
+      <rx-column :label="tx['orders.backordered']" hide-narrow>{{ line.backordered }}</rx-column>
       <rx-column :label="tx['counter.total']">{{ line.gross }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['counter.no_lines']" icon="inbox"/></rx-slot>
     </rx-table>

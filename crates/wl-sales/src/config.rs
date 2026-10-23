@@ -172,6 +172,7 @@ impl Default for SalesConfig {
             segment_clinical_rules: false,
             programme_notice_days: DEFAULT_PROGRAMME_NOTICE_DAYS,
             programme_closing_days: DEFAULT_PROGRAMME_CLOSING_DAYS,
+            back_order_channels: Vec::new(),
         }
     }
 }
@@ -197,6 +198,13 @@ impl SalesConfig {
                 .clinical_items
                 .iter()
                 .any(|c| c.eq_ignore_ascii_case(code.trim()))
+    }
+
+    /// Whether a line without stock is back-ordered on `channel`.
+    pub fn back_orders_allowed(&self, channel: &str) -> bool {
+        self.back_order_channels
+            .iter()
+            .any(|c| c.eq_ignore_ascii_case(channel.trim()))
     }
 
     /// Whether `reason` is one of the lost reasons.

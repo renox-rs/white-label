@@ -1226,6 +1226,15 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.notices.loyalty_given_back_body",
         "{{ points }} points were given back to your account {{ code }} because {{ why }}.",
     ),
+    (
+        "wl_sales.notices.back_order_reserved_subject",
+        "Your back-ordered goods are in stock",
+    ),
+    (
+        "wl_sales.notices.back_order_reserved_body",
+        "Goods back-ordered on your order {{ number }} arrived and are reserved for you: {{ lines }}.",
+    ),
+    ("wl_sales.orders.backordered", "Back-ordered"),
     ("wl_sales.redeem.status.pending", "Waiting for the code"),
     ("wl_sales.redeem.status.held", "Held"),
     ("wl_sales.redeem.status.applied", "Redeemed"),

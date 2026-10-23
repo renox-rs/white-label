@@ -171,6 +171,8 @@ pub struct LineRow {
     pub quantity: String,
     /// The quantity handed over, in units.
     pub fulfilled: String,
+    /// The quantity waiting for stock, in units (back-orders).
+    pub backordered: String,
     /// The line with VAT, `AED 105.00`.
     pub gross: String,
 }
@@ -225,6 +227,7 @@ async fn show(
             description: line.description.clone(),
             quantity: quantity_text(line.quantity_milli),
             fulfilled: quantity_text(line.fulfilled_milli),
+            backordered: quantity_text(line.backordered_milli),
             gross: money(line.gross()),
         })
         .collect();

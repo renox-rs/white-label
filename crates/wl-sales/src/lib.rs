@@ -8,6 +8,7 @@ pub mod adjustment;
 pub mod adjustment_machine;
 pub mod adjustments;
 pub mod attribution;
+pub mod back_orders;
 pub mod bill_links;
 pub mod block;
 pub mod budget;
@@ -450,6 +451,17 @@ impl WlSales {
         self
     }
 
+    /// The order channels whose lines without stock are back-ordered
+    /// (wl-sales §7 *Back-orders allowed per channel*). Default: none.
+    pub fn back_orders_for(mut self, channels: &[&str]) -> Self {
+        self.config.back_order_channels = channels
+            .iter()
+            .map(|c| c.trim().to_lowercase())
+            .filter(|c| !c.is_empty())
+            .collect();
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &SalesConfig {
         &self.config
@@ -549,6 +561,7 @@ impl Module for WlSales {
         app.model::<CounterSalePayment>();
         app.model::<SalesOrder>();
         app.model::<FulfilmentRecord>();
+        app.model::<back_orders::BackOrderServe>();
         app.model::<SalesReturn>();
         app.model::<SalesReturnLine>();
         app.model::<LoyaltyProgramme>();
@@ -578,6 +591,8 @@ impl Module for WlSales {
         // The sales order: its machine, its events and the kernel's
         // `OrderFulfilment`.
         sales_orders::register(app);
+        // Back-orders: reservations, the arrivals that serve them, the demand.
+        back_orders::register(app);
         // The sales return: its machine and the `ReturnResolved` event.
         sales_returns::register(app);
         sale_customers::register(app);
