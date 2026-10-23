@@ -28,6 +28,7 @@ use renox::chrono::NaiveDate;
 use renox::db::now;
 use renox::prelude::*;
 use renox::serde_json::json;
+use wl_kernel::COMPANY_ADMIN_ROLE;
 use wl_kernel::automation::{RuleRun, RuleRunSpec, RuleRunStatus, run_rule};
 use wl_kernel::compliance::{CriticalRule, occurrence_key, schedule_subject};
 use wl_kernel::documents::today;
@@ -36,7 +37,6 @@ use wl_kernel::notify::{
     NotifyRequest, notifier,
 };
 use wl_kernel::role_tasks::{self, RoleTask};
-use wl_kernel::COMPANY_ADMIN_ROLE;
 
 use crate::export_sale::ExportSale;
 use crate::permissions;

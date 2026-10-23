@@ -75,10 +75,7 @@ async fn aut_18_the_sales_rules_without_a_module_setting_are_listed_as_not_enfor
 #[renox::test]
 async fn aut_18_a_third_presentation_is_refused_and_no_bounce_fee_is_set() {
     let app = auto_booted().await;
-    let payments = app
-        .state()
-        .provided::<PaymentsConfig>()
-        .expect("payments");
+    let payments = app.state().provided::<PaymentsConfig>().expect("payments");
     assert_eq!(payments.cheque_max_presentations, 2);
     assert_eq!(
         (payments.cheque_reminder_days, payments.cheque_decision_days),
@@ -100,10 +97,7 @@ async fn aut_18_every_write_off_needs_approval_and_a_drivers_cheque_waits_for_th
         .provided::<InvoicingConfig>()
         .expect("invoicing");
     assert_eq!(invoicing.write_off_approvers, ["owner", "admin"]);
-    let payments = app
-        .state()
-        .provided::<PaymentsConfig>()
-        .expect("payments");
+    let payments = app.state().provided::<PaymentsConfig>().expect("payments");
     assert!(payments.field_cheque_handover);
     assert_eq!(payments.cash_write_off_limit, 0);
     assert!(!payments.cash_salary_deduction);
@@ -143,7 +137,10 @@ async fn aut_18_the_supplier_scorecard_reviews_under_70_and_a_preferred_change_n
     assert_eq!(inventory.score.grace_days, 1);
     assert_eq!(inventory.score.threshold, 70);
     assert!(inventory.preferred_change_needs_approval);
-    assert_eq!(inventory.recall_notices_route.as_deref(), Some("auto.recall"));
+    assert_eq!(
+        inventory.recall_notices_route.as_deref(),
+        Some("auto.recall")
+    );
 }
 
 /// Disputes: the B2B buyer can flag an invoice as disputed in the portal; the
@@ -177,10 +174,7 @@ async fn aut_18_the_cash_flow_forecast_alerts_below_aed_100000_over_13_weeks_fro
     assert_eq!(invoicing.cash_alert_roles, ["owner", "accountant"]);
     assert_eq!(invoicing.cash_alert_time, "06:00");
     assert!(invoicing.cash_days_late && !invoicing.cash_disputed_counted);
-    let entities = wl_kernel::LegalEntity::query()
-        .get(app.db())
-        .await
-        .unwrap();
+    let entities = wl_kernel::LegalEntity::query().get(app.db()).await.unwrap();
     assert!(!entities.is_empty());
     for entity in entities {
         let threshold = invoicing.cash_threshold_of(&entity.code);
@@ -201,7 +195,10 @@ async fn aut_18_the_budget_categories_belong_to_the_accountant_and_a_drawing_is_
         .state()
         .provided::<InvoicingConfig>()
         .expect("invoicing");
-    assert_eq!(invoicing.budget_category_owner.as_deref(), Some("accountant"));
+    assert_eq!(
+        invoicing.budget_category_owner.as_deref(),
+        Some("accountant")
+    );
     assert_eq!(invoicing.budget_variance_percent, 100);
     assert_eq!(invoicing.budget_variance_role, "accountant");
     assert!(!invoicing.drawings_self_approve);

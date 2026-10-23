@@ -447,7 +447,11 @@ pub async fn stop_all_plans(db: &Db, contract_id: i64) -> Result {
 ///
 /// A 403 without `job_cards.advise` or `fleet_contracts.manage`; a 422 for a
 /// plan with no booking waiting.
-pub async fn confirm_booking(state: &AppState, by: &AuthUser, plan_id: i64) -> Result<FleetService> {
+pub async fn confirm_booking(
+    state: &AppState,
+    by: &AuthUser,
+    plan_id: i64,
+) -> Result<FleetService> {
     if !may_decide_booking(by) {
         return Err(Error::Forbidden);
     }

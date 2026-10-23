@@ -19,9 +19,9 @@
 //!   that names no lot blocks the quantity at the quarantine location.
 
 use renox::prelude::*;
+use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::inventory::{RECALL_SUBJECT_TYPE, ReturnedGoods};
-use wl_kernel::Subject;
 
 use crate::item::{Item, value_of};
 use crate::location::quarantine_location;

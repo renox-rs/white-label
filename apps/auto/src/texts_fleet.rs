@@ -357,10 +357,7 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "The contract is suspended: no new booking is made for its vehicles. Confirm or cancel the bookings already made.",
     ),
     ("auto.fleet.booking_confirm", "Confirm the booking of"),
-    (
-        "auto.fleet.booking_confirm_message",
-        "The booking is kept.",
-    ),
+    ("auto.fleet.booking_confirm_message", "The booking is kept."),
     ("auto.fleet.booking_confirmed_done", "Booking confirmed."),
     ("auto.fleet.booking_cancel", "Cancel the booking of"),
     (
@@ -370,8 +367,14 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("auto.fleet.booking_cancelled", "Booking cancelled."),
     ("auto.fleet.booking_confirmed", "Confirmed"),
     ("auto.fleet.booking_unconfirmed", "To confirm or cancel"),
-    ("auto.fleet.fee_line", "Early termination fee, fleet contract :contract"),
-    ("auto.fleet.notice_ended_title", "Fleet contract :contract has ended"),
+    (
+        "auto.fleet.fee_line",
+        "Early termination fee, fleet contract :contract",
+    ),
+    (
+        "auto.fleet.notice_ended_title",
+        "Fleet contract :contract has ended",
+    ),
     (
         "auto.fleet.notice_ended_body",
         "Your service contract :contract (:title) ended after its last day of service, :date. Services are no longer booked under it, and the last invoice for the period up to that day is on its way. Job cards still open finish at the contract rates.",

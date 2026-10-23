@@ -253,8 +253,7 @@ pub async fn send_notices(
         .await?;
     for (position, line) in lines.iter().enumerate() {
         let sent = async {
-            let request =
-                request_for(state, &recall, line, &template_for(&template, line)).await?;
+            let request = request_for(state, &recall, line, &template_for(&template, line)).await?;
             notify::notifier(state).notify(state, request).await?;
             Ok::<(), Error>(())
         }

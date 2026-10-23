@@ -403,12 +403,7 @@ pub async fn on_reversed(state: &AppState, event: &StockArrivalReversed) -> Resu
 /// # Errors
 ///
 /// A database error.
-pub async fn reduce(
-    state: &AppState,
-    line: i64,
-    quantity: i64,
-    back_order_first: bool,
-) -> Result {
+pub async fn reduce(state: &AppState, line: i64, quantity: i64, back_order_first: bool) -> Result {
     let Some(found) = SaleLine::find(&state.db, line).await? else {
         return Ok(());
     };

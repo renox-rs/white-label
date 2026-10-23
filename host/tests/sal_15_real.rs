@@ -50,7 +50,11 @@ async fn sold(app: &TestApp, code: &str, on: DateTime) -> (CounterSale, SaleLine
         .unwrap();
     app.post(
         &format!("/counter-sales/{}/lines", sale.id),
-        &[("item_code", code), ("unit_price", "50.00"), ("quantity", "2")],
+        &[
+            ("item_code", code),
+            ("unit_price", "50.00"),
+            ("quantity", "2"),
+        ],
     )
     .await
     .assert_status(303);
@@ -287,9 +291,12 @@ async fn sal_15_real_an_item_not_tracked_by_lot_is_recalled_by_its_receipts_and_
     let recall = latest_recall(&app).await;
 
     let joined = asked(&app, &recalled_sale, &format!("{}:1", recalled_line.id)).await;
-    app.post(&format!("/sales-returns/{}/receive", joined.id), &[("x", "")])
-        .await
-        .assert_status(303);
+    app.post(
+        &format!("/sales-returns/{}/receive", joined.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
     let joined = SalesReturn::find_or_404(app.db(), joined.id).await.unwrap();
     assert_eq!(joined.recall(), Some(recall.subject()));
     let lines = wl_inventory::stock_hold::lines_of(app.db(), recall.stock_hold_id.unwrap())
@@ -300,9 +307,12 @@ async fn sal_15_real_an_item_not_tracked_by_lot_is_recalled_by_its_receipts_and_
     assert_ne!(last.location_id, store.id, "it is in quarantine");
 
     let normal = asked(&app, &old_sale, &format!("{}:1", old_line.id)).await;
-    app.post(&format!("/sales-returns/{}/receive", normal.id), &[("x", "")])
-        .await
-        .assert_status(422);
+    app.post(
+        &format!("/sales-returns/{}/receive", normal.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(422);
     let normal = SalesReturn::find_or_404(app.db(), normal.id).await.unwrap();
     assert_eq!(normal.status, ReturnStatus::Requested);
     assert_eq!(normal.recall_id, None);

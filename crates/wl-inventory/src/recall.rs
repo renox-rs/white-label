@@ -71,8 +71,8 @@ use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, Noti
 use wl_kernel::numbering::{Reset, Series};
 
 use crate::chase::PROCUREMENT_ROLE;
-use crate::hold_decide::settle;
 use crate::goods_receipt::GoodsReceipt;
+use crate::hold_decide::settle;
 use crate::hold_service::{NewHold, NewScope, announce_placed, place_in};
 use crate::item::Item;
 use crate::location::Location;

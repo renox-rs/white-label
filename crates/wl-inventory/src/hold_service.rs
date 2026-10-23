@@ -504,9 +504,7 @@ pub async fn place(state: &AppState, new: NewHold) -> Result<StockHold> {
 /// `Forbidden` without the permission, and the errors of [`place`].
 pub async fn place_as(state: &AppState, user: &AuthUser, mut new: NewHold) -> Result<StockHold> {
     let allowed = match &new.scope {
-        NewScope::Lots(_) | NewScope::Stock { .. } => {
-            user.has_permission(permissions::STOCK_HOLD)
-        }
+        NewScope::Lots(_) | NewScope::Stock { .. } => user.has_permission(permissions::STOCK_HOLD),
         NewScope::Location { location_id, .. } => {
             let location = Location::find_or_404(&state.db, *location_id).await?;
             user.has_permission_in(permissions::STOCK_HOLD, &location.scope())

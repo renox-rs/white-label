@@ -529,7 +529,12 @@ pub async fn fleet_job(w: &World, shop: &FleetShop, hours_milli: i64) -> (JobCar
 
 /// The work of `line` is done, the job card passes quality control and is
 /// delivered: delivered.
-pub async fn fleet_deliver(w: &World, shop: &FleetShop, card: &JobCard, line: &LabourLine) -> JobCard {
+pub async fn fleet_deliver(
+    w: &World,
+    shop: &FleetShop,
+    card: &JobCard,
+    line: &LabourLine,
+) -> JobCard {
     job_cards::record_work(w.state(), &shop.tareq, line.id, WorkStatus::Done, None)
         .await
         .unwrap();

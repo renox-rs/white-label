@@ -1694,22 +1694,34 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_payments.cash.cheques_tick",
         "Tick the cheques the holder handed over; the others are missing.",
     ),
-    ("wl_payments.cash.cheques.title", "Cheques collected in the field"),
+    (
+        "wl_payments.cash.cheques.title",
+        "Cheques collected in the field",
+    ),
     ("wl_payments.cash.cheques.number", "Cheque"),
     ("wl_payments.cash.cheques.present", "Handed over"),
     ("wl_payments.cash.cheques.state.present", "Confirmed"),
     ("wl_payments.cash.cheques.state.missing", "Missing"),
     ("wl_payments.cash.cheques.state.found", "Found"),
-    ("wl_payments.cash.cheques.state.returned_lost", "Returned as lost"),
+    (
+        "wl_payments.cash.cheques.state.returned_lost",
+        "Returned as lost",
+    ),
     ("wl_payments.cash.cheques.empty", "No cheque was expected."),
     ("wl_payments.cash.cheques.actions", "Actions"),
     ("wl_payments.cash.cheque_lost.action", "Return as lost"),
-    ("wl_payments.cash.cheque_lost.title", "Return the cheque as lost?"),
+    (
+        "wl_payments.cash.cheque_lost.title",
+        "Return the cheque as lost?",
+    ),
     (
         "wl_payments.cash.cheque_lost.message",
         "The cheque is returned with the reason \"lost\" and its party is asked for a replacement.",
     ),
-    ("wl_payments.cash.cheque_lost.done", "Cheque returned as lost; the party was asked for a replacement."),
+    (
+        "wl_payments.cash.cheque_lost.done",
+        "Cheque returned as lost; the party was asked for a replacement.",
+    ),
     ("wl_payments.cash_task.subject", "{{ text }}"),
     ("wl_payments.cash_task.body", "{{ text }} See {{ link }}."),
 ];

@@ -13,9 +13,9 @@
 
 use renox::prelude::*;
 use serde::Serialize;
-use wl_kernel::inventory::{RECALL_SUBJECT_TYPE, TraceMark};
 use wl_kernel::Subject;
 use wl_kernel::documents::subject_label;
+use wl_kernel::inventory::{RECALL_SUBJECT_TYPE, TraceMark};
 
 use super::{Texts, party_name, require, text};
 use crate::permissions;
@@ -75,7 +75,12 @@ async fn line_row(state: &AppState, lang: &Lang, row: &TraceRow) -> LineRow {
         } else {
             texts::t_with(lang, "auto.recall.walk_in_count", &[("count", &row.sales)])
         };
-        format!("{} · {} · {}", text(lang, "recall.walk_in"), row.branch, count)
+        format!(
+            "{} · {} · {}",
+            text(lang, "recall.walk_in"),
+            row.branch,
+            count
+        )
     } else {
         match row.party {
             Some(party) => party_name(state, &lang.locale, party).await,
@@ -84,7 +89,9 @@ async fn line_row(state: &AppState, lang: &Lang, row: &TraceRow) -> LineRow {
     };
     let (mark, mark_kind) = match row.mark {
         TraceMark::Confirmed => (text(lang, "recall.mark_confirmed"), "info"),
-        TraceMark::Possible | TraceMark::Uncertain => (text(lang, "recall.mark_possible"), "warning"),
+        TraceMark::Possible | TraceMark::Uncertain => {
+            (text(lang, "recall.mark_possible"), "warning")
+        }
     };
     let (notice, notice_kind) = match row.notice.as_str() {
         "sent" => (text(lang, "recall.notice_sent"), "success"),

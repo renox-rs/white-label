@@ -26,8 +26,7 @@ use renox::serde_json::{Value, json};
 use wl_kernel::PartyId;
 use wl_kernel::notify::{
     self, GROUP_DOCUMENTS, GROUP_SIGNATURES, GiveUpReaction, NotificationTypeDef, NotifyChannel,
-    NotifyRecipient,
-    NotifyRequest, notifier,
+    NotifyRecipient, NotifyRequest, notifier,
 };
 use wl_kernel::parties::directory;
 use wl_kernel::role_tasks::{self, RoleTask};

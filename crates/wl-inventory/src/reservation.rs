@@ -26,7 +26,7 @@ use renox::db::Executor;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
-use wl_kernel::backorders::{BackOrderFuture, Reserved, ReserveStock, StockReservations};
+use wl_kernel::backorders::{BackOrderFuture, ReserveStock, Reserved, StockReservations};
 
 use crate::balance;
 use crate::item::Item;

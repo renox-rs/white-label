@@ -377,7 +377,10 @@ async fn show(
     // the ones still missing at a recount.
     let mut cheque_options = Vec::new();
     let mut shown = Vec::new();
-    if matches!(handover.status, HandoverStatus::Open | HandoverStatus::Short) {
+    if matches!(
+        handover.status,
+        HandoverStatus::Open | HandoverStatus::Short
+    ) {
         let recount = handover.status == HandoverStatus::Short;
         for id in cash_cheques::to_tick(&db, &handover, recount).await? {
             if let Some(cheque) = Cheque::find(&db, id).await? {
@@ -594,10 +597,9 @@ async fn store_cheque_lost(
 ) -> Result<Response> {
     match cash_cheques::return_lost(&state, &user, cheque_id).await {
         Ok(_) => Ok(done(&lang, "wl_payments.cash.cheque_lost.done")),
-        Err(TransitionError::Guard(message)) => Err(Error::Status(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            message,
-        )),
+        Err(TransitionError::Guard(message)) => {
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message))
+        }
         Err(other) => Err(other.into_error()),
     }
 }

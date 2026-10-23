@@ -6,10 +6,10 @@
 
 mod support;
 
+use auto::JobCardStatus;
 use auto::late_times;
 use auto::test_drive::TestDrive;
 use auto::test_drives::NewDrive;
-use auto::JobCardStatus;
 use renox::chrono::Duration;
 use renox::db::now;
 use support::boot;
@@ -91,6 +91,9 @@ async fn aut_18_a_drive_in_the_future_or_without_a_time_is_refused() {
             .await
             .unwrap_err();
         let text = error.to_string();
-        assert!(text.contains("future") || text.contains("Give the time"), "{text}");
+        assert!(
+            text.contains("future") || text.contains("Give the time"),
+            "{text}"
+        );
     }
 }

@@ -2543,7 +2543,10 @@ async fn without_inventory_every_reservation_succeeds_and_without_sales_nothing_
     let app = boot(dir.path()).await;
     let owner = Subject::new("sales.sales_order", 5);
     let reserved = stock_reservations(app.state())
-        .reserve(app.state(), ReserveStock::new("BRK-PAD", 5_000, owner.clone(), 9))
+        .reserve(
+            app.state(),
+            ReserveStock::new("BRK-PAD", 5_000, owner.clone(), 9),
+        )
         .await
         .unwrap();
     assert_eq!(reserved.reserved_milli, 5_000);
@@ -2554,7 +2557,13 @@ async fn without_inventory_every_reservation_succeeds_and_without_sales_nothing_
             .unwrap(),
         0
     );
-    assert!(back_orders(app.state()).open(app.state()).await.unwrap().is_empty());
+    assert!(
+        back_orders(app.state())
+            .open(app.state())
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// 08 Auto: without a scheduling module the booking actions link and complete
@@ -2624,7 +2633,13 @@ async fn without_scheduling_a_service_booking_is_refused_and_a_cancel_does_nothi
             .await
             .unwrap()
     );
-    assert!(actions.starts_at(state, BookingId(4)).await.unwrap().is_none());
+    assert!(
+        actions
+            .starts_at(state, BookingId(4))
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 /// #409: without a vertical's gate every new booking is allowed.

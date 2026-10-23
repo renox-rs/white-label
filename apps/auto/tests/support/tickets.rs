@@ -9,8 +9,8 @@ use std::sync::{Arc, Mutex};
 use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::tickets::{
-    Assignee, OpenTicket, TaskComment, TaskCreator, TicketAbout, TicketFuture, TicketId,
-    TicketRef, TicketSummary,
+    Assignee, OpenTicket, TaskComment, TaskCreator, TicketAbout, TicketFuture, TicketId, TicketRef,
+    TicketSummary,
 };
 
 /// A ticket opened through the task creator.

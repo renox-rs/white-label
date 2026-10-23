@@ -225,11 +225,7 @@ pub async fn finish_safety_lines_only(state: &AppState, user: i64, id: i64) -> R
             LineStatus::Draft | LineStatus::Sent | LineStatus::Approved
         );
         let ordered = line.special_order && line.purchase_order_id.is_some();
-        if live
-            && line.issued_milli == 0
-            && line.fitted_milli == 0
-            && !line.safety_work
-            && !ordered
+        if live && line.issued_milli == 0 && line.fitted_milli == 0 && !line.safety_work && !ordered
         {
             PartLine::query()
                 .where_(PartLine::ID.eq(line.id))
@@ -295,20 +291,16 @@ impl AgreementSource for FleetAgreements {
             }
             match decision {
                 Decision::Continue => Ok(()),
-                Decision::Pause => fleet_contracts::suspend_by_decision(
-                    state,
-                    user,
-                    subject.subject_id,
-                )
-                .await
-                .map(|_| ()),
-                Decision::End => fleet_contracts::terminate_by_decision(
-                    state,
-                    user,
-                    subject.subject_id,
-                )
-                .await
-                .map(|_| ()),
+                Decision::Pause => {
+                    fleet_contracts::suspend_by_decision(state, user, subject.subject_id)
+                        .await
+                        .map(|_| ())
+                }
+                Decision::End => {
+                    fleet_contracts::terminate_by_decision(state, user, subject.subject_id)
+                        .await
+                        .map(|_| ())
+                }
             }
         })
     }

@@ -9,13 +9,12 @@ mod support;
 use auto::JobCardStatus;
 use auto::notices::{self, VEHICLE_READY};
 use support::boot;
-use wl_kernel::notify::{
-    ChannelTried, GiveUpReaction, MessageGaveUp, MessageId, NotifyRecipient,
-};
 use wl_kernel::PartyId;
+use wl_kernel::notify::{ChannelTried, GiveUpReaction, MessageGaveUp, MessageId, NotifyRecipient};
 
 #[renox::test]
-async fn aut_18_the_ready_sms_goes_to_the_customer_and_a_give_up_marks_the_job_card_without_a_task() {
+async fn aut_18_the_ready_sms_goes_to_the_customer_and_a_give_up_marks_the_job_card_without_a_task()
+{
     let t = boot().await;
     let vehicle = t.hilux().await;
     let card = t.card_in(&vehicle, JobCardStatus::Ready).await;

@@ -77,13 +77,14 @@ async fn aut_17_a_blocked_fleet_is_reviewed_by_the_owner_and_nothing_changes_by_
     t.people.set_blocked(FLEET, true);
     let source = source_for(FLEET_KIND).expect("a source");
 
-    let open = source
-        .open_for(t.state(), PartyId(FLEET))
-        .await
-        .unwrap();
+    let open = source.open_for(t.state(), PartyId(FLEET)).await.unwrap();
     assert_eq!(open.len(), 1, "one review item per contract");
     assert_eq!(open[0].subject, contract.subject());
-    assert!(open[0].label.contains(&contract.number()), "{}", open[0].label);
+    assert!(
+        open[0].label.contains(&contract.number()),
+        "{}",
+        open[0].label
+    );
     assert!(open[0].scope.is_none(), "one task for the owner");
     assert_eq!(
         FleetContract::find_or_404(t.db(), contract.id)
@@ -110,12 +111,18 @@ async fn aut_17_a_blocked_fleet_is_reviewed_by_the_owner_and_nothing_changes_by_
         .decide(t.state(), owner.id, &contract.subject(), Decision::Pause)
         .await
         .unwrap();
-    let suspended = FleetContract::find_or_404(t.db(), contract.id).await.unwrap();
+    let suspended = FleetContract::find_or_404(t.db(), contract.id)
+        .await
+        .unwrap();
     assert_eq!(suspended.status, FleetStatus::Suspended);
     assert_eq!(suspended.suspended_reason.as_deref(), Some("On hold"));
     // A suspended contract is still listed, and *suspend* again changes nothing.
     assert_eq!(
-        source.open_for(t.state(), PartyId(FLEET)).await.unwrap().len(),
+        source
+            .open_for(t.state(), PartyId(FLEET))
+            .await
+            .unwrap()
+            .len(),
         1
     );
     source
@@ -136,9 +143,14 @@ async fn aut_17_the_owner_terminates_the_contract_of_a_blocked_fleet() {
     let sami = t.advisor().await;
     let booking = service::book(
         t.state(),
-        NewBooking::new(PartyId(FLEET), service_type.id, &[bay.id], at(day(4), 10, 0))
-            .for_subject(van.subject())
-            .at(workshop()),
+        NewBooking::new(
+            PartyId(FLEET),
+            service_type.id,
+            &[bay.id],
+            at(day(4), 10, 0),
+        )
+        .for_subject(van.subject())
+        .at(workshop()),
         Actor::staff(sami.id),
         renox::db::now(),
     )
@@ -152,13 +164,18 @@ async fn aut_17_the_owner_terminates_the_contract_of_a_blocked_fleet() {
         .decide(t.state(), owner.id, &contract.subject(), Decision::End)
         .await
         .unwrap();
-    let ended = FleetContract::find_or_404(t.db(), contract.id).await.unwrap();
+    let ended = FleetContract::find_or_404(t.db(), contract.id)
+        .await
+        .unwrap();
     assert_eq!(ended.status, FleetStatus::Ended);
     assert_eq!(ended.termination_reason.as_deref(), Some("On hold"));
     assert_eq!(ended.termination_approved_by, Some(owner.id));
     assert_eq!(ended.effective_date, Some(today()));
     assert_eq!(
-        Booking::find_or_404(t.db(), booking.id).await.unwrap().status,
+        Booking::find_or_404(t.db(), booking.id)
+            .await
+            .unwrap()
+            .status,
         BookingStatus::Cancelled
     );
     assert!(
@@ -178,11 +195,15 @@ async fn aut_17_the_owner_terminates_the_contract_of_a_blocked_fleet() {
         .await
         .unwrap();
     assert_eq!(run.wound_down, [contract.id], "{run:?}");
-    let done = FleetContract::find_or_404(t.db(), contract.id).await.unwrap();
+    let done = FleetContract::find_or_404(t.db(), contract.id)
+        .await
+        .unwrap();
     assert!(done.wound_down_at.is_some());
     assert!(done.termination_fee_invoice_id.is_some());
     assert_eq!(t.messages.of_type(TERMINATION_TYPE).len(), 1);
-    let periods = FleetInvoice::of_contract(t.db(), contract.id).await.unwrap();
+    let periods = FleetInvoice::of_contract(t.db(), contract.id)
+        .await
+        .unwrap();
     assert!(periods.iter().any(|p| p.kind == KIND_FINAL));
     assert_eq!(t.terminated.all().len(), 1);
 }
@@ -324,38 +345,29 @@ async fn aut_17_new_estimate_approvals_are_refused_while_the_customer_is_blocked
         .unwrap();
 
     t.people.set_blocked(CUSTOMER, true);
-    let desk = job_cards::approve_recorded(
-        t.state(),
-        &sami,
-        card.id,
-        "Mona Hassan",
-        "recorded",
-        None,
-    )
-    .await
-    .unwrap_err();
+    let desk =
+        job_cards::approve_recorded(t.state(), &sami, card.id, "Mona Hassan", "recorded", None)
+            .await
+            .unwrap_err();
     assert!(desk.to_string().contains("on hold"), "{desk}");
     let link = job_cards::approve_by_link(t.state(), &round.token, "Mona Hassan", None, true)
         .await
         .unwrap_err();
     assert!(link.to_string().contains("contact the workshop"), "{link}");
-    assert!(!link.to_string().contains("hold"), "the customer is not told");
+    assert!(
+        !link.to_string().contains("hold"),
+        "the customer is not told"
+    );
     assert_eq!(
         t.reload(card.id).await.status,
         JobCardStatus::AwaitingApproval
     );
 
     t.people.set_blocked(CUSTOMER, false);
-    let approved = job_cards::approve_recorded(
-        t.state(),
-        &sami,
-        card.id,
-        "Mona Hassan",
-        "recorded",
-        None,
-    )
-    .await
-    .unwrap();
+    let approved =
+        job_cards::approve_recorded(t.state(), &sami, card.id, "Mona Hassan", "recorded", None)
+            .await
+            .unwrap();
     assert_eq!(approved.status, JobCardStatus::InProgress);
 }
 
@@ -370,20 +382,24 @@ async fn aut_17_finish_safety_lines_only_takes_off_the_lines_not_started() {
     t.people.set_blocked(CUSTOMER, true);
     let source = source_for(JOB_CARD_KIND).expect("a source");
 
-    let open = source
-        .open_for(t.state(), PartyId(CUSTOMER))
-        .await
-        .unwrap();
+    let open = source.open_for(t.state(), PartyId(CUSTOMER)).await.unwrap();
     assert_eq!(open.len(), 1);
     assert_eq!(open[0].subject, job.card.subject());
-    assert!(open[0].label.contains(&job.card.number()), "{}", open[0].label);
+    assert!(
+        open[0].label.contains(&job.card.number()),
+        "{}",
+        open[0].label
+    );
 
     // *Continue* removes nothing.
     source
         .decide(t.state(), 1, &job.card.subject(), Decision::Continue)
         .await
         .unwrap();
-    assert_eq!(t.labour_now(job.paint.id).await.approval, LineStatus::Approved);
+    assert_eq!(
+        t.labour_now(job.paint.id).await.approval,
+        LineStatus::Approved
+    );
     // *End* is not the review's: the advisor cancels or declines the job.
     let end = source
         .decide(t.state(), 1, &job.card.subject(), Decision::End)
@@ -399,14 +415,29 @@ async fn aut_17_finish_safety_lines_only_takes_off_the_lines_not_started() {
     assert_eq!(paint.approval, LineStatus::Removed);
     assert_eq!(paint.removed_reason.as_deref(), Some(PARTY_BLOCKED));
     let can = t.part_now(job.paint_can.id).await;
-    assert_eq!(can.approval, LineStatus::Removed, "the unstarted part goes too");
+    assert_eq!(
+        can.approval,
+        LineStatus::Removed,
+        "the unstarted part goes too"
+    );
     assert_eq!(can.removed_reason.as_deref(), Some(PARTY_BLOCKED));
     // The safety lines and the work done stay.
-    assert_eq!(t.labour_now(job.brakes.id).await.approval, LineStatus::Approved);
-    assert_eq!(t.labour_now(job.oil.id).await.approval, LineStatus::Approved);
-    assert_eq!(t.part_now(job.brake_set.id).await.approval, LineStatus::Approved);
+    assert_eq!(
+        t.labour_now(job.brakes.id).await.approval,
+        LineStatus::Approved
+    );
+    assert_eq!(
+        t.labour_now(job.oil.id).await.approval,
+        LineStatus::Approved
+    );
+    assert_eq!(
+        t.part_now(job.brake_set.id).await.approval,
+        LineStatus::Approved
+    );
     // Again: nothing more to take off.
-    let again = finish_safety_lines_only(t.state(), 1, job.card.id).await.unwrap();
+    let again = finish_safety_lines_only(t.state(), 1, job.card.id)
+        .await
+        .unwrap();
     assert_eq!((again.labour, again.parts), (0, 0));
 
     // The job card goes on: `finish_work` waits for the brake pads only.
@@ -414,7 +445,10 @@ async fn aut_17_finish_safety_lines_only_takes_off_the_lines_not_started() {
     let early = job_cards::finish_work(t.state(), &tareq, job.card.id)
         .await
         .unwrap_err();
-    assert!(early.to_string().to_lowercase().contains("labour"), "{early}");
+    assert!(
+        early.to_string().to_lowercase().contains("labour"),
+        "{early}"
+    );
     job_cards::record_work(t.state(), &tareq, job.brakes.id, WorkStatus::Done, None)
         .await
         .unwrap();
@@ -456,7 +490,10 @@ async fn aut_17_finish_safety_lines_only_takes_off_the_lines_not_started() {
         .iter()
         .map(|l| l.description.as_str())
         .collect();
-    assert!(lines.iter().any(|l| l.contains("Brake pads (1 h)")), "{lines:?}");
+    assert!(
+        lines.iter().any(|l| l.contains("Brake pads (1 h)")),
+        "{lines:?}"
+    );
     assert!(lines.iter().any(|l| l.contains("Oil change")), "{lines:?}");
     assert!(!lines.iter().any(|l| l.contains("Paint")), "{lines:?}");
     assert_eq!(
@@ -477,21 +514,45 @@ async fn aut_17_the_advisor_marks_safety_work_and_the_page_shows_what_was_taken_
     let nobody = t.user("Nadia", &[auto::permissions::JOB_CARDS_VIEW]).await;
     let nadia = t.auth(&nobody).await;
     assert!(matches!(
-        mark_safety(t.state(), &nadia, job.card.id, LineRef::Labour(job.paint.id), true).await,
+        mark_safety(
+            t.state(),
+            &nadia,
+            job.card.id,
+            LineRef::Labour(job.paint.id),
+            true
+        )
+        .await,
         Err(Error::Forbidden)
     ));
     let sami = t.advisor().await;
-    let wrong = mark_safety(t.state(), &sami, job.card.id + 99, LineRef::Labour(job.paint.id), true)
-        .await
-        .unwrap_err();
+    let wrong = mark_safety(
+        t.state(),
+        &sami,
+        job.card.id + 99,
+        LineRef::Labour(job.paint.id),
+        true,
+    )
+    .await
+    .unwrap_err();
     assert!(matches!(wrong, Error::NotFound), "{wrong}");
 
     t.people.set_blocked(CUSTOMER, true);
-    finish_safety_lines_only(t.state(), 1, job.card.id).await.unwrap();
-    let removed = mark_safety(t.state(), &sami, job.card.id, LineRef::Labour(job.paint.id), true)
+    finish_safety_lines_only(t.state(), 1, job.card.id)
         .await
-        .unwrap_err();
-    assert!(removed.to_string().contains("still in the estimate"), "{removed}");
+        .unwrap();
+    let removed = mark_safety(
+        t.state(),
+        &sami,
+        job.card.id,
+        LineRef::Labour(job.paint.id),
+        true,
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        removed.to_string().contains("still in the estimate"),
+        "{removed}"
+    );
 
     let viewer = t
         .user(
@@ -516,7 +577,10 @@ async fn aut_17_the_advisor_marks_safety_work_and_the_page_shows_what_was_taken_
         .htmx()
         .post(
             &format!("/auto/job-cards/{}/safety", job.card.id),
-            &[("line", &format!("labour:{}", job.oil.id)), ("safety", "on")],
+            &[
+                ("line", &format!("labour:{}", job.oil.id)),
+                ("safety", "on"),
+            ],
         )
         .await
         .assert_ok();

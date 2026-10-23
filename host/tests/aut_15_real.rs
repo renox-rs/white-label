@@ -90,7 +90,9 @@ impl World {
             .post(&format!("/sales-orders/{}/submit", order.id), &[("x", "")])
             .await
             .assert_status(303);
-        SalesOrder::find_or_404(self.app.db(), order.id).await.unwrap()
+        SalesOrder::find_or_404(self.app.db(), order.id)
+            .await
+            .unwrap()
     }
 
     /// `(reserved, back-ordered)` units of line `n` of `order`.
@@ -209,7 +211,11 @@ async fn aut_15_real_a_posted_receipt_serves_the_oldest_back_order_and_a_reverse
     w.app
         .post(
             &format!("/sales-orders/{}/cancel-line", two.id),
-            &[("line_no", "1"), ("quantity", "3"), ("reason", "not needed")],
+            &[
+                ("line_no", "1"),
+                ("quantity", "3"),
+                ("reason", "not needed"),
+            ],
         )
         .await
         .assert_status(303);

@@ -32,7 +32,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ),
     ("auto.blocked.safety_line", "Line"),
     ("auto.blocked.safety_line_placeholder", "Pick the line"),
-    ("auto.blocked.safety_tick", "Needed to make the vehicle safe to drive"),
+    (
+        "auto.blocked.safety_tick",
+        "Needed to make the vehicle safe to drive",
+    ),
     ("auto.blocked.safety_saved", "Safety work saved."),
     (
         "auto.blocked.banner",

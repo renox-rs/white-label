@@ -93,11 +93,9 @@ pub const SCHEDULE_TERMINATION_RENEWAL: &str = "schedule_termination_renewal_due
 /// The kernel's run after the owner approved [`SCHEDULE_TERMINATION`].
 pub const SCHEDULE_TERMINATION_APPROVED: &str = "schedule_termination_approved";
 /// The kernel's run after the owner approved [`SCHEDULE_TERMINATION_SUSPENDED`].
-pub const SCHEDULE_TERMINATION_SUSPENDED_APPROVED: &str =
-    "schedule_termination_suspended_approved";
+pub const SCHEDULE_TERMINATION_SUSPENDED_APPROVED: &str = "schedule_termination_suspended_approved";
 /// The kernel's run after the owner approved [`SCHEDULE_TERMINATION_RENEWAL`].
-pub const SCHEDULE_TERMINATION_RENEWAL_APPROVED: &str =
-    "schedule_termination_renewal_due_approved";
+pub const SCHEDULE_TERMINATION_RENEWAL_APPROVED: &str = "schedule_termination_renewal_due_approved";
 /// `active, suspended, renewal_due → ended`: terminated early, by the daily
 /// job on the first day after the effective date.
 pub const TERMINATE_SYSTEM: &str = "terminate_system";
@@ -218,7 +216,12 @@ impl StateMachine for FleetContract {
             .transition(flag_renewal())
             .transition(renew())
             .transition(end())
-            .transition(termination(TERMINATE, &IN_FORCE, FleetStatus::Ended, Run::User))
+            .transition(termination(
+                TERMINATE,
+                &IN_FORCE,
+                FleetStatus::Ended,
+                Run::User,
+            ))
             .transition(termination(
                 TERMINATE_APPROVED,
                 &IN_FORCE,
@@ -336,7 +339,11 @@ fn activate() -> Transition<FleetContract> {
 /// review of a blocked fleet (BL-AUT-17).
 fn suspension(name: &'static str, system: bool) -> Transition<FleetContract> {
     let transition = Transition::new(name)
-        .label(if system { "Suspend (decision)" } else { "Suspend" })
+        .label(if system {
+            "Suspend (decision)"
+        } else {
+            "Suspend"
+        })
         .from([FleetStatus::Active, FleetStatus::RenewalDue])
         .to(FleetStatus::Suspended)
         .reason_required();
@@ -528,7 +535,10 @@ fn termination(
                     set_fleet_contract(
                         tx,
                         id,
-                        &[("termination_scheduled", &false), ("ended_at", &Some(now()))],
+                        &[
+                            ("termination_scheduled", &false),
+                            ("ended_at", &Some(now())),
+                        ],
                     )
                     .await?;
                 }
@@ -603,7 +613,11 @@ mod tests {
         let expected: Vec<(&str, Vec<&str>, &str)> = vec![
             (ACTIVATE, vec!["draft"], "active"),
             (SUSPEND, vec!["active", "renewal_due"], "suspended"),
-            (SUSPEND_BY_DECISION, vec!["active", "renewal_due"], "suspended"),
+            (
+                SUSPEND_BY_DECISION,
+                vec!["active", "renewal_due"],
+                "suspended",
+            ),
             (RESUME, vec!["suspended"], "active"),
             (FLAG_RENEWAL, vec!["active"], "renewal_due"),
             (RENEW, vec!["renewal_due"], "active"),
@@ -612,7 +626,11 @@ mod tests {
             (TERMINATE_APPROVED, in_force.clone(), "ended"),
             (SCHEDULE_TERMINATION, vec!["active"], "active"),
             (SCHEDULE_TERMINATION_APPROVED, vec!["active"], "active"),
-            (SCHEDULE_TERMINATION_SUSPENDED, vec!["suspended"], "suspended"),
+            (
+                SCHEDULE_TERMINATION_SUSPENDED,
+                vec!["suspended"],
+                "suspended",
+            ),
             (
                 SCHEDULE_TERMINATION_SUSPENDED_APPROVED,
                 vec!["suspended"],
@@ -692,7 +710,11 @@ mod tests {
             );
         }
         for name in [TERMINATE_SYSTEM, TERMINATE_BY_DECISION] {
-            assert_eq!(guards(name), ["termination_dates", "owner_approval"], "{name}");
+            assert_eq!(
+                guards(name),
+                ["termination_dates", "owner_approval"],
+                "{name}"
+            );
         }
         assert!(guards(SUSPEND_BY_DECISION).is_empty());
         for name in [

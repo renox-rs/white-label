@@ -75,14 +75,14 @@ pub mod supply;
 pub mod test_drive;
 pub mod test_drives;
 mod texts;
-mod texts_claim_stops;
 mod texts_blocked;
+mod texts_claim_stops;
 mod texts_claims;
 mod texts_export;
 mod texts_fleet;
 mod texts_incidents;
-mod texts_notices;
 mod texts_jobs;
+mod texts_notices;
 mod texts_police;
 mod texts_recalls;
 mod texts_stops;
@@ -184,7 +184,10 @@ const VIEWS: &[(&str, &str)] = &[
         "auto/supplier_claim.html",
         include_str!("../views/auto/supplier_claim.html"),
     ),
-    ("auto/recall.html", include_str!("../views/auto/recall.html")),
+    (
+        "auto/recall.html",
+        include_str!("../views/auto/recall.html"),
+    ),
 ];
 
 /// A whole number with its thousands grouped: `52,000`.

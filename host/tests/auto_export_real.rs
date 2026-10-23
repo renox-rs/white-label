@@ -16,7 +16,9 @@ use renox::prelude::*;
 use support::autofx::{boot, sent_of, shop};
 use support::tenant;
 use wl_kernel::documents::today;
-use wl_kernel::invoicing::{DraftLine, InvoiceDraft, InvoiceId, InvoiceStatus, VatCategory, invoicer};
+use wl_kernel::invoicing::{
+    DraftLine, InvoiceDraft, InvoiceId, InvoiceStatus, VatCategory, invoicer,
+};
 use wl_kernel::{PartyId, Subject};
 
 /// The tasks of the ticketing module whose source key starts with `prefix`.
@@ -42,13 +44,12 @@ async fn export_invoice(
     reference: i64,
 ) -> InvoiceId {
     let books = invoicer(w.state());
-    let draft = InvoiceDraft::new(customer, Subject::new("auto.export", reference)).line(
-        DraftLine::new(
+    let draft =
+        InvoiceDraft::new(customer, Subject::new("auto.export", reference)).line(DraftLine::new(
             "Brake pads, export to Mombasa",
             2_500_000,
             VatCategory::ZeroRated,
-        ),
-    );
+        ));
     let id = books
         .draft(w.db(), draft)
         .await

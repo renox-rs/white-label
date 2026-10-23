@@ -109,13 +109,19 @@ async fn pay_18_a_missing_cheque_makes_the_handover_short_and_only_a_confirmed_o
     let after = t.reloaded(&handover).await;
     assert_eq!(after.status, HandoverStatus::Short);
     assert_eq!((after.counted, after.difference), (0, 0));
-    assert_eq!(t.cheque(first.id).await.custody_handover_id, Some(handover.id));
+    assert_eq!(
+        t.cheque(first.id).await.custody_handover_id,
+        Some(handover.id)
+    );
     assert_eq!(t.cheque(second.id).await.custody_handover_id, None);
     let rows = CashCheque::of_handover(t.db(), handover.id).await.unwrap();
     let states: Vec<_> = rows.iter().map(|r| (r.cheque_id, r.state)).collect();
     assert_eq!(
         states,
-        vec![(first.id, ChequeTick::Present), (second.id, ChequeTick::Missing)]
+        vec![
+            (first.id, ChequeTick::Present),
+            (second.id, ChequeTick::Missing)
+        ]
     );
     let events = t.cash_shortage.all();
     assert_eq!(events.len(), 1);
@@ -145,9 +151,17 @@ async fn pay_18_a_missing_cheque_blocks_the_settlement_until_it_is_returned_as_l
     let boss = t.cash_manager("Mia").await;
     let staff = t.cheque_staff("Amal").await;
     let (handover, first, second) = rep_with_cheques(&t, &rep).await;
-    count_with(&t, &c, &handover, "count", "0", &[&first, &second], &[&first])
-        .await
-        .assert_ok();
+    count_with(
+        &t,
+        &c,
+        &handover,
+        "count",
+        "0",
+        &[&first, &second],
+        &[&first],
+    )
+    .await
+    .assert_ok();
 
     t.write_off_cash(&boss, &handover).await.assert_status(422);
     t.cash_post(&c, &format!("/cash/{}/recover", handover.id), &[])
@@ -194,9 +208,17 @@ async fn pay_18_after_a_cheque_is_returned_as_lost_the_handover_can_be_written_o
     let boss = t.cash_manager("Mia").await;
     let staff = t.cheque_staff("Amal").await;
     let (handover, first, second) = rep_with_cheques(&t, &rep).await;
-    count_with(&t, &c, &handover, "count", "0", &[&first, &second], &[&first])
-        .await
-        .assert_ok();
+    count_with(
+        &t,
+        &c,
+        &handover,
+        "count",
+        "0",
+        &[&first, &second],
+        &[&first],
+    )
+    .await
+    .assert_ok();
     t.cash_post(
         &staff,
         &format!("/cash/{}/cheques/{}/lost", handover.id, second.id),
@@ -229,9 +251,17 @@ async fn pay_18_a_recount_that_finds_the_cheque_confirms_it() {
     let d = t.counter("Dev").await;
     let staff = t.cheque_staff("Amal").await;
     let (handover, first, second) = rep_with_cheques(&t, &rep).await;
-    count_with(&t, &c, &handover, "count", "0", &[&first, &second], &[&first])
-        .await
-        .assert_ok();
+    count_with(
+        &t,
+        &c,
+        &handover,
+        "count",
+        "0",
+        &[&first, &second],
+        &[&first],
+    )
+    .await
+    .assert_ok();
     // A recount that still does not find it keeps it missing.
     count_with(&t, &d, &handover, "recount", "0", &[&second], &[])
         .await
@@ -246,11 +276,16 @@ async fn pay_18_a_recount_that_finds_the_cheque_confirms_it() {
 
     let after = t.reloaded(&handover).await;
     assert_eq!(after.status, HandoverStatus::Counted);
-    assert_eq!(t.cheque(second.id).await.custody_handover_id, Some(handover.id));
+    assert_eq!(
+        t.cheque(second.id).await.custody_handover_id,
+        Some(handover.id)
+    );
     let rows = CashCheque::of_handover(t.db(), handover.id).await.unwrap();
     assert_eq!(rows[1].state, ChequeTick::Found);
     assert_eq!(
-        t.deposit_cheque(&staff, &t.cheque(second.id).await).await.status,
+        t.deposit_cheque(&staff, &t.cheque(second.id).await)
+            .await
+            .status,
         ChequeStatus::Deposited
     );
 }
@@ -295,8 +330,14 @@ async fn pay_18_every_expected_cheque_is_ticked_and_all_present_is_counted() {
     let after = t.reloaded(&handover).await;
     assert_eq!(after.status, HandoverStatus::Counted);
     assert!(t.cash_shortage.all().is_empty());
-    assert_eq!(t.cheque(first.id).await.custody_handover_id, Some(handover.id));
-    assert_eq!(t.cheque(second.id).await.custody_handover_id, Some(handover.id));
+    assert_eq!(
+        t.cheque(first.id).await.custody_handover_id,
+        Some(handover.id)
+    );
+    assert_eq!(
+        t.cheque(second.id).await.custody_handover_id,
+        Some(handover.id)
+    );
 }
 
 /// The holder cannot count their own cheques, and cheques entered at the

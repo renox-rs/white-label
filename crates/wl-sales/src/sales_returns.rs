@@ -242,8 +242,8 @@ async fn recalled_goods(
         let Some(sold) = SaleLine::find(&state.db, line.sale_line_id).await? else {
             continue;
         };
-        let mut goods = ReturnedGoods::new(&sold.item_code, line.quantity_milli, r.subject())
-            .sold_on(on);
+        let mut goods =
+            ReturnedGoods::new(&sold.item_code, line.quantity_milli, r.subject()).sold_on(on);
         if let Some(lot_id) = line.lot_id {
             goods = goods.lot(Subject::new(LOT_SUBJECT_TYPE, lot_id));
         }

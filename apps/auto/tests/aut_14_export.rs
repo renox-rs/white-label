@@ -12,10 +12,10 @@ mod support;
 
 use std::time::Duration;
 
+use auto::ExportSale;
 use auto::export_rule::{self, NOTICE_TYPE, RULE, task_key};
 use auto::export_sale::{AIRWAY_BILL, BILL_OF_LADING, EXIT_CERTIFICATE};
 use auto::export_sales;
-use auto::ExportSale;
 use renox::auth::permissions;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
@@ -75,9 +75,12 @@ fn users_of(request: &NotifyRequest) -> Vec<i64> {
 async fn zero_rated_invoice(t: &Garage) -> i64 {
     t.people.add(30, "Gulf Movers Trading");
     let books = invoicer(t.state());
-    let draft = InvoiceDraft::new(PartyId(30), Subject::new("auto.export", 140)).line(
-        DraftLine::new("Brake pads, export to Mombasa", 2_500_000, VatCategory::ZeroRated),
-    );
+    let draft =
+        InvoiceDraft::new(PartyId(30), Subject::new("auto.export", 140)).line(DraftLine::new(
+            "Brake pads, export to Mombasa",
+            2_500_000,
+            VatCategory::ZeroRated,
+        ));
     let id = books
         .draft(t.db(), draft)
         .await
@@ -105,7 +108,10 @@ async fn aut_14_the_accountant_is_told_at_60_days_and_the_sale_is_flagged_at_90(
 
     let early = supplied + renox::chrono::Duration::days(59);
     export_rule::run_daily(t.state(), early).await.unwrap();
-    assert!(t.messages.of_type(NOTICE_TYPE).is_empty(), "day 59 is early");
+    assert!(
+        t.messages.of_type(NOTICE_TYPE).is_empty(),
+        "day 59 is early"
+    );
 
     let sixty = supplied + renox::chrono::Duration::days(60);
     export_rule::run_daily(t.state(), sixty).await.unwrap();
@@ -128,7 +134,9 @@ async fn aut_14_the_accountant_is_told_at_60_days_and_the_sale_is_flagged_at_90(
     assert_eq!(t.messages.of_type(NOTICE_TYPE).len(), 1);
 
     let eighty_nine = supplied + renox::chrono::Duration::days(89);
-    export_rule::run_daily(t.state(), eighty_nine).await.unwrap();
+    export_rule::run_daily(t.state(), eighty_nine)
+        .await
+        .unwrap();
     assert!(t.tickets.with_key("auto.export_vat").is_empty());
     let ninety = supplied + renox::chrono::Duration::days(90);
     export_rule::run_daily(t.state(), ninety).await.unwrap();
@@ -136,9 +144,17 @@ async fn aut_14_the_accountant_is_told_at_60_days_and_the_sale_is_flagged_at_90(
     assert!(flagged.vat_flagged_at.is_some());
     let tasks = t.tickets.with_key(&task_key(sale.id));
     assert_eq!(tasks.len(), 1);
-    assert_eq!(tasks[0].ticket.subject, sale.invoice_subject(), "it links the invoice");
+    assert_eq!(
+        tasks[0].ticket.subject,
+        sale.invoice_subject(),
+        "it links the invoice"
+    );
     assert_eq!(tasks[0].assignee_user(), Some(adel_user.id));
-    assert!(tasks[0].ticket.title.contains("5% VAT is due"), "{}", tasks[0].ticket.title);
+    assert!(
+        tasks[0].ticket.title.contains("5% VAT is due"),
+        "{}",
+        tasks[0].ticket.title
+    );
     export_rule::run_daily(t.state(), ninety + renox::chrono::Duration::days(1))
         .await
         .unwrap();
@@ -188,12 +204,9 @@ async fn aut_14_any_one_piece_of_evidence_stops_the_rule() {
             .unwrap();
     }
     for days in [60, 90, 120] {
-        export_rule::run_daily(
-            t.state(),
-            today() + renox::chrono::Duration::days(days),
-        )
-        .await
-        .unwrap();
+        export_rule::run_daily(t.state(), today() + renox::chrono::Duration::days(days))
+            .await
+            .unwrap();
     }
     assert!(t.messages.of_type(NOTICE_TYPE).is_empty());
     assert!(t.tickets.tasks().is_empty());
@@ -234,7 +247,10 @@ async fn aut_14_evidence_after_day_90_keeps_the_flag_and_tells_the_accountant() 
     let last = notices.last().unwrap();
     assert_eq!(users_of(last), [adel_user.id]);
     let text = support::Messages::text(last, NotifyChannel::Email);
-    assert!(text.contains("BL-7788") || text.contains("Bill of lading"), "{text}");
+    assert!(
+        text.contains("BL-7788") || text.contains("Bill of lading"),
+        "{text}"
+    );
     assert_eq!(t.books.all().len(), 1, "nothing was reversed or issued");
     assert_eq!(kept.evidence(t.db()).await.unwrap().len(), 2);
 }
@@ -309,10 +325,11 @@ async fn aut_14_a_failed_run_alerts_the_owner_and_a_successful_rerun_closes_it()
 
     // The notifier works again; the admin runs the failed run again.
     t.messages.fail(false);
-    let failed = RuleRun::find_occurrence(t.db(), RULE, &schedule_subject(), &occurrence_key(RULE, on))
-        .await
-        .unwrap()
-        .expect("the run is kept");
+    let failed =
+        RuleRun::find_occurrence(t.db(), RULE, &schedule_subject(), &occurrence_key(RULE, on))
+            .await
+            .unwrap()
+            .expect("the run is kept");
     let rerun = t.auth(&ada).await;
     let _outcome = failed
         .transition(transitions::RERUN)
@@ -339,7 +356,11 @@ async fn aut_14_a_failed_run_alerts_the_owner_and_a_successful_rerun_closes_it()
         .find(|task| task.assignee_user() == Some(owner.id))
         .unwrap();
     assert!(!closed.is_open(), "the owner's task is completed");
-    assert_eq!(t.messages.of_type(NOTICE_TYPE).len(), 1, "the notice went out");
+    assert_eq!(
+        t.messages.of_type(NOTICE_TYPE).len(),
+        1,
+        "the notice went out"
+    );
 }
 
 /// A day with no run: from 09:00 the kernel's check raises the alert for that
@@ -356,7 +377,8 @@ async fn aut_14_a_day_with_no_run_is_alerted_from_09_00() {
         t.app.travel(Duration::from_secs(ahead.as_secs() + 1));
     };
     let key = occurrence_key(RULE, tomorrow);
-    let raised = |alerts: &[ComplianceAlert]| alerts.iter().filter(|a| a.occurrence_key == key).count();
+    let raised =
+        |alerts: &[ComplianceAlert]| alerts.iter().filter(|a| a.occurrence_key == key).count();
 
     go_to(at(8, 30));
     t.app
@@ -371,7 +393,11 @@ async fn aut_14_a_day_with_no_run_is_alerted_from_09_00() {
         .unwrap();
     let alerts = ComplianceAlert::open(t.db()).await.unwrap();
     assert_eq!(raised(&alerts), 1, "{alerts:?}");
-    assert!(alerts.iter().any(|a| a.kind == AlertKind::Missed && a.rule == RULE));
+    assert!(
+        alerts
+            .iter()
+            .any(|a| a.kind == AlertKind::Missed && a.rule == RULE)
+    );
 }
 
 /// The sale is registered by the accountant for an invoice that exists, once,
@@ -382,7 +408,9 @@ async fn aut_14_the_sale_and_the_evidence_are_checked() {
     let t = boot().await;
     let (_, adel) = accountant(&t).await;
     let invoice = zero_rated_invoice(&t).await;
-    let nobody = t.user("Nadia", &[auto::permissions::EXPORT_SALES_VIEW]).await;
+    let nobody = t
+        .user("Nadia", &[auto::permissions::EXPORT_SALES_VIEW])
+        .await;
     let nadia = t.auth(&nobody).await;
     assert!(matches!(
         export_sales::record(t.state(), &nadia, invoice, today()).await,

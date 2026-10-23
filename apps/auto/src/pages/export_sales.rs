@@ -126,7 +126,12 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         can_manage: user.has_permission(permissions::EXPORT_SALES_MANAGE),
         kind_options: EVIDENCE_KINDS
             .iter()
-            .map(|kind| [(*kind).to_owned(), text(&lang, &format!("export.kind.{kind}"))])
+            .map(|kind| {
+                [
+                    (*kind).to_owned(),
+                    text(&lang, &format!("export.kind.{kind}")),
+                ]
+            })
             .collect(),
         today: today.to_string(),
     }))
@@ -155,7 +160,11 @@ async fn create(
     let supply: NaiveDate = parse_optional_date(&form.supply_date)?
         .ok_or_else(|| invalid(&texts::english("auto.export.supply_hint", &[])))?;
     export_sales::record(&state, &user, invoice, supply).await?;
-    Ok((Toast::success(text(&lang, "export.registered")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "export.registered")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that attaches exit evidence.
@@ -178,5 +187,9 @@ async fn evidence(
     Form(form): Form<EvidenceForm>,
 ) -> Result<Response> {
     export_sales::attach_evidence(&state, &user, id, &form.kind, &form.reference).await?;
-    Ok((Toast::success(text(&lang, "export.attached")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "export.attached")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }

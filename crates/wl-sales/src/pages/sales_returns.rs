@@ -238,7 +238,11 @@ async fn request(
                 Some((quantity, lot)) => (quantity, Some(lot.trim().parse::<i64>().ok()?)),
                 None => (rest, None),
             };
-            Some((line.trim().parse::<i64>().ok()?, parse_milli(quantity)?, lot))
+            Some((
+                line.trim().parse::<i64>().ok()?,
+                parse_milli(quantity)?,
+                lot,
+            ))
         });
         let Some((line, quantity, lot)) = parsed else {
             return Err(invalid("lines", text(&lang, "returns.errors.lines"), &form));

@@ -17,9 +17,7 @@ use renox::prelude::*;
 use support::fleetfx::{CONTACT, FLEET, active_contract, draft_contract, fatima};
 use support::{Garage, Messages, boot};
 use wl_kernel::inventory::{TraceMark, TraceParty, TracePartyResolver};
-use wl_kernel::notify::{
-    MessageGaveUp, MessageId, NotifyChannel, NotifyRecipient, NotifyRequest,
-};
+use wl_kernel::notify::{MessageGaveUp, MessageId, NotifyChannel, NotifyRecipient, NotifyRequest};
 use wl_kernel::sales::SaleCustomer;
 use wl_kernel::{PartyId, Subject};
 
@@ -30,9 +28,7 @@ fn sold_on() -> NaiveDate {
 
 /// The Owner / GM: opens recalls and tells the customers.
 async fn owner(t: &Garage) -> AuthUser {
-    let user = t
-        .user("Omar", &[auto::permissions::RECALLS_MANAGE])
-        .await;
+    let user = t.user("Omar", &[auto::permissions::RECALLS_MANAGE]).await;
     t.auth(&user).await
 }
 
@@ -83,8 +79,7 @@ async fn world(t: &Garage) -> World {
     let patrol = t.card_in(&patrol, JobCardStatus::InProgress).await;
 
     let order = Subject::new("sales.sales_order", 15);
-    t.customers
-        .set(&order, SaleCustomer::Party(PartyId(30)));
+    t.customers.set(&order, SaleCustomer::Party(PartyId(30)));
     let counter: Vec<Subject> = (21..=24)
         .map(|n| Subject::new("sales.counter_sale", n))
         .collect();
@@ -124,7 +119,7 @@ async fn traced(t: &Garage, subjects: &[Subject]) {
 /// line "4 sales, Branch 1, 2026-09-03".
 #[renox::test]
 async fn aut_16_the_trace_has_a_line_for_each_owner_fleet_and_customer_and_a_count_of_walk_in_sales()
-{
+ {
     let t = boot().await;
     let w = world(&t).await;
     wl_kernel::documents::register_subject_label("inventory.location", |_db, id| {
@@ -136,7 +131,11 @@ async fn aut_16_the_trace_has_a_line_for_each_owner_fleet_and_customer_and_a_cou
 
     let rows = recalls::trace(t.state(), 9).await.unwrap();
 
-    let parties: Vec<Option<i64>> = rows.iter().filter(|r| !r.walk_in).map(|r| r.party).collect();
+    let parties: Vec<Option<i64>> = rows
+        .iter()
+        .filter(|r| !r.walk_in)
+        .map(|r| r.party)
+        .collect();
     assert_eq!(parties, vec![Some(7), Some(20), Some(30)]);
     assert!(rows.iter().all(|row| row.mark == TraceMark::Possible));
     assert!(rows.iter().all(|row| row.notice == "pending"));
@@ -193,10 +192,7 @@ async fn aut_16_a_vehicle_of_an_ended_fleet_contract_names_its_owner() {
         TraceParty::Party(PartyId(30))
     );
     assert_eq!(
-        TraceParties
-            .party(t.state(), &w.counter[0])
-            .await
-            .unwrap(),
+        TraceParties.party(t.state(), &w.counter[0]).await.unwrap(),
         TraceParty::WalkIn
     );
     assert_eq!(
@@ -252,7 +248,10 @@ async fn aut_16_a_notice_names_only_the_vehicle_or_purchase_of_its_own_party() {
             .unwrap_or_else(|| panic!("a notice for party {party}"))
     };
     let owner_text = by_party(7);
-    assert!(owner_text.contains("your vehicle Dubai A 12345"), "{owner_text}");
+    assert!(
+        owner_text.contains("your vehicle Dubai A 12345"),
+        "{owner_text}"
+    );
     assert!(!owner_text.contains("B 555"), "{owner_text}");
     let fleet_text = by_party(CONTACT);
     assert!(
@@ -273,7 +272,10 @@ async fn aut_16_a_notice_names_only_the_vehicle_or_purchase_of_its_own_party() {
     assert_eq!(now.values().filter(|n| *n == "pending").count(), 1);
     // Nobody is left to tell.
     let again = recalls::send(t.state(), &omar, 9).await.unwrap_err();
-    assert!(matches!(again, Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _)));
+    assert!(matches!(
+        again,
+        Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _)
+    ));
 }
 
 /// Only a holder of `recalls.manage` tells the customers.
@@ -334,9 +336,7 @@ async fn aut_16_the_page_lists_the_lines_and_the_walk_in_count() {
     let mut subjects = vec![w.hilux.subject(), w.van.subject(), w.order.clone()];
     subjects.extend(w.counter.clone());
     traced(&t, &subjects).await;
-    let omar = t
-        .user("Omar", &[auto::permissions::RECALLS_MANAGE])
-        .await;
+    let omar = t.user("Omar", &[auto::permissions::RECALLS_MANAGE]).await;
     t.app.acting_as(&omar);
 
     let page = t.app.get("/auto/recalls/9").await;

@@ -256,9 +256,7 @@ pub async fn install(state: &AppState) -> Result<Installed> {
     if on("ticketing") {
         installed.categories = install_categories(&state.db).await?;
     }
-    installed.settings = super::auto_settings::install_for(state, &on)
-        .await?
-        .total();
+    installed.settings = super::auto_settings::install_for(state, &on).await?.total();
     Ok(installed)
 }
 

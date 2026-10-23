@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::backorders::{
-    ArrivedLine, BackOrderFuture, Reserved, ReserveStock, StockArrivalReversed, StockArrived,
+    ArrivedLine, BackOrderFuture, ReserveStock, Reserved, StockArrivalReversed, StockArrived,
     StockReservations, back_orders, provide_stock_reservations,
 };
 use wl_sales::permissions as perm;
@@ -35,7 +35,12 @@ struct Stock {
 
 impl Stock {
     fn add(&self, code: &str, milli: i64) {
-        *self.free.lock().unwrap().entry(code.to_owned()).or_insert(0) += milli;
+        *self
+            .free
+            .lock()
+            .unwrap()
+            .entry(code.to_owned())
+            .or_insert(0) += milli;
     }
 
     fn free_of(&self, code: &str) -> i64 {
@@ -141,9 +146,13 @@ async fn confirmed(t: &Booted, channel: &str, lines: &[(&str, i64)]) -> SalesOrd
     .await
     .unwrap();
     for (code, units) in lines {
-        sales_orders::add_line(t.state(), order.id, NewLine::new(code, 5_000).quantity(*units))
-            .await
-            .unwrap();
+        sales_orders::add_line(
+            t.state(),
+            order.id,
+            NewLine::new(code, 5_000).quantity(*units),
+        )
+        .await
+        .unwrap();
     }
     t.app
         .post(&format!("/sales-orders/{}/submit", order.id), &[("x", "")])
@@ -283,7 +292,11 @@ async fn sal_17_cancelling_a_back_order_removes_it_from_the_demand() {
     t.app
         .post(
             &format!("/sales-orders/{}/cancel-line", two.id),
-            &[("line_no", "1"), ("quantity", "3"), ("reason", "not needed")],
+            &[
+                ("line_no", "1"),
+                ("quantity", "3"),
+                ("reason", "not needed"),
+            ],
         )
         .await
         .assert_status(303);
@@ -325,7 +338,13 @@ async fn sal_17_with_the_setting_off_a_line_without_stock_is_not_back_ordered() 
     let order = confirmed(&t, "phone", &[("P", 5)]).await;
     assert_eq!(split(&t, &order, 1).await, (0, 0));
     assert_eq!(stock.free_of("P"), 2_000);
-    assert!(back_orders(t.state()).open(t.state()).await.unwrap().is_empty());
+    assert!(
+        back_orders(t.state())
+            .open(t.state())
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// Must not hold the rest of the order back: the other line is fulfilled

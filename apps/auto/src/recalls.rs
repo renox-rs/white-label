@@ -114,13 +114,13 @@ impl TracePartyResolver for TraceParties {
                         None => Ok(TraceParty::Party(PartyId(card.customer_party_id))),
                     }
                 }
-                COUNTER_SALE_SUBJECT_TYPE | SALES_ORDER_SUBJECT_TYPE => {
-                    Ok(match sale_customers(state).customer(state, subject).await? {
+                COUNTER_SALE_SUBJECT_TYPE | SALES_ORDER_SUBJECT_TYPE => Ok(
+                    match sale_customers(state).customer(state, subject).await? {
                         SaleCustomer::Party(party) => TraceParty::Party(party),
                         SaleCustomer::WalkIn => TraceParty::WalkIn,
                         SaleCustomer::Unknown => TraceParty::Unknown,
-                    })
-                }
+                    },
+                ),
                 _ => Ok(TraceParty::Unknown),
             }
         })
@@ -241,7 +241,9 @@ pub async fn trace(state: &AppState, recall: i64) -> Result<Vec<TraceRow>> {
             notice: holder.notice.clone(),
         });
     }
-    rows.sort_by(|a, b| (a.on, &a.record, a.line.subject_id).cmp(&(b.on, &b.record, b.line.subject_id)));
+    rows.sort_by(|a, b| {
+        (a.on, &a.record, a.line.subject_id).cmp(&(b.on, &b.record, b.line.subject_id))
+    });
     Ok(rows)
 }
 
@@ -328,7 +330,9 @@ pub async fn send(state: &AppState, by: &AuthUser, recall_id: i64) -> Result<usi
                 }))
         };
         notify::notifier(state).notify(state, request).await?;
-        tracer.set_notice(state, &row.line, true, Some(by.id)).await?;
+        tracer
+            .set_notice(state, &row.line, true, Some(by.id))
+            .await?;
         renox::audit::record(
             &state.db,
             renox::audit::Entry::new(SENT)

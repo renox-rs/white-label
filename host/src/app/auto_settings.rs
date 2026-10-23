@@ -172,7 +172,8 @@ pub async fn install_for(
         installed.sops = install_sops(&state.db).await?;
     }
     if on("invoicing") {
-        installed.budget_categories = super::auto_money::install_budget_categories(&state.db).await?;
+        installed.budget_categories =
+            super::auto_money::install_budget_categories(&state.db).await?;
     }
     if on("notify") {
         installed.send_windows = install_send_windows(&state.db).await?;

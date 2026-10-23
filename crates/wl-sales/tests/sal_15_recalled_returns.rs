@@ -36,9 +36,7 @@ impl LotTrace for Recalls {
         Box::pin(async move {
             let first = NaiveDate::from_ymd_opt(2026, 8, 5).unwrap();
             Ok(match (&goods.lot, goods.sold_on) {
-                (Some(lot), _) if lot.subject_id == 7 => {
-                    Some(Subject::new("inventory.recall", 1))
-                }
+                (Some(lot), _) if lot.subject_id == 7 => Some(Subject::new("inventory.recall", 1)),
                 (None, Some(day)) if day >= first => Some(Subject::new("inventory.recall", 2)),
                 _ => None,
             })
@@ -121,7 +119,10 @@ async fn sold_on(t: &Booted, on: DateTime) -> (CounterSale, SaleLine) {
         .await
         .unwrap();
     let sale = CounterSale::find_or_404(t.db(), sale.id).await.unwrap();
-    let line = SaleLine::of(t.db(), &sale.subject()).await.unwrap().remove(0);
+    let line = SaleLine::of(t.db(), &sale.subject())
+        .await
+        .unwrap()
+        .remove(0);
     (sale, line)
 }
 
@@ -231,7 +232,10 @@ async fn sal_15_an_item_not_tracked_by_lot_is_recalled_by_its_sale_date() {
     let (older, older_line) = sold_on(&t, before).await;
     let normal = asked(&t, &older, &format!("{}:1", older_line.id)).await;
     t.app
-        .post(&format!("/sales-returns/{}/receive", normal.id), &[("x", "")])
+        .post(
+            &format!("/sales-returns/{}/receive", normal.id),
+            &[("x", "")],
+        )
         .await
         .assert_status(422);
     let normal = SalesReturn::find_or_404(t.db(), normal.id).await.unwrap();
@@ -262,7 +266,10 @@ async fn sal_15_a_late_ordinary_return_still_needs_the_approval() {
         asked(&t, &sale, &format!("{}:1", line.id)).await
     };
     t.app
-        .post(&format!("/sales-returns/{}/receive", ordinary.id), &[("x", "")])
+        .post(
+            &format!("/sales-returns/{}/receive", ordinary.id),
+            &[("x", "")],
+        )
         .await
         .assert_status(422);
     t.app

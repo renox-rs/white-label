@@ -897,7 +897,10 @@ async fn aut_base_terminate_is_declared_with_its_dates_and_the_owner_approval() 
         .into_iter()
         .map(str::to_owned)
         .collect();
-    assert_eq!(guards, ["termination_dates", "not_scheduled", "owner_approval"]);
+    assert_eq!(
+        guards,
+        ["termination_dates", "not_scheduled", "owner_approval"]
+    );
 
     let backwards = fleet_contracts::terminate(
         t.state(),
@@ -914,17 +917,10 @@ async fn aut_base_terminate_is_declared_with_its_dates_and_the_owner_approval() 
         backwards.to_string().contains("before the notice date"),
         "{backwards}"
     );
-    let no_reason = fleet_contracts::terminate(
-        t.state(),
-        &fatima,
-        contract.id,
-        " ",
-        day(1),
-        day(20),
-        false,
-    )
-    .await
-    .unwrap_err();
+    let no_reason =
+        fleet_contracts::terminate(t.state(), &fatima, contract.id, " ", day(1), day(20), false)
+            .await
+            .unwrap_err();
     assert!(
         no_reason.to_string().to_lowercase().contains("reason"),
         "{no_reason}"
@@ -970,6 +966,9 @@ async fn aut_base_terminate_is_declared_with_its_dates_and_the_owner_approval() 
     .unwrap();
     assert!(asked.approval_request.is_some(), "the owner decides");
     assert_eq!(asked.contract.status, FleetStatus::Active);
-    assert!(!asked.contract.termination_scheduled, "nothing before the approval");
+    assert!(
+        !asked.contract.termination_scheduled,
+        "nothing before the approval"
+    );
     assert!(asked.contract.termination_reason.is_none());
 }

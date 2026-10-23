@@ -150,7 +150,8 @@ pub const LOYALTY_NAME: &str = "Rewards";
 pub const JOB_CARDS_SCREEN: &str = "auto.job_cards";
 
 /// What the advisors do while the SMS gateway is down.
-pub const SMS_FALLBACK_EN: &str = "Call the customer yourself; the messages are queued and sent when the SMS gateway recovers.";
+pub const SMS_FALLBACK_EN: &str =
+    "Call the customer yourself; the messages are queued and sent when the SMS gateway recovers.";
 /// The same, in Arabic.
 pub const SMS_FALLBACK_AR: &str =
     "اتصل بالعميل مباشرة؛ تبقى الرسائل في الانتظار وتُرسل عند عودة بوابة الرسائل.";
@@ -329,11 +330,7 @@ pub const SOPS: [SopSpec; 6] = [
         title: "Vehicle check-in and inspection",
         category: "check_in",
         owner_role: WORKSHOP_MANAGER_ROLE,
-        readers: &[
-            SERVICE_ADVISOR_ROLE,
-            TECHNICIAN_ROLE,
-            WORKSHOP_MANAGER_ROLE,
-        ],
+        readers: &[SERVICE_ADVISOR_ROLE, TECHNICIAN_ROLE, WORKSHOP_MANAGER_ROLE],
     },
     SopSpec {
         code: "SOP-AUT-QC",
@@ -420,6 +417,11 @@ mod tests {
             );
             assert!(sop.readers.contains(&sop.owner_role));
         }
-        assert_eq!(SOPS.iter().filter(|s| s.owner_role == "workshop_manager").count(), 3);
+        assert_eq!(
+            SOPS.iter()
+                .filter(|s| s.owner_role == "workshop_manager")
+                .count(),
+            3
+        );
     }
 }

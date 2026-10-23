@@ -27,7 +27,11 @@ use wl_parties::review_tasks::{ReviewTask, ReviewTaskItem};
 
 /// The open review task of `party` for the agreement kind `kind`, with its
 /// items.
-async fn task_of(w: &World, party: PartyId, kind: &str) -> Option<(ReviewTask, Vec<ReviewTaskItem>)> {
+async fn task_of(
+    w: &World,
+    party: PartyId,
+    kind: &str,
+) -> Option<(ReviewTask, Vec<ReviewTaskItem>)> {
     for task in ReviewTask::open_for_party(w.db(), party.0).await.unwrap() {
         if task.agreement_kind == kind {
             let items = task.items(w.db()).await.unwrap();
@@ -65,7 +69,11 @@ async fn aut_17_real_a_blocked_fleet_gives_the_owner_one_review_task() {
         .expect("a review task for the fleet contracts");
     assert_eq!(task.decider_role.as_deref(), Some("owner"));
     assert_eq!(items.len(), 1, "one item per contract");
-    assert!(items[0].label.contains(&shop.contract.number()), "{}", items[0].label);
+    assert!(
+        items[0].label.contains(&shop.contract.number()),
+        "{}",
+        items[0].label
+    );
     assert_eq!(
         FleetContract::find_or_404(w.db(), shop.contract.id)
             .await
@@ -87,7 +95,9 @@ async fn aut_17_real_a_blocked_fleet_gives_the_owner_one_review_task() {
         .await
         .assert_status(403);
     decide(&w, &shop.omar, &task, &items[0], "pause").await;
-    let suspended = FleetContract::find_or_404(w.db(), shop.contract.id).await.unwrap();
+    let suspended = FleetContract::find_or_404(w.db(), shop.contract.id)
+        .await
+        .unwrap();
     assert_eq!(suspended.status, FleetStatus::Suspended);
     assert_eq!(suspended.suspended_reason.as_deref(), Some("On hold"));
 }
@@ -104,7 +114,8 @@ async fn aut_17_real_a_blocked_customer_gets_a_review_and_the_unstarted_lines_ar
     let vehicle = vehicles::create(
         w.state(),
         &s.sami,
-        NewVehicle::new(Emirate::Dubai, "C", "777", "Nissan", "Patrol", customer.0).odometer(80_000),
+        NewVehicle::new(Emirate::Dubai, "C", "777", "Nissan", "Patrol", customer.0)
+            .odometer(80_000),
     )
     .await
     .unwrap();
@@ -153,16 +164,10 @@ async fn aut_17_real_a_blocked_customer_gets_a_review_and_the_unstarted_lines_ar
         .unwrap();
 
     block(&w.app, customer).await;
-    let refused = job_cards::approve_recorded(
-        w.state(),
-        &s.sami,
-        card.id,
-        "Noor Khalid",
-        "recorded",
-        None,
-    )
-    .await
-    .unwrap_err();
+    let refused =
+        job_cards::approve_recorded(w.state(), &s.sami, card.id, "Noor Khalid", "recorded", None)
+            .await
+            .unwrap_err();
     assert!(refused.to_string().contains("on hold"), "{refused}");
     assert!(!refused.to_string().to_lowercase().contains("non_payment"));
 
@@ -186,7 +191,10 @@ async fn aut_17_real_a_blocked_customer_gets_a_review_and_the_unstarted_lines_ar
         .htmx()
         .post(
             &format!("/parties/{}/block", customer.0),
-            &[("reason_code", "non_payment"), ("note", "3 bounced cheques")],
+            &[
+                ("reason_code", "non_payment"),
+                ("note", "3 bounced cheques"),
+            ],
         )
         .await
         .assert_ok();
@@ -248,7 +256,10 @@ async fn aut_17_real_a_blocked_customer_gets_a_review_and_the_unstarted_lines_ar
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(invoice.gross_total, 21_000, "brake pads only: AED 200 and VAT");
+    assert_eq!(
+        invoice.gross_total, 21_000,
+        "brake pads only: AED 200 and VAT"
+    );
 }
 
 /// Given insurer I blocked, there is no review task, claims of I keep their

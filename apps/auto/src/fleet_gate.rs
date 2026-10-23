@@ -58,7 +58,10 @@ impl BookingGate for FleetBookingGate {
                 return Ok(CheckInAnswer::Allowed);
             };
             let number = contract.number();
-            let text = english("auto.fleet.problem.suspended_booking", &[("contract", &number)]);
+            let text = english(
+                "auto.fleet.problem.suspended_booking",
+                &[("contract", &number)],
+            );
             Ok(CheckInAnswer::Refused(text))
         })
     }

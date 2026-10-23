@@ -226,7 +226,10 @@ async fn stk_17_possible_lines_default_to_the_softer_template() {
 
     let now = t.recall_lines(&recall).await;
     assert!(now.iter().all(|l| l.notice_status == NoticeStatus::Sent));
-    assert!(now.iter().all(|l| l.template.as_deref() == Some("possible")));
+    assert!(
+        now.iter()
+            .all(|l| l.template.as_deref() == Some("possible"))
+    );
     let sent: Vec<_> = t
         .notices
         .all()
@@ -399,5 +402,8 @@ async fn stk_17_the_hold_covers_every_location_and_goods_put_back_are_not_listed
         .into_iter()
         .map(|line| line.0)
         .collect();
-    assert!(!subjects.contains(&"auto.job_card:5".to_owned()), "{subjects:?}");
+    assert!(
+        !subjects.contains(&"auto.job_card:5".to_owned()),
+        "{subjects:?}"
+    );
 }

@@ -405,7 +405,10 @@ pub async fn run(state: &AppState) -> Result<usize> {
     let mut items = Item::query().order_by(Item::ID).get(&state.db).await?;
     // The open back-orders of sales orders, per item code and location.
     let mut back_ordered: BTreeMap<String, BTreeMap<i64, i64>> = BTreeMap::new();
-    for open in wl_kernel::backorders::back_orders(state).open(state).await? {
+    for open in wl_kernel::backorders::back_orders(state)
+        .open(state)
+        .await?
+    {
         if let Some(location) = open.location {
             *back_ordered
                 .entry(open.item_code)

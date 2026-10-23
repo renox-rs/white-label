@@ -30,8 +30,8 @@ use renox::serde_json::json;
 use renox::state_machine::Transitioned;
 use wl_kernel::PartyId;
 use wl_kernel::notify::{
-    self, Category, GROUP_BOOKINGS, GROUP_INVOICES, GROUP_MARKETING, GiveUpReaction,
-    MessageGaveUp, NotificationTypeDef, NotifyChannel, NotifyRequest, notifier,
+    self, Category, GROUP_BOOKINGS, GROUP_INVOICES, GROUP_MARKETING, GiveUpReaction, MessageGaveUp,
+    NotificationTypeDef, NotifyChannel, NotifyRequest, notifier,
 };
 
 use crate::job_card::{JOB_CARD_SUBJECT_TYPE, JobCard};

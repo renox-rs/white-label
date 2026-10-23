@@ -104,9 +104,14 @@ async fn aut_12_a_terminated_contract_ends_on_the_run_after_the_effective_date()
     // One booking after the effective day, one on it.
     let after = service::book(
         t.state(),
-        NewBooking::new(PartyId(FLEET), service_type.id, &[bay.id], at(day(5), 10, 0))
-            .for_subject(van.subject())
-            .at(workshop()),
+        NewBooking::new(
+            PartyId(FLEET),
+            service_type.id,
+            &[bay.id],
+            at(day(5), 10, 0),
+        )
+        .for_subject(van.subject())
+        .at(workshop()),
         Actor::staff(sami.id),
         renox::db::now(),
     )
@@ -114,9 +119,14 @@ async fn aut_12_a_terminated_contract_ends_on_the_run_after_the_effective_date()
     .unwrap();
     let on_the_day = service::book(
         t.state(),
-        NewBooking::new(PartyId(FLEET), service_type.id, &[bay.id], at(day(3), 10, 0))
-            .for_subject(van2.subject())
-            .at(workshop()),
+        NewBooking::new(
+            PartyId(FLEET),
+            service_type.id,
+            &[bay.id],
+            at(day(3), 10, 0),
+        )
+        .for_subject(van2.subject())
+        .at(workshop()),
         Actor::staff(sami.id),
         renox::db::now(),
     )
@@ -128,7 +138,10 @@ async fn aut_12_a_terminated_contract_ends_on_the_run_after_the_effective_date()
     let asked = ask(&t, &contract, day(0), day(3), false).await;
     let request = asked.approval_request.expect("the owner decides");
     assert_eq!(asked.contract.status, FleetStatus::Active);
-    assert!(!asked.contract.termination_scheduled, "nothing before the approval");
+    assert!(
+        !asked.contract.termination_scheduled,
+        "nothing before the approval"
+    );
     assert_eq!(
         t.books.about(&contract.subject()).len(),
         1,
@@ -167,7 +180,10 @@ async fn aut_12_a_terminated_contract_ends_on_the_run_after_the_effective_date()
     // The booking after the effective day is cancelled; the one on it stays.
     let cancelled = Booking::find_or_404(t.db(), after.id).await.unwrap();
     assert_eq!(cancelled.status, BookingStatus::Cancelled);
-    assert_eq!(cancelled.cancel_code.as_deref(), Some("fleet_contract_ended"));
+    assert_eq!(
+        cancelled.cancel_code.as_deref(),
+        Some("fleet_contract_ended")
+    );
     let stays = Booking::find_or_404(t.db(), on_the_day.id).await.unwrap();
     assert_eq!(stays.status, BookingStatus::Booked);
     assert!(
@@ -236,7 +252,12 @@ async fn aut_12_an_open_job_card_finishes_and_is_billed_at_contract_rates() {
     let t = boot().await;
     let (contract, van, _plan) = active_contract(&t, 50_100).await;
     let (card, line) = job_in_progress(&t, &van, 2_000, 12_000).await;
-    assert!(FleetJob::of_job_card(t.db(), card.id).await.unwrap().is_some());
+    assert!(
+        FleetJob::of_job_card(t.db(), card.id)
+            .await
+            .unwrap()
+            .is_some()
+    );
 
     let asked = ask(&t, &contract, day(0), day(1), true).await;
     approvals::approve(
@@ -267,7 +288,10 @@ async fn aut_12_an_open_job_card_finishes_and_is_billed_at_contract_rates() {
     assert_eq!(invoices[0].net(), 24_000, "2 h at AED 120");
     assert_eq!(invoices[0].party().0, FLEET);
     assert_eq!(delivered.invoice_id, Some(invoices[0].id));
-    let job = FleetJob::of_job_card(t.db(), card.id).await.unwrap().unwrap();
+    let job = FleetJob::of_job_card(t.db(), card.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(job.invoice_id, Some(invoices[0].id));
     // The final invoice listed no job; the fee was waived.
     let periods = FleetInvoice::of_contract(t.db(), contract.id)
@@ -435,7 +459,10 @@ async fn aut_12_a_scheduled_termination_is_shown_and_asks_for_no_booking_after_i
     let none = fleet_services::request_bookings(t.state(), &scheduled, today())
         .await
         .unwrap();
-    assert!(none.booked.is_empty(), "nothing is booked after the effective day");
+    assert!(
+        none.booked.is_empty(),
+        "nothing is booked after the effective day"
+    );
     // Due on the effective day itself: it is booked.
     FleetService::query()
         .where_(FleetService::ID.eq(plan.id))
@@ -570,10 +597,11 @@ async fn aut_12_a_rejected_request_changes_nothing_and_a_waived_fee_is_not_invoi
     assert_eq!(ended.status, FleetStatus::Ended);
     assert_eq!(ended.termination_fee_invoice_id, None);
     assert!(
-        t.books
-            .about(&contract.subject())
+        t.books.about(&contract.subject()).iter().all(|i| !i
+            .draft
+            .lines
             .iter()
-            .all(|i| !i.draft.lines.iter().any(|l| l.description.contains("fee"))),
+            .any(|l| l.description.contains("fee"))),
         "no fee invoice"
     );
 }

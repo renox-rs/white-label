@@ -18,11 +18,13 @@ use auto::fleet_end::NOTICE_TYPE;
 use auto::fleet_invoice::{FleetInvoice, KIND_FINAL, KIND_MONTHLY};
 use auto::{FleetContract, FleetService, FleetStatus, JobCard, JobCardStatus};
 use renox::prelude::*;
-use support::autofx::{FleetShop, World, boot, fleet_deliver, fleet_job, fleet_shop, sent_of, workshop};
+use support::autofx::{
+    FleetShop, World, boot, fleet_deliver, fleet_job, fleet_shop, sent_of, workshop,
+};
+use wl_kernel::PartyId;
 use wl_kernel::approvals;
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{InvoiceId, InvoiceStatus, invoicer};
-use wl_kernel::PartyId;
 use wl_scheduling::service::{self, Actor, NewBooking};
 use wl_scheduling::{Booking, BookingStatus, Refusal};
 
@@ -238,7 +240,10 @@ async fn aut_12_real_a_terminated_contract_cancels_bookings_and_invoices_the_per
         .await
         .unwrap();
     let last = periods.iter().find(|p| p.kind == KIND_FINAL).unwrap();
-    assert_eq!((last.period_start_date, last.period_end_date), (day(0), day(3)));
+    assert_eq!(
+        (last.period_start_date, last.period_end_date),
+        (day(0), day(3))
+    );
     assert_eq!((last.jobs, last.net_total), (1, 12_000));
     assert_eq!(
         auto::FleetJob::of_job_card(w.db(), after_card.id)
@@ -251,7 +256,11 @@ async fn aut_12_real_a_terminated_contract_cancels_bookings_and_invoices_the_per
     let fee = invoicer(w.state())
         .find(
             w.db(),
-            InvoiceId(ended.termination_fee_invoice_id.expect("the fee is invoiced")),
+            InvoiceId(
+                ended
+                    .termination_fee_invoice_id
+                    .expect("the fee is invoiced"),
+            ),
         )
         .await
         .unwrap()

@@ -391,11 +391,9 @@ pub async fn ensure_handover(
 
 /// Registers the listener of the returned cheques.
 pub(crate) fn register(app: &mut Registry) {
-    app.listen(
-        |event: Transitioned<Cheque>, state: AppState| async move {
-            after_returned(&state, &event).await
-        },
-    );
+    app.listen(|event: Transitioned<Cheque>, state: AppState| async move {
+        after_returned(&state, &event).await
+    });
 }
 
 #[cfg(test)]

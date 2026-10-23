@@ -39,13 +39,22 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("auto.export.kind_placeholder", "Pick the kind"),
     ("auto.export.reference", "Document number or file name"),
     ("auto.export.attached", "Exit evidence attached."),
-    ("auto.export.kind.exit_certificate", "Customs exit certificate"),
+    (
+        "auto.export.kind.exit_certificate",
+        "Customs exit certificate",
+    ),
     ("auto.export.kind.bill_of_lading", "Bill of lading"),
     ("auto.export.kind.airway_bill", "Airway bill"),
     ("auto.export.status.waiting", "Waiting for exit evidence"),
-    ("auto.export.status.missing", "Exit evidence missing, accountant told"),
+    (
+        "auto.export.status.missing",
+        "Exit evidence missing, accountant told",
+    ),
     ("auto.export.status.vat_due", "5% VAT due"),
-    ("auto.export.status.vat_due_late", "5% VAT due, evidence came late"),
+    (
+        "auto.export.status.vat_due_late",
+        "5% VAT due, evidence came late",
+    ),
     ("auto.export.status.attached", "Exit evidence attached"),
     (
         "auto.export.notice_title",

@@ -33,6 +33,7 @@ use renox::db::now;
 use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::Transitioned;
+use wl_kernel::PartyId;
 use wl_kernel::approvals::{ApprovalDecided, ApprovalEnd};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{DraftLine, InvoiceDraft, VatCategory, invoicer};
@@ -40,7 +41,6 @@ use wl_kernel::notify::{
     self, Category, GROUP_BOOKINGS, NotificationTypeDef, NotifyChannel, NotifyRequest, notifier,
 };
 use wl_kernel::role_tasks::{self, RoleTask};
-use wl_kernel::PartyId;
 
 use crate::fleet_billing::{self, last_day};
 use crate::fleet_contract::{
@@ -299,7 +299,10 @@ async fn tell_contact(
         .where_(FleetContract::ID.eq(contract.id))
         .update(
             &state.db,
-            &[("contact_notified_at", &Some(now())), ("updated_at", &now())],
+            &[
+                ("contact_notified_at", &Some(now())),
+                ("updated_at", &now()),
+            ],
         )
         .await?;
     Ok(())
@@ -393,9 +396,7 @@ pub(crate) fn register(app: &mut Registry) {
                 }
                 SCHEDULE_TERMINATION_APPROVED
                 | SCHEDULE_TERMINATION_SUSPENDED_APPROVED
-                | SCHEDULE_TERMINATION_RENEWAL_APPROVED => {
-                    after_scheduled(&state, event.key).await
-                }
+                | SCHEDULE_TERMINATION_RENEWAL_APPROVED => after_scheduled(&state, event.key).await,
                 _ => Ok(()),
             }
         },

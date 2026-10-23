@@ -22,7 +22,7 @@ use support::fleetfx::{
     CONTACT, FLEET, active_contract, bay_and_service, fatima, finish_and_deliver, job_in_progress,
     workshop,
 };
-use support::{boot, at, day};
+use support::{at, boot, day};
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
 use wl_kernel::notify::NotifyChannel;
@@ -38,7 +38,7 @@ async fn contract_now(t: &support::Garage, id: i64) -> FleetContract {
 /// continues to `delivered`; once the contract is resumed the booking is made.
 #[renox::test]
 async fn aut_13_a_suspended_contract_refuses_a_new_booking_and_its_job_card_continues_to_delivered()
- {
+{
     let t = boot().await;
     let (bay, service_type) = bay_and_service(&t).await;
     let (contract, van, _plan) = active_contract(&t, 59_800).await;
@@ -52,9 +52,14 @@ async fn aut_13_a_suspended_contract_refuses_a_new_booking_and_its_job_card_cont
     assert_eq!(suspended.status, FleetStatus::Suspended);
 
     let new_booking = || {
-        NewBooking::new(PartyId(FLEET), service_type.id, &[bay.id], at(day(3), 10, 0))
-            .for_subject(van.subject())
-            .at(workshop())
+        NewBooking::new(
+            PartyId(FLEET),
+            service_type.id,
+            &[bay.id],
+            at(day(3), 10, 0),
+        )
+        .for_subject(van.subject())
+        .at(workshop())
     };
     let refusal = service::book(
         t.state(),
@@ -221,7 +226,10 @@ async fn aut_13_a_contract_ends_on_the_first_run_after_its_end_date() {
     // The future booking is cancelled by the system and the plan stops.
     let cancelled = Booking::find_or_404(t.db(), booking.0).await.unwrap();
     assert_eq!(cancelled.status, BookingStatus::Cancelled);
-    assert_eq!(cancelled.cancel_code.as_deref(), Some("fleet_contract_ended"));
+    assert_eq!(
+        cancelled.cancel_code.as_deref(),
+        Some("fleet_contract_ended")
+    );
     assert!(
         !FleetService::find_or_404(t.db(), plan.id)
             .await
@@ -337,11 +345,7 @@ async fn aut_13_the_page_lists_the_kept_bookings_for_the_advisor() {
         .post(&format!("/auto/fleet/plans/{}/confirm", plan.id), &[])
         .await
         .assert_ok();
-    t.app
-        .get(&path)
-        .await
-        .assert_ok()
-        .assert_see("Confirmed");
+    t.app.get(&path).await.assert_ok().assert_see("Confirmed");
     assert!(
         FleetService::find_or_404(t.db(), plan.id)
             .await

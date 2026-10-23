@@ -72,10 +72,11 @@ async fn aut_18_the_police_report_blocks_with_no_override_and_the_licences_only_
     assert_eq!(report.override_mode, OverrideMode::Never);
     assert!(report.legal_block);
 
-    let refused = kinds::set_override_mode(app.db(), POLICE_REPORT_KIND, OverrideMode::WithApproval)
-        .await
-        .unwrap()
-        .expect_err("the override of a legal block is locked");
+    let refused =
+        kinds::set_override_mode(app.db(), POLICE_REPORT_KIND, OverrideMode::WithApproval)
+            .await
+            .unwrap()
+            .expect_err("the override of a legal block is locked");
     assert_eq!(refused.reason, RefusalReason::LegalBlock);
     let again = DocumentKind::by_key(app.db(), POLICE_REPORT_KIND)
         .await
@@ -243,7 +244,10 @@ async fn aut_18_the_notification_types_have_their_groups_and_reactions() {
     }
     let statement = notification_type("auto.insurer_statement").expect("statement");
     assert_eq!(statement.group, GROUP_INVOICES);
-    assert_eq!(statement.staff_role.as_deref(), Some("insurance_coordinator"));
+    assert_eq!(
+        statement.staff_role.as_deref(),
+        Some("insurance_coordinator")
+    );
     for key in ["auto.fleet_booking_request", "auto.fleet_contract_ended"] {
         let def = notification_type(key).unwrap_or_else(|| panic!("no type {key}"));
         assert_eq!(def.group, GROUP_BOOKINGS, "{key}");
@@ -270,7 +274,10 @@ async fn aut_18_the_shared_invoice_types_are_set_and_seeding_twice_changes_nothi
             (
                 wl_hr::OnboardingTemplate::query().count(&db).await.unwrap(),
                 wl_documents::Sop::query().count(&db).await.unwrap(),
-                wl_sales::LoyaltyProgramme::query().count(&db).await.unwrap(),
+                wl_sales::LoyaltyProgramme::query()
+                    .count(&db)
+                    .await
+                    .unwrap(),
             )
         }
     };
@@ -337,7 +344,10 @@ async fn aut_18_the_loyalty_programme_earns_one_point_per_aed_10_and_expires_aft
 #[renox::test]
 async fn aut_18_the_checklists_and_the_sop_library_are_seeded() {
     let app = auto_booted().await;
-    let templates = wl_hr::OnboardingTemplate::query().get(app.db()).await.unwrap();
+    let templates = wl_hr::OnboardingTemplate::query()
+        .get(app.db())
+        .await
+        .unwrap();
     for spec in &defaults::ONBOARDING {
         let template = templates
             .iter()

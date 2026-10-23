@@ -803,7 +803,11 @@ async fn aut_base_withdraw_total_loss_and_void_are_declared_with_slots_that_pass
     assert_eq!(guards(DECLARE_TOTAL_LOSS), ["total_loss_notice"]);
     assert_eq!(
         guards(VOID),
-        ["permission_held", "not_given_to_third_party", "nothing_sent"]
+        [
+            "permission_held",
+            "not_given_to_third_party",
+            "nothing_sent"
+        ]
     );
     assert_eq!(guards(BOOK_SURVEY), ["claim_details", "police_report"]);
     assert_eq!(guards(INVOICE), ["charges_approved"]);
