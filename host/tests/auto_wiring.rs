@@ -108,6 +108,12 @@ fn aut_base_the_roles_hold_the_permissions_of_the_spec() {
     assert!(grants(roles::WORKSHOP_MANAGER).contains(&"documents.review"));
     assert!(grants(roles::WORKSHOP_MANAGER).contains(&aut::JOB_CARDS_ACCIDENT));
     assert!(!grants(roles::SERVICE_ADVISOR).contains(&aut::JOB_CARDS_ACCIDENT));
+    // The liability of a vehicle incident (BL-AUT-06): the branch manager and
+    // the owner, not the advisor or the technician.
+    assert!(grants(roles::BRANCH_MANAGER).contains(&aut::JOB_CARDS_LIABILITY));
+    assert!(grants(roles::OWNER).contains(&aut::JOB_CARDS_LIABILITY));
+    assert!(!grants(roles::SERVICE_ADVISOR).contains(&aut::JOB_CARDS_LIABILITY));
+    assert!(!grants(roles::TECHNICIAN).contains(&aut::JOB_CARDS_LIABILITY));
     assert!(grants(roles::INSURANCE_COORDINATOR).contains(&aut::INSURANCE_MANAGE));
     assert!(grants(roles::FLEET_ACCOUNT_MANAGER).contains(&aut::FLEET_CONTRACTS_MANAGE));
     assert!(grants(roles::PROCUREMENT).contains(&aut::SUPPLIER_CLAIMS_MANAGE));
