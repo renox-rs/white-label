@@ -82,6 +82,32 @@ struct Story {
 }
 
 async fn story(w: &World) -> Story {
+    story_with(w, false).await
+}
+
+/// A sale over the counter (channel `pos`), cooked and handed over at once.
+async fn counter_sale(w: &World) -> fnb::FnbOrder {
+    let customer = w.customer("Counter customer").await;
+    let placed = w
+        .place_via_external("pos", None, customer, "on_account", &PLATE)
+        .await;
+    let ready = w.cook(&placed).await;
+    w.post(
+        &w.manager,
+        &format!("/orders/{}/complete", ready.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
+    let done = w.reload(&ready).await;
+    assert_eq!(done.status, FnbOrderStatus::Completed);
+    done
+}
+
+/// [`story`]; with `extras` a counter sale is made on the second day and a
+/// customer E, whose account is closed (archived) afterwards, is delivered an
+/// order on the fourth.
+async fn story_with(w: &World, extras: bool) -> Story {
     let k = kitchen(w).await;
     sauce_in_the_plate(w, &k).await;
     let t7 = lot(w, &k.tomato, "T7", &k.central, 30_000, 20).await;
@@ -127,6 +153,18 @@ async fn story(w: &World) -> Story {
                 delivered(w, d).await;
             }
             _ => {}
+        }
+        if extras && day == 1 {
+            counter_sale(w).await;
+        }
+        if extras && day == 3 {
+            let e = w.customer("Customer E").await;
+            delivered(w, e).await;
+            wl_parties::Party::query()
+                .where_(wl_parties::Party::ID.eq(e.0))
+                .update(w.db(), &[("status", &wl_kernel::PartyStatus::Archived)])
+                .await
+                .unwrap();
         }
     }
     // The sauce is used up at Outlet 1 on the last day.
@@ -448,4 +486,85 @@ async fn a_completed_order_consumes_its_recipe_only_when_the_setting_is_on() {
         "the recipe is consumed, theoretically"
     );
     assert!(on.reload(&done).await.consumption_posted);
+}
+
+/// AC2 (counter): a sale over the counter on the second day joins the
+/// aggregator order of that day in one group of unknown customers (counter
+/// sales have no customer to tell); the other days are as before, and the
+/// owner still gets one decision task.
+#[renox::test]
+async fn a_counter_sale_is_counted_with_the_aggregator_sales_of_its_day() {
+    let w = boot_recall().await;
+    let s = story_with(&w, true).await;
+
+    let found = recall::trace(w.state(), s.recall.id).await.unwrap();
+
+    assert_eq!(found.unknown.len(), 4, "still one group per outlet and day");
+    let day_two = &found.unknown[1];
+    assert_eq!(
+        day_two.sales, 2,
+        "the aggregator order and the counter sale"
+    );
+    assert!(
+        day_two.channels.contains("aggregator_a (1)"),
+        "{}",
+        day_two.channels
+    );
+    assert!(day_two.channels.contains("pos (1)"), "{}", day_two.channels);
+    for other in [0, 2, 3] {
+        assert_eq!(found.unknown[other].sales, 1);
+        assert!(!found.unknown[other].channels.contains("pos"));
+    }
+    assert!(
+        found.customers.iter().all(|g| g.name != "Counter customer"),
+        "the counter customer is never listed or messaged"
+    );
+    assert_eq!(
+        w.tickets
+            .opened_with(&recall::public_task_key(s.recall.id))
+            .len(),
+        1
+    );
+}
+
+/// A customer whose account is closed since the order has no contact: the
+/// order is listed, but telling the customers waives it with that reason and
+/// sends no notice to them; the others are told as before.
+#[renox::test]
+async fn a_customer_whose_account_is_closed_is_waived_and_not_messaged() {
+    let w = boot_recall().await;
+    let s = story_with(&w, true).await;
+    let found = recall::trace(w.state(), s.recall.id).await.unwrap();
+    let e = found
+        .customers
+        .iter()
+        .find(|g| g.name == "Customer E")
+        .expect("E's order is listed");
+    assert!(e.no_contact);
+    assert_eq!(e.orders.len(), 1);
+    let e_party = e.party;
+
+    w.post(
+        &s.k.chef,
+        &format!("/recalls/{}/orders/notify", s.recall.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
+
+    let sent = w.notices.of_type(NOTICE_TYPE);
+    assert_eq!(sent.len(), 2, "C and D are told, E is not");
+    assert!(sent.iter().all(|request| {
+        !request.recipients.contains(&NotifyRecipient::Party {
+            id: PartyId(e_party),
+        })
+    }));
+    let after = recall::trace(w.state(), s.recall.id).await.unwrap();
+    let e = after
+        .customers
+        .iter()
+        .find(|g| g.name == "Customer E")
+        .unwrap();
+    assert_eq!(e.notice(), "waived");
+    assert!(e.pending().is_empty());
 }

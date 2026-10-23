@@ -98,7 +98,10 @@ async fn a_second_customer_side_failure_within_90_days_turns_cash_on_delivery_of
     // The first failure is a real one: the rider records it in the PWA; 70
     // days later the second is recorded the same way.
     let first = failure(&w, "website", c, "cash_on_delivery", "not_home").await;
-    assert_eq!(first.failure_reason.as_deref(), Some(reason::CUSTOMER_UNREACHABLE));
+    assert_eq!(
+        first.failure_reason.as_deref(),
+        Some(reason::CUSTOMER_UNREACHABLE)
+    );
     assert!(cod_allowed(&w, c).await, "one failure is not enough");
     w.travel(TimeDelta::days(70));
 
