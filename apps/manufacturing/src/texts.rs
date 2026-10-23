@@ -505,6 +505,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Output is reported while the work order is in progress.",
     ),
     (
+        "manufacturing.late_report.future",
+        "The time of the output is in the future.",
+    ),
+    (
         "manufacturing.report.quantity",
         "Report a good quantity or a scrap quantity, not below zero.",
     ),
@@ -885,6 +889,19 @@ const TEXTS: &[(&str, &str)] = &[
     ("manufacturing.screen.form.scrap", "Scrap"),
     ("manufacturing.screen.form.note", "Note"),
     (
+        "manufacturing.screen.form.occurred_at",
+        "Made at (paper job card)",
+    ),
+    (
+        "manufacturing.screen.form.occurred_hint",
+        "Leave empty for output made now. Fill it in only when the line tablets were down and you are entering the job card later.",
+    ),
+    (
+        "manufacturing.screen.form.late_reason",
+        "Why it is entered late",
+    ),
+    ("manufacturing.screen.form.outage", "Outage reference"),
+    (
         "manufacturing.screen.form.unlink_reason",
         "Why is it no longer for the order?",
     ),
@@ -920,6 +937,14 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("manufacturing.screen.done.issued", "Material issued."),
     ("manufacturing.screen.done.reported", "Output reported."),
+    (
+        "manufacturing.screen.done.reported_late",
+        "Output reported with the late-entry flag.",
+    ),
+    (
+        "manufacturing.screen.done.late_requested",
+        "The late entry waits for the production manager's approval.",
+    ),
     ("manufacturing.screen.status.posted", "Posted"),
     ("manufacturing.screen.status.planned", "Planned"),
     ("manufacturing.screen.status.released", "Released"),

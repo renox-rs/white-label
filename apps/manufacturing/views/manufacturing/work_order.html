@@ -82,6 +82,9 @@
             <rx-input name="good" type="text" :label="tx['form.good']" :hint="tx['form.quantity_hint']" id="report-order-good" required/>
             <rx-input name="scrap" type="text" :label="tx['form.scrap']" :hint="tx['form.quantity_hint']" id="report-order-scrap"/>
             <rx-textarea name="note" :label="tx['form.note']" id="report-order-note"/>
+            <rx-input name="occurred_at" type="datetime-local" :label="tx['form.occurred_at']" :hint="tx['form.occurred_hint']" id="report-order-occurred"/>
+            <rx-textarea name="late_reason" :label="tx['form.late_reason']" id="report-order-late-reason"/>
+            <rx-input name="outage_reference" :label="tx['form.outage']" id="report-order-outage"/>
           </rx-action-sheet>
         </template>
       </template>

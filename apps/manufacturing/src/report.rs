@@ -301,6 +301,25 @@ pub async fn record(
     if !order.may(by, permissions::WORK_ORDERS_REPORT) {
         return Err(Error::Forbidden);
     }
+    post(state, by.id, id, ask, None).await
+}
+
+/// Posts the output `ask` on work order `id` as user `operator`, made at
+/// `made_at` (the business time; now when `None`). The permission was checked
+/// by the caller: [`record`], or the late entry that was approved
+/// ([`crate::late_report`]).
+///
+/// # Errors
+///
+/// The 422 refusals of [`record`].
+pub(crate) async fn post(
+    state: &AppState,
+    operator: i64,
+    id: i64,
+    ask: ReportAsk,
+    made_at: Option<DateTime>,
+) -> Result<ProductionReport> {
+    let order = WorkOrder::find_or_404(&state.db, id).await?;
     if order.status != WorkOrderStatus::InProgress {
         return Err(refused(english("manufacturing.report.state", &[])));
     }
@@ -342,7 +361,7 @@ pub async fn record(
                     lot_number: format!("F-{}", order.number),
                     quantity_milli: ask.good_milli,
                     unit_cost: order.std_unit_cost,
-                    user: Some(by.id),
+                    user: Some(operator),
                 },
             )
             .await?;
@@ -354,8 +373,8 @@ pub async fn record(
         work_order_id: id,
         good_milli: ask.good_milli,
         scrap_milli: ask.scrap_milli,
-        operator_id: Some(by.id),
-        reported_at: renox::db::now(),
+        operator_id: Some(operator),
+        reported_at: made_at.unwrap_or_else(renox::db::now),
         note: ask.note.filter(|note| !note.trim().is_empty()),
         plant_id: order.plant_id,
         line_id: order.line_id,

@@ -1153,6 +1153,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             mfg::EXPORTS_MANAGE,
             mfg::RETURNED_GOODS_VIEW,
             mfg::INSPECTIONS_VIEW,
+            // `PLT.ACL.10`: approves a production report entered more than
+            // 24 hours late (BL-MFG-14).
+            wl_kernel::permissions::LATE_ENTRIES_APPROVE,
         ],
     ),
     (

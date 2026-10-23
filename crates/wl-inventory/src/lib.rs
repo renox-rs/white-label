@@ -353,6 +353,15 @@ impl WlInventory {
         self
     }
 
+    /// The notification type the notices of a recall go out under, in place
+    /// of the module's own three (07 `mfg.recall_notice`): no group, urgency
+    /// `urgent`, so a notice that gives up gives the recall owner a task
+    /// (wl-notify §5.4, *Urgent types*).
+    pub fn recall_notice_key(mut self, key: &str) -> Self {
+        self.config.recall_notice_key = Some(key.trim().to_owned());
+        self
+    }
+
     /// The settings of the supplier score: weights, caps, grace days, window,
     /// minimum receipts and the threshold (defaults in [`ScoreSettings`]).
     pub fn supplier_score(mut self, settings: ScoreSettings) -> Self {
@@ -792,7 +801,7 @@ impl Module for WlInventory {
         recall::register_types();
         // The trace of a recall (who got the goods), its notices to the
         // parties and its close with the report.
-        recall_notice::register_types();
+        recall_notice::register_types(&self.config);
         recall_notice::register(app);
         recall_trace::register(app);
         recall_close::register(app);

@@ -10,6 +10,7 @@ pub mod events;
 pub mod exports;
 pub mod incidents;
 pub mod issue;
+pub mod late_report;
 pub mod material_hold;
 pub mod ncr;
 pub mod ncrs;
@@ -184,12 +185,15 @@ impl Module for Manufacturing {
             .model::<exports::ExportWatch>()
             .model::<exports::ContractNote>()
             .model::<order_changes::Adjustment>()
+            .model::<late_report::LateReport>()
             .model::<returns::ReturnInspection>()
             .model::<returns::ReturnDecision>()
             .model::<returns::ReturnMove>();
         work_order::register();
         ncr::register();
         report::register(app);
+        // `PLT.ACL.10`: a report typed in from the paper job cards.
+        late_report::register(app);
         notices::register_types();
         // `MFG.ACL.12`: the posted quantities still match the request at the
         // final approval.

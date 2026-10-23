@@ -15,7 +15,7 @@
 //! | `POST /manufacturing/work-orders/{id}/unlink` | `manufacturing.unlink` | `work_orders.release` (BL-MFG-02) |
 //! | `POST /manufacturing/work-orders/{id}/abort` | `manufacturing.abort` | `work_orders.release`; the production manager approves (BL-MFG-01) |
 //! | `POST /manufacturing/work-orders/{id}/issue` | `manufacturing.issue` | `work_orders.issue` |
-//! | `POST /manufacturing/work-orders/{id}/report` | `manufacturing.report` | `work_orders.report` |
+//! | `POST /manufacturing/work-orders/{id}/report` | `manufacturing.report` | `work_orders.report`; with `occurred_at` a paper job card typed in later (late-entry flag, approval beyond N hours, `PLT.ACL.10`) |
 //! | `POST /manufacturing/reports/{id}/void` | `manufacturing.report_void` | `work_orders.report` on the line; the line's supervisor or the production manager (`work_orders.void_approve`) approves (BL-MFG-04) |
 //! | `GET /portal/manufacturing/invoices` | `manufacturing.portal_invoices` | a portal grant for the buyer's company (BL-MFG-13) |
 //! | `POST /portal/manufacturing/invoices/{id}/dispute` | `manufacturing.portal_dispute` | as above; reason, text and, for quality, the ticked lines |
@@ -56,6 +56,7 @@ use wl_kernel::Subject;
 use crate::abort::{self, AbortAsk, ReturnLine};
 use crate::db::refused;
 use crate::issue::{self, IssueAsk};
+use crate::late_report;
 use crate::ncr::{Cause, Disposition, Origin};
 use crate::ncrs::{self, DispositionAsk, NewNcr};
 use crate::report::{self, ReportAsk};
@@ -412,7 +413,9 @@ async fn issue_material(
     ))
 }
 
-/// `POST /manufacturing/work-orders/{id}/report`: `good`, `scrap`, `note`.
+/// `POST /manufacturing/work-orders/{id}/report`: `good`, `scrap`, `note`; and,
+/// for a paper job card typed in later, `occurred_at` (Asia/Dubai wall time),
+/// `late_reason` and `outage_reference` (`PLT.ACL.10`).
 async fn report_output(
     State(state): State<AppState>,
     user: AuthUser,
@@ -420,22 +423,46 @@ async fn report_output(
     Path(id): Path<i64>,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
-    report::record(
-        &state,
-        &user,
-        id,
-        ReportAsk {
-            good_milli: quantity(&lang, &form, "good")?.unwrap_or_default(),
-            scrap_milli: quantity(&lang, &form, "scrap")?.unwrap_or_default(),
-            note: Some(field(&form, "note")),
-        },
-    )
-    .await?;
-    Ok(done(
-        &lang,
-        &work_order_page::url(id),
-        "manufacturing.screen.done.reported",
-    ))
+    let ask = ReportAsk {
+        good_milli: quantity(&lang, &form, "good")?.unwrap_or_default(),
+        scrap_milli: quantity(&lang, &form, "scrap")?.unwrap_or_default(),
+        note: Some(field(&form, "note")),
+    };
+    let key = match field(&form, "occurred_at").as_str() {
+        "" => {
+            report::record(&state, &user, id, ask).await?;
+            "manufacturing.screen.done.reported"
+        }
+        time => {
+            let at =
+                parse_local(time).ok_or_else(|| refused(t(&lang, "manufacturing.bad_input")))?;
+            let entered = late_report::enter(
+                &state,
+                &user,
+                id,
+                ask,
+                at,
+                Some(&field(&form, "late_reason")),
+                Some(&field(&form, "outage_reference")),
+            )
+            .await?;
+            if entered.is_pending() {
+                "manufacturing.screen.done.late_requested"
+            } else {
+                "manufacturing.screen.done.reported_late"
+            }
+        }
+    };
+    Ok(done(&lang, &work_order_page::url(id), key))
+}
+
+/// A local time such as `2026-11-03T10:30` (Asia/Dubai) as an instant.
+fn parse_local(text: &str) -> Option<renox::db::DateTime> {
+    let text = text.trim();
+    ["%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M"]
+        .iter()
+        .find_map(|format| renox::chrono::NaiveDateTime::parse_from_str(text, format).ok())
+        .map(|local| wl_kernel::BusinessCalendar::default().from_local(local))
 }
 
 /// `POST /manufacturing/reports/{id}/void`: `reason`. The void waits for the

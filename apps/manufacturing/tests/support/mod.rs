@@ -1689,6 +1689,7 @@ pub async fn boot() -> Booted {
             perm::NCRS_RAISE,
             perm::NCRS_DISPOSITION,
             perm::NCRS_APPROVE,
+            wl_kernel::permissions::LATE_ENTRIES_APPROVE,
         ],
     )
     .await;
