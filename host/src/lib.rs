@@ -31,6 +31,7 @@ pub use app::clinics_seed;
 pub use app::construction_demo;
 pub use app::construction_seed;
 pub use app::demo_data;
+pub use app::edtech_demo;
 pub use app::edtech_money;
 pub use app::edtech_seed;
 pub use app::edtech_settings;
@@ -85,6 +86,7 @@ pub const DEMO_COMMANDS: &[&str] = &[
     app::logistics_demo::COMMAND,
     app::manpower_demo::COMMAND,
     app::clinics_demo::COMMAND,
+    app::edtech_demo::COMMAND,
 ];
 
 /// The refusal for `command` when `app_env` is a production environment.
@@ -233,6 +235,9 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // The EdTech client's service types and ticket categories (BL-EDU-17).
     if client_app == app::edtech_seed::EDTECH {
         app = app.module(app::edtech_seed::EdtechSeed);
+        // The demo centre, after the installs: `edtech:demo`, and `db:seed`
+        // in local (never in production).
+        app = app.module(app::edtech_demo::EdtechDemo::new(demo_client.clone()));
     }
     // The Construction client's categories, checklists and SOPs (BL-CON-17,
     // BL-CON-18).
