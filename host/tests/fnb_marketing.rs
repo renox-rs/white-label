@@ -238,7 +238,6 @@ async fn sale_before(app: &TestApp, party: PartyId, days: i64, number: usize) {
     .unwrap();
 }
 
-
 /// `NTF.RUL.02`, `NTF.ACL.04`: a marketing message queued at 22:00 waits for
 /// 07:00; the third in 7 days is suppressed by the cap of 2; a customer without
 /// the consent gets none.
@@ -336,7 +335,10 @@ async fn a_broadcast_to_201_customers_waits_for_a_second_approver() {
     let broadcast = Broadcast::find_or_404(app.db(), rows[0].broadcast_id.expect("taken"))
         .await
         .unwrap();
-    assert_eq!(broadcast.estimate, 201, "the three without consent are left out");
+    assert_eq!(
+        broadcast.estimate, 201,
+        "the three without consent are left out"
+    );
     assert_eq!(broadcast.status, BroadcastStatus::PendingApproval);
     let request = broadcast.approval_request_id.expect("an approval request");
     assert!(
@@ -360,8 +362,8 @@ async fn a_broadcast_to_201_customers_waits_for_a_second_approver() {
 /// entered it; one within the budget is approved on save.
 #[renox::test]
 async fn a_cost_over_the_campaign_budget_waits_for_another_holder() {
-    use wl_sales::costs::{self, CostInput};
     use wl_sales::CostStatus;
+    use wl_sales::costs::{self, CostInput};
     let (app, _mail, _rig) = boot(|n| n).await;
     let ada = person(&app, "Ada", ADMIN).await;
     let alia = person(&app, "Alia", ADMIN).await;
@@ -401,10 +403,14 @@ async fn a_cost_over_the_campaign_budget_waits_for_another_holder() {
     assert_eq!(over.status, CostStatus::PendingApproval);
     let request = over.approval_request_id.expect("a request");
     assert!(
-        approvals::approve(app.state(), request, &ada, "").await.is_err(),
+        approvals::approve(app.state(), request, &ada, "")
+            .await
+            .is_err(),
         "the person who entered it cannot approve it"
     );
-    approvals::approve(app.state(), request, &alia, "").await.unwrap();
+    approvals::approve(app.state(), request, &alia, "")
+        .await
+        .unwrap();
     let approved = wl_sales::CostEntry::find(app.db(), over.id)
         .await
         .unwrap()

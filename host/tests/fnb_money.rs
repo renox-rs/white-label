@@ -4,8 +4,9 @@
 //! force in a fresh 06 deployment (`wl:install` and the seeds), read from the
 //! real modules (their settings services, approval policies and jobs), not
 //! from constants. A test names the Done-when point it covers; the mechanisms
-//! themselves (a COD difference, a refund, a handover) are run end to end by
-//! the tests of `apps/fnb` and of the modules.
+//! themselves (a COD difference, a refund, a handover, the payment windows, the
+//! budget) are run end to end under the same values by `fnb_flows.rs`,
+//! `fnb_budget.rs` and the tests of `apps/fnb` and of the modules.
 
 mod support;
 

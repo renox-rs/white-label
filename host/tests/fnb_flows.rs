@@ -405,12 +405,15 @@ async fn issued_order(w: &World) -> (wl_inventory::PurchaseOrder, wl_inventory::
     order.status = wl_inventory::PurchaseOrderStatus::Issued;
     let mut tx = w.db().begin().await.unwrap();
     order
-        .insert_in_state(&mut tx, wl_inventory::PurchaseOrderStatus::Issued, "fixture")
+        .insert_in_state(
+            &mut tx,
+            wl_inventory::PurchaseOrderStatus::Issued,
+            "fixture",
+        )
         .await
         .unwrap();
     tx.commit().await.unwrap();
-    let mut line =
-        wl_inventory::PurchaseOrderLine::new(order.id, 1, w.chicken.id, 100_000, 1_200);
+    let mut line = wl_inventory::PurchaseOrderLine::new(order.id, 1, w.chicken.id, 100_000, 1_200);
     line.save(w.db()).await.unwrap();
     (order, line)
 }
@@ -582,7 +585,9 @@ async fn a_supplier_score_of_69_opens_a_review_and_70_does_not() {
         let mut row = wl_inventory::SupplierScore {
             supplier_party_id: supplier.0,
             snapshot_date: date,
-            window_from: date.checked_sub_months(renox::chrono::Months::new(1)).unwrap(),
+            window_from: date
+                .checked_sub_months(renox::chrono::Months::new(1))
+                .unwrap(),
             window_to: date.pred_opt().unwrap(),
             receipts: 5,
             on_time: 3,
@@ -607,9 +612,13 @@ async fn a_supplier_score_of_69_opens_a_review_and_70_does_not() {
         .await
         .unwrap();
     assert_eq!(reviews.len(), 1, "only the supplier at 69 is reviewed");
-    assert_eq!(reviews[0].supplier_party_id, snapshots[0].0 .0);
+    assert_eq!(reviews[0].supplier_party_id, snapshots[0].0.0);
     assert_eq!(reviews[0].status, wl_inventory::ReviewStatus::Open);
     let tasks = w.tickets.opened();
     assert_eq!(tasks.len(), 1);
-    assert!(tasks[0].description.contains("Score 69"), "{}", tasks[0].description);
+    assert!(
+        tasks[0].description.contains("Score 69"),
+        "{}",
+        tasks[0].description
+    );
 }

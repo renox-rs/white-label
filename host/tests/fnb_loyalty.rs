@@ -50,11 +50,7 @@ async fn world() -> (TestApp, Wire) {
     let mail = Wire::new(NotifyChannel::Email);
     let clock = Moving(Arc::new(Mutex::new(noon(today()))));
     let (s, m) = (sms.clone(), mail.clone());
-    let app = fnb_booted_rigged(
-        move |n: WlNotify| n.provider(s).provider(m),
-        Rig(clock),
-    )
-    .await;
+    let app = fnb_booted_rigged(move |n: WlNotify| n.provider(s).provider(m), Rig(clock)).await;
     (app, sms)
 }
 
@@ -194,7 +190,9 @@ async fn the_programme_earns_a_point_per_dirham_limits_a_redemption_and_asks_a_m
     assert_eq!(account(&app, mariam).await.points_balance, 700);
     let request = waiting.approval_request_id.expect("an approval request");
     assert!(
-        approvals::approve(app.state(), request, &ada, "").await.is_err(),
+        approvals::approve(app.state(), request, &ada, "")
+            .await
+            .is_err(),
         "the requester cannot approve"
     );
     approvals::approve(app.state(), request, &alia, "agreed")

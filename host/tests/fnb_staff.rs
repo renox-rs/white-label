@@ -43,7 +43,11 @@ async fn a_late_step_of_the_line_cook_checklist_is_reminded_every_second_day_and
         .get(app.db())
         .await
         .unwrap();
-    let due = steps.iter().map(|s| s.due_date).min().expect("an open step");
+    let due = steps
+        .iter()
+        .map(|s| s.due_date)
+        .min()
+        .expect("an open step");
     let step = steps.iter().find(|s| s.due_date == due).unwrap();
 
     // On the due date itself nothing is late.
@@ -55,7 +59,9 @@ async fn a_late_step_of_the_line_cook_checklist_is_reminded_every_second_day_and
     }
 
     // The first run after it reminds the owner of the step.
-    let first = reminders::run(app.state(), due + Days::new(1)).await.unwrap();
+    let first = reminders::run(app.state(), due + Days::new(1))
+        .await
+        .unwrap();
     app.run_all_jobs().await;
     assert!(first.reminded >= 1, "{first:?}");
     let owner = match step.owner.as_str() {
@@ -70,23 +76,31 @@ async fn a_late_step_of_the_line_cook_checklist_is_reminded_every_second_day_and
         step.owner
     );
     // The same day again sends nothing.
-    reminders::run(app.state(), due + Days::new(1)).await.unwrap();
+    reminders::run(app.state(), due + Days::new(1))
+        .await
+        .unwrap();
     app.run_all_jobs().await;
     assert_eq!(messages_to(&app, REMINDER, owner).await.len(), reminded);
     // Two days later the owner is reminded again.
-    reminders::run(app.state(), due + Days::new(3)).await.unwrap();
+    reminders::run(app.state(), due + Days::new(3))
+        .await
+        .unwrap();
     app.run_all_jobs().await;
     assert!(messages_to(&app, REMINDER, owner).await.len() > reminded);
     assert!(messages_to(&app, ESCALATED, &hr).await.is_empty());
 
     // Five days after the due date HR and the manager are told, once.
-    let late = reminders::run(app.state(), due + Days::new(5)).await.unwrap();
+    let late = reminders::run(app.state(), due + Days::new(5))
+        .await
+        .unwrap();
     app.run_all_jobs().await;
     assert!(late.escalated >= 1, "{late:?}");
     let told = messages_to(&app, ESCALATED, &hr).await.len();
     assert!(told >= 1);
     assert!(!messages_to(&app, ESCALATED, &manager).await.is_empty());
-    reminders::run(app.state(), due + Days::new(5)).await.unwrap();
+    reminders::run(app.state(), due + Days::new(5))
+        .await
+        .unwrap();
     app.run_all_jobs().await;
     assert_eq!(
         messages_to(&app, ESCALATED, &hr).await.len(),

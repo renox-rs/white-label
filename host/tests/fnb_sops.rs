@@ -79,8 +79,14 @@ async fn a_new_version_of_the_food_safety_sop_asks_the_line_cook_again() {
 
     let second = publish(&app, &chef, &sop, 2).await;
     run(app.state(), today()).await.unwrap();
-    let old = SopAcknowledgement::find_or_404(app.db(), ack.id).await.unwrap();
-    assert_eq!(old.status, AckStatus::Replaced, "the older version is replaced");
+    let old = SopAcknowledgement::find_or_404(app.db(), ack.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        old.status,
+        AckStatus::Replaced,
+        "the older version is replaced"
+    );
     let again = SopAcknowledgement::query()
         .where_(SopAcknowledgement::EMPLOYEE_ID.eq(employee.id))
         .where_(SopAcknowledgement::DOCUMENT_ID.eq(second.id))
@@ -93,7 +99,10 @@ async fn a_new_version_of_the_food_safety_sop_asks_the_line_cook_again() {
     // The cook acknowledges only what they opened.
     app.acting_as(&cook);
     let path = format!("/documents/acknowledgements/{}/acknowledge", again.id);
-    app.htmx().post(&path, &[("x", "")]).await.assert_status(422);
+    app.htmx()
+        .post(&path, &[("x", "")])
+        .await
+        .assert_status(422);
     app.get(&format!(
         "/documents/acknowledgements/{}/files/{}",
         again.id, second.id
@@ -101,6 +110,8 @@ async fn a_new_version_of_the_food_safety_sop_asks_the_line_cook_again() {
     .await
     .assert_ok();
     app.htmx().post(&path, &[("x", "")]).await.assert_ok();
-    let done = SopAcknowledgement::find_or_404(app.db(), again.id).await.unwrap();
+    let done = SopAcknowledgement::find_or_404(app.db(), again.id)
+        .await
+        .unwrap();
     assert_eq!(done.status, AckStatus::Acknowledged);
 }
