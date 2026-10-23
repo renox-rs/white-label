@@ -51,6 +51,7 @@ pub mod refused;
 mod report_pages;
 pub mod reports;
 pub mod reversal;
+pub mod rounds;
 mod screen_texts;
 pub mod seed;
 pub mod settings;
@@ -204,6 +205,20 @@ impl Fnb {
             devices: devices.iter().map(|d| (*d).to_owned()).collect(),
             down_after_minutes: settings::DEFAULT_OUTAGE_DOWN_MINUTES,
         });
+        self
+    }
+
+    /// H of `FNB.RUL.03`: the hours before opening that the opening checklist
+    /// is opened (default 1).
+    pub fn opening_lead_hours(mut self, hours: i64) -> Self {
+        self.settings.opening_lead_hours = hours;
+        self
+    }
+
+    /// H of `FNB.RUL.04`: the hours between the checks for a temperature
+    /// reading while an outlet is open (default 4, a client policy).
+    pub fn reading_gap_hours(mut self, hours: i64) -> Self {
+        self.settings.reading_gap_hours = hours;
         self
     }
 
@@ -372,6 +387,7 @@ impl Module for Fnb {
         pickup::register(app);
         batches::register(app);
         cold::register(app);
+        rounds::register(app);
         recall::register(app);
         outage::register(app);
         closings::register(app);

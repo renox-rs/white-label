@@ -606,16 +606,18 @@ pub fn compliance_rows(owner_role: &str) -> Vec<Row> {
             "WlInventory::recall_notices_route",
             "§7.2 settings",
         ),
-        open(
-            row(
-                "11",
-                "Compliance",
-                "Compliance-critical rules (owner alert, PLT.RUL.04)",
+        row(
+            "11",
+            "Compliance",
+            "Compliance-critical rules (owner alert, PLT.RUL.04)",
+            format!(
+                "{}; the opening checklist is opened {} h before opening and checked at opening (FNB.RUL.03), a unit with no reading for {} h is named to the kitchen manager (FNB.RUL.04)",
                 critical.join("; "),
-                "marked by the host for this client; a missed or failed run alerts the owner",
-                "§7.2",
+                fnb::settings::DEFAULT_OPENING_LEAD_HOURS,
+                fnb::settings::DEFAULT_READING_GAP_HOURS
             ),
-            "FNB.RUL.03 and FNB.RUL.04 are marked; the scheduled runs themselves are not built (DEFERRED-fnb-settings)",
+            "marked by the F&B module with its scheduled runs; a missed or failed run alerts the owner",
+            "§7.2",
         ),
         row(
             "12",

@@ -44,6 +44,14 @@ pub const DEFAULT_OUTAGE_DOWN_MINUTES: i64 = 5;
 /// and the channels are paused (`FNB.RUL.15`, R).
 pub const DEFAULT_OUTAGE_PROMPT_MINUTES: i64 = 15;
 
+/// The hours before opening that the opening checklist is opened
+/// (`FNB.RUL.03`, H).
+pub const DEFAULT_OPENING_LEAD_HOURS: i64 = 1;
+
+/// The hours between the checks for a temperature reading while open
+/// (`FNB.RUL.04`, H).
+pub const DEFAULT_READING_GAP_HOURS: i64 = 4;
+
 /// The kitchen devices of one outlet, registered as a device connection
 /// (`fnb.devices.<code>`) active during the outlet's opening hours.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,6 +123,12 @@ pub struct FnbSettings {
     pub outage_prompt_minutes: i64,
     /// The outlets whose kitchen devices are a device connection.
     pub kitchen_devices: Vec<KitchenDevices>,
+    /// H of `FNB.RUL.03`: the hours before opening that the opening checklist
+    /// is opened.
+    pub opening_lead_hours: i64,
+    /// H of `FNB.RUL.04`: the hours between the checks for a temperature
+    /// reading while the outlet is open.
+    pub reading_gap_hours: i64,
 }
 
 impl Default for FnbSettings {
@@ -138,6 +152,8 @@ impl Default for FnbSettings {
             outage_rule: true,
             outage_prompt_minutes: DEFAULT_OUTAGE_PROMPT_MINUTES,
             kitchen_devices: Vec::new(),
+            opening_lead_hours: DEFAULT_OPENING_LEAD_HOURS,
+            reading_gap_hours: DEFAULT_READING_GAP_HOURS,
         }
     }
 }

@@ -220,7 +220,16 @@ pub fn register_critical(client_app: &str) {
     if client_app != FNB {
         return;
     }
+    // `FNB.RUL.03`, `FNB.RUL.04` and `FNB.RUL.05` are registered by the F&B
+    // module with the runs the kernel watches for a missed one; registering
+    // them here would replace that.
     for rule in CRITICAL_RULES {
+        if fnb::rounds::OPENING_RULE == rule
+            || fnb::rounds::READINGS_RULE == rule
+            || fnb::cold::RULE == rule
+        {
+            continue;
+        }
         CriticalRule::new(rule)
             .owner_role(OPERATIONS_DIRECTOR)
             .register();

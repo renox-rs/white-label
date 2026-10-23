@@ -444,6 +444,31 @@ const TEXTS: &[(&str, &str)] = &[
         "fnb.cancel.withdrawn",
         "The kitchen started order {{ number }} while the change waited for a manager: ask again.",
     ),
+    // The opening checklist and the temperature rounds (FNB.RUL.03, FNB.RUL.04).
+    (
+        "fnb.rounds.opened_title",
+        "The opening checklist of {{ outlet }} is open",
+    ),
+    (
+        "fnb.rounds.opened_body",
+        "{{ outlet }} opens at {{ time }}. Read the temperature of every fridge and freezer before then: {{ units }}.",
+    ),
+    (
+        "fnb.rounds.opening_missed_title",
+        "{{ outlet }} opens without its checklist done",
+    ),
+    (
+        "fnb.rounds.opening_missed_body",
+        "{{ outlet }} opened at {{ time }} and these units have no temperature reading for the opening round: {{ units }}.",
+    ),
+    (
+        "fnb.rounds.gap_title",
+        "No temperature reading at {{ outlet }} for {{ hours }} hours",
+    ),
+    (
+        "fnb.rounds.gap_body",
+        "These units have no temperature reading since {{ since }}: {{ units }}. Read them now.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.
