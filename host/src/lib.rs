@@ -25,6 +25,7 @@ use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
 pub use app::accounting_seed::parties_for;
+pub use app::auto_money;
 pub use app::auto_seed;
 pub use app::auto_settings;
 pub use app::clinics_demo;
@@ -406,7 +407,7 @@ fn enable(
                 app.module(if client_app == app::construction_seed::CONSTRUCTION {
                     app::construction_seed::inventory(module)
                 } else if client_app == app::auto_seed::AUTO {
-                    app::auto_seed::inventory(module)
+                    app::auto_money::inventory(module)
                 } else {
                     app::clinics_money::inventory(client_app, module)
                 }),
