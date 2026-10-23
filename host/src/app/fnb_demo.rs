@@ -1564,6 +1564,10 @@ async fn sub_location(db: &Db, code: &str, name: &str, parent: &Location) -> Res
     }
     let mut location = Location::new(code, name);
     location.parent_id = Some(parent.id);
+    // A fridge is of the kitchen it stands in: the head chef of that kitchen
+    // decides the hold lines of its food (`STK.ACL.05`).
+    location.scope_type.clone_from(&parent.scope_type);
+    location.scope_id = parent.scope_id;
     location.save(db).await?;
     Ok(location)
 }

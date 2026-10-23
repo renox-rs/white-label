@@ -297,7 +297,7 @@ pub async fn import_as(
 }
 
 /// The name of an aggregator for a message: `aggregator_a` is "Aggregator A".
-fn aggregator_name(code: &str) -> String {
+pub(crate) fn aggregator_name(code: &str) -> String {
     let key = format!("fnb.screen.channels.paper_channel.{code}");
     let name = english(&key, &[]);
     if name == key {

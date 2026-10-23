@@ -19,6 +19,7 @@ use renox::prelude::*;
 use serde::Serialize;
 use wl_kernel::inventory::TraceMark;
 
+use crate::pages::channel_label;
 use crate::pages::{Fields, Texts, field, tx};
 use crate::permissions;
 use crate::recall::{self, public_decision};
@@ -167,7 +168,15 @@ async fn show(
             outlet: group.outlet.clone(),
             day: group.day.to_string(),
             sales: group.sales,
-            channels: group.channels.clone(),
+            channels: group
+                .channels
+                .split(", ")
+                .map(|part| match part.split_once(" (") {
+                    Some((code, count)) => format!("{} ({count}", channel_label(&lang, code)),
+                    None => channel_label(&lang, part),
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
             status: notice_word(&lang, &group.notice),
             status_kind: notice_kind(&group.notice),
         })

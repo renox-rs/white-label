@@ -54,7 +54,9 @@ pub async fn post(state: &AppState, id: i64) -> Result<usize> {
     };
     let mut asked = 0;
     for line in view.lines.iter().filter(|line| line.is_item) {
-        let quantity = line.open_milli();
+        // What was cooked: the quantity ordered less what was cancelled, handed
+        // over or not (an order that is already completed consumed it too).
+        let quantity = line.quantity_milli - line.cancelled_milli;
         if quantity <= 0 {
             continue;
         }
