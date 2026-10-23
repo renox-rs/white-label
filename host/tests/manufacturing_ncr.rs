@@ -488,3 +488,139 @@ async fn after_the_dispatch_of_a_partial_return_the_lot_keeps_70_kg_and_qc_relea
 async fn lot_status(app: &TestApp, id: i64) -> LotStatus {
     Lot::find_or_404(app.db(), id).await.unwrap().status
 }
+
+/// BL-MFG-14 *Stock* (#395) with the 07 value: a Return to supplier of AED
+/// 5,100 waits for a second holder of `supplier_returns.manage` before it
+/// goes out (the requester cannot approve), and one of AED 5,000 goes at once.
+#[renox::test]
+async fn a_return_to_supplier_of_5100_dirhams_needs_approval_and_5000_does_not() {
+    let app = boot().await;
+    let f = floor(&app).await;
+    let qc = person(&app, "Ines", QC_INSPECTOR, Some(f.plant.scope())).await;
+    let karim = person(&app, "Karim", PROCUREMENT, None).await;
+    let pia = person(&app, "Pia", PROCUREMENT, None).await;
+    // 100 kg at AED 51.00 a kilo are AED 5,100.00; 100 kg at AED 50.00 are
+    // AED 5,000.00.
+    let dear = received(&app, &f, "L51", 5_100, LotStatus::Quarantine).await;
+    let cheap = received(&app, &f, "L50", 5_000, LotStatus::Quarantine).await;
+    let mut returns = Vec::new();
+    for lot in [&dear, &cheap] {
+        let ncr = raise(&app, &f, &qc, lot, "100").await;
+        post(
+            &app,
+            &qc,
+            &format!("/manufacturing/ncrs/{}/disposition", ncr.id),
+            &[("disposition", "return_to_supplier"), ("outcome", "credit")],
+        )
+        .await
+        .assert_status(303);
+        returns.push(
+            supplier_return::of_source(app.db(), &ncr.subject())
+                .await
+                .unwrap()
+                .remove(0),
+        );
+    }
+    for ret in &returns {
+        post(
+            &app,
+            &karim,
+            &format!("/supplier-returns/{}/dispatch", ret.id),
+            &[("proof_kind", "driver_signature"), ("proof_ref", "SIG-1")],
+        )
+        .await
+        .assert_ok();
+    }
+
+    let status = |id: i64| {
+        let app = &app;
+        async move {
+            SupplierReturn::find_or_404(app.db(), id)
+                .await
+                .unwrap()
+                .status
+        }
+    };
+    assert_eq!(status(returns[1].id).await, ReturnStatus::Dispatched);
+    assert_eq!(
+        status(returns[0].id).await,
+        ReturnStatus::Draft,
+        "AED 5,100 waits for the approval"
+    );
+    let request = ApprovalRequest::query()
+        .where_(ApprovalRequest::SUBJECT_ID.eq(returns[0].id))
+        .where_(ApprovalRequest::STATUS.eq(ApprovalStatus::Pending))
+        .first(app.db())
+        .await
+        .unwrap()
+        .expect("a request for the dear return");
+    assert!(
+        approve(app.state(), request.id, &karim, "mine")
+            .await
+            .is_err(),
+        "the requester cannot approve"
+    );
+    approve(app.state(), request.id, &pia, "agreed")
+        .await
+        .unwrap();
+    assert_eq!(status(returns[0].id).await, ReturnStatus::Dispatched);
+}
+
+/// BL-MFG-14 *Stock* (#395) with the 07 value: scrapping goods worth AED
+/// 2,100 needs a holder of `stock.approve`, goods worth AED 2,000 are
+/// scrapped at once.
+#[renox::test]
+async fn a_scrap_of_2100_dirhams_needs_approval_and_2000_does_not() {
+    let app = boot().await;
+    let mut f = floor(&app).await;
+    let qc = person(&app, "Ines", QC_INSPECTOR, Some(f.plant.scope())).await;
+    // 100 kg at AED 21.00 a kilo: AED 2,100.00.
+    f.resin.average_cost = 2_100;
+    f.resin.save(app.db()).await.unwrap();
+    let dear = received(&app, &f, "S21", 2_100, LotStatus::OnHold).await;
+    let first = raise(&app, &f, &qc, &dear, "100").await;
+    post(
+        &app,
+        &qc,
+        &format!("/manufacturing/ncrs/{}/disposition", first.id),
+        &[("disposition", "scrap")],
+    )
+    .await
+    .assert_status(303);
+    assert_eq!(ncr_now(&app, &first).await.status, NcrStatus::Open);
+    let waiting = ApprovalRequest::query()
+        .where_(ApprovalRequest::SUBJECT_ID.eq(first.id))
+        .where_(ApprovalRequest::ACTION.eq("manufacturing.ncr_scrap"))
+        .first(app.db())
+        .await
+        .unwrap();
+    assert!(waiting.is_some(), "AED 2,100 needs the approval");
+
+    // 100 kg at AED 20.00 a kilo: AED 2,000.00, scrapped without one.
+    f.resin.average_cost = 2_000;
+    f.resin.save(app.db()).await.unwrap();
+    let cheap = received(&app, &f, "S20", 2_000, LotStatus::OnHold).await;
+    let second = raise(&app, &f, &qc, &cheap, "100").await;
+    post(
+        &app,
+        &qc,
+        &format!("/manufacturing/ncrs/{}/disposition", second.id),
+        &[("disposition", "scrap")],
+    )
+    .await
+    .assert_status(303);
+    assert_eq!(
+        ncr_now(&app, &second).await.status,
+        NcrStatus::Dispositioned
+    );
+    assert!(
+        ApprovalRequest::query()
+            .where_(ApprovalRequest::SUBJECT_ID.eq(second.id))
+            .where_(ApprovalRequest::ACTION.eq("manufacturing.ncr_scrap"))
+            .first(app.db())
+            .await
+            .unwrap()
+            .is_none(),
+        "AED 2,000 needs none"
+    );
+}
