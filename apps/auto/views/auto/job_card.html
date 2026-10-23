@@ -106,6 +106,7 @@
     </rx-page-header>
     <rx-alert rx-if="stop.collect_failed" kind="warning" :message="tx['decline.message_failed']"/>
     <rx-alert rx-if="cancel_waits" kind="warning" :message="tx['stop.pending_banner']"/>
+    <rx-alert rx-if="customer_on_hold" kind="warning" :message="tx['blocked.banner']"/>
     <rx-include template="wl-kernel/approval_card.html"/>
     <rx-alert rx-if="closed_reason" kind="info" :message="tx['jobs.closed_because'] ~ ' ' ~ closed_reason"/>
     <rx-alert rx-if="qc_findings" kind="warning" :message="tx['jobs.qc_findings'] ~ ': ' ~ qc_findings"/>
@@ -183,6 +184,15 @@
         </rx-action-sheet>
       </rx-toolbar>
     </rx-card>
+    <template rx-if="can_safety">
+      <rx-toolbar>
+        <rx-action-sheet :id="'job-safety-' ~ id" :label="tx['blocked.safety']" :action="route('auto.job_card_safety', id)"
+                         :title="tx['blocked.safety']" :description="tx['blocked.safety_description']" :submit-label="tx['blocked.safety']" icon="shield-check">
+          <rx-select name="line" :label="tx['blocked.safety_line']" :options="safety_options" :placeholder="tx['blocked.safety_line_placeholder']" :id="'job-safety-line-' ~ id" required/>
+          <rx-checkbox name="safety" :label="tx['blocked.safety_tick']" :checked="true" :id="'job-safety-tick-' ~ id"/>
+        </rx-action-sheet>
+      </rx-toolbar>
+    </template>
     <rx-card :title="tx['jobs.parts']">
       <rx-table :rows="parts" as="part" :key="part.id" :caption="tx['jobs.parts']">
         <rx-column :label="tx['jobs.description']">{{ part.description }} <rx-badge rx-if="part.special" kind="info" :text="part.special"/></rx-column>

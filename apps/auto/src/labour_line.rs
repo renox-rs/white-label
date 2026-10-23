@@ -89,6 +89,12 @@ pub struct LabourLine {
     pub approval_id: Option<i64>,
     /// Who pays it: the customer, or the insurer for a line it approved.
     pub payer: crate::payer::Payer,
+    /// Needed to make the vehicle safe to drive: it continues while the
+    /// customer is blocked (BL-AUT-17).
+    pub safety_work: bool,
+    /// Why the line was taken off the job card after it was sent
+    /// (`party_blocked`), when it was; a line taken off while a draft has none.
+    pub removed_reason: Option<String>,
     /// How much of it was done.
     pub work: WorkStatus,
     /// The hours worked so far, in thousandths of an hour.

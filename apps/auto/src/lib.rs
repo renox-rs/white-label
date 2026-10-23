@@ -5,6 +5,7 @@ pub mod accident_flag;
 pub mod approval;
 pub mod approval_rounds;
 pub mod billing;
+pub mod blocked;
 pub mod bookings;
 pub mod claim;
 pub mod claim_approval;
@@ -67,6 +68,7 @@ pub mod test_drive;
 pub mod test_drives;
 mod texts;
 mod texts_claim_stops;
+mod texts_blocked;
 mod texts_claims;
 mod texts_fleet;
 mod texts_incidents;
@@ -291,6 +293,9 @@ impl Module for Auto {
         // for a suspended contract.
         fleet_end::register(app);
         fleet_gate::register(app);
+        // What a blocked party does to a fleet contract, a job card and an
+        // insurance claim (BL-AUT-17).
+        blocked::register();
         // The supplier warranty claim: the machine, and the listener that
         // recovers a claim when its return to supplier is credited.
         supplier_claim_machine::register();

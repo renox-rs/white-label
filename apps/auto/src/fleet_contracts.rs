@@ -27,8 +27,8 @@ use wl_kernel::parties::directory;
 use crate::db::refused;
 use crate::fleet_contract::{FleetContract, FleetStatus};
 use crate::fleet_contract_machine::{
-    ACTIVATE, END, FLAG_RENEWAL, FleetInput, RENEW, RESUME, SUSPEND, TERMINATE, TERMINATE_ACTION,
-    TERMINATE_SYSTEM, schedule_request,
+    ACTIVATE, END, FLAG_RENEWAL, FleetInput, RENEW, RESUME, SUSPEND, SUSPEND_BY_DECISION,
+    TERMINATE, TERMINATE_ACTION, TERMINATE_BY_DECISION, TERMINATE_SYSTEM, schedule_request,
 };
 use crate::fleet_job::FleetJob;
 use crate::fleet_service::FleetService;
@@ -602,6 +602,63 @@ pub async fn terminate(
         contract: FleetContract::find_or_404(&state.db, id).await?,
         approval_request,
     })
+}
+
+/// *Suspend*, the owner's decision in the review of a blocked fleet (BL-AUT-17):
+/// `user_id` is the decider, the reason is the neutral *on hold*. A contract
+/// that is suspended already is left as it is.
+///
+/// # Errors
+///
+/// A 422 for a contract that is not in force.
+pub async fn suspend_by_decision(
+    state: &AppState,
+    user_id: i64,
+    id: i64,
+) -> Result<FleetContract> {
+    let contract = FleetContract::find_or_404(&state.db, id).await?;
+    if contract.status == FleetStatus::Suspended {
+        return Ok(contract);
+    }
+    let reason = english("auto.blocked.on_hold", &[]);
+    let input = FleetInput {
+        by: Some(user_id),
+        on: Some(today()),
+        ..FleetInput::default()
+    };
+    run_system(state, &contract, SUSPEND_BY_DECISION, Some(&reason), input).await
+}
+
+/// *Terminate*, the owner's decision in the review of a blocked fleet
+/// (BL-AUT-17): the decision is the owner's approval, so the contract ends at
+/// once with its last day of service today; the bookings after it are
+/// cancelled now and the last invoice, the fee and the notice follow the first
+/// daily run after today ([`crate::fleet_end`]). The reason is the neutral
+/// *on hold*.
+///
+/// # Errors
+///
+/// A 422 for a contract that is not in force or whose last day is inside a
+/// period invoiced already.
+pub async fn terminate_by_decision(
+    state: &AppState,
+    user_id: i64,
+    id: i64,
+) -> Result<FleetContract> {
+    let contract = FleetContract::find_or_404(&state.db, id).await?;
+    if !contract.status.is_in_force() {
+        return Err(refused(english("auto.fleet.problem.terminate_status", &[])));
+    }
+    let reason = english("auto.blocked.on_hold", &[]);
+    let input = FleetInput {
+        by: Some(user_id),
+        on: Some(today()),
+        notice_date: Some(today()),
+        effective_date: Some(today()),
+        reason: Some(reason.clone()),
+        ..FleetInput::default()
+    };
+    run_system(state, &contract, TERMINATE_BY_DECISION, Some(&reason), input).await
 }
 
 /// The daily run's part for the contracts in force (`end`, `flag_renewal`,

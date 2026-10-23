@@ -937,6 +937,7 @@ pub async fn approve_recorded(
     if !METHODS.contains(&method) || method == "link" {
         return Err(refused(english("auto.jobs.problem.method", &[])));
     }
+    crate::blocked::ensure_not_blocked(state, &card).await?;
     let round = pending_round(&state.db, card.id)
         .await?
         .ok_or_else(|| refused(english("auto.jobs.problem.nothing_to_approve", &[])))?;
@@ -981,6 +982,11 @@ pub async fn approve_by_link(
     consent: bool,
 ) -> Result<JobCard> {
     let (round, card) = round_of_link(state, token).await?;
+    // The customer is never told that the account is on hold: the workshop
+    // takes the approval by hand once the branch manager has decided.
+    if crate::blocked::party_blocked(state, card.customer_party_id).await? {
+        return Err(refused(english("auto.blocked.problem.link", &[])));
+    }
     let name = name.trim();
     if name.is_empty() {
         return Err(refused(english("auto.jobs.problem.approver", &[])));

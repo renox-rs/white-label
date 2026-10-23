@@ -3,8 +3,9 @@
 //!
 //! The machine ([`crate::fleet_contract_machine`]) records the end; the
 //! effects that reach other modules are done here, after the commit, by the
-//! listener of the transitions [`END`], [`TERMINATE`], [`TERMINATE_APPROVED`]
-//! and [`TERMINATE_SYSTEM`] ([`wind_down`]), once and in this order:
+//! listener of the transitions [`END`], [`TERMINATE`], [`TERMINATE_APPROVED`],
+//! [`TERMINATE_SYSTEM`] and [`TERMINATE_BY_DECISION`] ([`wind_down`]), once and
+//! in this order:
 //!
 //! 1. the bookings the service plans asked for **after the last day of
 //!    service** are cancelled as the system (reason `fleet_contract_ended`; a
@@ -48,7 +49,8 @@ use crate::fleet_contract::{
 };
 use crate::fleet_contract_machine::{
     END, SCHEDULE_TERMINATION_APPROVED, SCHEDULE_TERMINATION_RENEWAL_APPROVED,
-    SCHEDULE_TERMINATION_SUSPENDED_APPROVED, TERMINATE, TERMINATE_APPROVED, TERMINATE_SYSTEM,
+    SCHEDULE_TERMINATION_SUSPENDED_APPROVED, TERMINATE, TERMINATE_APPROVED, TERMINATE_BY_DECISION,
+    TERMINATE_SYSTEM,
 };
 use crate::fleet_contracts::{due_transition, run_system};
 use crate::fleet_invoice::{FleetInvoice, KIND_FINAL};
@@ -92,6 +94,9 @@ pub struct WoundDown {
     pub final_invoice: Option<i64>,
     /// The invoice of the early termination fee, when there is one.
     pub fee_invoice: Option<i64>,
+    /// The last day of service is not over: the last invoice, the fee and the
+    /// notice wait for the first daily run after it.
+    pub deferred: bool,
 }
 
 /// Does everything that follows the end of contract `id` (see the module
@@ -120,6 +125,12 @@ pub async fn wind_down(state: &AppState, id: i64) -> Result<Option<WoundDown>> {
         ..WoundDown::default()
     };
     fleet_services::stop_all_plans(&state.db, id).await?;
+    if last >= today() {
+        // An owner's decision ends a contract on its last day of service: the
+        // period is not over, so the invoices follow the first run after it.
+        done.deferred = true;
+        return Ok(Some(done));
+    }
     fleet_billing::invoice_final(state, &contract, last).await?;
     done.final_invoice = FleetInvoice::of_contract(&state.db, id)
         .await?
@@ -300,8 +311,8 @@ pub async fn retry_all(state: &AppState) -> Result<Vec<i64>> {
     let mut failure = None;
     for contract in waiting {
         match wind_down(state, contract.id).await {
-            Ok(Some(_)) => done.push(contract.id),
-            Ok(None) => {}
+            Ok(Some(wound)) if !wound.deferred => done.push(contract.id),
+            Ok(Some(_) | None) => {}
             Err(error) => {
                 failure.get_or_insert(error);
             }
@@ -341,7 +352,7 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(
         |event: Transitioned<FleetContract>, state: AppState| async move {
             match event.transition.as_str() {
-                END | TERMINATE | TERMINATE_APPROVED | TERMINATE_SYSTEM => {
+                END | TERMINATE | TERMINATE_APPROVED | TERMINATE_SYSTEM | TERMINATE_BY_DECISION => {
                     wind_down(&state, event.key).await.map(|_| ())
                 }
                 SCHEDULE_TERMINATION_APPROVED

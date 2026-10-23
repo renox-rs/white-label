@@ -82,6 +82,8 @@ pub fn routes() -> Routes {
         .name("auto.job_card_labour_remove")
         .post("/auto/job-cards/{id}/parts/{line}/remove", remove_part)
         .name("auto.job_card_part_remove")
+        .post("/auto/job-cards/{id}/safety", safety)
+        .name("auto.job_card_safety")
         .post("/auto/job-cards/{id}/send", send)
         .name("auto.job_card_send")
         .post("/auto/job-cards/{id}/approve", approve)
@@ -158,6 +160,30 @@ fn line_kind(status: LineStatus) -> &'static str {
         LineStatus::Sent => "warning",
         LineStatus::Declined => "error",
         LineStatus::Draft | LineStatus::Removed => "info",
+    }
+}
+
+/// What a line shows in the customer's column: its standing, or, for a line
+/// the review of a blocked customer took off, the reason.
+fn line_answer(lang: &Lang, status: LineStatus, removed_reason: Option<&str>) -> String {
+    if status == LineStatus::Removed && removed_reason.is_some() {
+        return text(lang, "blocked.line_removed");
+    }
+    line_text(lang, status)
+}
+
+/// A line is visible on the page unless it was taken off as a draft: a line
+/// the review of a blocked customer took off stays in the history.
+fn line_visible(status: LineStatus, removed_reason: Option<&str>) -> bool {
+    status != LineStatus::Removed || removed_reason.is_some()
+}
+
+/// The description of a line, with the tag of safety work.
+fn line_description(lang: &Lang, description: &str, safety_work: bool) -> String {
+    if safety_work {
+        format!("{description} · {}", text(lang, "blocked.safety_tag"))
+    } else {
+        description.to_owned()
     }
 }
 
@@ -719,6 +745,10 @@ pub(crate) struct ShowPage {
     wait: Vec<[String; 2]>,
     source_options: Vec<[String; 2]>,
     substitute: SubstituteView,
+    // The customer on hold and the lines of safety work (BL-AUT-17).
+    customer_on_hold: bool,
+    can_safety: bool,
+    safety_options: Vec<[String; 2]>,
     // The police report and the accident flag (BL-AUT-07).
     accident_flag: AccidentView,
     // The test drives and the vehicle incidents (BL-AUT-06).
@@ -761,15 +791,15 @@ fn lines_of(
     let labour = estimate
         .labour
         .iter()
-        .filter(|line| line.approval != LineStatus::Removed)
+        .filter(|line| line_visible(line.approval, line.removed_reason.as_deref()))
         .map(|line| LabourRow {
             id: line.id,
-            description: line.description.clone(),
+            description: line_description(lang, &line.description, line.safety_work),
             hours: line.hours_text(),
             rate: money_text(line.rate),
             pricing: text(lang, &format!("jobs.pricing.{}", line.pricing.as_str())),
             price: money_text(line.price()),
-            approval: line_text(lang, line.approval),
+            approval: line_answer(lang, line.approval, line.removed_reason.as_deref()),
             approval_kind: line_kind(line.approval),
             work: text(lang, &format!("jobs.work.{}", line.work.as_str())),
             hours_done: hours_text(line.hours_done_milli),
@@ -782,10 +812,10 @@ fn lines_of(
     let parts = estimate
         .parts
         .iter()
-        .filter(|line| line.approval != LineStatus::Removed)
+        .filter(|line| line_visible(line.approval, line.removed_reason.as_deref()))
         .map(|line| PartRow {
             id: line.id,
-            description: line.description.clone(),
+            description: line_description(lang, &line.description, line.safety_work),
             item: line.item_code.clone().unwrap_or_else(|| text(lang, "none")),
             condition: text(
                 lang,
@@ -799,7 +829,7 @@ fn lines_of(
             quantity: hours_text(line.quantity_milli),
             unit_price: money_text(line.unit_price),
             price: money_text(line.price()),
-            approval: line_text(lang, line.approval),
+            approval: line_answer(lang, line.approval, line.removed_reason.as_deref()),
             approval_kind: line_kind(line.approval),
             moved: format!(
                 "{} / {} / {}",
@@ -927,6 +957,21 @@ async fn show(
     let stop = stops::view_of(&lang, &user, &card, &estimate);
     let approval_cards = approvals::cards_for(&state.db, &card.subject(), &user, &lang).await?;
     let cancel_waits = job_stops::cancel_pending(&state.db, card.id).await?;
+    let customer_on_hold = crate::blocked::party_blocked(&state, card.customer_party_id).await?
+        && user.has_permission(permissions::JOB_CARDS_VIEW);
+    let mut safety_options: Vec<[String; 2]> = Vec::new();
+    for line in estimate.labour.iter().filter(|l| l.approval.is_live()) {
+        safety_options.push([
+            crate::blocked::LineRef::Labour(line.id).key(),
+            line_description(&lang, &line.description, line.safety_work),
+        ]);
+    }
+    for line in estimate.parts.iter().filter(|l| l.approval.is_live()) {
+        safety_options.push([
+            crate::blocked::LineRef::Part(line.id).key(),
+            line_description(&lang, &line.description, line.safety_work),
+        ]);
+    }
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         id: card.id,
@@ -1106,6 +1151,11 @@ async fn show(
             })
             .collect(),
         substitute: stops::substitute_view(&state, &lang, &user, &card).await?,
+        customer_on_hold,
+        can_safety: user.has_permission(permissions::JOB_CARDS_ADVISE)
+            && card.status.is_open()
+            && !safety_options.is_empty(),
+        safety_options,
         accident_flag: accident::view_of(&state, &lang, &user, &card).await?,
         care: incident_pages::view_of(&state, &lang, &user, &card).await?,
     }))
@@ -1297,6 +1347,31 @@ async fn findings(
 ) -> Result<Response> {
     job_cards::record_findings(&state, &user, id, &form.findings).await?;
     done(&lang, "jobs.findings_saved")
+}
+
+/// The form that marks a line as safety work.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct SafetyForm {
+    /// The line, `labour:12` or `part:5`.
+    #[serde(default)]
+    pub line: String,
+    /// Ticked when the line is needed to make the vehicle safe to drive.
+    #[serde(default)]
+    pub safety: String,
+}
+
+/// `POST /auto/job-cards/{id}/safety`.
+async fn safety(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<SafetyForm>,
+) -> Result<Response> {
+    let line = crate::blocked::LineRef::parse(&form.line)
+        .ok_or_else(|| super::invalid(&texts::english("auto.blocked.problem.safety_line", &[])))?;
+    crate::blocked::mark_safety(&state, &user, id, line, ticked(&form.safety)).await?;
+    done(&lang, "blocked.safety_saved")
 }
 
 /// The form of a labour line.

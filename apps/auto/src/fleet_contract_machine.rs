@@ -101,6 +101,12 @@ pub const SCHEDULE_TERMINATION_RENEWAL_APPROVED: &str =
 /// `active, suspended, renewal_due → ended`: terminated early, by the daily
 /// job on the first day after the effective date.
 pub const TERMINATE_SYSTEM: &str = "terminate_system";
+/// `active, renewal_due → suspended`: the owner's decision in the review of a
+/// blocked fleet (BL-AUT-17), run by the system for the decider.
+pub const SUSPEND_BY_DECISION: &str = "suspend_by_decision";
+/// `active, suspended, renewal_due → ended`: the owner's decision in the review
+/// of a blocked fleet (BL-AUT-17); the decision is the owner's approval.
+pub const TERMINATE_BY_DECISION: &str = "terminate_by_decision";
 /// The approval action of a termination (`PLT.APR.01`, BL-AUT-12): the owner
 /// decides, whichever of the requests was made.
 pub const TERMINATE_ACTION: &str = "auto.fleet_terminate";
@@ -206,7 +212,8 @@ impl StateMachine for FleetContract {
             .tone("neutral")
             .terminal()
             .transition(activate())
-            .transition(suspend())
+            .transition(suspension(SUSPEND, false))
+            .transition(suspension(SUSPEND_BY_DECISION, true))
             .transition(resume())
             .transition(flag_renewal())
             .transition(renew())
@@ -260,6 +267,12 @@ impl StateMachine for FleetContract {
                 FleetStatus::Ended,
                 Run::System,
             ))
+            .transition(termination(
+                TERMINATE_BY_DECISION,
+                &IN_FORCE,
+                FleetStatus::Ended,
+                Run::Decision,
+            ))
     }
 }
 
@@ -279,6 +292,9 @@ enum Run {
     Approved,
     /// The daily job, after the effective date.
     System,
+    /// The owner's decision in the review of a blocked fleet: the decision is
+    /// the approval, and the termination is recorded and ends at once.
+    Decision,
 }
 
 /// `activate`: vehicles, rates and the schedule are set and the signed
@@ -316,29 +332,34 @@ fn activate() -> Transition<FleetContract> {
 }
 
 /// `suspend`: new bookings are blocked; the bookings already made are kept and
-/// open job cards finish.
-fn suspend() -> Transition<FleetContract> {
-    Transition::new(SUSPEND)
-        .label("Suspend")
-        .permission(permissions::FLEET_CONTRACTS_MANAGE)
+/// open job cards finish. The system's twin is the owner's decision in the
+/// review of a blocked fleet (BL-AUT-17).
+fn suspension(name: &'static str, system: bool) -> Transition<FleetContract> {
+    let transition = Transition::new(name)
+        .label(if system { "Suspend (decision)" } else { "Suspend" })
         .from([FleetStatus::Active, FleetStatus::RenewalDue])
         .to(FleetStatus::Suspended)
-        .reason_required()
-        .effect(|c: &FleetContract, ctx, tx| {
-            let id = c.id;
-            let reason = ctx.reason().map(str::to_owned);
-            Box::pin(async move {
-                set_fleet_contract(
-                    tx,
-                    id,
-                    &[
-                        ("suspended_reason", &reason),
-                        ("suspended_at", &Some(now())),
-                    ],
-                )
-                .await
-            })
+        .reason_required();
+    let transition = if system {
+        transition.system()
+    } else {
+        transition.permission(permissions::FLEET_CONTRACTS_MANAGE)
+    };
+    transition.effect(|c: &FleetContract, ctx, tx| {
+        let id = c.id;
+        let reason = ctx.reason().map(str::to_owned);
+        Box::pin(async move {
+            set_fleet_contract(
+                tx,
+                id,
+                &[
+                    ("suspended_reason", &reason),
+                    ("suspended_at", &Some(now())),
+                ],
+            )
+            .await
         })
+    })
 }
 
 /// `resume`: the contract is in force again.
@@ -448,6 +469,7 @@ fn termination(
         Run::User => "Request termination",
         Run::Approved => "Terminate (approved)",
         Run::System => "Terminate (effective date passed)",
+        Run::Decision => "Terminate (decision)",
     };
     let transition = Transition::new(name)
         .label(label)
@@ -460,7 +482,7 @@ fn termination(
         transition.system()
     };
     let transition = with_termination_dates(transition);
-    let transition = if who == Run::System {
+    let transition = if matches!(who, Run::System | Run::Decision) {
         transition
     } else {
         transition.guard("not_scheduled", |c: &FleetContract, _ctx| {
@@ -473,7 +495,7 @@ fn termination(
             let input = input_of(ctx);
             let ok = match who {
                 Run::User => input.approval_ready,
-                Run::Approved => input.by.is_some(),
+                Run::Approved | Run::Decision => input.by.is_some(),
                 Run::System => c.termination_scheduled,
             };
             Box::pin(async move { check(ok, "auto.fleet.problem.approval") })
@@ -484,7 +506,8 @@ fn termination(
             let reason = ctx.reason().map(str::to_owned);
             Box::pin(async move {
                 if who != Run::System {
-                    let approved_at = (who == Run::Approved).then(now);
+                    let approved_at = matches!(who, Run::Approved | Run::Decision).then(now);
+                    let approved_by = if who == Run::Decision { input.by } else { None };
                     set_fleet_contract(
                         tx,
                         id,
@@ -496,6 +519,7 @@ fn termination(
                             ("termination_requested_by", &input.by),
                             ("termination_fee_waived", &input.waive_fee),
                             ("termination_approved_at", &approved_at),
+                            ("termination_approved_by", &approved_by),
                         ],
                     )
                     .await?;
@@ -579,6 +603,7 @@ mod tests {
         let expected: Vec<(&str, Vec<&str>, &str)> = vec![
             (ACTIVATE, vec!["draft"], "active"),
             (SUSPEND, vec!["active", "renewal_due"], "suspended"),
+            (SUSPEND_BY_DECISION, vec!["active", "renewal_due"], "suspended"),
             (RESUME, vec!["suspended"], "active"),
             (FLAG_RENEWAL, vec!["active"], "renewal_due"),
             (RENEW, vec!["renewal_due"], "active"),
@@ -603,13 +628,16 @@ mod tests {
                 vec!["renewal_due"],
                 "renewal_due",
             ),
-            (TERMINATE_SYSTEM, in_force, "ended"),
+            (TERMINATE_SYSTEM, in_force.clone(), "ended"),
+            (TERMINATE_BY_DECISION, in_force, "ended"),
         ];
         assert_eq!(machine.transitions().len(), expected.len());
         let system = [
             FLAG_RENEWAL,
             END,
             TERMINATE_SYSTEM,
+            SUSPEND_BY_DECISION,
+            TERMINATE_BY_DECISION,
             TERMINATE_APPROVED,
             SCHEDULE_TERMINATION_APPROVED,
             SCHEDULE_TERMINATION_SUSPENDED_APPROVED,
@@ -663,11 +691,18 @@ mod tests {
                 "{name}"
             );
         }
-        assert_eq!(
-            guards(TERMINATE_SYSTEM),
-            ["termination_dates", "owner_approval"]
-        );
-        for name in [SUSPEND, TERMINATE, TERMINATE_SYSTEM, SCHEDULE_TERMINATION] {
+        for name in [TERMINATE_SYSTEM, TERMINATE_BY_DECISION] {
+            assert_eq!(guards(name), ["termination_dates", "owner_approval"], "{name}");
+        }
+        assert!(guards(SUSPEND_BY_DECISION).is_empty());
+        for name in [
+            SUSPEND,
+            SUSPEND_BY_DECISION,
+            TERMINATE,
+            TERMINATE_SYSTEM,
+            TERMINATE_BY_DECISION,
+            SCHEDULE_TERMINATION,
+        ] {
             assert!(machine.find(name).unwrap().needs_reason(), "{name}");
         }
     }

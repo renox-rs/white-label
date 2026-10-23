@@ -347,5 +347,12 @@
     "forbidden": "You do not have permission for this action.",
     "home": "Go to the home page",
     "refused": "This could not be done"
+  },
+  "wl_kernel": {
+    "block_kind": {
+      "fleet_contract": "Fleet contract",
+      "job_card": "Job card",
+      "insurance_claim": "Insurance claim"
+    }
   }
 }
