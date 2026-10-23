@@ -14,6 +14,9 @@ use host::roles::{ACCOUNTANT, ADMIN, OWNER, SALES};
 use renox::chrono::Datelike;
 use renox::prelude::*;
 use renox::testing::TestApp;
+use wl_inventory::SupplierScore;
+use wl_inventory::supplier_review::{self, SupplierReview};
+use wl_inventory::supplier_score::{Figures, ScoreBand, band_of, score_of};
 use wl_invoicing::BillLineDraft;
 use wl_invoicing::bill_submit;
 use wl_invoicing::budget_lines::{self, LineInput, NewBudget};
@@ -27,6 +30,7 @@ use wl_kernel::approvals;
 use wl_kernel::cheques::{ChequeStatus, RegisterCheque, cheques};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::VatCategory;
+use wl_kernel::tickets::task_creator;
 use wl_payments::Cheque;
 use wl_sales::customer_account::{self, CustomerAccount, Terms};
 use wl_sales::{SalesOrder, SalesOrderStatus};
@@ -458,5 +462,79 @@ async fn an_owner_drawing_is_never_approved_by_the_person_who_recorded_it() {
     assert_eq!(
         (done.status, done.approved_by),
         (DrawingStatus::Approved, Some(osman.id))
+    );
+}
+
+// -------------------------------------------------------- supplier scorecard
+
+/// `STK.RUL.09` with the 07 threshold of 70: figures that score 69 open a
+/// review task for procurement, figures that score 70 do not. The scores come
+/// from the module's own `score_of` with the deployment's settings.
+#[renox::test]
+async fn a_supplier_scoring_69_is_reviewed_and_one_scoring_70_is_not() {
+    let app = manufacturing_booted().await;
+    let settings = host::manufacturing_seed::inventory(wl_inventory::WlInventory::new())
+        .config()
+        .score
+        .clone();
+    assert_eq!(settings.threshold, 70);
+    let figures = |on_time_bp: i64| Figures {
+        receipts: settings.min_receipts,
+        on_time: 1,
+        on_time_bp: Some(on_time_bp),
+        rejected_bp: Some(0),
+        price_variance_bp: Some(0),
+        ..Figures::default()
+    };
+    // Weights 40 / 30 / 15 / 15: a share of 22.5% on time scores 69, 25% 70.
+    let (low, high) = (figures(2_250), figures(2_500));
+    assert_eq!(score_of(&low, &settings), Some(69));
+    assert_eq!(score_of(&high, &settings), Some(70));
+
+    let mut made = Vec::new();
+    for (supplier, found) in [(31, &low), (32, &high)] {
+        let score = score_of(found, &settings);
+        let mut row = SupplierScore {
+            supplier_party_id: supplier,
+            snapshot_date: day(0),
+            window_from: day(-90),
+            window_to: day(-1),
+            receipts: found.receipts,
+            on_time: found.on_time,
+            on_time_bp: found.on_time_bp,
+            rejected_bp: found.rejected_bp,
+            price_variance_bp: found.price_variance_bp,
+            score,
+            band: band_of(score, &settings),
+            computed_at: Some(renox::db::now()),
+            ..SupplierScore::default()
+        };
+        row.save(app.db()).await.unwrap();
+        made.push(row);
+    }
+    assert_eq!(made[0].band, ScoreBand::BelowThreshold);
+    assert_eq!(made[1].band, ScoreBand::Watch);
+    supplier_review::on_snapshots(app.state(), &made)
+        .await
+        .unwrap();
+
+    let reviews = SupplierReview::query().get(app.db()).await.unwrap();
+    assert_eq!(reviews.len(), 1, "only the 69 is reviewed");
+    assert_eq!(reviews[0].supplier_party_id, 31);
+    let tasks = task_creator(app.state());
+    assert!(
+        tasks
+            .find_open(app.state(), &supplier_review::task_key(31))
+            .await
+            .unwrap()
+            .is_some(),
+        "procurement has the review task"
+    );
+    assert!(
+        tasks
+            .find_open(app.state(), &supplier_review::task_key(32))
+            .await
+            .unwrap()
+            .is_none()
     );
 }
