@@ -616,8 +616,12 @@ async fn write_off(
     Path(id): Path<i64>,
     Form(form): Form<ReasonForm>,
 ) -> Result<Response> {
-    supplier_claims::write_off(&state, &user, id, &form.reason).await?;
-    done(&lang, "supplier.written_off")
+    let asked = supplier_claims::write_off(&state, &user, id, &form.reason).await?;
+    if asked.approval_request.is_some() {
+        done(&lang, "supplier.writeoff_waits")
+    } else {
+        done(&lang, "supplier.written_off")
+    }
 }
 
 #[cfg(test)]

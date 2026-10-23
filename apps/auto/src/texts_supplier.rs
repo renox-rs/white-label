@@ -223,4 +223,61 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "auto.supplier.problem.no_credit",
         "Give the supplier's credit note, or tick that a replacement was received.",
     ),
+    (
+        "auto.supplier.problem.approval",
+        "A write-off needs the approval of a branch manager, and that approval rule is not in force.",
+    ),
+    (
+        "auto.supplier.writeoff_waits",
+        "The write-off waits for the branch manager.",
+    ),
+    ("auto.supplier.writeoff_done", "Claim written off."),
+    (
+        "auto.supplier_mail.subject",
+        "Warranty claim {{ claim }}: {{ part }}",
+    ),
+    (
+        "auto.supplier_mail.body",
+        "Dear {{ supplier }}, we claim under your warranty: {{ part }} ({{ item }}), quantity {{ quantity }}, bought on {{ purchased }}, failed on {{ failed }}, our warranty ticket {{ ticket }}. Amount claimed: {{ amount }}. The failed part is kept for you to collect. Please send your credit note or a replacement and quote {{ claim }}. Thank you.",
+    ),
+    (
+        "auto.supplier.task_raise_title",
+        "Raise the supplier claim for warranty ticket :ticket",
+    ),
+    (
+        "auto.supplier.task_raise_body",
+        "Warranty ticket :ticket was closed. If its warranty decision was accepted and the part carries a supplier warranty, raise the claim to the supplier.",
+    ),
+    (
+        "auto.supplier.task_send_title",
+        "Send the claim :claim to the supplier by hand",
+    ),
+    (
+        "auto.supplier.task_send_body",
+        "The email with the claim :claim could not be sent. Send it to the supplier by hand and record the claim document.",
+    ),
+    (
+        "auto.supplier.task_return_title",
+        "Draft the return to supplier of :claim by hand",
+    ),
+    (
+        "auto.supplier.task_return_body",
+        "The failed part of :claim could not be put on a draft Return to supplier (the part has no item code, or the workshop has no store). Draft it in the stock module and link it to the claim.",
+    ),
+    (
+        "auto.supplier.task_write_off_title",
+        "Write off :claim: the supplier refused the credit",
+    ),
+    (
+        "auto.supplier.task_write_off_body",
+        "The return of :claim was closed by hand with the reason supplier refused, so the claim is not recovered. Write it off with the branch manager's approval, or keep arguing it.",
+    ),
+    (
+        "auto.supplier.chase_title",
+        ":claim is not recovered after :days days",
+    ),
+    (
+        "auto.supplier.chase_body",
+        "Supplier claim :claim was raised :days days ago and the supplier has not credited or replaced the part. Chase the supplier, or write the claim off.",
+    ),
 ];

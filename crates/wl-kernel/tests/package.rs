@@ -2555,6 +2555,42 @@ async fn without_scheduling_a_service_booking_is_refused_and_a_cancel_does_nothi
     );
 }
 
+/// #407: without a ticketing module a closed ticket is unknown, and without an
+/// inventory module no return to supplier is drafted.
+#[renox::test]
+async fn without_ticketing_and_inventory_a_ticket_is_unknown_and_no_return_is_drafted() {
+    use wl_kernel::inventory::{DraftReturn, supplier_return_drafts};
+    use wl_kernel::tickets::{TicketId, task_creator};
+    use wl_kernel::{PartyId, Subject};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+
+    assert!(
+        task_creator(state)
+            .ticket_about(state, TicketId(12))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let drafted = supplier_return_drafts(state)
+        .draft_credit(
+            state,
+            DraftReturn {
+                supplier: PartyId(40),
+                source: Subject::new("auto.supplier_claim", 7),
+                item_code: "ALT-9".to_owned(),
+                quantity_milli: 1_000,
+                reason: "Alternator failed".to_owned(),
+                location: Subject::new("inventory.location", 2),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(drafted.is_none());
+}
+
 /// #402: a vertical binds who resolves the tickets of one category; a category
 /// with no rule has none.
 #[test]

@@ -1099,6 +1099,64 @@ pub fn stock_service(state: &AppState) -> Arc<dyn StockService> {
     }
 }
 
+/// A Return to supplier a vertical asks for: one item sent back for credit
+/// (08 §4.6 step 4: the failed part of an accepted warranty claim).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DraftReturn {
+    /// The supplier.
+    pub supplier: PartyId,
+    /// The record the goods come from, e.g. `auto.supplier_claim:7`.
+    pub source: Subject,
+    /// The item's code in the catalogue.
+    pub item_code: String,
+    /// The quantity, in thousandths of the base unit.
+    pub quantity_milli: i64,
+    /// Why the goods go back.
+    pub reason: String,
+    /// The location the goods are kept at until the supplier collects them,
+    /// `inventory.location:2`.
+    pub location: Subject,
+}
+
+/// Drafts Returns to supplier for other modules (wl-inventory §6). Without the
+/// inventory module [`supplier_return_drafts`] gives [`NoSupplierReturnDrafts`],
+/// which drafts nothing.
+pub trait SupplierReturnDrafts: Send + Sync + 'static {
+    /// Records a draft Return to supplier with outcome *credit* for the goods
+    /// of `request` and answers it, `inventory.supplier_return:4`; `None` when
+    /// the module is off or the catalogue has no item of that code. Dispatching
+    /// and crediting it are wl-inventory's.
+    fn draft_credit<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: DraftReturn,
+    ) -> StockFuture<'a, Option<Subject>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The drafts service when `inventory` is off: nothing is drafted.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoSupplierReturnDrafts;
+
+impl SupplierReturnDrafts for NoSupplierReturnDrafts {}
+
+/// Makes `drafts` the app's [`SupplierReturnDrafts`]; `wl-inventory` calls it
+/// in `register`.
+pub fn provide_supplier_return_drafts(app: &mut Registry, drafts: impl SupplierReturnDrafts) {
+    let drafts: Arc<dyn SupplierReturnDrafts> = Arc::new(drafts);
+    app.provide(drafts);
+}
+
+/// The app's [`SupplierReturnDrafts`], or [`NoSupplierReturnDrafts`] when none
+/// is provided.
+pub fn supplier_return_drafts(state: &AppState) -> Arc<dyn SupplierReturnDrafts> {
+    match state.provided::<Arc<dyn SupplierReturnDrafts>>() {
+        Some(drafts) => Arc::clone(&drafts),
+        None => Arc::new(NoSupplierReturnDrafts),
+    }
+}
+
 /// A hold a vertical automation (06: the out-of-range reading) places on the
 /// stock at one location.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

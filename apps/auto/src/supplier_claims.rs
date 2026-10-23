@@ -31,7 +31,9 @@
 use renox::chrono::NaiveDate;
 use renox::db::now;
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, TransitionError};
+use renox::state_machine::{Outcome, StateMachine, TransitionError};
+use wl_kernel::approvals::submit::REQUEST_KEY;
+use wl_kernel::approvals::{ApprovalPolicy, announce};
 use wl_kernel::documents::today;
 use wl_kernel::inventory::SupplierReturnCredited;
 use wl_kernel::parties::directory;
@@ -44,7 +46,9 @@ use crate::job_card::JobCard;
 use crate::labour_line::LineStatus;
 use crate::permissions;
 use crate::supplier_claim::{SupplierAnswer, SupplierClaim, SupplierClaimStatus};
-use crate::supplier_claim_machine::{RECOVER, RECOVER_SYSTEM, SupplierInput, WRITE_OFF};
+use crate::supplier_claim_machine::{
+    RECOVER, RECOVER_SYSTEM, SupplierInput, WRITE_OFF, WRITE_OFF_ACTION,
+};
 use crate::supplier_terms::{self, Facts, OutOfTerms, Terms};
 use crate::texts::english;
 
@@ -340,6 +344,9 @@ pub async fn raise(
         .insert_in_state(&mut tx, SupplierClaimStatus::Raised, RAISE)
         .await?;
     tx.commit().await?;
+    // The claim document goes to the supplier and the kept part onto a Return
+    // to supplier.
+    crate::supplier_rules::after_raise(state, claim.id).await?;
     SupplierClaim::find_or_404(&state.db, claim.id).await
 }
 
@@ -488,36 +495,60 @@ pub async fn recover(
     SupplierClaim::find_or_404(&state.db, id).await
 }
 
+/// What a write-off came to.
+#[derive(Debug, Clone)]
+pub struct WriteOff {
+    /// The claim: `written_off`, or as it was while the branch manager decides.
+    pub claim: SupplierClaim,
+    /// The approval request that waits for the branch manager.
+    pub approval_request: Option<i64>,
+}
+
 /// `write_off`: the supplier refused and the cost is absorbed as warranty
-/// expense. The approval of a branch manager is BL-AUT-11's.
+/// expense. It waits for the approval of a branch manager other than the
+/// purchaser who asked (`PLT.APR.01`, action `auto.supplier_claim_write_off`):
+/// the claim stays `raised` meanwhile, and a rejected request leaves it so.
 ///
 /// # Errors
 ///
 /// A 403 without `supplier_claims.manage`; a 422 without a reason or for a
 /// claim that is not raised.
-pub async fn write_off(
-    state: &AppState,
-    by: &AuthUser,
-    id: i64,
-    reason: &str,
-) -> Result<SupplierClaim> {
+pub async fn write_off(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> Result<WriteOff> {
     if !by.has_permission(permissions::SUPPLIER_CLAIMS_MANAGE) {
         return Err(Error::Forbidden);
     }
     let claim = SupplierClaim::find_or_404(&state.db, id).await?;
-    let input = SupplierInput {
+    let mut input = SupplierInput {
         by: Some(by.id),
+        reason: Some(reason.trim().to_owned()),
+        needs_approval: Some(1),
         ..SupplierInput::default()
     };
-    let _outcome = claim
+    // A policy taken away must not let a write-off through unapproved.
+    let value = renox::serde_json::to_value(&input).unwrap_or(renox::serde_json::Value::Null);
+    input.approval_ready = ApprovalPolicy::for_action(&state.db, WRITE_OFF_ACTION, &value)
+        .await?
+        .is_some();
+    let outcome = claim
         .transition(WRITE_OFF)
         .by(by)
-        .input(&input)
         .reason(reason)
+        .input(&input)
         .run(state)
         .await
         .map_err(TransitionError::into_error)?;
-    SupplierClaim::find_or_404(&state.db, id).await
+    announce(state, &outcome).await?;
+    let approval_request = match &outcome {
+        Outcome::Pending(pending) => pending
+            .data
+            .get(REQUEST_KEY)
+            .and_then(renox::serde_json::Value::as_i64),
+        Outcome::Done(_) => None,
+    };
+    Ok(WriteOff {
+        claim: SupplierClaim::find_or_404(&state.db, id).await?,
+        approval_request,
+    })
 }
 
 /// `SupplierReturnCredited`: the Return to supplier of a raised claim was
@@ -529,15 +560,18 @@ pub async fn write_off(
 ///
 /// The machine's refusal.
 pub async fn on_return_credited(state: &AppState, event: &SupplierReturnCredited) -> Result {
-    if event.supplier_return.subject_type != SUPPLIER_RETURN_SUBJECT_TYPE
-        || event.basis == "supplier_refused"
-    {
+    if event.supplier_return.subject_type != SUPPLIER_RETURN_SUBJECT_TYPE {
         return Ok(());
     }
     let Some(claim) = SupplierClaim::of_return(&state.db, event.supplier_return.subject_id).await?
     else {
         return Ok(());
     };
+    if event.basis == "supplier_refused" {
+        // The supplier refused: the credit is not a recovery. The claim stays
+        // raised and the purchaser is asked to write it off.
+        return crate::supplier_rules::ask_to_write_off(state, &claim).await;
+    }
     let reference = event
         .debit_note
         .map(|note| format!("debit note {note}"))

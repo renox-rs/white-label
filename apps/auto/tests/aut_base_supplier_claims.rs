@@ -603,8 +603,8 @@ async fn aut_base_a_claim_is_recovered_by_a_credit_note_or_a_replacement() {
     assert_eq!(replaced.recovery_basis.as_deref(), Some("replacement"));
 }
 
-/// A claim the supplier refused is written off with a reason; the approval of
-/// a branch manager is the issue's slot, declared and passing for now.
+/// A claim the supplier refused is written off with a reason, which waits for
+/// the branch manager (the approval itself is tested in `aut_11_supplier.rs`).
 #[renox::test]
 async fn aut_base_a_refused_claim_is_written_off_with_a_reason() {
     let t = boot().await;
@@ -631,17 +631,17 @@ async fn aut_base_a_refused_claim_is_written_off_with_a_reason() {
         blank.to_string().to_lowercase().contains("reason"),
         "{blank}"
     );
-    let written_off =
+    let asked =
         supplier_claims::write_off(t.state(), &pia, claim.id, "Supplier refused: water damage")
             .await
             .unwrap();
-    assert_eq!(written_off.status, SupplierClaimStatus::WrittenOff);
     assert_eq!(
-        written_off.write_off_reason.as_deref(),
-        Some("Supplier refused: water damage")
+        asked.claim.status,
+        SupplierClaimStatus::Raised,
+        "it waits for the branch manager (BL-AUT-11 decides it)"
     );
-    assert!(written_off.written_off_at.is_some());
-    assert_eq!(written_off.supplier_answer, SupplierAnswer::Rejected);
+    assert!(asked.approval_request.is_some());
+    assert_eq!(asked.claim.supplier_answer, SupplierAnswer::Rejected);
 
     let machine = SupplierClaim::machine();
     let guards = |name: &str| {

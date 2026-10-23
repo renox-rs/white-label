@@ -9,8 +9,8 @@ use std::sync::{Arc, Mutex};
 use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::tickets::{
-    Assignee, OpenTicket, TaskComment, TaskCreator, TicketFuture, TicketId, TicketRef,
-    TicketSummary,
+    Assignee, OpenTicket, TaskComment, TaskCreator, TicketAbout, TicketFuture, TicketId,
+    TicketRef, TicketSummary,
 };
 
 /// A ticket opened through the task creator.
@@ -158,6 +158,25 @@ impl TaskCreator for Tickets {
             .filter(|(about, category, _)| about == subject && category == category_key)
             .map(|(_, _, ticket)| ticket.clone())
             .collect();
+        Box::pin(async move { Ok(found) })
+    }
+
+    fn ticket_about<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+    ) -> TicketFuture<'a, Option<TicketAbout>> {
+        let found = self
+            .all
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(_, _, summary)| summary.id == ticket)
+            .map(|(about, category, summary)| TicketAbout {
+                ticket: summary.clone(),
+                subject: about.clone(),
+                category_key: category.clone(),
+            });
         Box::pin(async move { Ok(found) })
     }
 

@@ -106,6 +106,11 @@ pub struct SupplierClaim {
     pub claim_document: Option<String>,
     /// The Return to supplier (wl-inventory) of the kept part.
     pub supplier_return_id: Option<i64>,
+    /// When the claim document was queued to the supplier.
+    pub claim_sent_at: Option<DateTime>,
+    /// When the purchaser and the branch manager were told that the claim is
+    /// not recovered at 60 days (`AUT.RUL.08`, once).
+    pub overdue_notified_at: Option<DateTime>,
     /// What the supplier said.
     pub supplier_answer: SupplierAnswer,
     /// A note with the answer.

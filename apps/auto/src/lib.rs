@@ -58,6 +58,7 @@ pub mod substitute;
 pub mod supplier_claim;
 pub mod supplier_claim_machine;
 pub mod supplier_claims;
+pub mod supplier_rules;
 pub mod supplier_terms;
 pub mod supply;
 pub mod test_drive;
@@ -287,6 +288,9 @@ impl Module for Auto {
         // recovers a claim when its return to supplier is credited.
         supplier_claim_machine::register();
         supplier_claims::register_listeners(app);
+        // The task when a warranty ticket closes (`AUT.RUL.07`), the email of
+        // the claim to the supplier and the notice at 60 days (`AUT.RUL.08`).
+        supplier_rules::register(app);
         // A bill or a document that names a vehicle or a job card shows its
         // plate or `JOB-00007`, not `auto.vehicle:7`.
         register_labels();

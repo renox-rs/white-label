@@ -37,6 +37,9 @@ pub const INSURANCE_MANAGE: &str = "insurance.manage";
 pub const FLEET_CONTRACTS_MANAGE: &str = "fleet_contracts.manage";
 /// Raise and recover supplier warranty claims (`AUT.WAR.02`).
 pub const SUPPLIER_CLAIMS_MANAGE: &str = "supplier_claims.manage";
+/// Approve the write-off of a supplier warranty claim: the branch manager,
+/// never the purchaser who asked (`AUT.WAR.02`, `PLT.APR.01`).
+pub const SUPPLIER_CLAIMS_APPROVE: &str = "supplier_claims.approve";
 /// Issue the invoices of a claim or of a fleet contract: wl-invoicing's own
 /// permission (`invoices.issue`), which the accountant holds (`AUT.INS.04`).
 pub const INVOICES_ISSUE: &str = "invoices.issue";

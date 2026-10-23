@@ -117,6 +117,10 @@ fn aut_base_the_roles_hold_the_permissions_of_the_spec() {
     assert!(grants(roles::INSURANCE_COORDINATOR).contains(&aut::INSURANCE_MANAGE));
     assert!(grants(roles::FLEET_ACCOUNT_MANAGER).contains(&aut::FLEET_CONTRACTS_MANAGE));
     assert!(grants(roles::PROCUREMENT).contains(&aut::SUPPLIER_CLAIMS_MANAGE));
+    // The write-off of a supplier claim (BL-AUT-11): the branch manager approves,
+    // the purchaser who asks cannot.
+    assert!(grants(roles::BRANCH_MANAGER).contains(&aut::SUPPLIER_CLAIMS_APPROVE));
+    assert!(!grants(roles::PROCUREMENT).contains(&aut::SUPPLIER_CLAIMS_APPROVE));
     assert!(grants(roles::STOREKEEPER).contains(&aut::JOB_CARDS_VIEW));
     assert!(grants(roles::ADMIN).contains(&aut::LABOUR_MENU_MANAGE));
 }

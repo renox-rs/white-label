@@ -22,7 +22,7 @@ use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use wl_kernel::calendar::BusinessCalendar;
 use wl_kernel::documents::{dubai_date, provide_guard};
-use wl_kernel::inventory::provide_stock_service;
+use wl_kernel::inventory::{provide_stock_service, provide_supplier_return_drafts};
 use wl_kernel::invoicing::provide_invoicer;
 use wl_kernel::notify::provide_notifier;
 use wl_kernel::parties::provide_directory;
@@ -53,6 +53,9 @@ pub mod stock;
 /// The stand-in of the ticket book.
 pub mod tickets;
 
+/// The stand-in of the Return to supplier drafts.
+pub mod returns;
+
 /// The stand-in of the notifier.
 pub mod messages;
 
@@ -63,6 +66,7 @@ pub use documents::Documents;
 pub use messages::Messages;
 pub use money::{Books, People};
 pub use payer::{Cards, PayerBooks};
+pub use returns::Returns;
 pub use stock::Stock;
 pub use tickets::Tickets;
 
@@ -140,6 +144,7 @@ struct Harness {
     tickets: Tickets,
     messages: Messages,
     documents: Documents,
+    returns: Returns,
 }
 
 impl Module for Harness {
@@ -156,6 +161,7 @@ impl Module for Harness {
         provide_task_creator(app, self.tickets.clone());
         provide_notifier(app, self.messages.clone());
         provide_guard(app, self.documents.clone());
+        provide_supplier_return_drafts(app, self.returns.clone());
     }
 
     fn routes(&self) -> Routes {
@@ -190,6 +196,8 @@ pub struct Garage {
     pub messages: Messages,
     /// The documents the workshop holds (the document guard).
     pub documents: Documents,
+    /// The returns to supplier drafted.
+    pub returns: Returns,
     /// `JobCardCancelled`.
     pub cancelled: Recorded<JobCardCancelled>,
     /// `RecordVoided`.
@@ -211,6 +219,7 @@ pub async fn boot() -> Garage {
     let tickets = Tickets::default();
     let messages = Messages::default();
     let documents = Documents::default();
+    let returns = Returns::default();
     let mut scheduling_module = WlScheduling::new();
     for (code, initiated_by) in auto::reasons::SCHEDULING_REASON_CODES {
         scheduling_module = scheduling_module.reason_code(code, *initiated_by);
@@ -233,6 +242,7 @@ pub async fn boot() -> Garage {
             tickets: tickets.clone(),
             messages: messages.clone(),
             documents: documents.clone(),
+            returns: returns.clone(),
         });
     let app = record(app, &cancelled);
     let app = record(app, &voided);
@@ -254,6 +264,7 @@ pub async fn boot() -> Garage {
         tickets,
         messages,
         documents,
+        returns,
         cancelled,
         voided,
         who,

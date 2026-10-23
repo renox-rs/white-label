@@ -366,6 +366,18 @@ pub struct TicketSummary {
     pub status: String,
 }
 
+/// A ticket with what it is about and its category, for a vertical that reacts
+/// to a ticket closing (08 `AUT.RUL.07`: the warranty ticket of a job card).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TicketAbout {
+    /// The ticket.
+    pub ticket: TicketSummary,
+    /// The record it is about.
+    pub subject: Subject,
+    /// The key of its category, e.g. `warranty`.
+    pub category_key: String,
+}
+
 /// Opens tickets for other modules. `wl-ticketing` provides it; without that
 /// module, [`task_creator`] gives [`NoTickets`].
 pub trait TaskCreator: Send + Sync + 'static {
@@ -412,6 +424,18 @@ pub trait TaskCreator: Send + Sync + 'static {
         _category_key: &'a str,
     ) -> TicketFuture<'a, Vec<TicketSummary>> {
         Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// The ticket `ticket` with the record it is about and its category: what
+    /// a listener of `TicketClosed` needs to know whether the ticket is its
+    /// own. `None` for an unknown ticket. The default, and [`NoTickets`],
+    /// answer `None`.
+    fn ticket_about<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _ticket: TicketId,
+    ) -> TicketFuture<'a, Option<TicketAbout>> {
+        Box::pin(async { Ok(None) })
     }
 
     /// Resolves `ticket` on behalf of the record that opened it, with `note`

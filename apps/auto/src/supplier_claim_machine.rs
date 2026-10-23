@@ -5,7 +5,7 @@
 //! |---|---|---|---|---|
 //! | `raise` | — | raised | `supplier_claims.manage` | the service: the warranty ticket closed as *accepted*; the supplier warranty applies |
 //! | [`RECOVER`] / [`RECOVER_SYSTEM`] | raised | recovered | `supplier_claims.manage` / system (`SupplierReturnCredited`) | `credit_or_replacement` |
-//! | [`WRITE_OFF`] | raised | written_off | `supplier_claims.manage` | a reason; `branch_manager_approval` (slot) |
+//! | [`WRITE_OFF`] / [`WRITE_OFF_APPROVED`] | raised | written_off | `supplier_claims.manage`, approved by a branch manager other than the requester / the kernel after the approval | a reason; `branch_manager_approval` |
 //!
 //! Decisions:
 //!
@@ -17,8 +17,14 @@
 //!   in wl-invoicing) or a replacement received; a manual credit with the
 //!   reason *supplier refused* does not recover (the claim stays `raised` and
 //!   BL-AUT-11 gives the purchaser a write-off task).
-//! - The guard slot `branch_manager_approval` passes for now: BL-AUT-11 adds
-//!   the approval of a branch manager other than the requester (`PLT.APR.01`).
+//! - `write_off` is the action `auto.supplier_claim_write_off` of the kernel's
+//!   approvals ([`write_off_policy`], `PLT.APR.01`): the run is always deferred
+//!   as a request that a holder of `supplier_claims.approve` (the branch
+//!   manager) other than the purchaser decides, and the kernel runs
+//!   [`WRITE_OFF_APPROVED`] (the same effect) once it is approved. A rejected
+//!   request leaves the claim `raised`. The guard `branch_manager_approval`
+//!   refuses a run the policy would not defer, so the approval cannot be
+//!   skipped.
 
 use renox::db::now;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
@@ -26,16 +32,26 @@ use serde::{Deserialize, Serialize};
 
 use crate::db::set_supplier_claim;
 use crate::permissions;
-use crate::supplier_claim::{SupplierClaim, SupplierClaimStatus};
+use crate::supplier_claim::{SUPPLIER_CLAIM_SUBJECT_TYPE, SupplierClaim, SupplierClaimStatus};
 use crate::texts::english;
+use wl_kernel::SubjectMachine;
+use wl_kernel::approvals::{self, PolicyDefault};
 
 /// `raised → recovered`: the supplier credited or replaced the part.
 pub const RECOVER: &str = "recover";
 /// `raised → recovered`: the Return to supplier was credited
 /// (`SupplierReturnCredited`).
 pub const RECOVER_SYSTEM: &str = "recover_system";
-/// `raised → written_off`: the supplier refused and the cost is absorbed.
+/// `raised → written_off`: the supplier refused and the cost is absorbed; the
+/// run waits for the branch manager's approval.
 pub const WRITE_OFF: &str = "write_off";
+/// `raised → written_off`: the kernel runs it after the branch manager approved
+/// the write-off.
+pub const WRITE_OFF_APPROVED: &str = "write_off_approved";
+/// The approval action of `write_off`.
+pub const WRITE_OFF_ACTION: &str = "auto.supplier_claim_write_off";
+/// The input key the approval policy of `write_off` reads.
+pub const NEEDS_APPROVAL_KEY: &str = "needs_approval";
 
 /// What a run carries to the guards and effects.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,6 +72,17 @@ pub struct SupplierInput {
     /// The branch manager who approved a write-off.
     #[serde(default)]
     pub approved_by: Option<i64>,
+    /// The reason of a write-off: the kernel hands it to the run it makes after
+    /// the approval.
+    #[serde(default)]
+    pub reason: Option<String>,
+    /// 1: the write-off needs the branch manager's approval (the input key of
+    /// the policy).
+    #[serde(default)]
+    pub needs_approval: Option<i64>,
+    /// The service found the approval policy of `write_off` in force.
+    #[serde(default)]
+    pub approval_ready: bool,
 }
 
 fn input_of(ctx: &TransitionCtx) -> SupplierInput {
@@ -65,13 +92,6 @@ fn input_of(ctx: &TransitionCtx) -> SupplierInput {
 /// `Ok` when `ok`, else the English text `key`.
 fn check(ok: bool, key: &str) -> std::result::Result<(), String> {
     if ok { Ok(()) } else { Err(english(key, &[])) }
-}
-
-/// A guard slot: it names a rule an issue adds and passes for now.
-fn slot(transition: Transition<SupplierClaim>, name: &'static str) -> Transition<SupplierClaim> {
-    transition.guard(name, |_c: &SupplierClaim, _ctx| {
-        Box::pin(async { Ok::<(), String>(()) })
-    })
 }
 
 impl StateMachine for SupplierClaim {
@@ -92,7 +112,8 @@ impl StateMachine for SupplierClaim {
             .terminal()
             .transition(recover(RECOVER, false))
             .transition(recover(RECOVER_SYSTEM, true))
-            .transition(write_off())
+            .transition(write_off(WRITE_OFF, false))
+            .transition(write_off(WRITE_OFF_APPROVED, true))
     }
 }
 
@@ -148,35 +169,79 @@ fn recover(name: &'static str, system: bool) -> Transition<SupplierClaim> {
 }
 
 /// `write_off`: the supplier refused; the cost is booked as warranty expense.
-fn write_off() -> Transition<SupplierClaim> {
-    let transition = Transition::new(WRITE_OFF)
-        .label("Write off")
-        .permission(permissions::SUPPLIER_CLAIMS_MANAGE)
+/// The user's run is deferred for the branch manager (`branch_manager_approval`
+/// passes only with the policy in force); the kernel's run after the approval
+/// has the requester in the input.
+fn write_off(name: &'static str, approved: bool) -> Transition<SupplierClaim> {
+    let transition = Transition::new(name)
+        .label(if approved {
+            "Write off (approved)"
+        } else {
+            "Write off"
+        })
         .from([SupplierClaimStatus::Raised])
         .to(SupplierClaimStatus::WrittenOff)
         .reason_required();
-    slot(transition, "branch_manager_approval").effect(|c: &SupplierClaim, ctx, tx| {
-        let id = c.id;
-        let reason = ctx.reason().map(str::to_owned);
-        let approved_by = input_of(ctx).approved_by;
-        Box::pin(async move {
-            set_supplier_claim(
-                tx,
-                id,
-                &[
-                    ("written_off_at", &Some(now())),
-                    ("write_off_reason", &reason),
-                    ("write_off_approved_by", &approved_by),
-                ],
-            )
-            .await
+    let transition = if approved {
+        transition.system()
+    } else {
+        transition.permission(permissions::SUPPLIER_CLAIMS_MANAGE)
+    };
+    transition
+        .guard("branch_manager_approval", move |_c: &SupplierClaim, ctx| {
+            let input = input_of(ctx);
+            let ok = if approved {
+                input.by.is_some()
+            } else {
+                input.approval_ready
+            };
+            Box::pin(async move { check(ok, "auto.supplier.problem.approval") })
         })
-    })
+        .effect(|c: &SupplierClaim, ctx, tx| {
+            let id = c.id;
+            let reason = ctx.reason().map(str::to_owned);
+            let approved_by = input_of(ctx).approved_by;
+            Box::pin(async move {
+                set_supplier_claim(
+                    tx,
+                    id,
+                    &[
+                        ("written_off_at", &Some(now())),
+                        ("write_off_reason", &reason),
+                        ("write_off_approved_by", &approved_by),
+                    ],
+                )
+                .await
+            })
+        })
+}
+
+/// The default approval policy of `write_off` (`PLT.APR.01`): one step by a
+/// holder of `supplier_claims.approve` (the branch manager), never the
+/// purchaser who asked.
+pub fn write_off_policy() -> PolicyDefault {
+    PolicyDefault::new(WRITE_OFF_ACTION)
+        .amount_above(0)
+        .input_key(NEEDS_APPROVAL_KEY)
+        .step_permission(permissions::SUPPLIER_CLAIMS_APPROVE)
+}
+
+/// The supplier claim in the kernel's registry, so the approvals can run
+/// [`WRITE_OFF_APPROVED`] after the approval.
+pub fn subject_machine() -> SubjectMachine {
+    SubjectMachine::of::<SupplierClaim>(SUPPLIER_CLAIM_SUBJECT_TYPE)
+        .action(WRITE_OFF, WRITE_OFF_ACTION)
+        .build()
 }
 
 /// Registers the machine for `rnx state:diagram`.
 pub(crate) fn register() {
+    subject_machine().register();
     renox::state_machine::register::<SupplierClaim>();
+    write_off_policy().register();
+    approvals::register_subject_link(SUPPLIER_CLAIM_SUBJECT_TYPE, |id| {
+        format!("/auto/supplier-claims/{id}")
+    });
 }
 
 #[cfg(test)]
@@ -199,11 +264,12 @@ mod tests {
                 ("written_off", Some("neutral"), true),
             ]
         );
-        assert_eq!(machine.transitions().len(), 3);
+        assert_eq!(machine.transitions().len(), 4);
         for (name, to, system) in [
             (RECOVER, "recovered", false),
             (RECOVER_SYSTEM, "recovered", true),
             (WRITE_OFF, "written_off", false),
+            (WRITE_OFF_APPROVED, "written_off", true),
         ] {
             let transition = machine.find(name).unwrap();
             assert_eq!(transition.from_states(), ["raised"], "{name}");
@@ -226,7 +292,9 @@ mod tests {
         };
         assert_eq!(guards(RECOVER), ["credit_or_replacement"]);
         assert_eq!(guards(RECOVER_SYSTEM), ["credit_or_replacement"]);
-        assert_eq!(guards(WRITE_OFF), ["branch_manager_approval"]);
-        assert!(machine.find(WRITE_OFF).unwrap().needs_reason());
+        for name in [WRITE_OFF, WRITE_OFF_APPROVED] {
+            assert_eq!(guards(name), ["branch_manager_approval"], "{name}");
+            assert!(machine.find(name).unwrap().needs_reason(), "{name}");
+        }
     }
 }

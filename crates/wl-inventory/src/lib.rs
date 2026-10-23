@@ -40,6 +40,7 @@ mod receipt_screens;
 pub mod reorder;
 pub mod return_credit;
 pub mod return_dispatch;
+pub mod return_draft;
 pub mod return_note;
 pub mod scope_stock;
 mod screen_texts;
@@ -630,6 +631,12 @@ impl Module for WlInventory {
         // stock at a location (06: an out-of-range reading).
         wl_kernel::inventory::provide_stock_hold_service(app, hold_service::InventoryHolds);
         hold_service::register_types();
+        // `SupplierReturnDrafts`: a vertical drafts the Return to supplier of
+        // a failed part it claims from the supplier (08 `AUT.WAR.02`).
+        wl_kernel::inventory::provide_supplier_return_drafts(
+            app,
+            return_draft::InventoryReturnDrafts,
+        );
         // `STK.RUL.06`: the storekeeper is told when stock runs short, and
         // after H hours gets a task and the manager is told.
         shortage_alert::register_types();
