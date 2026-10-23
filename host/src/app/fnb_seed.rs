@@ -440,6 +440,17 @@ pub fn grant_roles(client_app: &str) {
             delivery::VIEW,
         ],
     );
+    // The owners of the SOP library publish the versions of their SOPs
+    // (`DOC.RUL.04`, 06 §5): the head chef the recipes and the food safety, the
+    // area manager the service, the cash and the delivery SOPs.
+    roles::grant_extra(
+        fnb_perm::HEAD_CHEF_ROLE,
+        &[wl_documents::permissions::SOPS_MANAGE],
+    );
+    roles::grant_extra(
+        fnb_perm::AREA_MANAGER_ROLE,
+        &[wl_documents::permissions::SOPS_MANAGE],
+    );
     // HR sees the rider fault entries on the riders' records (BL-FNB-08).
     roles::grant_extra(roles::HR, &[fnb_perm::RIDER_FAULTS_VIEW]);
     // The storekeeper sees the orders whose food they stock.
