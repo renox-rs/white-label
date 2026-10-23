@@ -21,7 +21,11 @@ pub(crate) type Texts = BTreeMap<&'static str, String>;
 
 /// The routes of the pages.
 pub fn routes() -> Routes {
-    Routes::new().merge(vehicles::routes())
+    Routes::new()
+        .merge(vehicles::routes())
+        .merge(job_cards::routes())
+        .merge(job_cards::public_routes())
+        .merge(labour::routes())
 }
 
 /// The app text `key` (without the `auto.` prefix).
