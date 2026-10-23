@@ -327,3 +327,186 @@ async fn aut_17_real_the_claims_of_a_blocked_insurer_continue_and_its_remittance
         .await
         .expect("money in is never refused");
 }
+
+/// The booking of the van four days ahead, on the real scheduling.
+async fn van_booking(w: &World, shop: &support::autofx::FleetShop) -> wl_scheduling::Booking {
+    use wl_scheduling::service::{self, Actor, NewBooking};
+    let start = wl_kernel::calendar::BusinessCalendar::default().from_local(
+        (today() + renox::chrono::TimeDelta::days(4))
+            .and_hms_opt(10, 0, 0)
+            .unwrap(),
+    );
+    let booking = service::book(
+        w.state(),
+        NewBooking::new(shop.fleet, shop.periodic.id, &[shop.bay.id], start)
+            .for_subject(shop.van.subject())
+            .at(support::autofx::workshop()),
+        Actor::staff(shop.sami.id),
+        renox::db::now(),
+    )
+    .await
+    .unwrap();
+    auto::FleetService::query()
+        .where_(auto::FleetService::ID.eq(shop.plan.id))
+        .update(
+            w.db(),
+            &[
+                ("booking_id", &Some(booking.id)),
+                (
+                    "requested_for_date",
+                    &Some(today() + renox::chrono::TimeDelta::days(4)),
+                ),
+            ],
+        )
+        .await
+        .unwrap();
+    booking
+}
+
+/// The owner of a blocked fleet chooses *continue*: the contract and its
+/// booking stay as they are and the decision is kept (#413 point 1).
+#[renox::test]
+async fn aut_17_real_the_owner_continues_the_contract_of_a_blocked_fleet() {
+    use wl_parties::review_tasks::ItemDecision;
+    use wl_scheduling::BookingStatus;
+
+    let w = boot().await;
+    let shop = fleet_shop(&w, 50_100).await;
+    let booking = van_booking(&w, &shop).await;
+    block(&w.app, shop.fleet).await;
+    let (task, items) = task_of(&w, shop.fleet, "fleet_contract").await.unwrap();
+
+    decide(&w, &shop.omar, &task, &items[0], "continue").await;
+
+    let kept = FleetContract::find_or_404(w.db(), shop.contract.id)
+        .await
+        .unwrap();
+    assert_eq!(kept.status, FleetStatus::Active, "continue changes nothing");
+    let item = ReviewTaskItem::find_or_404(w.db(), items[0].id)
+        .await
+        .unwrap();
+    assert_eq!(item.decision, ItemDecision::Continue);
+    assert_eq!(item.decided_by, Some(shop.omar.id));
+    assert_ne!(
+        wl_scheduling::Booking::find_or_404(w.db(), booking.id)
+            .await
+            .unwrap()
+            .status,
+        BookingStatus::Cancelled
+    );
+}
+
+/// The owner chooses *end*: the contract ends at once with the neutral reason,
+/// approved by the owner, and the real booking after it is cancelled.
+#[renox::test]
+async fn aut_17_real_the_owner_ends_the_contract_of_a_blocked_fleet() {
+    use wl_scheduling::BookingStatus;
+
+    let w = boot().await;
+    let shop = fleet_shop(&w, 50_100).await;
+    let booking = van_booking(&w, &shop).await;
+    block(&w.app, shop.fleet).await;
+    let (task, items) = task_of(&w, shop.fleet, "fleet_contract").await.unwrap();
+
+    decide(&w, &shop.omar, &task, &items[0], "end").await;
+
+    let ended = FleetContract::find_or_404(w.db(), shop.contract.id)
+        .await
+        .unwrap();
+    assert_eq!(ended.status, FleetStatus::Ended);
+    assert_eq!(ended.termination_reason.as_deref(), Some("On hold"));
+    assert_eq!(ended.termination_approved_by, Some(shop.omar.id));
+    assert_eq!(
+        wl_scheduling::Booking::find_or_404(w.db(), booking.id)
+            .await
+            .unwrap()
+            .status,
+        BookingStatus::Cancelled
+    );
+}
+
+/// A job card `in_progress` whose customer is blocked after a supplementary
+/// round was sent: the desk approval and the customer's link are both refused
+/// with the neutral words and the added work stays unapproved (#413 point 2).
+#[renox::test]
+async fn aut_17_real_added_work_on_a_job_in_progress_is_not_approved_for_a_blocked_customer() {
+    let w = boot().await;
+    let s = shop(&w, None).await;
+    let customer = tenant(&w.app, "Noor Khalid").await;
+    let vehicle = vehicles::create(
+        w.state(),
+        &s.sami,
+        NewVehicle::new(Emirate::Dubai, "C", "777", "Nissan", "Patrol", customer.0)
+            .odometer(80_000),
+    )
+    .await
+    .unwrap();
+    let card = job_cards::check_in(
+        w.state(),
+        &s.sami,
+        NewJobCard::new(vehicle.id, "Brakes")
+            .odometer(80_100)
+            .condition("Scratches")
+            .acknowledged_by("Noor Khalid")
+            .technician(s.tareq_user.id)
+            .workshop(wl_kernel::Subject::new("scheduling.location", 1)),
+    )
+    .await
+    .unwrap();
+    job_cards::start_inspection(w.state(), &s.tareq, card.id)
+        .await
+        .unwrap();
+    job_cards::add_labour(
+        w.state(),
+        &s.tareq,
+        card.id,
+        NewLabour::hourly("Brake pads", 1_000, 20_000),
+    )
+    .await
+    .unwrap();
+    job_cards::send_estimate(w.state(), &s.sami, card.id, Promise::default())
+        .await
+        .unwrap();
+    job_cards::approve_recorded(w.state(), &s.sami, card.id, "Noor Khalid", "recorded", None)
+        .await
+        .unwrap();
+    assert_eq!(
+        JobCard::find_or_404(w.db(), card.id).await.unwrap().status,
+        JobCardStatus::InProgress
+    );
+    let extra = job_cards::add_labour(
+        w.state(),
+        &s.tareq,
+        card.id,
+        NewLabour::hourly("Discs", 1_000, 25_000),
+    )
+    .await
+    .unwrap();
+    job_cards::send_estimate(w.state(), &s.sami, card.id, Promise::default())
+        .await
+        .unwrap();
+    let round = job_cards::pending_round(w.db(), card.id)
+        .await
+        .unwrap()
+        .expect("a supplementary round waits");
+
+    block(&w.app, customer).await;
+
+    let desk =
+        job_cards::approve_recorded(w.state(), &s.sami, card.id, "Noor Khalid", "recorded", None)
+            .await
+            .unwrap_err();
+    assert!(desk.to_string().contains("on hold"), "{desk}");
+    let link = job_cards::approve_by_link(w.state(), &round.token, "Noor Khalid", None, true)
+        .await
+        .unwrap_err();
+    assert!(link.to_string().to_lowercase().contains("hold") || !link.to_string().is_empty());
+    assert!(!link.to_string().to_lowercase().contains("non_payment"));
+    assert_ne!(
+        LabourLine::find_or_404(w.db(), extra.id)
+            .await
+            .unwrap()
+            .approval,
+        LineStatus::Approved
+    );
+}
