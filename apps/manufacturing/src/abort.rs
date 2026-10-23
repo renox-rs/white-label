@@ -564,6 +564,13 @@ pub async fn after_abort(state: &AppState, id: i64) -> Result<bool> {
     if claimed == 0 {
         return Ok(false);
     }
+    // The task of `MFG.RUL.09` that asked for this abort is done.
+    crate::order_changes::close_abort_task(
+        state,
+        id,
+        &english("manufacturing.order_change.abort_done", &[]),
+    )
+    .await?;
     let (mut returned, mut scrapped) = (0, 0);
     for line in &lines {
         let (Some(item), quantity) = (line.item_id, line.quantity_milli) else {

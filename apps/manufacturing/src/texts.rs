@@ -13,6 +13,120 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("manufacturing.notice.subject", "{{ title }}"),
     ("manufacturing.notice.body", "{{ body }}"),
+    // The work orders follow their sales order (`MFG.RUL.09`).
+    (
+        "manufacturing.order_change.title",
+        "Sales order {{ sales }}, line {{ line }}: work orders adjusted",
+    ),
+    (
+        "manufacturing.order_change.quantity",
+        "{{ order }}: quantity {{ from }} to {{ to }} for {{ sales }}.",
+    ),
+    (
+        "manufacturing.order_change.cancelled",
+        "{{ order }} is cancelled: {{ sales }} no longer needs it.",
+    ),
+    (
+        "manufacturing.order_change.cancel_reason",
+        "Sales order {{ sales }} was changed or cancelled",
+    ),
+    (
+        "manufacturing.order_change.unlinked",
+        "{{ order }} keeps running for stock: {{ sales }} no longer needs it.",
+    ),
+    (
+        "manufacturing.order_change.unlink_reason",
+        "Sales order {{ sales }} no longer needs it: finish to stock",
+    ),
+    (
+        "manufacturing.order_change.for_stock",
+        "{{ order }} keeps its quantity; {{ quantity }} of its output is for stock because {{ sales }} needs less.",
+    ),
+    (
+        "manufacturing.order_change.for_stock_down",
+        "{{ order }}: the part of its output for stock is now {{ quantity }}.",
+    ),
+    (
+        "manufacturing.order_change.extra",
+        "New planned work order {{ order }} for {{ quantity }}: {{ sales }} needs more than {{ started }} makes.",
+    ),
+    (
+        "manufacturing.order_change.abort_asked",
+        "{{ order }}: the production manager was asked to request the abort ({{ sales }} was cancelled with the outcome scrap).",
+    ),
+    (
+        "manufacturing.order_change.abort_title",
+        "Request the abort of {{ order }}",
+    ),
+    (
+        "manufacturing.order_change.abort_body",
+        "Sales order {{ sales }} was cancelled with the outcome scrap. {{ order }} has material issued or output reported, so only an abort can stop it. Open the work order, choose Abort and send the request with this reason: {{ reason }}",
+    ),
+    (
+        "manufacturing.order_change.abort_done",
+        "The abort was approved.",
+    ),
+    (
+        "manufacturing.order_change.abort_reason",
+        "Sales order {{ sales }} cancelled, outcome scrap: {{ why }}",
+    ),
+    (
+        "manufacturing.screen.changes.title",
+        "Changes from the sales order",
+    ),
+    ("manufacturing.screen.changes.when", "When"),
+    ("manufacturing.screen.changes.what", "What"),
+    ("manufacturing.screen.changes.detail", "Detail"),
+    ("manufacturing.screen.change.quantity", "Quantity changed"),
+    ("manufacturing.screen.change.cancel", "Cancelled"),
+    ("manufacturing.screen.change.unlink", "Left the sales order"),
+    ("manufacturing.screen.change.for_stock", "Output for stock"),
+    ("manufacturing.screen.change.extra_order", "New work order"),
+    ("manufacturing.screen.change.abort_task", "Abort asked for"),
+    (
+        "manufacturing.screen.change.held",
+        "Added quantity held until paid",
+    ),
+    (
+        "manufacturing.screen.change.released",
+        "Held quantity released",
+    ),
+    (
+        "manufacturing.screen.change.detail.quantity",
+        "From {{ from }} to {{ to }}. {{ note }}",
+    ),
+    (
+        "manufacturing.screen.change.detail.cancel",
+        "The sales order no longer needs the {{ from }}.",
+    ),
+    (
+        "manufacturing.screen.change.detail.unlink",
+        "It keeps running for stock ({{ from }}).",
+    ),
+    (
+        "manufacturing.screen.change.detail.for_stock",
+        "{{ to }} of its output is for stock (before: {{ from }}).",
+    ),
+    (
+        "manufacturing.screen.change.detail.extra_order",
+        "A planned work order for {{ to }}. {{ note }}",
+    ),
+    (
+        "manufacturing.screen.change.detail.abort_task",
+        "The production manager was asked to request the abort of {{ from }}; {{ to }} is no longer needed.",
+    ),
+    (
+        "manufacturing.screen.change.detail.held",
+        "{{ to }} waits for the customer's payment.",
+    ),
+    (
+        "manufacturing.screen.change.detail.released",
+        "{{ to }} is paid and can be made.",
+    ),
+    (
+        "manufacturing.screen.change.abort_note",
+        "The sales order was cancelled with the outcome scrap. Request the abort of this work order; the reason is filled in: {{ reason }}",
+    ),
     // The non-conformance report (`MFG.QCL.02`).
     (
         "manufacturing.ncr.choose",

@@ -32,6 +32,7 @@ use super::{
 use crate::abort::{self, AbortLine};
 use crate::cost;
 use crate::issue::MaterialIssue;
+use crate::order_changes::{self, Adjustment};
 use crate::permissions;
 use crate::pick_list;
 use crate::plant::Line;
@@ -168,6 +169,14 @@ pub(crate) struct ActivityLine {
     reason: String,
 }
 
+/// A change `MFG.RUL.09` made because the sales order changed.
+#[derive(Debug, Serialize, Clone)]
+pub(crate) struct ChangeLine {
+    at: String,
+    what: String,
+    detail: String,
+}
+
 /// A material that can go back to the store in the *Abort* sheet.
 #[derive(Debug, Serialize, Clone)]
 pub(crate) struct ReturnRow {
@@ -201,6 +210,8 @@ pub(crate) struct WorkOrderPage {
     outcome: Vec<OutcomeLine>,
     approvals: Vec<ApprovalLine>,
     activity: Vec<ActivityLine>,
+    changes: Vec<ChangeLine>,
+    abort_prefill: String,
 }
 
 fn approval_kind(status: ApprovalStatus) -> &'static str {
@@ -681,6 +692,45 @@ async fn build(
         });
     }
 
+    // What the sales order changed (`MFG.RUL.09`), and the reason the abort
+    // sheet is filled with when the production manager was asked for it.
+    let mut changes = Vec::new();
+    let mut abort_prefill = String::new();
+    for row in Adjustment::of_work_order(&state.db, order.id).await? {
+        if row.action == order_changes::action::ABORT_TASK {
+            let number = wl_kernel::production::order_lines(state)
+                .line(
+                    state,
+                    wl_kernel::sales::SalesOrderId(row.order_id),
+                    row.line_id,
+                )
+                .await?
+                .and_then(|info| info.number)
+                .unwrap_or_else(|| row.order_id.to_string());
+            abort_prefill = order_changes::abort_reason(&number, &row.note);
+            if order.status.is_open() {
+                notes.push(tf(
+                    lang,
+                    "manufacturing.screen.change.abort_note",
+                    &[("reason", &abort_prefill)],
+                ));
+            }
+        }
+        changes.push(ChangeLine {
+            at: row.created_at.map(time_text).unwrap_or_default(),
+            what: word(lang, "change", &row.action),
+            detail: tf(
+                lang,
+                &format!("manufacturing.screen.change.detail.{}", row.action),
+                &[
+                    ("from", &quantity_text(row.from_milli)),
+                    ("to", &quantity_text(row.to_milli)),
+                    ("note", &row.note),
+                ],
+            ),
+        });
+    }
+
     let status = order.status;
     Ok(WorkOrderPage {
         tx: screen_texts(lang),
@@ -704,5 +754,7 @@ async fn build(
         outcome,
         approvals,
         activity,
+        changes,
+        abort_prefill,
     })
 }

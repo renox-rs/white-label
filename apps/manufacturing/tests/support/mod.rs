@@ -754,6 +754,22 @@ impl Lines {
         });
     }
 
+    /// Line `line` of order `order` has `open_milli` open now (it is made
+    /// when unknown).
+    pub fn set(&self, order: i64, line: i64, open_milli: i64) {
+        let mut all = self.0.lock().unwrap();
+        match all
+            .iter_mut()
+            .find(|info| info.order.0 == order && info.line == line)
+        {
+            Some(info) => info.open_milli = open_milli,
+            None => {
+                drop(all);
+                self.open(order, line, open_milli, None);
+            }
+        }
+    }
+
     /// Order `order` belongs to customer `party`.
     pub fn customer(&self, order: i64, party: i64) {
         self.1.lock().unwrap().insert(order, PartyId(party));
@@ -766,6 +782,7 @@ impl Lines {
 
     /// Line `line` of order `order` was cancelled.
     pub fn cancel(&self, order: i64, line: i64) {
+        self.set(order, line, 0);
         for info in self.0.lock().unwrap().iter_mut() {
             if info.order.0 == order && info.line == line {
                 info.cancelled = true;

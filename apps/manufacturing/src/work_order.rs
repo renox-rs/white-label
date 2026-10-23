@@ -27,10 +27,10 @@
 //! and the line are two scopes, and [`crate::work_orders`] checks the
 //! permission of the spec against both ([`WorkOrder::may`]).
 //!
-//! Comes with other issues (the states they need are declared): the void of a
-//! production report (BL-MFG-04), the hold for material (BL-MFG-05, the
-//! `hold` here takes the reason), `MFG.RUL.09` calling `unlink`, `cancel` and
-//! the quantity change (BL-MFG-03).
+//! `MFG.RUL.09` (BL-MFG-03, [`crate::order_changes`]) calls `unlink`,
+//! `auto_cancel` and the system's quantity change
+//! ([`crate::work_orders::change_quantity_by_system`]); the void of a
+//! production report is BL-MFG-04 and the hold for material BL-MFG-05.
 
 use renox::auth::permissions::Scope;
 use renox::chrono::NaiveDate;

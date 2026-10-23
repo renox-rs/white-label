@@ -14,12 +14,14 @@ pub mod material_hold;
 pub mod ncr;
 pub mod ncrs;
 pub mod notices;
+pub mod order_changes;
 pub mod pages;
 pub mod permissions;
 pub mod pick_list;
 pub mod plant;
 pub mod po_upload;
 pub mod portal;
+pub mod progress;
 pub mod recalls;
 pub mod report;
 mod screens;
@@ -160,7 +162,8 @@ impl Module for Manufacturing {
             .model::<ItemFlag>()
             .model::<po_upload::PoUpload>()
             .model::<exports::ExportWatch>()
-            .model::<exports::ContractNote>();
+            .model::<exports::ContractNote>()
+            .model::<order_changes::Adjustment>();
         work_order::register();
         ncr::register();
         report::register(app);
@@ -175,6 +178,10 @@ impl Module for Manufacturing {
             Box::pin(ncrs::recheck(tx, request))
         });
         abort::listen(app);
+        // `MFG.RUL.09`: the work orders follow their sales order.
+        order_changes::listen(app);
+        // `SAL.ACL.05`: which lines of an order have started.
+        wl_kernel::sales::provide_fulfilment_progress(app, progress::ProductionProgress);
         material_hold::listen(app);
         ncrs::listen(app);
         // The supplier scorecard counts the NCRs caused by the supplier.

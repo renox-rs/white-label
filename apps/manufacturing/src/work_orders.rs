@@ -476,6 +476,97 @@ pub async fn cancel_by_system(state: &AppState, id: i64, reason: &str) -> Result
     Ok(cancelled)
 }
 
+/// What [`change_quantity_by_system`] did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QuantityChange {
+    /// The quantity is the new one; `regenerated` says whether the pick list
+    /// of a `released` work order was made again.
+    Changed {
+        /// Whether the pick list was regenerated.
+        regenerated: bool,
+        /// Why a `released` work order kept its old pick list, when it did.
+        pick_problem: Option<String>,
+    },
+    /// Nothing changed: the quantity is the same, or the work order started
+    /// (a started work order keeps its quantity), or it is closed.
+    Unchanged,
+}
+
+/// The system changes the quantity of the not started work order `id` to
+/// `quantity_milli` (`MFG.RUL.09`): a `planned` one takes it, a `released`
+/// one also gets its pick list made again from the BOM version. A started
+/// work order (`in_progress`, `on_hold`, or with material issued or output
+/// reported) never changes its quantity.
+///
+/// # Errors
+///
+/// A 422 for a quantity that is not above zero.
+pub async fn change_quantity_by_system(
+    state: &AppState,
+    id: i64,
+    quantity_milli: i64,
+) -> Result<QuantityChange> {
+    if quantity_milli <= 0 {
+        return Err(refused(english("manufacturing.create.quantity", &[])));
+    }
+    let order = load(state, id).await?;
+    if order.started()
+        || !matches!(
+            order.status,
+            WorkOrderStatus::Planned | WorkOrderStatus::Released
+        )
+        || order.quantity_milli == quantity_milli
+    {
+        return Ok(QuantityChange::Unchanged);
+    }
+    // The BOM is another module's: read it before the transaction.
+    let mut resized = order.clone();
+    resized.quantity_milli = quantity_milli;
+    let released = order.status == WorkOrderStatus::Released;
+    let input = if released {
+        Some(readiness(state, &resized).await?)
+    } else {
+        None
+    };
+    let regenerate = input.as_ref().is_some_and(|input| !input.pick.is_empty());
+    let pick_problem = input
+        .as_ref()
+        .filter(|input| input.pick.is_empty() && !input.problems.is_empty())
+        .map(|input| input.problems.join("\n"));
+    let mut tx = state.db.begin().await?;
+    crate::db::set_order(&mut tx, id, &[("quantity_milli", &quantity_milli)]).await?;
+    if let (true, Some(input)) = (regenerate, input.as_ref()) {
+        crate::pick_list::generate(&mut tx, id, &input.pick).await?;
+    }
+    tx.commit().await?;
+    Ok(QuantityChange::Changed {
+        regenerated: regenerate,
+        pick_problem,
+    })
+}
+
+/// The system sets the part of work order `id` that is for stock (an order
+/// line was decreased, `MFG.RUL.09`); the quantity itself stays.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn set_for_stock_by_system(
+    state: &AppState,
+    id: i64,
+    quantity_for_stock_milli: i64,
+) -> Result<bool> {
+    let order = load(state, id).await?;
+    let wanted = quantity_for_stock_milli.clamp(0, order.quantity_milli);
+    if order.quantity_for_stock_milli == wanted {
+        return Ok(false);
+    }
+    let mut tx = state.db.begin().await?;
+    crate::db::set_order(&mut tx, id, &[("quantity_for_stock_milli", &wanted)]).await?;
+    tx.commit().await?;
+    Ok(true)
+}
+
 /// The subject of the sales order a work order serves, if it is linked.
 pub fn sales_subject(order: &WorkOrder) -> Option<Subject> {
     order

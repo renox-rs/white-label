@@ -132,7 +132,7 @@
         <template rx-else>
           <rx-action-sheet id="abort-order" :label="tx['action.abort']" :action="route('manufacturing.abort', id)"
                            :title="tx['action.abort']" :description="tx['action.abort_hint']" :submit-label="tx['action.abort']" variant="plain-danger" icon="octagon-x" danger>
-            <rx-textarea name="reason" :label="tx['form.abort_reason']" id="abort-order-reason" required/>
+            <rx-textarea name="reason" :label="tx['form.abort_reason']" id="abort-order-reason" :value="abort_prefill" required/>
             <rx-input rx-for="row in returns" :name="row.name" type="text" :label="row.label" :hint="row.hint" :id="row.name"/>
           </rx-action-sheet>
         </template>
@@ -151,6 +151,11 @@
               <rx-entry rx-for="fact in costs" :label="fact.label" :value="fact.value"/>
             </rx-infolist>
           </rx-card>
+          <rx-table rx-if="changes" :rows="changes" as="change" :key="change.at ~ change.what ~ change.detail" :caption="tx['changes.title']" card>
+            <rx-column :label="tx['changes.when']" hide-narrow>{{ change.at }}</rx-column>
+            <rx-column :label="tx['changes.what']">{{ change.what }}</rx-column>
+            <rx-column :label="tx['changes.detail']">{{ change.detail }}</rx-column>
+          </rx-table>
           <rx-table rx-if="outcome" :rows="outcome" as="line" :key="line.what ~ line.item ~ line.quantity" :caption="tx['abort.outcome']" card>
             <rx-column :label="tx['abort.what']">{{ line.what }}</rx-column>
             <rx-column :label="tx['materials.item']">{{ line.item }}</rx-column>
