@@ -23,6 +23,7 @@ pub mod logistics_settings;
 pub mod manpower_demo;
 pub mod manpower_portal;
 pub mod manpower_seed;
+pub mod manufacturing_seed;
 pub mod menu;
 pub mod negative_flow;
 pub mod property_seed;

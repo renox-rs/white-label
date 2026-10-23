@@ -41,6 +41,7 @@ pub use app::logistics_seed;
 pub use app::logistics_settings;
 pub use app::manpower_demo;
 pub use app::manpower_seed;
+pub use app::manufacturing_seed;
 pub use app::negative_flow::{delivery_for, invoicing_for, payments_for};
 pub use app::roles;
 
@@ -193,6 +194,8 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     app::edtech_settings::grant_roles(&client_app);
     app::logistics_seed::register_integrations(&client_app);
     app::logistics_rules::register_critical(&client_app);
+    // `MFG.RUL.08` is compliance-critical for a manufacturer (BL-MFG-12).
+    app::manufacturing_seed::register_critical(&client_app);
     app::negative_flow::register_approvals(&client_app);
     // What a client user of an accounting firm sees of its engagements.
     app::accounting_portal::register(&client_app);
@@ -361,6 +364,7 @@ fn enable(
             if client_app == app::manpower_seed::MANPOWER {
                 app::manpower_seed::register_documents();
             }
+            app::manufacturing_seed::register_documents(client_app);
             Ok(app.module(wl_documents::WlDocuments))
         }
         "notify" => {

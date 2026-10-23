@@ -773,6 +773,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::SALES_ORDERS_VIEW,
             sales::CREDIT_VIEW,
             sales::CREDIT_RELEASE,
+            // 07 `MFG.RUL.08`: follows the exports without exit evidence and
+            // writes the customers' contract notes (BL-MFG-12).
+            mfg::EXPORTS_MANAGE,
             hr::LEAVE_REQUEST,
             edu::COURSES_VIEW,
             edu::BATCHES_VIEW,
@@ -1075,6 +1078,14 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::BOMS_VIEW,
             inventory::BOMS_MANAGE,
             inventory::BOMS_RELEASE,
+            // 07 §4.4 step 8: the production manager opens a recall and reads
+            // which customers it reached (BL-MFG-10).
+            inventory::RECALLS_VIEW,
+            inventory::RECALLS_MANAGE,
+            // 07 `MFG.ACL.11`: flags the regulated and export only items and
+            // follows the export evidence (BL-MFG-11, BL-MFG-12).
+            mfg::CONFORMITY_MANAGE,
+            mfg::EXPORTS_MANAGE,
         ],
     ),
     (
