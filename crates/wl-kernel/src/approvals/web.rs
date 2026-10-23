@@ -269,13 +269,29 @@ fn decision_label(tr: Tr<'_>, decision: DecisionKind) -> String {
     tr.t(&format!("wl_kernel.approvals.decision.{decision}"))
 }
 
+/// A permission in words: an app's own words under
+/// `wl_kernel.approvals.permission_<key with underscores>` when it has them,
+/// else the key with its dots and underscores read as spaces
+/// (`credit.release` is *credit release*).
+fn permission_words(tr: Tr<'_>, permission: &str) -> String {
+    let key = format!(
+        "wl_kernel.approvals.permission_{}",
+        permission.replace('.', "_")
+    );
+    let found = tr.t(&key);
+    if found != key {
+        return found;
+    }
+    permission.replace(['.', '_'], " ")
+}
+
 /// Who may decide `step`, in words: its roles, then its permission's holders.
 fn step_approvers(tr: Tr<'_>, step: &Step) -> String {
     let mut parts = step.roles.clone();
     if let Some(permission) = &step.permission {
         parts.push(tr.t_with(
             "wl_kernel.approvals.card.holders_of",
-            &[("permission", permission)],
+            &[("permission", &permission_words(tr, permission))],
         ));
     }
     parts.join(", ")
@@ -870,7 +886,7 @@ mod tests {
         assert_eq!(card.steps[0].approvers, "property_manager");
         assert_eq!(
             card.steps[1].approvers,
-            "finance, owner, holders of refunds.approve"
+            "finance, owner, anyone with the refunds approve permission"
         );
         assert_eq!(card.decisions.len(), 1);
         assert_eq!(card.decisions[0].approver, "Bilal");

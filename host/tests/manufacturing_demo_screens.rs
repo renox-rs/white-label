@@ -53,6 +53,7 @@ fn no_raw_words(html: &str, url: &str) {
     let text = visible(html);
     for forbidden in [
         "manufacturing.",
+        "holders of",
         "nav.",
         "finish_to_stock",
         "return_to_stock",
