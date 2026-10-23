@@ -290,6 +290,8 @@ async fn aut_16_real_the_trace_names_the_owner_the_fleet_the_customer_and_counts
     let fleet = company(&w.app, "Al Noor Logistics").await;
     let contact = tenant(&w.app, "Hamdan Saeed").await;
     let w1 = company(&w.app, "Quick Fit Workshop").await;
+    // The van is owned by a leasing company; the fleet runs it under contract.
+    let lessor = company(&w.app, "Emirates Leasing").await;
 
     let hilux = vehicles::create(
         w.state(),
@@ -301,7 +303,7 @@ async fn aut_16_real_the_trace_names_the_owner_the_fleet_the_customer_and_counts
     let van = vehicles::create(
         w.state(),
         &sami,
-        NewVehicle::new(Emirate::Dubai, "B", "555", "Nissan", "Urvan", fleet.0).odometer(60_000),
+        NewVehicle::new(Emirate::Dubai, "B", "555", "Nissan", "Urvan", lessor.0).odometer(60_000),
     )
     .await
     .unwrap();
@@ -373,6 +375,11 @@ async fn aut_16_real_the_trace_names_the_owner_the_fleet_the_customer_and_counts
     };
     assert_eq!(party_of(&jc_hilux.number()), Some(o1.0));
     assert_eq!(party_of(&jc_van.number()), Some(fleet.0));
+    assert_ne!(
+        party_of(&jc_van.number()),
+        Some(lessor.0),
+        "the fleet under contract, not the owner of the van"
+    );
     // The fleet's contact is told about the fleet's van.
     let van_row = rows
         .iter()
