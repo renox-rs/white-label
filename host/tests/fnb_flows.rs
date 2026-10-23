@@ -14,6 +14,7 @@ use fnb::FnbOrderStatus;
 use fnb::order::payment;
 use renox::chrono::TimeDelta;
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use wl_delivery::{DeliveryStatus, WlDelivery};
 use wl_inventory::WlInventory;
 use wl_kernel::Subject;
@@ -27,6 +28,7 @@ use wl_sales::{
     ReturnResolution, ReturnStatus, SaleLine, SalesOrder, SalesOrderStatus, SalesReturn, WlSales,
 };
 
+use world::stock;
 use world::{World, make_user};
 
 /// The world with the module settings of the 06 client.
@@ -391,4 +393,223 @@ async fn a_pending_online_payment_is_asked_of_the_gateway_after_ten_minutes() {
     let failed = reload(&w).await;
     assert_eq!(failed.status, PaymentStatus::Failed);
     assert_eq!(failed.failure_kind, Some(PaymentFailureKind::Timeout));
+}
+
+// ------------------------------------------------------------------ stock
+
+/// An issued purchase order of 100 kg of chicken from a dairy supplier for
+/// the outlet's store (a fixture: the order is not what is tested).
+async fn issued_order(w: &World) -> (wl_inventory::PurchaseOrder, wl_inventory::PurchaseOrderLine) {
+    let supplier = w.customer("Al Ain Dairy").await;
+    let mut order = wl_inventory::PurchaseOrder::new(supplier, w.store.id);
+    order.status = wl_inventory::PurchaseOrderStatus::Issued;
+    let mut tx = w.db().begin().await.unwrap();
+    order
+        .insert_in_state(&mut tx, wl_inventory::PurchaseOrderStatus::Issued, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let mut line =
+        wl_inventory::PurchaseOrderLine::new(order.id, 1, w.chicken.id, 100_000, 1_200);
+    line.save(w.db()).await.unwrap();
+    (order, line)
+}
+
+/// A draft receipt of the order with one line of 100 kg received, 80 kg
+/// accepted and the rest rejected for `temperature`, with `evidence`.
+async fn temperature_receipt(
+    w: &World,
+    order: &wl_inventory::PurchaseOrder,
+    line: &wl_inventory::PurchaseOrderLine,
+    evidence: Option<&str>,
+) -> wl_inventory::GoodsReceipt {
+    let mut draft = wl_inventory::DraftLine::on(line.id, 100_000, 80_000).rejected_for(
+        "temperature",
+        wl_inventory::supplier_return::RejectedHandling::RefusedAtDoor,
+    );
+    if let Some(evidence) = evidence {
+        draft = draft.evidence(evidence);
+    }
+    wl_inventory::goods_receipt::create_draft(
+        w.db(),
+        None,
+        wl_inventory::DraftReceipt {
+            purchase_order_id: order.id,
+            location_id: w.store.id,
+            delivery_note: Some("DN-1".to_owned()),
+            lines: vec![draft],
+        },
+    )
+    .await
+    .expect("the draft receipt")
+}
+
+/// AC (Stock S2): a goods receipt line rejected for `temperature` without the
+/// reading is refused when it is posted; with the reading it posts and the
+/// rejected quantity goes back to the supplier.
+#[renox::test]
+async fn a_temperature_rejection_without_the_reading_is_refused_at_posting() {
+    let (w, _) = deployed().await;
+    let keeper = make_user(
+        w.db(),
+        "Amal",
+        &[
+            wl_inventory::permissions::GOODS_RECEIPTS_POST,
+            wl_inventory::permissions::STOCK_VIEW,
+        ],
+    )
+    .await;
+    let (order, line) = issued_order(&w).await;
+
+    let bare = temperature_receipt(&w, &order, &line, None).await;
+    let refused = w
+        .post(&keeper, &format!("/goods-receipts/{}/post", bare.id), &[])
+        .await;
+    refused.assert_status(422);
+    assert_eq!(
+        wl_inventory::GoodsReceipt::find_or_404(w.db(), bare.id)
+            .await
+            .unwrap()
+            .status,
+        wl_inventory::GoodsReceiptStatus::Draft,
+        "nothing was posted"
+    );
+
+    let read = temperature_receipt(&w, &order, &line, Some("9 C")).await;
+    w.post(&keeper, &format!("/goods-receipts/{}/post", read.id), &[])
+        .await
+        .assert_ok();
+    assert_eq!(
+        wl_inventory::GoodsReceipt::find_or_404(w.db(), read.id)
+            .await
+            .unwrap()
+            .status,
+        wl_inventory::GoodsReceiptStatus::Posted
+    );
+}
+
+/// AC (Stock S3): the release of a line of a recall hold needs a second
+/// holder of `lots.release`: the head chef's decision waits, the kitchen
+/// manager approves it; the head chef releases the line of a temperature hold
+/// alone.
+#[renox::test]
+async fn a_recall_hold_needs_a_second_holder_and_a_temperature_hold_does_not() {
+    let (w, _) = deployed().await;
+    let k = stock::kitchen(&w).await;
+    let t7 = stock::lot(&w, &k.tomato, "T7", &k.central, 40_000, 20).await;
+    let t8 = stock::lot(&w, &k.tomato, "T8", &k.central, 40_000, 20).await;
+    let recall = stock::hold(&w, &t7, "recall").await;
+    let temperature = stock::hold(&w, &t8, "temperature").await;
+    let line_of = |hold: &wl_inventory::StockHold| {
+        let db = w.db().clone();
+        let id = hold.id;
+        async move {
+            wl_inventory::stock_hold::lines_of(&db, id)
+                .await
+                .unwrap()
+                .remove(0)
+        }
+    };
+
+    let alone = line_of(&temperature).await;
+    w.post(
+        &k.chef,
+        &format!("/stock-hold-lines/{}/release", alone.id),
+        &[],
+    )
+    .await
+    .assert_ok();
+    assert_eq!(
+        wl_inventory::StockHoldLine::find_or_404(w.db(), alone.id)
+            .await
+            .unwrap()
+            .status,
+        wl_inventory::HoldLineStatus::Released,
+        "a temperature hold is released by the chef alone"
+    );
+
+    let line = line_of(&recall).await;
+    w.post(
+        &k.chef,
+        &format!("/stock-hold-lines/{}/release", line.id),
+        &[],
+    )
+    .await
+    .assert_ok();
+    let waiting = wl_inventory::StockHoldLine::find_or_404(w.db(), line.id)
+        .await
+        .unwrap();
+    assert_eq!(waiting.status, wl_inventory::HoldLineStatus::Undecided);
+    let request = ApprovalRequest::pending_about(w.db(), &waiting.subject())
+        .await
+        .unwrap()
+        .pop()
+        .expect("the release of a recall hold waits for a second holder");
+    assert!(
+        approvals::approve(w.state(), request.id, &k.chef, "")
+            .await
+            .is_err(),
+        "the chef cannot approve their own release"
+    );
+    approvals::approve(w.state(), request.id, &k.manager, "")
+        .await
+        .expect("the kitchen manager approves");
+    assert_eq!(
+        wl_inventory::StockHoldLine::find_or_404(w.db(), line.id)
+            .await
+            .unwrap()
+            .status,
+        wl_inventory::HoldLineStatus::Released
+    );
+}
+
+/// AC (Suppliers R2, `STK.RUL.09`): a supplier whose monthly score is 69 gets
+/// a review task and procurement is told; one whose score is 70 gets none.
+#[renox::test]
+async fn a_supplier_score_of_69_opens_a_review_and_70_does_not() {
+    let (w, _) = deployed().await;
+    let settings = w
+        .state()
+        .provided::<wl_inventory::InventoryConfig>()
+        .expect("the stock settings")
+        .score
+        .clone();
+    assert_eq!(settings.threshold, 70);
+    let mut snapshots = Vec::new();
+    for (name, score) in [("Weak Supplier", 69), ("Fair Supplier", 70)] {
+        let supplier = w.customer(name).await;
+        let date = renox::chrono::NaiveDate::from_ymd_opt(2026, 12, 1).unwrap();
+        let mut row = wl_inventory::SupplierScore {
+            supplier_party_id: supplier.0,
+            snapshot_date: date,
+            window_from: date.checked_sub_months(renox::chrono::Months::new(1)).unwrap(),
+            window_to: date.pred_opt().unwrap(),
+            receipts: 5,
+            on_time: 3,
+            on_time_bp: Some(6_000),
+            rejected_bp: Some(300),
+            score: Some(score),
+            band: wl_inventory::supplier_score::band_of(Some(score), &settings),
+            computed_at: Some(renox::db::now()),
+            ..wl_inventory::SupplierScore::default()
+        };
+        row.save(w.db()).await.unwrap();
+        snapshots.push((supplier, row));
+    }
+    let rows: Vec<_> = snapshots.iter().map(|(_, row)| row.clone()).collect();
+
+    wl_inventory::supplier_review::on_snapshots(w.state(), &rows)
+        .await
+        .unwrap();
+
+    let reviews = wl_inventory::SupplierReview::query()
+        .get(w.db())
+        .await
+        .unwrap();
+    assert_eq!(reviews.len(), 1, "only the supplier at 69 is reviewed");
+    assert_eq!(reviews[0].supplier_party_id, snapshots[0].0 .0);
+    assert_eq!(reviews[0].status, wl_inventory::ReviewStatus::Open);
+    let tasks = w.tickets.opened();
+    assert_eq!(tasks.len(), 1);
+    assert!(tasks[0].description.contains("Score 69"), "{}", tasks[0].description);
 }
