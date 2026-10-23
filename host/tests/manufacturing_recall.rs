@@ -276,3 +276,121 @@ async fn a_recalled_raw_lot_is_traced_to_the_customers_through_the_work_orders()
     .await
     .assert_status(403);
 }
+
+/// BL-MFG-10 AC4 (#391): customer C4 has no buyer with a portal login; the
+/// recall notice sent from the recall page goes to its main contact: a
+/// message under the 07 type `mfg.recall_notice` is queued for the party's
+/// primary e-mail address, and none for a buyer.
+#[renox::test]
+async fn a_customer_without_a_portal_buyer_is_told_at_its_main_contact_email() {
+    let (app, _orders) = boot_with_orders().await;
+    let f = floor(&app).await;
+    let keeper = person(&app, "Karim", STOREKEEPER, None).await;
+    let manager = person(&app, "Mona", PRODUCTION_MANAGER, None).await;
+    let c4 = wl_parties::create(
+        app.state(),
+        wl_parties::NewParty {
+            kind: wl_kernel::PartyKind::Company,
+            legal_name_en: "Bin Rashid Contracting LLC".into(),
+            company: Some(wl_parties::CompanyDetails::default()),
+            contacts: vec![wl_parties::ContactPoint {
+                contact_type: wl_parties::ContactType::Email,
+                value: "accounts@binrashid.example".into(),
+                is_primary: true,
+                ..Default::default()
+            }],
+            source: "back_office".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .party_id();
+    let f1 = lot(app.db(), f.panel.id, "F4", LotStatus::Released).await;
+    StockMovement::receive(
+        f.panel.id,
+        Some(f1.id),
+        f.finished.id,
+        50_000,
+        800,
+        40_000,
+        &Subject::new("inventory.goods_receipt", 2),
+        None,
+    )
+    .save(app.db())
+    .await
+    .unwrap();
+    let sent = create_dispatch(
+        app.db(),
+        None,
+        NewDispatch {
+            source: Subject::new("sales.sales_order", 90),
+            recipient: Some(c4),
+            recipient_name: "Bin Rashid".into(),
+            address: "Dubai".into(),
+            location_id: f.finished.id,
+            lines: vec![NewDispatchLine::of(f.panel.id, 30_000).lot(f1.id)],
+        },
+    )
+    .await
+    .unwrap();
+    post(&app, &keeper, &format!("/dispatches/{}/pick", sent.id), &[])
+        .await
+        .assert_ok();
+    post(
+        &app,
+        &keeper,
+        &format!("/dispatches/{}/dispatch", sent.id),
+        &[("handover", "courier"), ("tracking_number", "TRK-4")],
+    )
+    .await
+    .assert_ok();
+    post(
+        &app,
+        &manager,
+        "/recalls",
+        &[
+            ("source", "internal"),
+            ("reason", "Wrong resin grade"),
+            ("items", &f.panel.id.to_string()),
+            ("lot_numbers", "F4"),
+        ],
+    )
+    .await
+    .assert_ok();
+    let recall = wl_inventory::Recall::query()
+        .first(app.db())
+        .await
+        .unwrap()
+        .expect("a recall");
+    let line = wl_inventory::RecallLine::query()
+        .where_(wl_inventory::RecallLine::RECALL_ID.eq(recall.id))
+        .where_(wl_inventory::RecallLine::PARTY_ID.eq(Some(c4.0)))
+        .first(app.db())
+        .await
+        .unwrap()
+        .expect("the line of C4");
+
+    post(
+        &app,
+        &manager,
+        &format!("/recalls/{}/notices", recall.id),
+        &[("template", "customer"), ("lines", &line.id.to_string())],
+    )
+    .await
+    .assert_ok();
+
+    let messages = wl_notify::Message::query()
+        .where_(wl_notify::Message::TYPE_KEY.eq("mfg.recall_notice"))
+        .get(app.db())
+        .await
+        .unwrap();
+    assert_eq!(messages.len(), 1, "one notice for the one customer");
+    assert_eq!(
+        messages[0].address.as_deref(),
+        Some("accounts@binrashid.example"),
+        "to the main contact e-mail"
+    );
+    assert_eq!(messages[0].party_id, Some(c4.0));
+    assert!(messages[0].user_id.is_none(), "there is no buyer to tell");
+}
