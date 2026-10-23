@@ -832,7 +832,7 @@ async fn aut_base_the_transitions_the_issues_extend_are_declared_and_their_slots
         PARTS_ARRIVED,
         APPROVE_SYSTEM,
     ] {
-        assert!(machine.find(name).is_some(), "{name}");
+        assert!(machine.find(name).is_ok(), "{name}");
     }
 }
 

@@ -78,7 +78,7 @@ pub(crate) fn km_text(km: i64) -> String {
 
 /// The emirates as options, `[stored name, name on a plate]`.
 fn emirate_options() -> Vec<[String; 2]> {
-    Emirate::ALL
+    Emirate::FORM_ORDER
         .into_iter()
         .map(|emirate| [emirate.as_str().to_owned(), emirate.label().to_owned()])
         .collect()

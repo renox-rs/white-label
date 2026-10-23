@@ -38,7 +38,7 @@ pub enum Emirate {
 
 impl Emirate {
     /// Every emirate, in the order a plate list offers them.
-    pub const ALL: [Emirate; 7] = [
+    pub const FORM_ORDER: [Emirate; 7] = [
         Emirate::Dubai,
         Emirate::AbuDhabi,
         Emirate::Sharjah,
@@ -65,7 +65,7 @@ impl Emirate {
     /// plate name (`Abu Dhabi`), in any case.
     pub fn parse(text: &str) -> Option<Emirate> {
         let wanted = text.trim();
-        Emirate::ALL.into_iter().find(|emirate| {
+        Emirate::FORM_ORDER.into_iter().find(|emirate| {
             emirate.as_str().eq_ignore_ascii_case(wanted)
                 || emirate.label().eq_ignore_ascii_case(wanted)
         })
@@ -208,7 +208,7 @@ mod tests {
         assert_eq!(Emirate::parse(" Abu Dhabi "), Some(Emirate::AbuDhabi));
         assert_eq!(Emirate::parse("umm_al_quwain"), Some(Emirate::UmmAlQuwain));
         assert_eq!(Emirate::parse("Riyadh"), None);
-        for emirate in Emirate::ALL {
+        for emirate in Emirate::FORM_ORDER {
             assert_eq!(Emirate::parse(emirate.as_str()), Some(emirate));
         }
     }

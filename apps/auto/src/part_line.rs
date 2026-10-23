@@ -28,18 +28,12 @@ pub enum PartCondition {
 }
 
 impl PartCondition {
-    /// Every condition, in the order a form offers them.
-    pub const ALL: [PartCondition; 3] = [
-        PartCondition::New,
-        PartCondition::Used,
-        PartCondition::Renovated,
-    ];
-
     /// The condition written as `text`: its stored name, in any case.
     pub fn parse(text: &str) -> Option<PartCondition> {
         PartCondition::ALL
             .into_iter()
             .find(|condition| condition.as_str().eq_ignore_ascii_case(text.trim()))
+            .copied()
     }
 }
 

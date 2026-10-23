@@ -12,6 +12,7 @@
 //! advisor then records the intake ([`crate::job_cards::record_intake`]).
 
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use wl_kernel::scheduling::{BOOKING_SUBJECT_TYPE, BookingCheckedIn, BookingId, booking_actions};
 use wl_kernel::{Subject, scopes};
 
