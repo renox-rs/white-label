@@ -21,7 +21,8 @@ use wl_kernel::Subject;
 use wl_kernel::approvals::ApprovalRequest;
 use wl_kernel::custody::custody;
 use wl_kernel::sales::SALES_RETURN_SUBJECT_TYPE;
-use wl_payments::refund::Refund;
+use wl_payments::permissions as pperm;
+use wl_payments::refund::{Refund, RefundStatus};
 use wl_sales::{ReturnKind, ReturnResolution, ReturnStatus, SalesOrder, SalesReturn};
 
 use support::{World, boot_own_riders};
@@ -285,4 +286,79 @@ async fn the_order_page_offers_the_review_and_the_reversal_to_the_kitchen_manage
     cashier.assert_ok();
     assert!(!cashier.text().contains("Reverse the delivery"));
     assert!(!cashier.text().contains("Customer says it never arrived"));
+}
+
+/// AC2 (cash kept): given COD ORD-902 (AED 70.00) whose cash the rider handed
+/// over and the cash desk counted, a reversal whose approver chooses to keep
+/// the cash for the next attempt raises a *no goods* return resolved by a
+/// real refund of AED 70.00 (not a credit note); a second kitchen manager
+/// approves it through the refund route and the cashier records the method
+/// that pays it.
+#[renox::test]
+async fn reversing_cash_that_was_handed_over_is_refunded_through_the_refund_route() {
+    let w = boot_own_riders().await;
+    let (order, delivery, run) = delivered(&w, payment::CASH_ON_DELIVERY, &CASH, "70.00").await;
+    w.post(
+        &w.rider,
+        &format!("/driver/runs/{}/return", run.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_ok();
+    let counter =
+        support::make_user(w.db(), "Chandra", &[pperm::CASH_VIEW, pperm::CASH_COUNT]).await;
+    let handover = custody(w.state())
+        .handover_of(w.db(), w.rider.id, &run.subject())
+        .await
+        .unwrap()
+        .expect("the rider's handover of the run");
+    w.post(
+        &counter,
+        &format!("/cash/{}/count", handover.id.0),
+        &[("counted", "70.00")],
+    )
+    .await
+    .assert_ok();
+    open_review(&w, &delivery).await;
+
+    w.post(
+        &w.manager,
+        &format!("/deliveries/{}/reverse", delivery.id),
+        &[
+            ("reason", "recipient_denies"),
+            ("liability", "driver"),
+            ("note", "The photo shows another building"),
+        ],
+    )
+    .await
+    .assert_ok();
+    w.post(
+        &w.manager_b,
+        &format!("/deliveries/{}/reverse/approve", delivery.id),
+        &[("cash_treatment", "keep")],
+    )
+    .await
+    .assert_ok();
+
+    let after = w.reload(&order).await;
+    assert_eq!(after.status, FnbOrderStatus::Completed);
+    let returns = returns_of(&w, &after).await;
+    assert_eq!(returns.len(), 1);
+    assert_eq!(returns[0].resolution, Some(ReturnResolution::Refund));
+    assert_eq!(returns[0].gross_value, 7_000);
+    assert_eq!(after.reversal_resolution.as_deref(), Some("refund"));
+    let refunds = refunds_of(&w, &after).await;
+    assert_eq!(refunds.len(), 1, "one refund, asked once");
+    assert_eq!(refunds[0].amount, 7_000);
+    assert_eq!(refunds[0].status, RefundStatus::Requested);
+
+    // The refund route: a manager other than the requester approves.
+    let approve = format!("/refunds/{}/transitions/approve", refunds[0].id);
+    w.post(&w.manager_b, &approve, &[("x", "")])
+        .await
+        .assert_status(303);
+    assert_eq!(
+        refunds_of(&w, &after).await[0].status,
+        RefundStatus::Approved
+    );
 }
