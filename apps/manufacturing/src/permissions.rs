@@ -65,6 +65,18 @@ pub const CONFORMITY_MANAGE: &str = "conformity.manage";
 /// contract notes (`MFG.RUL.08`; the accountant, the production manager).
 pub const EXPORTS_MANAGE: &str = "exports.manage";
 
+/// See the returned goods and the sales decisions about them (sales, the
+/// production manager, the planner; `MFG.RUL.10`).
+pub const RETURNED_GOODS_VIEW: &str = "returned_goods.view";
+/// Deliver returned or refused goods again: make the draft dispatch for the
+/// open quantity (sales; `MFG.RUL.10`).
+pub const RETURNED_GOODS_DECIDE: &str = "returned_goods.decide";
+/// See the inspections of the returned lots (QC, the production manager).
+pub const INSPECTIONS_VIEW: &str = "inspections.view";
+/// Record the result of the inspection of a returned lot: pass it (the lot is
+/// released) or fail it (an NCR is raised) (QC; `MFG.RUL.10`, `MFG.ACL.02`).
+pub const INSPECTIONS_RECORD: &str = "inspections.record";
+
 /// The permission of `STK.ACL.02` (wl-inventory's `stock.approve`): the
 /// second step of an abort whose scrap is above the limit.
 pub const STOCK_APPROVE: &str = "stock.approve";
@@ -108,6 +120,10 @@ pub const ALL: &[&str] = &[
     PLANTS_MANAGE,
     CONFORMITY_MANAGE,
     EXPORTS_MANAGE,
+    RETURNED_GOODS_VIEW,
+    RETURNED_GOODS_DECIDE,
+    INSPECTIONS_VIEW,
+    INSPECTIONS_RECORD,
 ];
 
 #[cfg(test)]

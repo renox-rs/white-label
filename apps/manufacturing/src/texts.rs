@@ -127,6 +127,181 @@ const TEXTS: &[(&str, &str)] = &[
         "manufacturing.screen.change.abort_note",
         "The sales order was cancelled with the outcome scrap. Request the abort of this work order; the reason is filled in: {{ reason }}",
     ),
+    // Returned and refused goods (`MFG.RUL.10`).
+    (
+        "manufacturing.returns.inspect_title",
+        "Inspect returned lot {{ lot }} ({{ dispatch }})",
+    ),
+    (
+        "manufacturing.returns.inspect_body",
+        "{{ quantity }} of {{ lot }} came back from {{ dispatch }} into quarantine ({{ reason }}). Inspect it on the inspections page: pass it to release the lot, or fail it to raise an NCR. The lot is not released before.",
+    ),
+    (
+        "manufacturing.returns.complaint_link",
+        "Inspection started for {{ lot }}, {{ quantity }} in quarantine.",
+    ),
+    (
+        "manufacturing.returns.decide_title",
+        "Order {{ order }}, line {{ line }}: {{ quantity }} came back",
+    ),
+    (
+        "manufacturing.returns.decide_body",
+        "{{ quantity }} of {{ item }} on order {{ order }}, line {{ line }}, came back on {{ dispatch }} ({{ reason }}). Deliver the open quantity again (New dispatch) or cancel it (Cancel the line) on the returned goods page. The goods are in quarantine and wait for QC. Nothing is cancelled for you.",
+    ),
+    (
+        "manufacturing.returns.more_came_back",
+        "{{ quantity }} more came back.",
+    ),
+    (
+        "manufacturing.returns.open_now",
+        "{{ done }} handled; {{ quantity }} is still open.",
+    ),
+    (
+        "manufacturing.returns.closed.delivered_again",
+        "All of it is delivered again.",
+    ),
+    (
+        "manufacturing.returns.closed.cancelled",
+        "All of it is delivered again or cancelled.",
+    ),
+    (
+        "manufacturing.returns.closed.order_cancelled",
+        "The order was cancelled.",
+    ),
+    (
+        "manufacturing.returns.closed",
+        "This decision is closed: nothing is open any more.",
+    ),
+    (
+        "manufacturing.returns.quantity",
+        "Give a quantity above zero and not above the {{ open }} that is open.",
+    ),
+    (
+        "manufacturing.returns.cannot_dispatch",
+        "A dispatch cannot be made from the original: it is not known any more.",
+    ),
+    (
+        "manufacturing.returns.dispatch_made",
+        "A draft dispatch was made for {{ quantity }}.",
+    ),
+    (
+        "manufacturing.returns.inspected",
+        "This inspection has its result already.",
+    ),
+    (
+        "manufacturing.returns.passed_said",
+        "Inspection passed: the lot is released.",
+    ),
+    (
+        "manufacturing.returns.failed_said",
+        "Inspection failed: NCR {{ ncr }} is raised.",
+    ),
+    (
+        "manufacturing.returns.keeps_lot",
+        "The goods that came back on {{ dispatch }} wait for their inspection: pass it on the inspections page first.",
+    ),
+    ("manufacturing.screen.returns.title", "Returned goods"),
+    (
+        "manufacturing.screen.returns.subtitle",
+        "What customers refused or sent back, and what sales decides: deliver the open quantity again or cancel it.",
+    ),
+    ("manufacturing.screen.returns.filter", "Show"),
+    ("manufacturing.screen.returns.order", "Order"),
+    ("manufacturing.screen.returns.line_name", "line {{ id }}"),
+    ("manufacturing.screen.returns.refused", "Came back"),
+    ("manufacturing.screen.returns.open", "Still open"),
+    ("manufacturing.screen.returns.reason", "Reason"),
+    ("manufacturing.screen.returns.dispatch", "Came back on"),
+    ("manufacturing.screen.returns.owner", "Sales person"),
+    ("manufacturing.screen.returns.new_dispatch", "New dispatch"),
+    (
+        "manufacturing.screen.returns.new_dispatch_hint",
+        "Makes a draft dispatch to the same customer and address for this quantity. The dispatcher picks and sends it; the task closes when it has left.",
+    ),
+    ("manufacturing.screen.returns.quantity", "Quantity"),
+    (
+        "manufacturing.screen.returns.quantity_hint",
+        "Leave as it is for everything that is open, or give less.",
+    ),
+    (
+        "manufacturing.screen.returns.bad_quantity",
+        "Give the quantity as a number, like 10 or 2.5.",
+    ),
+    (
+        "manufacturing.screen.returns.cancel_line",
+        "Cancel the line",
+    ),
+    (
+        "manufacturing.screen.returns.closed_reason",
+        "Nothing is open: this decision is closed.",
+    ),
+    (
+        "manufacturing.screen.returns.dispatch_done",
+        "A draft dispatch was made. Pick it and send it.",
+    ),
+    ("manufacturing.screen.returns.empty", "Nothing came back"),
+    (
+        "manufacturing.screen.returns.empty_text",
+        "Goods a customer refuses or sends back wait here for sales to decide.",
+    ),
+    ("manufacturing.screen.return_status.open", "Open"),
+    ("manufacturing.screen.return_status.closed", "Closed"),
+    (
+        "manufacturing.screen.return_closed.delivered_again",
+        "Delivered again",
+    ),
+    ("manufacturing.screen.return_closed.cancelled", "Cancelled"),
+    (
+        "manufacturing.screen.return_closed.order_cancelled",
+        "The order was cancelled",
+    ),
+    ("manufacturing.screen.inspections.title", "Returned lots"),
+    (
+        "manufacturing.screen.inspections.subtitle",
+        "Each lot that came back into quarantine is inspected before it is released: pass it, or fail it and raise an NCR.",
+    ),
+    ("manufacturing.screen.inspections.filter", "Show"),
+    ("manufacturing.screen.inspections.lot", "Lot"),
+    ("manufacturing.screen.inspections.quantity", "Quantity"),
+    ("manufacturing.screen.inspections.dispatch", "Came back on"),
+    ("manufacturing.screen.inspections.complaint", "Complaint"),
+    ("manufacturing.screen.inspections.ncr", "NCR"),
+    (
+        "manufacturing.screen.inspections.whole",
+        "The whole dispatch came back",
+    ),
+    (
+        "manufacturing.screen.inspections.refused",
+        "Refused by the customer",
+    ),
+    ("manufacturing.screen.inspections.pass", "Pass"),
+    (
+        "manufacturing.screen.inspections.pass_hint",
+        "The goods are fit to sell: the lot is released. The storekeeper then moves them from quarantine to a store with a transfer.",
+    ),
+    ("manufacturing.screen.inspections.note", "Note"),
+    ("manufacturing.screen.inspections.fail", "Fail"),
+    (
+        "manufacturing.screen.inspections.fail_hint",
+        "The goods are not fit to sell: an NCR is raised on the lot for the quantity that came back, and QC decides rework, scrap or return.",
+    ),
+    ("manufacturing.screen.inspections.defect", "What is wrong"),
+    (
+        "manufacturing.screen.inspections.pass_done",
+        "The lot is released. Move the goods from quarantine to a store with a transfer.",
+    ),
+    (
+        "manufacturing.screen.inspections.fail_done",
+        "An NCR is raised on the lot.",
+    ),
+    ("manufacturing.screen.inspections.empty", "No lot came back"),
+    (
+        "manufacturing.screen.inspections.empty_text",
+        "Lots that come back into quarantine wait here for their inspection.",
+    ),
+    ("manufacturing.screen.inspection_status.open", "Waiting"),
+    ("manufacturing.screen.inspection_status.passed", "Passed"),
+    ("manufacturing.screen.inspection_status.failed", "Failed"),
     // The non-conformance report (`MFG.QCL.02`).
     (
         "manufacturing.ncr.choose",

@@ -33,6 +33,11 @@
 //! | `POST /portal/manufacturing/orders` | `manufacturing.portal_orders_upload` | as above; PO number, call-off number, note; a duplicate is refused naming the existing order's number and status |
 //! | `GET /manufacturing/exports` | `manufacturing.exports` | `exports.manage` (BL-MFG-12) |
 //! | `POST /manufacturing/exports/notes` | `manufacturing.exports_note` | `exports.manage`; the customer's contract note |
+//! | `GET /manufacturing/returns` | `manufacturing.returns` | `returned_goods.view` or `returned_goods.decide` (BL-MFG-07) |
+//! | `POST /manufacturing/returns/{id}/dispatch` | `manufacturing.return_dispatch` | `returned_goods.decide`; a draft dispatch for the open quantity |
+//! | `GET /manufacturing/inspections` | `manufacturing.inspections` | `inspections.view` or `inspections.record` (BL-MFG-07) |
+//! | `POST /manufacturing/inspections/{id}/pass` | `manufacturing.inspection_pass` | `inspections.record`; releases the lot |
+//! | `POST /manufacturing/inspections/{id}/fail` | `manufacturing.inspection_fail` | `inspections.record` and `ncrs.raise`; raises an NCR on the lot |
 //! | `GET /manufacturing/recalls` | `manufacturing.recalls` | `recalls.view` or `recalls.manage` (BL-MFG-10) |
 //! | `GET /manufacturing/recalls/{id}` | `manufacturing.recall` | as the list: the customers a recall reached |
 //!
@@ -133,6 +138,28 @@ pub fn routes() -> Routes {
         .name("manufacturing.exports")
         .post("/manufacturing/exports/notes", screens::exports_page::note)
         .name("manufacturing.exports_note")
+        .get("/manufacturing/returns", screens::returns_page::show)
+        .name("manufacturing.returns")
+        .post(
+            "/manufacturing/returns/{id}/dispatch",
+            screens::returns_page::new_dispatch,
+        )
+        .name("manufacturing.return_dispatch")
+        .get(
+            "/manufacturing/inspections",
+            screens::inspections_page::show,
+        )
+        .name("manufacturing.inspections")
+        .post(
+            "/manufacturing/inspections/{id}/pass",
+            screens::inspections_page::pass,
+        )
+        .name("manufacturing.inspection_pass")
+        .post(
+            "/manufacturing/inspections/{id}/fail",
+            screens::inspections_page::fail,
+        )
+        .name("manufacturing.inspection_fail")
         .get("/manufacturing/recalls", screens::recall_page::list)
         .name("manufacturing.recalls")
         .get("/manufacturing/recalls/{id}", screens::recall_page::show)

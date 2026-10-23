@@ -1068,12 +1068,14 @@ impl LotReleaseGuard for NcrReleaseGuard {
                 .await?
                 .into_iter()
                 .find(Ncr::keeps_lot);
-            Ok(kept.map(|ncr| {
-                english(
+            if let Some(ncr) = kept {
+                return Ok(Some(english(
                     "manufacturing.ncr.keeps_lot",
                     &[("ncr", &ncr.number), ("status", &ncr.status.as_str())],
-                )
-            }))
+                )));
+            }
+            // Refused goods wait for their inspection (`MFG.ACL.02`).
+            crate::returns::ReturnReleaseGuard.blocked(db, lot).await
         })
     }
 }

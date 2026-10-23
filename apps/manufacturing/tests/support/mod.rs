@@ -824,9 +824,14 @@ pub struct Opened {
 
 /// The tickets of wl-ticketing, as the role tasks open them.
 #[derive(Clone, Default)]
-pub struct Tickets(Arc<Mutex<Vec<Opened>>>);
+pub struct Tickets(Arc<Mutex<Vec<Opened>>>, Arc<Mutex<Vec<(i64, String)>>>);
 
 impl Tickets {
+    /// Every comment added to a ticket, as (ticket id, text), oldest first.
+    pub fn comments(&self) -> Vec<(i64, String)> {
+        self.1.lock().unwrap().clone()
+    }
+
     /// Every ticket opened, oldest first.
     pub fn all(&self) -> Vec<Opened> {
         self.0.lock().unwrap().clone()
@@ -896,10 +901,83 @@ impl TaskCreator for Tickets {
     fn comment<'a>(
         &'a self,
         _state: &'a AppState,
-        _ticket: TicketId,
-        _comment: TaskComment,
+        ticket: TicketId,
+        comment: TaskComment,
     ) -> TicketFuture<'a, ()> {
-        Box::pin(async { Ok(()) })
+        Box::pin(async move {
+            self.1.lock().unwrap().push((ticket.0, comment.text));
+            Ok(())
+        })
+    }
+}
+
+/// The checklists of wl-ticketing: off until a test turns them on; then each
+/// start is kept and answers a run.
+#[derive(Clone, Default)]
+pub struct Runs(Arc<Mutex<Option<Vec<Started>>>>);
+
+/// A checklist run started: the template and the subject.
+pub type Started = (String, Subject);
+
+impl Runs {
+    /// Turns the checklists on.
+    pub fn enable(&self) {
+        *self.0.lock().unwrap() = Some(Vec::new());
+    }
+
+    /// The runs started: template and subject.
+    pub fn started(&self) -> Vec<Started> {
+        self.0.lock().unwrap().clone().unwrap_or_default()
+    }
+}
+
+impl wl_kernel::tickets::Checklists for Runs {
+    fn start<'a>(
+        &'a self,
+        _state: &'a AppState,
+        template: &'a str,
+        subject: Subject,
+    ) -> TicketFuture<'a, Option<wl_kernel::tickets::ChecklistRunId>> {
+        Box::pin(async move {
+            let mut runs = self.0.lock().unwrap();
+            Ok(runs.as_mut().map(|runs| {
+                runs.push((template.to_owned(), subject));
+                wl_kernel::tickets::ChecklistRunId(i64::try_from(runs.len()).unwrap())
+            }))
+        })
+    }
+}
+
+/// The dispatch maker of wl-inventory: the drafts it was asked for.
+#[derive(Clone, Default)]
+pub struct Maker(Arc<Mutex<Vec<Asked>>>);
+
+/// A draft asked for: the original dispatch and the lines.
+pub type Asked = (Subject, Vec<wl_kernel::inventory::RedispatchLine>);
+
+impl Maker {
+    /// The drafts asked for: the original dispatch and the lines.
+    pub fn asked(&self) -> Vec<Asked> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl wl_kernel::inventory::DispatchMaker for Maker {
+    fn redispatch<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _by: Option<i64>,
+        original: &'a Subject,
+        lines: &'a [wl_kernel::inventory::RedispatchLine],
+    ) -> wl_kernel::inventory::TraceFuture<'a, Option<Subject>> {
+        Box::pin(async move {
+            let mut all = self.0.lock().unwrap();
+            all.push((original.clone(), lines.to_vec()));
+            Ok(Some(Subject::new(
+                wl_kernel::inventory::DISPATCH_SUBJECT_TYPE,
+                500 + i64::try_from(all.len()).unwrap(),
+            )))
+        })
     }
 }
 
@@ -1134,6 +1212,8 @@ struct Fakes {
     boms: Boms,
     lines: Lines,
     tickets: Tickets,
+    runs: Runs,
+    maker: Maker,
     notices: Recording,
     aborted: Recorded<WorkOrderAborted>,
     unlinked: Recorded<WorkOrderUnlinked>,
@@ -1159,6 +1239,8 @@ impl Module for Fakes {
         provide_boms(app, self.boms.clone());
         provide_order_lines(app, self.lines.clone());
         provide_task_creator(app, self.tickets.clone());
+        wl_kernel::tickets::provide_checklists(app, self.runs.clone());
+        wl_kernel::inventory::provide_dispatch_maker(app, self.maker.clone());
         provide_notifier(app, self.notices.clone());
         record(app, &self.aborted);
         record(app, &self.unlinked);
@@ -1190,6 +1272,10 @@ pub struct Booted {
     pub lines: Lines,
     /// The tickets the role tasks opened.
     pub tickets: Tickets,
+    /// The checklist runs wl-ticketing would start.
+    pub runs: Runs,
+    /// The drafts the dispatch maker was asked for.
+    pub maker: Maker,
     /// What the notifier was asked for.
     pub notices: Recording,
     /// `WorkOrderAborted`.
@@ -1246,6 +1332,13 @@ impl Booted {
     pub async fn manager(&self, name: &str, plant: &Plant) -> User {
         self.user_in(name, perm::PRODUCTION_MANAGER_ROLE, &plant.scope())
             .await
+    }
+
+    /// A sales person (a global role).
+    pub async fn sales(&self, name: &str) -> User {
+        let user = self.user(name).await;
+        user.assign_role(self.db(), perm::SALES_ROLE).await.unwrap();
+        user
     }
 
     /// A storekeeper of the plant.
@@ -1501,6 +1594,8 @@ pub async fn boot() -> Booted {
     boms.panel(BOM + 1, false);
     let lines = Lines::default();
     let tickets = Tickets::default();
+    let runs = Runs::default();
+    let maker = Maker::default();
     let notices = Recording::default();
     let aborted = Recorded::default();
     let unlinked = Recorded::default();
@@ -1520,6 +1615,8 @@ pub async fn boot() -> Booted {
         boms: boms.clone(),
         lines: lines.clone(),
         tickets: tickets.clone(),
+        runs: runs.clone(),
+        maker: maker.clone(),
         notices: notices.clone(),
         aborted: aborted.clone(),
         unlinked: unlinked.clone(),
@@ -1610,7 +1707,14 @@ pub async fn boot() -> Booted {
             perm::NCRS_RAISE,
             perm::NCRS_DISPOSITION,
             perm::NCRS_APPROVE,
+            perm::INSPECTIONS_VIEW,
+            perm::INSPECTIONS_RECORD,
         ],
+    )
+    .await;
+    define(
+        perm::SALES_ROLE,
+        &[perm::RETURNED_GOODS_VIEW, perm::RETURNED_GOODS_DECIDE],
     )
     .await;
     define("stock_approver", &[perm::STOCK_APPROVE]).await;
@@ -1626,6 +1730,8 @@ pub async fn boot() -> Booted {
         boms,
         lines,
         tickets,
+        runs,
+        maker,
         notices,
         aborted,
         unlinked,

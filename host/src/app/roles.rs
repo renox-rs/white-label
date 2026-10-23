@@ -200,6 +200,14 @@ pub const PRODUCTION_MANAGER: &str = mfg::PRODUCTION_MANAGER_ROLE;
 /// The QC inspector: sees the work orders of the plant, releases lots, raises
 /// and dispositions NCRs (07 §3.1).
 pub const QC_INSPECTOR: &str = mfg::QC_ROLE;
+/// The sales person of a manufacturer: enters and amends the customers' orders,
+/// decides what happens to goods that came back (deliver again or cancel the
+/// line) and follows the credit of the account (07 §3.1, `SAL.ACL.05`).
+pub const SALES: &str = mfg::SALES_ROLE;
+/// The sales manager of a manufacturer: approves the changes of an order after
+/// its work started (`SAL.ACL.05`), releases an order held for credit
+/// (`SAL.ACL.03`) and decides what a blocked customer's orders do (07 §7.1).
+pub const SALES_MANAGER: &str = "sales_manager";
 /// The owner / operations director of an F&B client: sees every brand, outlet
 /// and margin, approves refunds and write-offs (06 §3.1).
 pub const OPERATIONS_DIRECTOR: &str = fnb_perm::OPERATIONS_DIRECTOR_ROLE;
@@ -1098,6 +1106,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             mfg::WORK_ORDERS_VIEW,
             mfg::WORK_ORDERS_CREATE,
             mfg::WORK_ORDERS_RELEASE,
+            mfg::RETURNED_GOODS_VIEW,
             inventory::ITEMS_VIEW,
             inventory::STOCK_VIEW,
             // 07 §3.1: the planner reads the BOMs the work orders are made
@@ -1142,12 +1151,18 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // follows the export evidence (BL-MFG-11, BL-MFG-12).
             mfg::CONFORMITY_MANAGE,
             mfg::EXPORTS_MANAGE,
+            mfg::RETURNED_GOODS_VIEW,
+            mfg::INSPECTIONS_VIEW,
         ],
     ),
     (
         QC_INSPECTOR,
         &[
             mfg::WORK_ORDERS_VIEW,
+            // `MFG.RUL.10`: inspects the lots that came back; passing releases
+            // the lot, failing raises an NCR.
+            mfg::INSPECTIONS_VIEW,
+            mfg::INSPECTIONS_RECORD,
             // 07 §3.1, `MFG.QCL.02`: raises NCRs and decides what becomes of
             // the goods; approves a *use as is* only on an NCR somebody else
             // raised (`MFG.ACL.03`).
@@ -1817,6 +1832,65 @@ pub const ROLES: &[(&str, &[&str])] = &[
     ),
     (HSE_OFFICER, &[attendance::VIEW]),
     (PRO, &[hr::EMPLOYEES_VIEW, hr::VISAS_MANAGE]),
+    (
+        SALES,
+        &[
+            // 07 §3.1: enters, accepts, amends and cancels the orders of the
+            // customers; a started line needs a manager (`SAL.ACL.05`).
+            sales::SALES_ORDERS_VIEW,
+            sales::SALES_ORDERS_CREATE,
+            sales::SALES_ORDERS_ACCEPT,
+            sales::SALES_ORDERS_CANCEL,
+            sales::SALES_ORDERS_AMEND,
+            sales::CREDIT_VIEW,
+            sales::LEADS_VIEW,
+            sales::LEADS_MANAGE,
+            // Decides what to do with goods that came back (`MFG.RUL.10`).
+            mfg::RETURNED_GOODS_VIEW,
+            mfg::RETURNED_GOODS_DECIDE,
+            mfg::WORK_ORDERS_VIEW,
+            parties::VIEW,
+            parties::CREATE,
+            parties::UPDATE,
+            documents::VIEW,
+            documents::UPLOAD,
+            invoices::VIEW,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            tickets::VIEW,
+            tickets::CREATE,
+        ],
+    ),
+    (
+        SALES_MANAGER,
+        &[
+            sales::SALES_ORDERS_VIEW,
+            sales::SALES_ORDERS_CREATE,
+            sales::SALES_ORDERS_ACCEPT,
+            sales::SALES_ORDERS_CANCEL,
+            sales::SALES_ORDERS_AMEND,
+            // Approves a change after the work started, never their own
+            // (`SAL.ACL.05`); releases a held order (`SAL.ACL.03`).
+            sales::SALES_ORDERS_APPROVE,
+            sales::CREDIT_VIEW,
+            sales::CREDIT_RELEASE,
+            sales::LEADS_VIEW,
+            sales::LEADS_MANAGE,
+            mfg::RETURNED_GOODS_VIEW,
+            mfg::RETURNED_GOODS_DECIDE,
+            mfg::WORK_ORDERS_VIEW,
+            parties::VIEW,
+            parties::CREATE,
+            parties::UPDATE,
+            parties::BLOCK,
+            documents::VIEW,
+            invoices::VIEW,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            tickets::VIEW,
+            tickets::CREATE,
+        ],
+    ),
     (MEMBER, &[]),
 ];
 

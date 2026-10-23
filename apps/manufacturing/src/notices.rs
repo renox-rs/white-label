@@ -55,6 +55,28 @@ pub(crate) async fn holders(state: &AppState, role: &str, plant: i64) -> Result<
     Ok(ids)
 }
 
+/// The first holder of `role` in any scope (or globally), now; the lowest
+/// user id first. For a task that has no plant to look in.
+///
+/// # Errors
+///
+/// A database error.
+pub(crate) async fn holder_anywhere(state: &AppState, role: &str) -> Result<Option<i64>> {
+    use renox::db::sql;
+    let at = renox::db::now();
+    let ids: Vec<i64> = sql("SELECT DISTINCT ru.user_id FROM role_user ru \
+         JOIN roles r ON r.id = ru.role_id WHERE r.name = ? \
+         AND (ru.starts_at IS NULL OR ru.starts_at <= ?) \
+         AND (ru.ends_at IS NULL OR ru.ends_at > ?) \
+         ORDER BY ru.user_id")
+    .bind(role)
+    .bind(at)
+    .bind(at)
+    .scalars(&state.db)
+    .await?;
+    Ok(ids.into_iter().next())
+}
+
 /// Tells `users` about `subject`; no message when there are none.
 ///
 /// # Errors

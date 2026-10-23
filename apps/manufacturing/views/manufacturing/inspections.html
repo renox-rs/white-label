@@ -1,0 +1,41 @@
+{#- manufacturing: the inspection of each lot that came back into quarantine
+    (BL-MFG-07, MFG.RUL.10, MFG.ACL.02). Replace it with
+    resources/views/manufacturing/inspections.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['inspections.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['inspections.title']" :subtitle="tx['inspections.subtitle']"/>
+    <rx-form-errors/>
+    <rx-link-tabs :items="status_tabs" :current="status_current" :label="tx['inspections.filter']"/>
+    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['inspections.title']" card>
+      <rx-column :label="tx['inspections.lot']">
+        <rx-stack>
+          <span>{{ row.lot }} - {{ row.item }}</span>
+          <span class="rx-subtitle">{{ row.came_back }}: {{ row.reason }}</span>
+          <span><rx-badge :kind="row.status_kind" :text="row.status"/></span>
+          <span rx-if="row.decided" class="rx-subtitle">{{ row.decided }} {{ row.note }}</span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['inspections.quantity']" align="num">{{ row.quantity }}</rx-column>
+      <rx-column :label="tx['inspections.dispatch']" hide-narrow>
+        <rx-stack>
+          <span><a href="{{ row.dispatch_url }}">{{ row.dispatch }}</a></span>
+          <span rx-if="row.complaint_url"><a href="{{ row.complaint_url }}">{{ tx['inspections.complaint'] }}</a></span>
+          <span rx-if="row.ncr_url"><a href="{{ row.ncr_url }}">{{ tx['inspections.ncr'] }}</a></span>
+        </rx-stack>
+      </rx-column>
+      <rx-row-actions>
+        <template rx-if="row.record.shown">
+          <rx-action-sheet :id="'pass-inspection-' ~ row.id" :label="tx['inspections.pass']" :action="route('manufacturing.inspection_pass', row.id)"
+                           :title="tx['inspections.pass']" :description="tx['inspections.pass_hint']" :submit-label="tx['inspections.pass']" variant="primary" icon="check">
+            <rx-textarea name="note" :label="tx['inspections.note']" :id="'pass-inspection-note-' ~ row.id"/>
+          </rx-action-sheet>
+          <rx-action-sheet :id="'fail-inspection-' ~ row.id" :label="tx['inspections.fail']" :action="route('manufacturing.inspection_fail', row.id)"
+                           :title="tx['inspections.fail']" :description="tx['inspections.fail_hint']" :submit-label="tx['inspections.fail']" variant="plain-danger" icon="octagon-x" danger>
+            <rx-textarea name="defect" :label="tx['inspections.defect']" :value="row.reason" :id="'fail-inspection-defect-' ~ row.id"/>
+          </rx-action-sheet>
+        </template>
+      </rx-row-actions>
+      <rx-slot name="empty"><rx-empty :title="tx['inspections.empty']" :message="tx['inspections.empty_text']" icon="clipboard-check"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

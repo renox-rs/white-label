@@ -24,6 +24,7 @@ pub mod portal;
 pub mod progress;
 pub mod recalls;
 pub mod report;
+pub mod returns;
 mod screens;
 mod texts;
 pub mod unlink;
@@ -78,6 +79,8 @@ impl Module for Manufacturing {
             .view_data::<screens::recall_page::RecallPage>()
             .view_data::<screens::conformity_page::ConformityPage>()
             .view_data::<screens::exports_page::ExportsPage>()
+            .view_data::<screens::returns_page::ReturnsPage>()
+            .view_data::<screens::inspections_page::InspectionsPage>()
             .view_data::<po_upload::OrdersPage>()
             .view_data::<portal::InvoicesPage>();
         wl_kernel::approvals::register_subject_link(ncr::SUBJECT_TYPE, |id| {
@@ -136,6 +139,22 @@ impl Module for Manufacturing {
                 .order(13)
                 .permission(permissions::EXPORTS_MANAGE),
         );
+        app.nav(
+            "app",
+            NavLink::route("manufacturing.returns", "nav.returns")
+                .icon("undo-2")
+                .group("nav.app")
+                .order(14)
+                .permission(permissions::RETURNED_GOODS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("manufacturing.inspections", "nav.inspections")
+                .icon("clipboard-check")
+                .group("nav.app")
+                .order(15)
+                .permission(permissions::INSPECTIONS_VIEW),
+        );
         // `MFG.RUL.08`: the evidence of the exports, every day at 08:00.
         app.schedule()
             .daily_at(
@@ -163,7 +182,10 @@ impl Module for Manufacturing {
             .model::<po_upload::PoUpload>()
             .model::<exports::ExportWatch>()
             .model::<exports::ContractNote>()
-            .model::<order_changes::Adjustment>();
+            .model::<order_changes::Adjustment>()
+            .model::<returns::ReturnInspection>()
+            .model::<returns::ReturnDecision>()
+            .model::<returns::ReturnMove>();
         work_order::register();
         ncr::register();
         report::register(app);
@@ -180,6 +202,9 @@ impl Module for Manufacturing {
         abort::listen(app);
         // `MFG.RUL.09`: the work orders follow their sales order.
         order_changes::listen(app);
+        // `MFG.RUL.10`: returned and refused goods are inspected and sales
+        // decides to deliver again or cancel.
+        returns::listen(app);
         // `SAL.ACL.05`: which lines of an order have started.
         wl_kernel::sales::provide_fulfilment_progress(app, progress::ProductionProgress);
         material_hold::listen(app);

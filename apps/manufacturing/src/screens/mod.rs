@@ -18,9 +18,11 @@
 
 pub(crate) mod conformity_page;
 pub(crate) mod exports_page;
+pub(crate) mod inspections_page;
 pub(crate) mod ncr_page;
 pub(crate) mod ncrs_page;
 pub(crate) mod recall_page;
+pub(crate) mod returns_page;
 pub(crate) mod work_order_page;
 pub(crate) mod work_orders_page;
 
@@ -69,6 +71,14 @@ pub(crate) const VIEWS: &[(&str, &str)] = &[
     (
         "manufacturing/portal_orders.html",
         include_str!("../../views/manufacturing/portal_orders.html"),
+    ),
+    (
+        "manufacturing/returns.html",
+        include_str!("../../views/manufacturing/returns.html"),
+    ),
+    (
+        "manufacturing/inspections.html",
+        include_str!("../../views/manufacturing/inspections.html"),
     ),
     (
         "manufacturing/recalls.html",
