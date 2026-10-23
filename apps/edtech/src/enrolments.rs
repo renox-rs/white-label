@@ -319,6 +319,31 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewEnrolment) -> Resul
             &[],
         )));
     }
+    // One place in a course per student: a second enrolment of the same
+    // student in the batch (typed twice at the desk) would hold a second seat.
+    if let Some(batch) = &batch {
+        let twice = Enrolment::query()
+            .where_(Enrolment::BATCH_ID.eq(batch.id))
+            .where_(Enrolment::STUDENT_PARTY_ID.eq(new.student))
+            .get(&state.db)
+            .await?
+            .into_iter()
+            .any(|e| {
+                matches!(
+                    e.status,
+                    EnrolmentStatus::PendingPayment
+                        | EnrolmentStatus::Active
+                        | EnrolmentStatus::Frozen
+                        | EnrolmentStatus::Completed
+                )
+            });
+        if twice {
+            return Err(refused(english(
+                "edtech.enrolments.problem.already_enrolled",
+                &[],
+            )));
+        }
+    }
     let sessions_total = match &batch {
         Some(batch) => {
             let planned = Session::of_batch(&state.db, batch.id).await?;
@@ -589,6 +614,28 @@ pub async fn complete(state: &AppState, id: i64) -> Result<Enrolment> {
         ..EnrolmentInput::default()
     };
     run(state, None, id, (COMPLETE, COMPLETE), None, input).await
+}
+
+/// `complete` for every `active` enrolment of batch `batch_id`: the batch has
+/// ended (10 §7.1 *Batch* `complete`, *Enrolment* `complete`), so each student
+/// who holds a seat and is not frozen has completed the course. The certificate
+/// draft of each follows after its own commit ([`crate::certificates`], which
+/// judges the attendance, `EDU.ACL.06`). A frozen or unpaid enrolment is left as
+/// it is. Returns the ids completed.
+///
+/// # Errors
+///
+/// The database's errors and the machine's.
+pub async fn complete_batch(state: &AppState, batch_id: i64) -> Result<Vec<i64>> {
+    let mut done = Vec::new();
+    for enrolment in Enrolment::seated_in(&state.db, batch_id).await? {
+        if enrolment.status != EnrolmentStatus::Active {
+            continue;
+        }
+        complete(state, enrolment.id).await?;
+        done.push(enrolment.id);
+    }
+    Ok(done)
 }
 
 /// What the enrolment's invoices have received, in fils: their total less

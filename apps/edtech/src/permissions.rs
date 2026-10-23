@@ -42,6 +42,11 @@ pub const CERTIFICATES_ISSUE: &str = "certificates.issue";
 /// Revoke a certificate (`certificates.revoke`: the company admin).
 pub const CERTIFICATES_REVOKE: &str = "certificates.revoke";
 
+/// Record a payment (wl-payments' own permission, named here because a module
+/// does not depend on another): the counsellor takes the fee at the desk
+/// from the enrolment's page ([`crate::desk`]).
+pub const PAYMENTS_RECORD: &str = "payments.record";
+
 /// The owner of the centre: told when a centre permit or a course approval
 /// expires (`EDU.RUL.13`) and alerted when a compliance-critical rule fails.
 pub const OWNER_ROLE: &str = "owner";

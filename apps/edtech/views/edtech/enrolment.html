@@ -16,6 +16,14 @@
         <rx-confirm :id="'enrolment-activate-' ~ id" :label="tx['enrolments.activate']" :action="route('edtech.enrolment_activate', id)" method="POST"
                     :title="tx['enrolments.activate']" :message="tx['enrolments.activate_message']" :confirm-label="tx['enrolments.activate']" :cancel-label="tx['button_cancel']" icon="check"/>
       </template>
+      <template rx-if="can_pay">
+        <rx-action-sheet :id="'enrolment-payment-' ~ id" :label="tx['desk.action']" :action="route('edtech.enrolment_payment', id)"
+                         :title="tx['desk.action']" :description="tx['desk.description']" :submit-label="tx['desk.submit']" icon="banknote">
+          <rx-select name="method" :label="tx['desk.method']" :options="method_options" :selected="'cash'" :id="'enrolment-payment-method-' ~ id" required/>
+          <rx-input name="amount" :label="tx['desk.amount']" :hint="tx['desk.amount_hint']" :value="due_amount" :id="'enrolment-payment-amount-' ~ id" required/>
+          <rx-input name="reference" :label="tx['desk.reference']" :hint="tx['desk.reference_hint']" :id="'enrolment-payment-reference-' ~ id"/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_freeze">
         <rx-action-sheet :id="'enrolment-freeze-' ~ id" :label="tx['enrolments.freeze']" :action="route('edtech.enrolment_freeze', id)"
                          :title="tx['enrolments.freeze']" :description="tx['enrolments.freeze_description']" :submit-label="tx['enrolments.freeze']" icon="calendar">
@@ -32,7 +40,7 @@
       <template rx-if="can_transfer">
         <rx-action-sheet :id="'enrolment-transfer-' ~ id" :label="tx['transfer.action']" :action="route('edtech.enrolment_transfer', id)"
                          :title="tx['transfer.action']" :description="tx['transfer.description']" :submit-label="tx['transfer.action']" icon="users">
-          <rx-input name="target" type="number" :label="tx['transfer.target']" :id="'enrolment-transfer-target-' ~ id" required/>
+          <rx-select name="target" :label="tx['transfer.target_pick']" :options="target_options" :id="'enrolment-transfer-target-' ~ id" required/>
         </rx-action-sheet>
       </template>
       <template rx-if="can_withdraw">
@@ -59,6 +67,7 @@
         <rx-entry :label="tx['enrolments.seat_hold_until']" :value="seat_hold_until"/>
         <rx-entry :label="tx['enrolments.paid']" :value="paid"/>
         <rx-entry :label="tx['enrolments.balance']" :value="balance"/>
+        <rx-entry :label="tx['desk.due']" :value="due_now"/>
         <rx-entry :label="tx['enrolments.payment_link']" :value="payment_link"/>
         <rx-entry :label="tx['chargeback.to_collect']" :value="to_collect"/>
       </rx-infolist>

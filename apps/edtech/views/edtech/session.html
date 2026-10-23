@@ -54,8 +54,7 @@
         </rx-action-sheet>
         <rx-action-sheet :id="'session-tutor-' ~ id" :label="tx['sessions.change_tutor']" :action="route('edtech.session_tutor', id)"
                          :title="tx['sessions.change_tutor']" :description="tx['sessions.change_tutor_description']" :submit-label="tx['sessions.change_tutor']" icon="user">
-          <rx-input name="tutor" type="number" :label="tx['batches.tutor_resource']" :id="'session-tutor-resource-' ~ id" required/>
-          <rx-input name="employee" type="number" :label="tx['batches.tutor_employee']" :id="'session-tutor-employee-' ~ id"/>
+          <rx-select name="tutor" :label="tx['batches.tutor_pick']" :options="tutor_options" :id="'session-tutor-resource-' ~ id" required/>
         </rx-action-sheet>
         <rx-action-sheet :id="'session-cancel-' ~ id" :label="tx['sessions.cancel']" :action="route('edtech.session_cancel', id)"
                          :title="tx['sessions.cancel']" :description="tx['sessions.cancel_description']" :submit-label="tx['sessions.cancel']" icon="trash">

@@ -177,10 +177,13 @@ async fn edu_base_the_student_guardian_and_payer_are_parties() {
     assert_eq!(e.payer_party_id, mother);
     assert_eq!(t.books.all()[0].draft.party, PartyId(mother));
 
+    // A second child of the same mother: the same student has one place only.
+    let sister = t.person(5, "Dana Khan");
+    t.people.guardian(sister, mother);
     let paid_by_company = enrolments::create(
         t.state(),
         &desk,
-        NewEnrolment::course(child, batch.id, PRICE)
+        NewEnrolment::course(sister, batch.id, PRICE)
             .guardian(mother)
             .payer(company),
     )

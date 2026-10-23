@@ -563,6 +563,11 @@ pub(crate) fn register(app: &mut Registry) {
         if let Some(kind) = kind {
             exit::finish(&state, event.key, kind).await?;
         }
+        // The course ended: the students who attended it have completed it,
+        // and the certificate drafts follow (`EDU.RUL.06`).
+        if event.transition == COMPLETE {
+            crate::enrolments::complete_batch(&state, event.key).await?;
+        }
         // A new tutor from a date: each student or guardian is told once, with
         // no reason (BL-EDU-09).
         if event.transition == CHANGE_TUTOR || event.transition == CHANGE_TUTOR_RUNNING {

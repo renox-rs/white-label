@@ -79,6 +79,8 @@ pub fn routes() -> Routes {
         .name("edtech.enrolment_settle")
         .get("/edtech/enrolments/{id}/collect", collect)
         .name("edtech.enrolment_collect")
+        .post("/edtech/enrolments/{id}/payment", record_payment)
+        .name("edtech.enrolment_payment")
         .post("/edtech/enrolments/{id}/payment-link", payment_link)
         .name("edtech.enrolment_payment_link")
         .require_auth()
@@ -170,34 +172,18 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             status_kind: status_kind(e.status),
         });
     }
-    let courses = Course::query().get(&state.db).await?;
     let open = Batch::query()
         .where_(Batch::STATUS.eq(BatchStatus::Open))
         .order_by(Batch::ID)
         .get(&state.db)
         .await?;
-    let batch_options: Vec<[String; 2]> = open
+    let batch_options = open_batch_options(&state, &lang, None, false).await?;
+    // The first batch that still has a seat, not a full one.
+    let batch_selected = open
         .iter()
-        .map(|b| {
-            let course = courses
-                .iter()
-                .find(|c| c.id == b.course_id)
-                .map_or_else(String::new, Course::title);
-            [
-                b.id.to_string(),
-                format!(
-                    "{} · {} · {} {}",
-                    b.number(),
-                    course,
-                    seats::free(b),
-                    text(&lang, "enrolments.seats_free")
-                ),
-            ]
-        })
-        .collect();
-    let batch_selected = batch_options
-        .first()
-        .map(|option| option[0].clone())
+        .find(|b| seats::free(b) > 0)
+        .or_else(|| open.first())
+        .map(|b| b.id.to_string())
         .unwrap_or_default();
     let kind_options = [
         EnrolmentKind::Course,
@@ -216,6 +202,42 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         can_manage: user.has_permission(permissions::ENROLMENTS_MANAGE),
         integration_banner: banner_for(&state.db, defaults::DESK_SCREEN, &lang).await?,
     }))
+}
+
+/// The open batches as options, `[id, "BAT-0012 · course · 3 seats free"]`;
+/// without `exclude`, and with a seat free when `only_free`.
+async fn open_batch_options(
+    state: &AppState,
+    lang: &Lang,
+    exclude: Option<i64>,
+    only_free: bool,
+) -> Result<Vec<[String; 2]>> {
+    let courses = Course::query().get(&state.db).await?;
+    let open = Batch::query()
+        .where_(Batch::STATUS.eq(BatchStatus::Open))
+        .order_by(Batch::ID)
+        .get(&state.db)
+        .await?;
+    Ok(open
+        .iter()
+        .filter(|b| Some(b.id) != exclude && (!only_free || seats::free(b) > 0))
+        .map(|b| {
+            let course = courses
+                .iter()
+                .find(|c| c.id == b.course_id)
+                .map_or_else(String::new, Course::title);
+            [
+                b.id.to_string(),
+                format!(
+                    "{} · {} · {} {}",
+                    b.number(),
+                    course,
+                    seats::free(b),
+                    text(lang, "enrolments.seats_free")
+                ),
+            ]
+        })
+        .collect())
 }
 
 /// `GET /edtech/parties/options`: the parties the picker offers as the person
@@ -420,7 +442,12 @@ pub(crate) struct ShowPage {
     can_unfreeze: bool,
     can_withdraw: bool,
     can_transfer: bool,
+    target_options: Vec<[String; 2]>,
     can_settle: bool,
+    can_pay: bool,
+    due_now: String,
+    method_options: Vec<[String; 2]>,
+    due_amount: String,
     pending: bool,
     approvals: Vec<ApprovalCard>,
     settle_state: String,
@@ -505,6 +532,18 @@ async fn show(
         )
     } else {
         (none.clone(), none.clone())
+    };
+    // What the desk can still take: the balance of the open invoices.
+    let due_fils = if live {
+        crate::desk::due(&state, &e).await?
+    } else {
+        0
+    };
+    // The open batches with a seat free that the student could move to.
+    let target_options = if live && e.kind == EnrolmentKind::Course {
+        open_batch_options(&state, &lang, e.batch_id, true).await?
+    } else {
+        Vec::new()
     };
     let subject = e.subject();
     let waiting = !approvals::pending_for(&state.db, &subject)
@@ -630,6 +669,18 @@ async fn show(
         can_unfreeze: e.status == EnrolmentStatus::Frozen && manage,
         can_withdraw: live && manage && may_withdraw,
         can_settle: withdrawn && !settlement.done && manage,
+        can_pay: due_fils > 0 && manage && user.has_permission(permissions::PAYMENTS_RECORD),
+        due_now: money_text(due_fils),
+        due_amount: plain_amount(due_fils),
+        method_options: crate::desk::METHODS
+            .iter()
+            .map(|code| {
+                [
+                    (*code).to_owned(),
+                    text(&lang, &format!("desk.method.{code}")),
+                ]
+            })
+            .collect(),
         pending: waiting,
         approvals: approval_cards,
         settle_state,
@@ -641,6 +692,7 @@ async fn show(
         can_transfer: manage
             && e.kind == EnrolmentKind::Course
             && matches!(e.status, EnrolmentStatus::Active | EnrolmentStatus::Frozen),
+        target_options,
         show_preview: live,
         show_withdrawn: e.status == EnrolmentStatus::Withdrawn,
         has_batch: e.batch_id.is_some(),
@@ -704,6 +756,38 @@ async fn freeze(
     let until = parse_date(&form.until)?;
     enrolments::freeze(&state, Some(&user), id, FreezeCause::Student, Some(until)).await?;
     done(&lang, "enrolments.frozen")
+}
+
+/// The form that records a payment taken at the desk.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct PaymentForm {
+    /// `cash`, `card` or `transfer`.
+    #[serde(default)]
+    pub method: String,
+    /// The amount in dirhams.
+    #[serde(default)]
+    pub amount: String,
+    /// The bank reference or the card slip.
+    #[serde(default)]
+    pub reference: String,
+}
+
+/// `POST /edtech/enrolments/{id}/payment`: the fee taken at the desk.
+async fn record_payment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<PaymentForm>,
+) -> Result<Response> {
+    let amount = parse_money(&form.amount)?;
+    crate::desk::record(&state, &user, id, &form.method, amount, &form.reference).await?;
+    done(&lang, "desk.done")
+}
+
+/// Fils as the plain text of a money field: `2520.50`.
+fn plain_amount(fils: i64) -> String {
+    format!("{}.{:02}", fils / 100, fils % 100)
 }
 
 /// `POST /edtech/enrolments/{id}/unfreeze`.

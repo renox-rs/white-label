@@ -11,8 +11,7 @@
       <template rx-if="can_change_tutor">
         <rx-action-sheet :id="'batch-tutor-' ~ id" :label="tx['tutors.change']" :action="route('edtech.batch_tutor', id)"
                          :title="tx['tutors.change']" :description="tx['tutors.change_description']" :submit-label="tx['tutors.change']" icon="user">
-          <rx-input name="tutor" type="number" :label="tx['batches.tutor_resource']" :id="'batch-tutor-resource-' ~ id" required/>
-          <rx-input name="employee" type="number" :label="tx['batches.tutor_employee']" :id="'batch-tutor-employee-' ~ id"/>
+          <rx-select name="tutor" :label="tx['batches.tutor_pick']" :options="tutor_options" :id="'batch-tutor-resource-' ~ id" required/>
           <rx-input name="from" type="date" :label="tx['tutors.from']" :value="from_date" :id="'batch-tutor-from-' ~ id" required/>
         </rx-action-sheet>
       </template>

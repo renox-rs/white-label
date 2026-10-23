@@ -14,10 +14,8 @@
           <rx-input name="weekdays" :label="tx['batches.weekdays']" :hint="tx['batches.weekdays_hint']" id="batch-new-weekdays" required/>
           <rx-input name="start_time" :label="tx['batches.start_time']" :hint="tx['batches.start_time_hint']" id="batch-new-time" required/>
           <rx-input name="duration" type="number" :label="tx['batches.duration']" id="batch-new-duration" required/>
-          <rx-input name="tutor" type="number" :label="tx['batches.tutor_resource']" id="batch-new-tutor"/>
-          <rx-input name="employee" type="number" :label="tx['batches.tutor_employee']" id="batch-new-employee"/>
-          <rx-input name="room" type="number" :label="tx['batches.room_resource']" id="batch-new-room"/>
-          <rx-input name="room_limit" type="number" :label="tx['batches.room_limit']" id="batch-new-room-limit"/>
+          <rx-select name="tutor" :label="tx['batches.tutor_pick']" :options="tutor_options" :selected="''" id="batch-new-tutor"/>
+          <rx-select name="room" :label="tx['batches.room_pick']" :options="room_options" :selected="''" id="batch-new-room"/>
         </rx-action-sheet>
       </template>
     </rx-page-header>

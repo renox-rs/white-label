@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use wl_kernel::scheduling::{ResourceChoice, ResourceChoiceKind};
 
 use crate::texts;
 
@@ -34,6 +35,46 @@ pub(crate) async fn names_of(
         .names(state, &ids)
         .await
         .unwrap_or_default()
+}
+
+/// The resources a form offers as options, `[id, name]`, with a leading empty
+/// option (`blank`) when the field is optional.
+pub(crate) async fn resource_options(
+    state: &AppState,
+    kind: ResourceChoiceKind,
+    blank: Option<String>,
+) -> Vec<[String; 2]> {
+    let mut options: Vec<[String; 2]> = blank
+        .map(|label| [String::new(), label])
+        .into_iter()
+        .collect();
+    options.extend(
+        resource_choices(state, kind)
+            .await
+            .into_iter()
+            .map(|choice| [choice.id.to_string(), choice.name]),
+    );
+    options
+}
+
+/// The active resources of `kind` by name.
+pub(crate) async fn resource_choices(
+    state: &AppState,
+    kind: ResourceChoiceKind,
+) -> Vec<ResourceChoice> {
+    wl_kernel::scheduling::resource_names(state)
+        .choices(state, kind)
+        .await
+        .unwrap_or_default()
+}
+
+/// The employee behind the tutor `resource`, when it has one.
+pub(crate) async fn employee_of(state: &AppState, resource: i64) -> Option<i64> {
+    resource_choices(state, ResourceChoiceKind::Person)
+        .await
+        .into_iter()
+        .find(|choice| choice.id == resource)
+        .and_then(|choice| choice.employee_id)
 }
 
 /// A resource as a page names it: its name, else `Resource 7`; a dash for none.

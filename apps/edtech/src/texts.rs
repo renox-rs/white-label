@@ -250,6 +250,7 @@ fn entries() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
         .chain(crate::texts_exit::TEXTS.iter())
         .chain(crate::texts_hold::TEXTS.iter())
         .chain(crate::texts_chargeback::TEXTS.iter())
+        .chain(crate::texts_desk::TEXTS.iter())
         .chain(crate::texts_permit::TEXTS.iter())
         .chain(crate::texts_reissue::TEXTS.iter())
         .chain(crate::texts_tutor::TEXTS.iter())

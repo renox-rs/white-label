@@ -190,6 +190,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "Name the batch the student joins.",
     ),
     (
+        "edtech.enrolments.problem.already_enrolled",
+        "The student already has a place in this batch; open that enrolment instead of adding a second one.",
+    ),
+    (
         "edtech.enrolments.problem.package",
         "A package needs an item code and at least one session.",
     ),

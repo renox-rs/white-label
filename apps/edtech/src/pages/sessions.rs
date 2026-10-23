@@ -24,10 +24,11 @@ use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
 use wl_kernel::integrations::web::banner_for;
+use wl_kernel::scheduling::ResourceChoiceKind;
 
 use super::{
     Names, Texts, invalid, names_of, parse_date, parse_local_time, parse_number, require,
-    resource_text, text,
+    resource_options, resource_text, text,
 };
 use crate::attendance::Mark;
 use crate::batch::Batch;
@@ -223,6 +224,7 @@ pub(crate) struct ShowPage {
     can_roster: bool,
     can_excuse: bool,
     can_correct: bool,
+    tutor_options: Vec<[String; 2]>,
     integration_banner: Option<renox::serde_json::Value>,
 }
 
@@ -428,6 +430,7 @@ async fn show(
                 || user.has_permission(permissions::BATCHES_MANAGE)),
         can_excuse: scheduled && user.has_permission(permissions::BATCHES_MANAGE),
         can_correct: crate::corrections::may_correct(&user, &session) && assigned,
+        tutor_options: resource_options(&state, ResourceChoiceKind::Person, None).await,
         integration_banner: banner_for(&state.db, defaults::SESSION_SCREEN, &lang).await?,
     }))
 }
@@ -578,7 +581,10 @@ async fn tutor(
     Form(form): Form<TutorForm>,
 ) -> Result<Response> {
     let resource = parse_number(&form.tutor)?;
-    let employee = super::parse_optional_id(&form.employee)?;
+    let employee = match super::parse_optional_id(&form.employee)? {
+        Some(employee) => Some(employee),
+        None => super::employee_of(&state, resource).await,
+    };
     sessions::change_tutor(&state, &user, id, resource, employee).await?;
     done(&lang, "sessions.tutor_changed")
 }

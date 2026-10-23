@@ -24,11 +24,12 @@ use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::documents::{dubai_text, today};
+use wl_kernel::scheduling::ResourceChoiceKind;
 
 use super::sessions::{SessionRow, row_of};
 use super::{
-    Texts, optional_party_of, parse_date, parse_number, parse_optional_id, parse_weekdays,
-    party_of, require, text,
+    Texts, employee_of, optional_party_of, parse_date, parse_number, parse_optional_id,
+    parse_weekdays, party_of, require, resource_choices, resource_options, text,
 };
 use super::{names_of, resource_text};
 use crate::batch::{Batch, BatchStatus};
@@ -138,6 +139,8 @@ pub(crate) struct IndexPage {
     batches: Vec<BatchRow>,
     course_options: Vec<[String; 2]>,
     course_selected: String,
+    tutor_options: Vec<[String; 2]>,
+    room_options: Vec<[String; 2]>,
     can_manage: bool,
 }
 
@@ -187,6 +190,14 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         batches: rows,
         course_options,
         course_selected,
+        tutor_options: resource_options(
+            &state,
+            ResourceChoiceKind::Person,
+            Some(text(&lang, "none")),
+        )
+        .await,
+        room_options: resource_options(&state, ResourceChoiceKind::Room, Some(text(&lang, "none")))
+            .await,
         can_manage: user.has_permission(permissions::BATCHES_MANAGE),
     }))
 }
@@ -251,9 +262,23 @@ async fn create(
         duration,
     );
     new.tutor_resource_id = parse_optional_id(&form.tutor)?;
-    new.tutor_employee_id = parse_optional_id(&form.employee)?;
+    new.tutor_employee_id = match (parse_optional_id(&form.employee)?, new.tutor_resource_id) {
+        (Some(employee), _) => Some(employee),
+        (None, Some(resource)) => employee_of(&state, resource).await,
+        (None, None) => None,
+    };
     new.room_resource_id = parse_optional_id(&form.room)?;
-    new.room_limit = parse_optional_id(&form.room_limit)?;
+    new.room_limit = match (parse_optional_id(&form.room_limit)?, new.room_resource_id) {
+        (Some(limit), _) => Some(limit),
+        // The persons the room holds: its capacity, when it states one.
+        (None, Some(room)) => resource_choices(&state, ResourceChoiceKind::Room)
+            .await
+            .into_iter()
+            .find(|choice| choice.id == room)
+            .map(|choice| choice.capacity)
+            .filter(|capacity| *capacity > 1),
+        (None, None) => None,
+    };
     let batch = batches::create(&state, &user, new).await?;
     Ok((
         Toast::success(text(&lang, "batches.created")),
@@ -282,6 +307,7 @@ pub(crate) struct ShowPage {
     tutor_history: Vec<TutorRow>,
     waiting: Vec<WaitingRow>,
     from_date: String,
+    tutor_options: Vec<[String; 2]>,
     can_open: bool,
     can_change_tutor: bool,
     can_wait: bool,
@@ -463,6 +489,7 @@ async fn show(
         pending,
         approvals: approval_cards,
         from_date: today().to_string(),
+        tutor_options: resource_options(&state, ResourceChoiceKind::Person, None).await,
         can_open: batch.status == BatchStatus::Planned
             && user.has_permission(permissions::BATCHES_MANAGE),
         can_change_tutor: batch.status.is_live()
@@ -508,7 +535,10 @@ async fn tutor(
     Form(form): Form<TutorForm>,
 ) -> Result<Response> {
     let resource = parse_number(&form.tutor)?;
-    let employee = parse_optional_id(&form.employee)?;
+    let employee = match parse_optional_id(&form.employee)? {
+        Some(employee) => Some(employee),
+        None => employee_of(&state, resource).await,
+    };
     let from = if form.from.trim().is_empty() {
         tutors::default_from()
     } else {
