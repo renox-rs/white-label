@@ -71,13 +71,32 @@ pub fn storage_days(check_in: renox::chrono::NaiveDate, release: renox::chrono::
     (release - check_in).num_days().max(1)
 }
 
-/// The charges of the total loss of `claim`, line by line: the labour done
-/// (the strip-down among it), the parts fitted, and the storage.
+/// The charges of the total loss of `claim` as they stand today, line by line:
+/// the labour done (the strip-down among it), the parts fitted, and the
+/// storage so far. See [`charge_lines_at`] for the price at a decision.
 ///
 /// # Errors
 ///
 /// The database's errors.
 pub async fn charge_lines(db: &Db, claim: &InsuranceClaim) -> Result<Vec<RequestLine>> {
+    charge_lines_at(db, claim, today()).await
+}
+
+/// The charges of the total loss of `claim` priced as of the day `as_of`: the
+/// storage runs from the check-in to the release day, or to `as_of` while the
+/// vehicle is still in (a release after `as_of` does not count). The insurer's
+/// approval fixes the price at its decision day, so the invoice, run days
+/// later, prices the storage at that day and the customer's difference does
+/// not grow.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn charge_lines_at(
+    db: &Db,
+    claim: &InsuranceClaim,
+    as_of: renox::chrono::NaiveDate,
+) -> Result<Vec<RequestLine>> {
     let Some(job_id) = claim.job_card_id else {
         return Ok(Vec::new());
     };
@@ -118,7 +137,9 @@ pub async fn charge_lines(db: &Db, claim: &InsuranceClaim) -> Result<Vec<Request
     let rate = insurer.storage_rate_daily.unwrap_or(0);
     if rate > 0 {
         let start = card.created_at.map_or_else(today, dubai_date);
-        let end = card.released_at.map_or_else(today, dubai_date);
+        let end = card
+            .released_at
+            .map_or(as_of, |released| dubai_date(released).min(as_of));
         let days = storage_days(start, end);
         let rate_text = crate::money_text(rate);
         let description = english(

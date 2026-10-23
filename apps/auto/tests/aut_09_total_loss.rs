@@ -415,3 +415,75 @@ async fn aut_09_storage_after_a_total_loss_is_billed_through_the_claim_only() {
     let bills = t.payer_books.about(&invoiced.subject());
     assert_eq!(bills[0].claimed(), 145_000, "the storage is on the claim");
 }
+
+/// The storage of a total loss is priced at the day the insurer decided: the
+/// invoice, run days later, does not charge the customer for the days that
+/// passed in between.
+#[renox::test]
+async fn aut_09_the_storage_price_is_fixed_at_the_insurers_decision() {
+    let t = boot().await;
+    let jc = jc100(&t).await;
+    let carla = carla(&t).await;
+    let aisha = aisha(&t).await;
+    insurers::update(
+        t.state(),
+        &carla,
+        jc.claim.insurer_id,
+        NewInsurer::new(9)
+            .agreement(3)
+            .email("claims@orient.example")
+            .labour_rate(12_000)
+            .storage_rate(5_000),
+    )
+    .await
+    .unwrap();
+    let ago = |days: i64| renox::db::now() - renox::chrono::Duration::days(days);
+    JobCard::query()
+        .where_(JobCard::ID.eq(jc.card.id))
+        .update(t.db(), &[("created_at", &Some(ago(4)))])
+        .await
+        .unwrap();
+    claims::declare_total_loss(t.state(), &carla, jc.claim.id, NOTICE)
+        .await
+        .unwrap();
+    let lines = claims::request_lines(t.db(), jc.claim.id, ApprovalKind::Charges)
+        .await
+        .unwrap();
+    let storage = lines.iter().find(|l| l.kind == "charge").expect("storage");
+    assert_eq!(storage.price, 20_000, "4 days at AED 50");
+
+    claims::approve_charges(
+        t.state(),
+        &carla,
+        jc.claim.id,
+        Answer::new("TL-1", "orient-charges-1")
+            .labour(jc.lines[0].id, 80_000)
+            .labour(jc.lines[1].id, 60_000)
+            .charge(15_000),
+    )
+    .await
+    .unwrap();
+
+    // Five more days pass before the accountant invoices: the decision is five
+    // days old and the vehicle has been in nine days.
+    ClaimApproval::query()
+        .where_(ClaimApproval::CLAIM_ID.eq(jc.claim.id))
+        .update(t.db(), &[("decided_at", &Some(ago(5)))])
+        .await
+        .unwrap();
+    JobCard::query()
+        .where_(JobCard::ID.eq(jc.card.id))
+        .update(t.db(), &[("created_at", &Some(ago(9)))])
+        .await
+        .unwrap();
+    let invoiced = claims::invoice(t.state(), &aisha, jc.claim.id)
+        .await
+        .unwrap();
+    let mine = t.books.about(&invoiced.subject());
+    assert_eq!(mine.len(), 1, "the customer's invoice");
+    assert_eq!(
+        mine[0].net(),
+        5_000,
+        "only the 20,000 priced at the decision less the 15,000 approved"
+    );
+}

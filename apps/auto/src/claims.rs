@@ -1334,7 +1334,17 @@ pub async fn invoice(state: &AppState, by: &AuthUser, id: i64) -> Result<Insuran
         if from_total_loss {
             // The charges the insurer did not approve, or approved for less,
             // are the customer's.
-            let charges = crate::claim_total_loss::charge_lines(&state.db, &claim).await?;
+            // Priced at the day the insurer decided, not at the invoice day.
+            let decided = approvals
+                .iter()
+                .filter(|a| {
+                    a.kind == ApprovalKind::Charges && a.outcome == ApprovalOutcome::Approved
+                })
+                .filter_map(|a| a.decided_at)
+                .max()
+                .map_or_else(today, wl_kernel::documents::dubai_date);
+            let charges =
+                crate::claim_total_loss::charge_lines_at(&state.db, &claim, decided).await?;
             for (charge, rest) in crate::claim_total_loss::unapproved(&charges, &approved) {
                 let description = english(
                     "auto.total_loss.customer_line",
