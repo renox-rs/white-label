@@ -789,7 +789,7 @@ async fn aut_base_an_empty_period_is_recorded_and_a_draft_contract_is_not_invoic
 async fn aut_base_the_daily_run_drafts_the_invoice_of_the_month_before_on_day_1() {
     let t = boot().await;
     bay_and_service(&t).await;
-    let (contract, van, _plan) = active_contract(&t, 59_800).await;
+    let (contract, van, _plan) = active_contract(&t, 52_000).await;
     let first_of_month = today().with_day(1).unwrap();
     let (_, last_of_last) = fleet_billing::previous_month(first_of_month);
     let days_ago = (today() - last_of_last).num_days() + 3;

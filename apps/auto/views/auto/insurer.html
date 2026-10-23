@@ -14,9 +14,9 @@
         <rx-input name="labour_rate" :label="tx['insurers.labour_rate']" :hint="tx['insurers.money_hint']" :value="raw_labour_rate" :id="'insurer-edit-labour-' ~ id"/>
         <rx-input name="storage_rate" :label="tx['insurers.storage_rate']" :hint="tx['insurers.money_hint']" :value="raw_storage_rate" :id="'insurer-edit-storage-' ~ id"/>
       </rx-action-sheet>
-      <rx-confirm :id="'insurer-active-' ~ id" :label="active ? tx['insurers.stop'] : tx['insurers.resume']" :action="route('auto.insurer_active', id)" method="POST"
-                  :title="active ? tx['insurers.stop'] : tx['insurers.resume']" :message="active ? tx['insurers.stop_message'] : tx['insurers.resume_message']"
-                  :confirm-label="active ? tx['insurers.stop'] : tx['insurers.resume']" :cancel-label="tx['button_cancel']" icon="refresh-cw"/>
+      <rx-confirm :id="'insurer-active-' ~ id" :label="tx['insurers.stop'] if active else tx['insurers.resume']" :action="route('auto.insurer_active', id)" method="POST"
+                  :title="tx['insurers.stop'] if active else tx['insurers.resume']" :message="tx['insurers.stop_message'] if active else tx['insurers.resume_message']"
+                  :confirm-label="tx['insurers.stop'] if active else tx['insurers.resume']" :cancel-label="tx['button_cancel']" icon="refresh-cw"/>
     </rx-page-header>
     <rx-alert rx-if="not active" kind="info" :message="tx['insurers.stopped_message']"/>
     <rx-card :title="tx['insurers.details']">

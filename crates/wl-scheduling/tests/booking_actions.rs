@@ -99,7 +99,10 @@ async fn a_booking_is_cancelled_as_the_system() {
 async fn a_checked_in_booking_is_cancelled_for_a_staff_user_once_its_work_done_is_known() {
     let t = boot().await;
     let bay = t.doctor("Bay 1").await;
-    t.service_with("periodic_service", &[&bay], |_| {}).await;
+    t.service_with("periodic_service", &[&bay], |service| {
+        service.check_in_required = true;
+    })
+    .await;
     let booking = SchedulingActions
         .book_service(
             t.state(),

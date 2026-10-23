@@ -899,6 +899,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             edu::SESSIONS_VIEW,
             aut::VEHICLES_VIEW,
             aut::JOB_CARDS_VIEW,
+            // Decides the liability of a vehicle incident when the branch
+            // manager was involved (`AUT.ACL.22`).
+            aut::JOB_CARDS_LIABILITY,
             edu::ENROLMENTS_VIEW,
             edu::CERTIFICATES_VIEW,
             invoices::VIEW,

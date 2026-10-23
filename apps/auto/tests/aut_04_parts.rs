@@ -364,13 +364,11 @@ async fn aut_04_a_warranty_repair_gets_a_substitute_vehicle_task_after_seven_day
         tasks[0].ticket.source_key.as_deref(),
         Some(substitute::task_key(cards[0].id).as_str())
     );
-    // Once per job card.
-    parts_delays::run_daily(t.state(), today() + Days::days(1))
-        .await
-        .unwrap();
+    // Once per job card: the run of the same day again adds none.
+    parts_delays::run_daily(t.state(), today()).await.unwrap();
     assert_eq!(t.tickets.with_key("auto.substitute:").len(), 2);
-    // The sixth day: not yet; the seventh: yes.
-    parts_delays::run_daily(t.state(), today() + Days::days(1))
+    // The sixth day of the young card: not yet; the seventh: yes.
+    parts_delays::run_daily(t.state(), dubai_plus(six_days_ago, 6))
         .await
         .unwrap();
     assert_eq!(t.tickets.with_key("auto.substitute:").len(), 2);

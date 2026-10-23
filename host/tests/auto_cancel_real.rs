@@ -443,6 +443,7 @@ async fn aut_01_real_the_purchase_order_of_a_special_part_is_unchanged_and_the_p
     let jc = jc10(&w).await;
     let supplier = company(&w.app, "Gulf Gearbox Trading").await;
     let mut order = PurchaseOrder::new(supplier, jc.store.id);
+    order.status = PurchaseOrderStatus::Issued;
     let mut tx = w.db().begin().await.unwrap();
     order
         .insert_in_state(&mut tx, PurchaseOrderStatus::Issued, "fixture")

@@ -22,7 +22,9 @@ use host::roles::{
 use renox::chrono::TimeDelta;
 use renox::prelude::*;
 use renox::testing::TestApp;
+use renox::upload::Upload;
 use support::{company, person, tenant};
+use wl_documents::{Documents, NewDocument};
 use wl_invoicing::rate_card::Unit;
 use wl_invoicing::rate_cards::{self, LineInput};
 use wl_invoicing::{PayerAgreement, PayerBill, VatRecipient};
@@ -237,6 +239,28 @@ async fn aut_base_real_the_insurer_is_billed_through_a_payer_bill_and_the_custom
     .unwrap();
     assert_eq!(claim.rate_card_version, Some(1), "the real card is pinned");
     assert!(claim.rate_card_id.is_some());
+    // The police report is a legal block: attached by the coordinator and
+    // accepted by the workshop manager, a second user.
+    let report = Documents::attach(
+        w.state(),
+        Some(&carla),
+        NewDocument::new(
+            claim.subject(),
+            "police_report",
+            Upload::new(
+                "police-report.pdf",
+                "application/pdf",
+                b"%PDF-1.7 police report".to_vec(),
+            ),
+        )
+        .number("DXB-PR-5521"),
+    )
+    .await
+    .unwrap()
+    .expect("the report is attached");
+    Documents::accept(w.state(), &waleed, &report)
+        .await
+        .unwrap();
     claims::submit_estimate(w.state(), &carla, claim.id)
         .await
         .unwrap();
@@ -351,6 +375,18 @@ async fn aut_base_real_the_insurer_is_billed_through_a_payer_bill_and_the_custom
         customer_invoice.gross_total, 21_000,
         "the AED 200 excess and 5% VAT"
     );
+    // The system issues only a source set to issue by itself (off by
+    // default): the excess invoice is a draft the accountant reviews.
+    assert_eq!(customer_invoice.status, InvoiceStatus::Draft);
+    invoicer(w.state())
+        .issue(w.state(), InvoiceId(customer_invoice_id), Some(&aisha))
+        .await
+        .unwrap();
+    let customer_invoice = invoicer(w.state())
+        .find(w.db(), InvoiceId(customer_invoice_id))
+        .await
+        .unwrap()
+        .expect("the invoice exists");
     assert_ne!(customer_invoice.status, InvoiceStatus::Draft);
 
     // The insurer's advice pays both lines; the customer pays the excess: the

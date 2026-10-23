@@ -27,7 +27,7 @@ async fn accident_card(t: &Garage, flagged: bool) -> JobCard {
     let sami = t.advisor().await;
     let tareq_user = t.technician_user("Tareq").await;
     let mut new = NewJobCard::new(vehicle.id, "Front hit on the highway")
-        .odometer(52_300)
+        .odometer(52_600)
         .condition("Front bumper broken")
         .acknowledged_by("Mona Hassan")
         .technician(tareq_user.id)
@@ -309,7 +309,20 @@ async fn aut_07_clearing_the_accident_flag_needs_the_workshop_manager_and_no_cla
     assert!(t.reload(linked.id).await.accident_damage);
 
     // JC-72: no claim.
-    let jc72 = accident_card(&t, true).await;
+    // The intake is only open on a checked-in or inspected card, so JC-72
+    // stays at the check-in (no estimate sent).
+    let hilux = t.hilux().await;
+    let jc72 = job_cards::check_in(
+        t.state(),
+        &sami,
+        NewJobCard::new(hilux.id, "Front hit on the highway")
+            .odometer(52_600)
+            .condition("Front bumper broken")
+            .acknowledged_by("Mona Hassan")
+            .accident("DXB-PR-72"),
+    )
+    .await
+    .unwrap();
     assert!(
         accident_flag::request_clear(t.state(), &sami, jc72.id, "  ")
             .await
@@ -318,7 +331,7 @@ async fn aut_07_clearing_the_accident_flag_needs_the_workshop_manager_and_no_cla
     );
     let intake = Intake {
         complaint: "Front hit".to_owned(),
-        odometer_in: 52_300,
+        odometer_in: 52_600,
         fuel_level: None,
         condition: "Front bumper broken".to_owned(),
         acknowledged_by: None,
@@ -385,7 +398,7 @@ async fn linked_free(t: &Garage) -> i64 {
         t.state(),
         &sami,
         NewJobCard::new(vehicle.id, "Side scrape")
-            .odometer(52_500)
+            .odometer(52_700)
             .condition("Scrape on the right door")
             .accident("DXB-PR-72"),
     )

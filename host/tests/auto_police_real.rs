@@ -324,7 +324,7 @@ async fn aut_07_real_no_override_can_be_requested_for_the_police_report() {
     )
     .await
     .unwrap_err();
-    assert!(words(&asked).to_lowercase().contains("override"), "{asked}");
+    assert!(words(&asked).contains("cannot be overridden"), "{asked}");
 
     let refusal = wl_kernel::documents::guard(w.state())
         .check_as(
