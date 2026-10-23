@@ -8,7 +8,7 @@
 
 mod support;
 
-use host::roles::{ACCOUNTANT, ADMIN, OPERATIONS_DIRECTOR};
+use host::roles::{ACCOUNTANT, OPERATIONS_DIRECTOR};
 use renox::chrono::Datelike;
 use renox::prelude::*;
 use renox::testing::TestApp;
@@ -232,7 +232,6 @@ async fn an_owner_drawing_is_approved_by_the_operations_director_and_is_not_oper
     let app = fnb_booted().await;
     let amal = person(&app, "Amal", ACCOUNTANT).await;
     let director = person(&app, "Omar", OPERATIONS_DIRECTOR).await;
-    let admin = person(&app, "Alia", ADMIN).await;
     let vendor = company(&app, "Villa Decor LLC").await;
     let code = wl_parties::Party::find_or_404(app.db(), vendor.0)
         .await

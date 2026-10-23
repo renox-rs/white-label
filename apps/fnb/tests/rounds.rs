@@ -147,12 +147,11 @@ async fn a_unit_with_no_reading_for_four_hours_is_named_to_the_kitchen_manager()
         .notices
         .of_type(NOTICE)
         .into_iter()
-        .filter(|r| {
+        .rfind(|r| {
             r.data["title"]
                 .as_str()
                 .is_some_and(|t| t.contains("No temperature reading"))
         })
-        .last()
         .unwrap();
     let body = latest.data["body"].as_str().unwrap();
     assert!(
