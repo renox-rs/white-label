@@ -572,7 +572,10 @@ impl LotDisposal for Lots {
 /// The lots behind the dispatch lines, as wl-inventory's `DispatchLots`
 /// would tell them.
 #[derive(Clone, Default)]
-pub struct Dispatches(Arc<Mutex<Vec<(Subject, Vec<DispatchedLot>)>>>);
+pub struct Dispatches(Arc<Mutex<Vec<DispatchRow>>>);
+
+/// A dispatch line with the lots it sent.
+type DispatchRow = (Subject, Vec<DispatchedLot>);
 
 impl Dispatches {
     /// Dispatch line `line` sent `(lot, quantity in thousandths)` of resin; a

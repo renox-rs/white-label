@@ -35,7 +35,11 @@ What is here so far:
 | The cost of a work order: issued, returned, scrap value, labour and overhead, actual cost, loss | §7.1, `MFG.CST.01` | `cost` |
 | Abort after materials were issued (`MFG.ACL.12`, BL-MFG-01, #382): the planner asks with an outcome, the production manager approves (a second step under `STK.ACL.02` above AED 2,000), then the return and `wastage` movements post, the output stays in quarantine with a final inspection requested, the cost is closed and the loss kept | §3.3, §4.2, §7.1 | `abort` |
 | Unlink from the sales order to stock (BL-MFG-02, #383) | §4.2, §7.1 | `unlink` |
-| The events `WorkOrderReleased`, `WorkOrderCompleted`, `WorkOrderCancelled`, `WorkOrderUnlinked`, `WorkOrderAborted` | §7.1 | `events` |
+| The events `NcrRaised`, `NcrDispositioned`, `NcrClosed`, `NcrCancelled`, `NcrReopened`, `WorkOrderReleased`, `WorkOrderCompleted`, `WorkOrderCancelled`, `WorkOrderUnlinked`, `WorkOrderAborted` | §7.1 | `events` |
+| The NCR (Base 07 *NCR lifecycle*, `MFG.QCL.02`, `MFG.ACL.03`): raised on a lot (cause *supplier* from the lot's goods receipt, *internal process* for own production, else *unknown*), cause changed with a reason until close, cancel while `open`; `disposition`, `close`, `reopen` (by QC, or by the system when the Return to supplier is cancelled or the rework work order is cancelled or aborted); a lot with an NCR open, or dispositioned with its action not done, is not released (`LotReleaseGuard`) | §7.1 *NCR* | `ncr`, `ncrs` |
+| Disposition of an NCR (BL-MFG-08, #389, `STK.ACL.02`, `STK.ACL.06`): *rework* creates a planned work order, *scrap* writes off through the kernel's `LotDisposal` (above AED 2,000 after a holder of `stock.approve`), *use as is* waits for a holder of `ncrs.approve` other than the requester and the raiser and then releases the lot, *return to supplier* (credit or replace; refused without a supplier lot, not offered for own production) makes a draft Return to supplier from the quarantine location with the NCR as its source; QC gets the task to close when the action is done, and a task to choose again after a reopen; every disposition stays in the history | §4.3, §4.4, §7.1 *NCR* | `ncrs`, `ncr` |
+| A quality dispute on an invoice (BL-MFG-13, #394): the buyer disputes in the portal (`/portal/manufacturing/invoices`) with a reason and, for quality, the lines; `InvoiceDisputed` raises or links one open NCR per lot of the disputed lines (every line when none is ticked; the item and the dispatch line when it has no lot), links the ticket, tells QC; the buyer sees the status only | §4.1, §4.5 | `disputes`, `portal` |
+| The supplier scorecard (BL-MFG-15, #396): `SupplierIncidentSource` returns the NCRs with cause supplier that are not cancelled, dated when raised | §7.1 *NCR*, wl-inventory §8 | `incidents` |
 | The screens: the work order list and the record page with the actions (disabled with the reason when a guard fails) | `docs/UX.md` | `screens`, `pages` |
 
 Comes with other issues (the states they need are declared):
@@ -43,7 +47,6 @@ Comes with other issues (the states they need are declared):
 | Issue | What | Where it plugs in |
 |---|---|---|
 | BL-MFG-03 | `MFG.RUL.09`: listens to the sales order events and calls `work_orders::cancel_by_system`, `unlink::unlink_by_system`, a quantity change and a new planned work order; `quantity_for_stock_milli` is the column | `work_orders`, `unlink` |
-| BL-MFG-08, 13, 15 | the NCR lifecycle (`open`, `dispositioned`, `closed`, `cancelled`) is not built yet | a new `ncr` module |
 | BL-MFG-10 | `TracePartyResolver`: a work order, its issues and its output lot are the genealogy | `issue`, `work_order` |
 | The shortage list at release, the schedule board, `MFG.RUL.01`, `02`, `05`, `06` | | `work_orders::release` |
 
@@ -57,3 +60,9 @@ the scope of the report's line, so a production manager assigned to the plant on
 assign the role on the line or globally.
 
 Decisions where the spec is silent are in the module headers.
+
+Not built for the NCR: the lot's user `reject` (and the NCR it creates at incoming inspection) and
+the user `release` of a lot are the lot issues of wl-inventory; an NCR is raised by QC on a lot
+(`/manufacturing/ncrs`), and the release guard is asked where wl-inventory releases a lot (the
+decision of a stock hold). The quarantine location of a Return to supplier is the one of
+wl-inventory; the scrap limit of `STK.ACL.02` is AED 2,000 here, as for the abort.

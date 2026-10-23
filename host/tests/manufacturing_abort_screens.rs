@@ -59,7 +59,7 @@ async fn an_abort_posts_the_real_movements_and_the_page_shows_the_outcome() {
         &app,
         &keeper,
         &format!("/manufacturing/work-orders/{id}/issue"),
-        &[("item_id", &item), ("quantity", "500")],
+        &[("item_id", &item), ("quantity", "500"), ("lot", "R1")],
     )
     .await
     .assert_status(303);

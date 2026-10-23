@@ -62,10 +62,20 @@ fn the_roles_hold_the_manufacturing_permissions() {
     assert!(holds(SUPERVISOR, perm::WORK_ORDERS_REPORT));
     assert!(!holds(SUPERVISOR, perm::WORK_ORDERS_ABORT_APPROVE));
     assert!(!holds(SUPERVISOR, perm::WORK_ORDERS_COST_VIEW));
-    // The QC inspector only sees.
+    // The QC inspector only sees work orders, and works the NCRs.
     assert!(holds(QC_INSPECTOR, perm::WORK_ORDERS_VIEW));
+    for permission in [
+        perm::NCRS_VIEW,
+        perm::NCRS_RAISE,
+        perm::NCRS_DISPOSITION,
+        perm::NCRS_APPROVE,
+    ] {
+        assert!(holds(QC_INSPECTOR, permission), "{permission}");
+        assert!(holds(PRODUCTION_MANAGER, permission), "{permission}");
+    }
     for permission in perm::ALL {
-        if *permission != perm::WORK_ORDERS_VIEW {
+        let ncr = permission.starts_with("ncrs.");
+        if *permission != perm::WORK_ORDERS_VIEW && !ncr {
             assert!(!holds(QC_INSPECTOR, permission), "{permission}");
         }
     }
