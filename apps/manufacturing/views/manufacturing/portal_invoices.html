@@ -19,7 +19,7 @@
         <template rx-if="not invoice.disputed">
           <rx-action-sheet :id="'dispute-' ~ invoice.id" :label="tx['portal.dispute']" :action="route('manufacturing.portal_dispute', invoice.id)"
                            :title="tx['portal.dispute']" :description="tx['portal.dispute_hint']" :submit-label="tx['portal.dispute_send']" icon="circle-alert">
-            <rx-select name="kind" :label="tx['portal.kind']" :options="kinds" :selected="kind_selected"/>
+            <rx-select name="kind" :label="tx['portal.kind']" :options="kinds" :selected="kind_selected" :id="'dispute-kind-' ~ invoice.id"/>
             <rx-textarea name="text" :label="tx['portal.text']" :id="'dispute-text-' ~ invoice.id" required/>
             <rx-show-when field="kind" values="quality">
               <rx-checkbox rx-for="line in invoice.lines" :name="line.name" :label="line.label" :id="'dispute-' ~ invoice.id ~ '-' ~ line.name"/>

@@ -21,10 +21,10 @@
       <rx-column :label="tx['exports.note']" hide-narrow>
         <rx-stack>
           <span>{{ row.note }}</span>
-          <rx-action-sheet :id="'note-' ~ row.party_id" :label="tx['exports.note_edit']" :action="route('manufacturing.exports_note')"
+          <rx-action-sheet :id="'note-' ~ row.party_id ~ '-' ~ row.dispatch" :label="tx['exports.note_edit']" :action="route('manufacturing.exports_note')"
                            :title="tx['exports.note_edit']" :description="tx['exports.note_hint']" :submit-label="tx['exports.note_save']" variant="secondary" icon="pencil">
             <input type="hidden" name="party_id" :value="row.party_id"/>
-            <rx-textarea name="note" :label="tx['exports.note']" :id="'note-text-' ~ row.party_id"/>
+            <rx-textarea name="note" :label="tx['exports.note']" :id="'note-text-' ~ row.party_id ~ '-' ~ row.dispatch"/>
           </rx-action-sheet>
         </rx-stack>
       </rx-column>

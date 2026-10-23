@@ -127,6 +127,15 @@ fn no_iso_times(html: &str, url: &str) {
     }
 }
 
+/// No two elements of a page share an `id` (a sheet per row needs its own).
+fn unique_ids(html: &str, url: &str) {
+    let mut seen = std::collections::BTreeSet::new();
+    for part in html.split(" id=\"").skip(1) {
+        let id = part.split('"').next().unwrap_or_default();
+        assert!(seen.insert(id.to_owned()), "{url} uses the id `{id}` twice");
+    }
+}
+
 /// Every screen of the map answers 200 for its owner, shows visible words
 /// only, and keeps its tables in their wrappers (390 px).
 #[renox::test]
@@ -199,6 +208,9 @@ async fn every_screen_of_the_map_opens_for_its_owner_in_words() {
         }
         // The pages of the vertical keep every table in the kit's wrapper;
         // the shared grids (invoices, stock) are the platform's.
+        if screen.url.contains("/manufacturing/") || screen.url.contains("/portal") {
+            unique_ids(&html, &screen.url);
+        }
         if screen.url.contains("/manufacturing/") {
             assert_eq!(
                 html.matches("<table").count(),
