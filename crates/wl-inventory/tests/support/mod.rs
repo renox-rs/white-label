@@ -24,23 +24,26 @@ use wl_inventory::{
 use wl_kernel::block_guard::{
     ActionKind, BlockFuture, BlockGuard, BlockRefusal, GuardOutcome, provide_block_guard,
 };
+use wl_kernel::delivery::{DeliveryFuture, DeliveryId, DeliveryRequest, DeliveryRequester};
 use wl_kernel::documents::{
     BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, InvalidReason,
     NoDocuments, RecordFlag, Validity,
 };
 use wl_kernel::inventory::{
-    GoodsReceived, LandedCostAdjusted, LandedCostAllocated, LotDiscarded, LotHeld, LotReleased,
+    DispatchDelivered, DispatchLost, DispatchReversed, DispatchSent, GoodsReceived,
+    LandedCostAdjusted, LandedCostAllocated, LotDiscarded, LotHeld, LotReleased,
     PreferredSupplierChanged, PurchaseOrderRevised, RecallClosed, RecallOpened, RecallTraced,
     StockHoldClosed, StockHoldPlaced, StockNegative, SupplierReturnCredited,
     SupplierReturnDispatched, SupplierScoreBelowThreshold, TraceFuture, TraceParty,
     TracePartyResolver,
 };
 use wl_kernel::invoicing::{
-    CostPoster, DebitedLine, PeriodLocks, PostCost, SupplierBillFuture, SupplierBillId,
-    SupplierBillLine, SupplierBillLineId, SupplierBillStatus, SupplierBills,
+    CostPoster, DebitedLine, PeriodLocks, PostCost, ReverseCost, SupplierBillFuture,
+    SupplierBillId, SupplierBillLine, SupplierBillLineId, SupplierBillStatus, SupplierBills,
     SupplierDebitNoteCancelled, SupplierDebitNoteId, SupplierDebitNoteIssued,
 };
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
+use wl_kernel::sales::{CreditChecker, CreditFailure, CreditVerdict, SalesFuture, SalesOrderId};
 use wl_kernel::tickets::{OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef};
 use wl_kernel::{PartyId, Subject};
 
@@ -253,9 +256,15 @@ impl Notifier for Recording {
 #[derive(Clone, Default)]
 pub struct CostDesk {
     posted: Arc<Mutex<Vec<PostCost>>>,
+    reversed: Arc<Mutex<Vec<ReverseCost>>>,
 }
 
 impl CostDesk {
+    /// The cost taken back, oldest first.
+    pub fn reversed(&self) -> Vec<ReverseCost> {
+        self.reversed.lock().unwrap().clone()
+    }
+
     /// The cost posted, oldest first.
     pub fn posted(&self) -> Vec<PostCost> {
         self.posted.lock().unwrap().clone()
@@ -266,6 +275,122 @@ impl CostPoster for CostDesk {
     fn post<'a>(&'a self, _state: &'a AppState, request: PostCost) -> SupplierBillFuture<'a, ()> {
         Box::pin(async move {
             self.posted.lock().unwrap().push(request);
+            Ok(())
+        })
+    }
+
+    fn reverse<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: ReverseCost,
+    ) -> SupplierBillFuture<'a, ()> {
+        Box::pin(async move {
+            self.reversed.lock().unwrap().push(request);
+            Ok(())
+        })
+    }
+}
+
+/// A `CreditChecker` that fails the orders the test sets and records what it
+/// was asked. A failure puts the order on hold, as `wl-sales` does: the order
+/// is listed in `held`.
+#[derive(Clone, Default)]
+pub struct CreditDesk {
+    failing: Arc<Mutex<Vec<(i64, CreditFailure)>>>,
+    asked: Arc<Mutex<Vec<i64>>>,
+    held: Arc<Mutex<Vec<i64>>>,
+}
+
+impl CreditDesk {
+    /// The credit re-check of `order` fails from now on.
+    pub fn fail(&self, order: i64, failure: CreditFailure) {
+        self.failing.lock().unwrap().push((order, failure));
+    }
+
+    /// The order is released: its re-check passes again.
+    pub fn release(&self, order: i64) {
+        self.failing.lock().unwrap().retain(|(o, _)| *o != order);
+    }
+
+    /// The orders re-checked, oldest first.
+    pub fn asked(&self) -> Vec<i64> {
+        self.asked.lock().unwrap().clone()
+    }
+
+    /// The orders put on credit hold by a failed re-check.
+    pub fn held(&self) -> Vec<i64> {
+        self.held.lock().unwrap().clone()
+    }
+}
+
+impl CreditChecker for CreditDesk {
+    fn credit_recheck<'a>(
+        &'a self,
+        _state: &'a AppState,
+        order: SalesOrderId,
+    ) -> SalesFuture<'a, CreditVerdict> {
+        Box::pin(async move {
+            self.asked.lock().unwrap().push(order.0);
+            let failure = self
+                .failing
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(o, _)| *o == order.0)
+                .map(|(_, failure)| *failure);
+            Ok(match failure {
+                Some(failure) => {
+                    self.held.lock().unwrap().push(order.0);
+                    CreditVerdict::Failed(failure)
+                }
+                None => CreditVerdict::Passed,
+            })
+        })
+    }
+}
+
+/// A `DeliveryRequester` that records the deliveries asked for and the ones
+/// cancelled.
+#[derive(Clone, Default)]
+pub struct DeliveryDesk {
+    requested: Arc<Mutex<Vec<DeliveryRequest>>>,
+    cancelled: Arc<Mutex<Vec<DeliveryId>>>,
+}
+
+impl DeliveryDesk {
+    /// The deliveries asked for, oldest first; the delivery id is the
+    /// position, from 1.
+    pub fn requested(&self) -> Vec<DeliveryRequest> {
+        self.requested.lock().unwrap().clone()
+    }
+
+    /// The deliveries cancelled.
+    pub fn cancelled(&self) -> Vec<DeliveryId> {
+        self.cancelled.lock().unwrap().clone()
+    }
+}
+
+impl DeliveryRequester for DeliveryDesk {
+    fn request<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: DeliveryRequest,
+    ) -> DeliveryFuture<'a, DeliveryId> {
+        Box::pin(async move {
+            let mut asked = self.requested.lock().unwrap();
+            asked.push(request);
+            Ok(DeliveryId(asked.len() as i64))
+        })
+    }
+
+    fn cancel<'a>(
+        &'a self,
+        _state: &'a AppState,
+        delivery: DeliveryId,
+        _reason: &'a str,
+    ) -> DeliveryFuture<'a, ()> {
+        Box::pin(async move {
+            self.cancelled.lock().unwrap().push(delivery);
             Ok(())
         })
     }
@@ -598,6 +723,12 @@ struct Fakes {
     traced: Arc<Mutex<Vec<RecallTraced>>>,
     recall_closed: Arc<Mutex<Vec<RecallClosed>>>,
     trace_parties: TraceParties,
+    sent: Arc<Mutex<Vec<DispatchSent>>>,
+    delivered: Arc<Mutex<Vec<DispatchDelivered>>>,
+    lost: Arc<Mutex<Vec<DispatchLost>>>,
+    reopened: Arc<Mutex<Vec<DispatchReversed>>>,
+    credit: CreditDesk,
+    deliveries: DeliveryDesk,
 }
 
 impl Module for Fakes {
@@ -634,6 +765,12 @@ impl Module for Fakes {
         record(app, &self.recalls);
         record(app, &self.traced);
         record(app, &self.recall_closed);
+        record(app, &self.sent);
+        record(app, &self.delivered);
+        record(app, &self.lost);
+        record(app, &self.reopened);
+        wl_kernel::sales::provide_credit_checker(app, self.credit.clone());
+        wl_kernel::delivery::provide_requester(app, self.deliveries.clone());
         wl_kernel::inventory::provide_trace_party_resolver(app, self.trace_parties.clone());
         wl_kernel::tickets::provide_task_creator(app, self.tickets.clone());
         wl_kernel::invoicing::provide_cost_poster(app, self.costs.clone());
@@ -697,6 +834,18 @@ pub struct Booted {
     pub recall_closed: Recorded<RecallClosed>,
     /// The parties behind the subjects of a trace.
     pub trace_parties: TraceParties,
+    /// Every `DispatchSent`.
+    pub sent: Recorded<DispatchSent>,
+    /// Every `DispatchDelivered`.
+    pub delivered: Recorded<DispatchDelivered>,
+    /// Every `DispatchLost`.
+    pub lost: Recorded<DispatchLost>,
+    /// Every `DispatchReversed`.
+    pub reopened: Recorded<DispatchReversed>,
+    /// The credit control of the orders on account.
+    pub credit: CreditDesk,
+    /// The deliveries asked of wl-delivery.
+    pub deliveries: DeliveryDesk,
     /// The days the clock was moved forward.
     clock_days: std::sync::atomic::AtomicI64,
     /// Keeps the views directory alive.
@@ -1685,6 +1834,12 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     let traced = Arc::new(Mutex::new(Vec::new()));
     let recall_closed = Arc::new(Mutex::new(Vec::new()));
     let trace_parties = TraceParties::default();
+    let sent = Arc::new(Mutex::new(Vec::new()));
+    let delivered = Arc::new(Mutex::new(Vec::new()));
+    let lost = Arc::new(Mutex::new(Vec::new()));
+    let reopened = Arc::new(Mutex::new(Vec::new()));
+    let credit = CreditDesk::default();
+    let deliveries = DeliveryDesk::default();
     // What wl-parties registers: an exception to a block is decided by the
     // finance manager (screening off). The defaults are process-wide and
     // `wl:install` stores the ones registered by then, so this comes before
@@ -1739,6 +1894,12 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         traced: traced.clone(),
         recall_closed: recall_closed.clone(),
         trace_parties: trace_parties.clone(),
+        sent: sent.clone(),
+        delivered: delivered.clone(),
+        lost: lost.clone(),
+        reopened: reopened.clone(),
+        credit: credit.clone(),
+        deliveries: deliveries.clone(),
     });
     let client = if with_invoicing {
         CLIENT_WITH_INVOICING
@@ -1838,6 +1999,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     permissions::define_role(app.db(), "recall_viewer", &[perm::RECALLS_VIEW])
         .await
         .unwrap();
+    permissions::define_role(app.db(), "dispatcher", &[perm::DISPATCH_MANAGE])
+        .await
+        .unwrap();
     Booted {
         app,
         received: Recorded(received),
@@ -1866,6 +2030,12 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         traced: Recorded(traced),
         recall_closed: Recorded(recall_closed),
         trace_parties,
+        sent: Recorded(sent),
+        delivered: Recorded(delivered),
+        lost: Recorded(lost),
+        reopened: Recorded(reopened),
+        credit,
+        deliveries,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         _views: views,
     }
@@ -1880,4 +2050,290 @@ fn debited(lines: &[(i64, i64)]) -> Vec<DebitedLine> {
             quantity_milli: *quantity_milli,
         })
         .collect()
+}
+
+/// The sales order the dispatches of the tests fulfil.
+pub const ORDER: i64 = 41;
+
+/// Dispatches: fixtures, the actions as a user through the routes, and the
+/// events of wl-delivery as the delivery module would emit them.
+impl Booted {
+    /// A dispatcher (`dispatch.manage`) everywhere.
+    pub async fn dispatcher(&self, name: &str) -> User {
+        self.user_with(name, "dispatcher").await
+    }
+
+    /// A draft dispatch of `lines` from `location` for sales order `order`.
+    pub async fn draft_dispatch(
+        &self,
+        location: &Location,
+        order: i64,
+        lines: Vec<wl_inventory::NewDispatchLine>,
+    ) -> wl_inventory::Dispatch {
+        wl_inventory::create_dispatch(
+            self.db(),
+            None,
+            wl_inventory::NewDispatch {
+                source: Subject::new("sales.sales_order", order),
+                recipient: Some(PartyId(21)),
+                recipient_name: "Al Noor Trading".to_owned(),
+                address: "Warehouse 4, Al Quoz".to_owned(),
+                location_id: location.id,
+                lines,
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// `POST /dispatches/{id}/{action}` as `by` with `form`.
+    pub async fn dispatch_action(
+        &self,
+        by: &User,
+        dispatch: &wl_inventory::Dispatch,
+        action: &str,
+        form: &[(&str, &str)],
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/dispatches/{}/{action}", dispatch.id), form)
+            .await
+    }
+
+    /// The dispatch as stored now.
+    pub async fn dispatch_now(&self, dispatch: &wl_inventory::Dispatch) -> wl_inventory::Dispatch {
+        wl_inventory::Dispatch::find_or_404(self.db(), dispatch.id)
+            .await
+            .unwrap()
+    }
+
+    /// The lines of the dispatch as stored now.
+    pub async fn dispatch_lines(
+        &self,
+        dispatch: &wl_inventory::Dispatch,
+    ) -> Vec<wl_inventory::DispatchLine> {
+        wl_inventory::dispatch::lines_of(self.db(), dispatch.id)
+            .await
+            .unwrap()
+    }
+
+    /// The movements the dispatch caused, oldest first.
+    pub async fn dispatch_movements(
+        &self,
+        dispatch: &wl_inventory::Dispatch,
+    ) -> Vec<StockMovement> {
+        wl_inventory::movement::of_source(self.db(), &dispatch.subject())
+            .await
+            .unwrap()
+    }
+
+    /// A picked dispatch of `quantity_milli` of `item` (of `lot`) from
+    /// `location`, for sales order `order`, picked as `by`.
+    pub async fn picked_dispatch(
+        &self,
+        by: &User,
+        location: &Location,
+        order: i64,
+        lines: Vec<wl_inventory::NewDispatchLine>,
+    ) -> wl_inventory::Dispatch {
+        let dispatch = self.draft_dispatch(location, order, lines).await;
+        self.dispatch_action(by, &dispatch, "pick", &[])
+            .await
+            .assert_ok();
+        let picked = self.dispatch_now(&dispatch).await;
+        assert_eq!(picked.status, wl_inventory::DispatchStatus::Picked);
+        picked
+    }
+
+    /// A dispatch that left with a courier, as `by`.
+    pub async fn sent_dispatch(
+        &self,
+        by: &User,
+        location: &Location,
+        order: i64,
+        lines: Vec<wl_inventory::NewDispatchLine>,
+    ) -> wl_inventory::Dispatch {
+        let picked = self.picked_dispatch(by, location, order, lines).await;
+        self.dispatch_action(
+            by,
+            &picked,
+            "dispatch",
+            &[("handover", "courier"), ("tracking_number", "TRK-1")],
+        )
+        .await
+        .assert_ok();
+        let sent = self.dispatch_now(&picked).await;
+        assert_eq!(sent.status, wl_inventory::DispatchStatus::Dispatched);
+        sent
+    }
+
+    /// `DeliveryDelivered` for the delivery of `dispatch`: for each line the
+    /// delivered and the refused quantity and the refusal reason.
+    pub async fn emit_delivered(
+        &self,
+        dispatch: &wl_inventory::Dispatch,
+        proof: i64,
+        lines: &[(&wl_inventory::DispatchLine, i64, i64, Option<&str>)],
+    ) {
+        self.state()
+            .emit(wl_kernel::delivery::DeliveryDelivered {
+                delivery: DeliveryId(1),
+                source: dispatch.subject(),
+                attempt: 1,
+                proof,
+                lines: lines
+                    .iter()
+                    .map(
+                        |(line, delivered, refused, reason)| wl_kernel::delivery::DeliveredLine {
+                            line: Some(line.subject()),
+                            description: "Pump".to_owned(),
+                            quantity_milli: line.quantity_milli,
+                            delivered_milli: *delivered,
+                            refused_milli: *refused,
+                            refusal_reason: reason.map(str::to_owned),
+                        },
+                    )
+                    .collect(),
+                cash_expected: 0,
+                cash_collected: 0,
+                cod_difference: 0,
+                cod_difference_reason: None,
+                absorbed_by: None,
+                cheque: None,
+            })
+            .await
+            .unwrap();
+    }
+
+    /// `DeliveryRefusedReceived` at the close of a run: for each line what
+    /// came back and what is missing.
+    pub async fn emit_refused_received(
+        &self,
+        dispatch: &wl_inventory::Dispatch,
+        lines: &[(&wl_inventory::DispatchLine, i64, i64)],
+    ) {
+        self.state()
+            .emit(wl_kernel::delivery::DeliveryRefusedReceived {
+                delivery: DeliveryId(1),
+                source: dispatch.subject(),
+                run: wl_kernel::delivery::RunId(1),
+                lines: lines
+                    .iter()
+                    .map(
+                        |(line, received, missing)| wl_kernel::delivery::RefusedLineReceived {
+                            line: Some(line.subject()),
+                            description: "Pump".to_owned(),
+                            refused_milli: received + missing,
+                            received_milli: *received,
+                            missing_milli: *missing,
+                            refusal_reason: line.refusal_reason.clone(),
+                        },
+                    )
+                    .collect(),
+            })
+            .await
+            .unwrap();
+    }
+
+    /// `DeliveryLost` for the delivery of `dispatch`.
+    pub async fn emit_lost(&self, dispatch: &wl_inventory::Dispatch, under_review: bool) {
+        self.state()
+            .emit(wl_kernel::delivery::DeliveryLost {
+                delivery: DeliveryId(1),
+                source: dispatch.subject(),
+                was_under_review: under_review,
+                ticket: None,
+                liability: "none".to_owned(),
+                run: None,
+                claim_ticket: None,
+                lines: Vec::new(),
+            })
+            .await
+            .unwrap();
+    }
+
+    /// `DeliveryFound` for the delivery of `dispatch`.
+    pub async fn emit_found(&self, dispatch: &wl_inventory::Dispatch) {
+        self.state()
+            .emit(wl_kernel::delivery::DeliveryFound {
+                delivery: DeliveryId(1),
+                source: dispatch.subject(),
+                depot: "Jebel Ali depot".to_owned(),
+                claim_ticket: None,
+                lines: Vec::new(),
+            })
+            .await
+            .unwrap();
+    }
+
+    /// `DeliveryReversed` for the delivery of `dispatch`.
+    pub async fn emit_reversed(&self, dispatch: &wl_inventory::Dispatch) {
+        self.state()
+            .emit(wl_kernel::delivery::DeliveryReversed {
+                delivery: DeliveryId(1),
+                source: dispatch.subject(),
+                reason: "Not delivered".to_owned(),
+                liability: "none".to_owned(),
+                proof: Some(1),
+                cash_treatment: None,
+                approver: None,
+                target_state: None,
+                driver: None,
+                cash_amount: 0,
+                lines: Vec::new(),
+            })
+            .await
+            .unwrap();
+    }
+}
+
+impl Booted {
+    /// An item `code` in `pcs` costing `cost` fils a unit, tracked by lot
+    /// when `tracked`.
+    pub async fn priced_item(&self, code: &str, tracked: bool, cost: i64) -> Item {
+        let mut item = Item::new(code, code, "pcs");
+        if tracked {
+            item = item.lot_tracked();
+        }
+        item.average_cost = cost;
+        item.save(self.db()).await.unwrap();
+        item
+    }
+
+    /// A released lot `number` of `item` that expires in `days` days.
+    pub async fn lot_expiring(&self, item: &Item, number: &str, days: i64) -> Lot {
+        let lot = self.lot(item, number, LotStatus::Released).await;
+        let day = wl_kernel::documents::today() + renox::chrono::Duration::days(days);
+        Lot::query()
+            .where_(Lot::ID.eq(lot.id))
+            .update(self.db(), &[("expiry_date", &Some(day))])
+            .await
+            .unwrap();
+        self.lot_now(&lot).await
+    }
+
+    /// Puts the whole lot on hold (`stock.hold`), as the quality manager.
+    pub async fn hold_lot(&self, lot: &Lot) {
+        let holder = self.holder("Hana").await;
+        let id = lot.id.to_string();
+        self.hold_as(
+            &holder,
+            &[
+                ("reason", "quality"),
+                ("reference", "ticketing.ticket:9"),
+                ("lots", id.as_str()),
+            ],
+        )
+        .await
+        .assert_ok();
+        assert_eq!(self.lot_now(lot).await.status, LotStatus::OnHold);
+    }
+}
+
+impl Booted {
+    /// The item of a dispatch line as stored now.
+    pub async fn item_now_of(&self, line: &wl_inventory::DispatchLine) -> Item {
+        Item::find_or_404(self.db(), line.item_id).await.unwrap()
+    }
 }
