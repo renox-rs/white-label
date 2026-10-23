@@ -2,10 +2,10 @@
     orders or "temporarily closed" while its devices are silent or a manager
     paused its channels (`FNB.RUL.15`). A closed kitchen takes no orders.
     Replace it with resources/views/fnb/ordering.html in the app. -#}
-<rx-page layout="layouts/app.html" :title="tx['ordering.title'] ~ ' ' ~ brand.name">
+<rx-page layout="layouts/app.html" :title="tx['ordering.title'] ~ ' ' ~ brand_info.name">
   <rx-stack>
-    <rx-page-header :title="tx['ordering.title'] ~ ' ' ~ brand.name" :subtitle="tx['ordering.subtitle']"/>
-    <rx-table :rows="kitchens" as="kitchen" :key="kitchen.name" :caption="brand.name">
+    <rx-page-header :title="tx['ordering.title'] ~ ' ' ~ brand_info.name" :subtitle="tx['ordering.subtitle']"/>
+    <rx-table :rows="kitchens" as="kitchen" :key="kitchen.name" :caption="brand_info.name">
       <rx-column :label="tx['ordering.kitchen']">{{ kitchen.name }}</rx-column>
       <rx-column :label="tx['ordering.state']">
         <rx-badge rx-if="kitchen.open" kind="success" :text="tx['ordering.open']"/>

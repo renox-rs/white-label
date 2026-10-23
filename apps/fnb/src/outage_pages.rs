@@ -393,7 +393,7 @@ pub(crate) struct KitchenRow {
 #[view(template = "fnb/ordering.html")]
 pub(crate) struct OrderingPage {
     tx: Texts,
-    brand: Brand,
+    brand_info: Brand,
     kitchens: Vec<KitchenRow>,
 }
 
@@ -418,7 +418,7 @@ async fn ordering(
         .collect();
     Ok(View::typed(OrderingPage {
         tx: tx(&lang),
-        brand,
+        brand_info: brand,
         kitchens,
     })
     .into_response())

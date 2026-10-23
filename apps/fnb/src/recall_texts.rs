@@ -102,7 +102,7 @@ pub(crate) const RECALL_TEXTS: &[(&str, &str)] = &[
         "fnb.screen.recall.note_hint",
         "Needed when no public notice is published.",
     ),
-    ("fnb.screen.recall.report", "Export the recall report"),
+    ("fnb.screen.recall.report", "Recall record and report"),
     (
         "fnb.screen.recall.decision_title",
         "Decision on the public notice",
