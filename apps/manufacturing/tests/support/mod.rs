@@ -22,7 +22,8 @@ use renox::state_machine::StateMachine;
 use renox::testing::{TestApp, TestResponse};
 use wl_kernel::inventory::{
     ConsumeRequest, Consumed, ConsumedLot, ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE,
-    LOT_SUBJECT_TYPE, PENDING_ISSUE_SUBJECT_TYPE, StockFuture, StockService, provide_stock_service,
+    LOT_SUBJECT_TYPE, PENDING_ISSUE_SUBJECT_TYPE, StockFuture, StockNegative, StockService,
+    provide_stock_service,
 };
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
@@ -132,6 +133,10 @@ pub struct Stock {
     pub waste_voided: Arc<Mutex<Vec<WasteMaterial>>>,
     /// Thousandths of the output somebody else moved, issued or picked.
     used: Arc<AtomicI64>,
+    /// Thousandths consumed from the shelves so far.
+    taken: Arc<AtomicI64>,
+    /// The items that are lot-tracked.
+    tracked: Arc<Mutex<Vec<i64>>>,
     pending: Arc<AtomicI64>,
 }
 
@@ -144,6 +149,16 @@ impl Stock {
             quantity_milli,
             unit_cost,
         });
+    }
+
+    /// `item` is lot-tracked.
+    pub fn track(&self, item: i64) {
+        self.tracked.lock().unwrap().push(item);
+    }
+
+    /// Thousandths consumed from the shelves so far.
+    pub fn consumed(&self) -> i64 {
+        self.taken.load(Ordering::SeqCst)
     }
 
     /// `quantity_milli` of the output lots were moved out by somebody else.
@@ -179,10 +194,31 @@ impl Stock {
 impl StockService for Stock {
     fn consume<'a>(
         &'a self,
-        _state: &'a AppState,
+        state: &'a AppState,
         request: ConsumeRequest,
     ) -> StockFuture<'a, Consumed> {
         Box::pin(async move {
+            let consumed = self.take(&request);
+            if let Some(pending) = consumed.pending_issue.clone() {
+                state
+                    .emit(StockNegative {
+                        item: request.item.clone(),
+                        location: request.location.clone(),
+                        quantity_milli: consumed.short_milli,
+                        source: Some(request.source.clone()),
+                        pending_issue: Some(pending),
+                    })
+                    .await?;
+            }
+            Ok(consumed)
+        })
+    }
+}
+
+impl Stock {
+    /// Takes `request` from the shelves: the lot asked for first.
+    fn take(&self, request: &ConsumeRequest) -> Consumed {
+        {
             let mut shelves = self.shelves.lock().unwrap();
             let mut left = request.quantity_milli;
             let mut lots = Vec::new();
@@ -215,13 +251,15 @@ impl StockService for Stock {
                     self.pending.fetch_add(1, Ordering::SeqCst) + 1,
                 )
             });
-            Ok(Consumed {
+            self.taken
+                .fetch_add(request.quantity_milli - left, Ordering::SeqCst);
+            Consumed {
                 posted_milli: request.quantity_milli - left,
                 short_milli: left,
                 pending_issue: pending,
                 lots,
-            })
-        })
+            }
+        }
     }
 }
 
@@ -422,6 +460,8 @@ pub struct Opened {
     pub ticket: OpenTicket,
     /// Its id.
     pub id: i64,
+    /// Whether it was completed.
+    pub done: bool,
 }
 
 /// The tickets of wl-ticketing, as the role tasks open them.
@@ -444,7 +484,11 @@ impl TaskCreator for Tickets {
         Box::pin(async move {
             let mut all = self.0.lock().unwrap();
             let id = i64::try_from(all.len()).unwrap() + 1;
-            all.push(Opened { ticket, id });
+            all.push(Opened {
+                ticket,
+                id,
+                done: false,
+            });
             Ok(Some(TicketRef {
                 id: TicketId(id),
                 number: format!("TKT-2027-{id:04}"),
@@ -463,7 +507,9 @@ impl TaskCreator for Tickets {
                 .lock()
                 .unwrap()
                 .iter()
-                .find(|opened| opened.ticket.source_key.as_deref() == Some(source_key))
+                .find(|opened| {
+                    !opened.done && opened.ticket.source_key.as_deref() == Some(source_key)
+                })
                 .map(|opened| TicketRef {
                     id: TicketId(opened.id),
                     number: format!("TKT-2027-{:04}", opened.id),
@@ -474,10 +520,19 @@ impl TaskCreator for Tickets {
     fn complete<'a>(
         &'a self,
         _state: &'a AppState,
-        _ticket: TicketId,
+        ticket: TicketId,
         _note: &'a str,
     ) -> TicketFuture<'a, bool> {
-        Box::pin(async { Ok(false) })
+        Box::pin(async move {
+            let mut all = self.0.lock().unwrap();
+            match all.iter_mut().find(|opened| opened.id == ticket.0) {
+                Some(opened) if !opened.done => {
+                    opened.done = true;
+                    Ok(true)
+                }
+                _ => Ok(false),
+            }
+        })
     }
 
     fn comment<'a>(

@@ -193,3 +193,76 @@ pub async fn issue(
     tx.commit().await?;
     Ok(saved)
 }
+
+/// What became of the pending issue `event.original` of work order `id`
+/// (BL-MFG-05): the row that waited takes the lot and the cost it posted
+/// with. A pending issue that was split posted its covered part as a row of
+/// its own and left the rest waiting; one that was cleared with the work
+/// order's cancellation never became an issue, and its row goes.
+///
+/// # Errors
+///
+/// A database error.
+pub(crate) async fn settle_pending(
+    state: &AppState,
+    id: i64,
+    event: &wl_kernel::inventory::PendingIssueClosed,
+) -> Result {
+    let mut tx = state.db.begin().await?;
+    let Some(row) = MaterialIssue::query()
+        .where_(MaterialIssue::WORK_ORDER_ID.eq(id))
+        .where_(MaterialIssue::PENDING_ISSUE_ID.eq(event.original.subject_id))
+        .first(&mut tx)
+        .await?
+    else {
+        return Ok(());
+    };
+    let stamp = now();
+    if event.how == "source_cancelled" {
+        MaterialIssue::query()
+            .where_(MaterialIssue::ID.eq(row.id))
+            .delete(&mut tx)
+            .await?;
+    } else if event.pending_issue != event.original {
+        // A covered part: a row of its own; the rest waits on the original.
+        let left = (row.quantity_milli - event.quantity_milli).max(0);
+        MaterialIssue::query()
+            .where_(MaterialIssue::ID.eq(row.id))
+            .update(
+                &mut tx,
+                &[("quantity_milli", &left), ("updated_at", &stamp)],
+            )
+            .await?;
+        MaterialIssue::create(
+            &mut tx,
+            MaterialIssue {
+                id: 0,
+                quantity_milli: event.quantity_milli,
+                lot_id: event.lot.as_ref().map(|lot| lot.subject_id),
+                unit_cost: event.unit_cost,
+                pending_issue_id: None,
+                issued_at: stamp,
+                ..row
+            },
+        )
+        .await?;
+    } else {
+        MaterialIssue::query()
+            .where_(MaterialIssue::ID.eq(row.id))
+            .update(
+                &mut tx,
+                &[
+                    ("lot_id", &event.lot.as_ref().map(|lot| lot.subject_id)),
+                    ("unit_cost", &event.unit_cost),
+                    ("pending_issue_id", &Option::<i64>::None),
+                    ("updated_at", &stamp),
+                ],
+            )
+            .await?;
+    }
+    if event.how != "source_cancelled" {
+        set_order(&mut tx, id, &[("has_issue", &true)]).await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}

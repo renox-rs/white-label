@@ -35,6 +35,7 @@ pub mod lot;
 pub mod match_source;
 pub mod movement;
 pub mod pages;
+pub mod pending_events;
 pub mod pending_issue;
 pub mod po_issue;
 pub mod po_revise;
@@ -741,6 +742,7 @@ impl Module for WlInventory {
             .step_permission(permissions::LOTS_RELEASE)
             .register();
         events::register(app);
+        pending_events::register(app);
         dispatch_events::register(app);
         dispatch_deliver::register(app);
         dispatch_loss::register(app);

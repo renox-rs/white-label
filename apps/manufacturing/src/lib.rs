@@ -6,6 +6,7 @@ pub mod cost;
 mod db;
 pub mod events;
 pub mod issue;
+pub mod material_hold;
 pub mod notices;
 pub mod pages;
 pub mod permissions;
@@ -93,6 +94,7 @@ impl Module for Manufacturing {
             Box::pin(abort::recheck(tx, request))
         });
         abort::listen(app);
+        material_hold::listen(app);
         app.schedule()
             .every_minutes(5, ABORT_SWEEP_TASK, |state: AppState| async move {
                 abort::sweep(&state).await?;

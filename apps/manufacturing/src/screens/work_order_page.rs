@@ -597,6 +597,9 @@ async fn build(
     // Approvals, newest first.
     let mut approvals = Vec::new();
     let mut notes = Vec::new();
+    if issues.iter().any(|issue| issue.waiting) {
+        notes.push(t(lang, "manufacturing.screen.materials.short_note"));
+    }
     let mut requests = ApprovalRequest::query()
         .where_(ApprovalRequest::SUBJECT_TYPE.eq(order.subject().subject_type.as_str()))
         .where_(ApprovalRequest::SUBJECT_ID.eq(order.id))

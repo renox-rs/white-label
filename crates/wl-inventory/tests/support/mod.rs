@@ -32,8 +32,8 @@ use wl_kernel::documents::{
 use wl_kernel::inventory::{
     DispatchDelivered, DispatchLost, DispatchReversed, DispatchSent, GoodsReceived,
     LandedCostAdjusted, LandedCostAllocated, LotDiscarded, LotHeld, LotReleased,
-    PreferredSupplierChanged, PurchaseOrderRevised, RecallClosed, RecallOpened, RecallTraced,
-    StockHoldClosed, StockHoldPlaced, StockNegative, SupplierReturnCredited,
+    PendingIssueClosed, PreferredSupplierChanged, PurchaseOrderRevised, RecallClosed, RecallOpened,
+    RecallTraced, StockHoldClosed, StockHoldPlaced, StockNegative, SupplierReturnCredited,
     SupplierReturnDispatched, SupplierScoreBelowThreshold, TraceFuture, TraceParty,
     TracePartyResolver,
 };
@@ -716,6 +716,7 @@ struct Fakes {
     holds: Arc<Mutex<Vec<StockHoldPlaced>>>,
     lots_held: Arc<Mutex<Vec<LotHeld>>>,
     negative: Arc<Mutex<Vec<StockNegative>>>,
+    pending_closed: Arc<Mutex<Vec<PendingIssueClosed>>>,
     closed: Arc<Mutex<Vec<StockHoldClosed>>>,
     released: Arc<Mutex<Vec<LotReleased>>>,
     discarded: Arc<Mutex<Vec<LotDiscarded>>>,
@@ -759,6 +760,7 @@ impl Module for Fakes {
         record(app, &self.holds);
         record(app, &self.lots_held);
         record(app, &self.negative);
+        record(app, &self.pending_closed);
         record(app, &self.closed);
         record(app, &self.released);
         record(app, &self.discarded);
@@ -820,6 +822,8 @@ pub struct Booted {
     pub lots_held: Recorded<LotHeld>,
     /// Every `StockNegative`.
     pub negative: Recorded<StockNegative>,
+    /// Every `PendingIssueClosed`.
+    pub pending_closed: Recorded<PendingIssueClosed>,
     /// Every `StockHoldClosed`.
     pub closed: Recorded<StockHoldClosed>,
     /// Every `LotReleased`.
@@ -1867,6 +1871,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     let holds = Arc::new(Mutex::new(Vec::new()));
     let lots_held = Arc::new(Mutex::new(Vec::new()));
     let negative = Arc::new(Mutex::new(Vec::new()));
+    let pending_closed = Arc::new(Mutex::new(Vec::new()));
     let closed = Arc::new(Mutex::new(Vec::new()));
     let released = Arc::new(Mutex::new(Vec::new()));
     let discarded = Arc::new(Mutex::new(Vec::new()));
@@ -1927,6 +1932,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         holds: holds.clone(),
         lots_held: lots_held.clone(),
         negative: negative.clone(),
+        pending_closed: pending_closed.clone(),
         closed: closed.clone(),
         released: released.clone(),
         discarded: discarded.clone(),
@@ -2076,6 +2082,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         holds: Recorded(holds),
         lots_held: Recorded(lots_held),
         negative: Recorded(negative),
+        pending_closed: Recorded(pending_closed),
         closed: Recorded(closed),
         released: Recorded(released),
         discarded: Recorded(discarded),

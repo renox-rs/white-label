@@ -833,6 +833,44 @@ pub struct StockNegative {
 
 impl Event for StockNegative {}
 
+/// A pending issue was `posted` against stock that arrived or was `cleared`
+/// (wl-inventory §3 *Pending issue*): it is no longer open. The record that
+/// consumed (a work order) learns what its short part became: the lot and
+/// the cost it posted with, and whether other pending issues of the same
+/// source are still open (07 Manufacturing, `MFG.RUL`: the line's supervisor
+/// is asked to resume a work order held for material once none is).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingIssueClosed {
+    /// The pending issue that closed, `inventory.pending_issue:5`. A partly
+    /// covered pending issue is split: the covered part is a row of its own,
+    /// the rest stays open on [`PendingIssueClosed::original`].
+    pub pending_issue: Subject,
+    /// The pending issue the source was given by `consume`
+    /// ([`Consumed::pending_issue`]): the same as `pending_issue`, or the one
+    /// it was split from.
+    pub original: Subject,
+    /// The record that consumed: a visit, a sale, a work order.
+    pub source: Subject,
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The location, `inventory.location:2`.
+    pub location: Subject,
+    /// How it closed: `posted` (stock arrived), `cleared` (the storekeeper
+    /// entered the stock that had been used) or `source_cancelled` (nothing
+    /// was consumed).
+    pub how: String,
+    /// The lot it posted against, for a lot-tracked item.
+    pub lot: Option<Subject>,
+    /// The quantity that closed, in thousandths.
+    pub quantity_milli: i64,
+    /// The cost of one base unit it posted at, in fils; 0 when nothing posted.
+    pub unit_cost: i64,
+    /// How many pending issues of the same source are still open.
+    pub open_for_source: i64,
+}
+
+impl Event for PendingIssueClosed {}
+
 /// The future a [`StockService`] or [`StockHoldService`] method returns.
 pub type StockFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 

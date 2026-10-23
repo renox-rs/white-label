@@ -119,6 +119,30 @@ const TEXTS: &[(&str, &str)] = &[
         "manufacturing.unlink.body",
         "{{ order }} was unlinked from its sales order ({{ reason }}). It keeps running and its output goes to free stock.",
     ),
+    (
+        "manufacturing.material.hold_title",
+        "Hold {{ order }} for material",
+    ),
+    (
+        "manufacturing.material.hold_body",
+        "Material for {{ order }} is short and its issue waits. Put the work order on hold with the reason {{ reason }}, so the schedule shows why the line is idle.",
+    ),
+    (
+        "manufacturing.material.resume_title",
+        "Resume {{ order }}: the material arrived",
+    ),
+    (
+        "manufacturing.material.resume_body",
+        "The material {{ order }} was held for is here. Resume the work order.",
+    ),
+    (
+        "manufacturing.material.arrived",
+        "The material arrived or the pending issue was cleared; no hold is needed.",
+    ),
+    (
+        "manufacturing.material.done",
+        "The work order was held, resumed or stopped.",
+    ),
     ("manufacturing.void.reason", "Say why the report is voided."),
     (
         "manufacturing.void.not_posted",
@@ -282,6 +306,10 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "manufacturing.screen.materials.waiting",
         "Waiting for stock",
+    ),
+    (
+        "manufacturing.screen.materials.short_note",
+        "Waiting for material: part of an issue is short and waits as a pending issue.",
     ),
     ("manufacturing.screen.output.number", "Report"),
     ("manufacturing.screen.output.status", "Status"),
