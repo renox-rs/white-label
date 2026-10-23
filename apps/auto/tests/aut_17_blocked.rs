@@ -495,7 +495,7 @@ async fn aut_17_the_advisor_marks_safety_work_and_the_page_shows_what_was_taken_
 
     let viewer = t
         .user(
-            "Waleed",
+            "Wasim",
             &[
                 auto::permissions::JOB_CARDS_VIEW,
                 auto::permissions::JOB_CARDS_ADVISE,
