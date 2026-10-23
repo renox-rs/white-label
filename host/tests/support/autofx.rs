@@ -123,6 +123,8 @@ pub struct Shop {
     pub aisha: AuthUser,
     /// The branch manager.
     pub basma: AuthUser,
+    /// The branch manager's user.
+    pub basma_user: User,
     /// The purchaser.
     pub pia: AuthUser,
     /// The owner of the vehicle.
@@ -142,7 +144,7 @@ pub async fn shop(w: &World, storage_rate: Option<i64>) -> Shop {
     let (_, waleed) = w.staff("Waleed", WORKSHOP_MANAGER).await;
     let (_, carla) = w.staff("Carla", INSURANCE_COORDINATOR).await;
     let (_, aisha) = w.staff("Aisha", ACCOUNTANT).await;
-    let (_, basma) = w.staff("Basma", BRANCH_MANAGER).await;
+    let (basma_user, basma) = w.staff("Basma", BRANCH_MANAGER).await;
     let (_, pia) = w.staff("Pia", PROCUREMENT).await;
     let owner = tenant(&w.app, "Mona Hassan").await;
     let orient = company(&w.app, "Orient Insurance").await;
@@ -199,6 +201,7 @@ pub async fn shop(w: &World, storage_rate: Option<i64>) -> Shop {
         carla,
         aisha,
         basma,
+        basma_user,
         pia,
         owner,
         orient,
