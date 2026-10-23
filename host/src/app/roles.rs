@@ -466,6 +466,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             aut::JOB_CARDS_QC,
             aut::JOB_CARDS_APPROVE,
             aut::JOB_CARDS_ACCIDENT,
+            aut::JOB_CARDS_LIABILITY,
             aut::LABOUR_MENU_MANAGE,
             aut::INSURANCE_MANAGE,
             aut::FLEET_CONTRACTS_MANAGE,
@@ -774,6 +775,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             edu::SESSIONS_VIEW,
             aut::VEHICLES_VIEW,
             aut::JOB_CARDS_VIEW,
+            aut::JOB_CARDS_LIABILITY,
             edu::ENROLMENTS_VIEW,
             // Decides the refund of a withdrawal, never the one who asked
             // (`FIN.ACL.04`).
@@ -1493,6 +1495,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             aut::JOB_CARDS_QC,
             aut::JOB_CARDS_APPROVE,
             aut::JOB_CARDS_ACCIDENT,
+            aut::JOB_CARDS_LIABILITY,
             aut::LABOUR_MENU_MANAGE,
             documents::VIEW,
             documents::REVIEW,
