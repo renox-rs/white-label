@@ -222,3 +222,60 @@ pub async fn finish_and_deliver(t: &Garage, card_id: i64, line_id: i64) -> JobCa
     .await
     .expect("the job card is delivered")
 }
+
+/// A second van of the fleet (a Nissan Urvan, plate B 556) at `odometer`
+/// kilometres, under `contract_id`, with a plan that is not due (the last
+/// service at `odometer` less 1,000 km, every 10,000 km).
+pub async fn second_van(t: &Garage, contract_id: i64, odometer: i64) -> (Vehicle, FleetService) {
+    let fatima = fatima(t).await;
+    let van = vehicles::create(
+        t.state(),
+        &fatima,
+        NewVehicle::new(Emirate::Dubai, "B", "556", "Nissan", "Urvan", FLEET).odometer(odometer),
+    )
+    .await
+    .expect("the second van is registered");
+    fleet_contracts::add_vehicle(t.state(), &fatima, contract_id, van.id)
+        .await
+        .unwrap();
+    let plan = fleet_services::add_plan(
+        t.state(),
+        &fatima,
+        contract_id,
+        NewPlan::new(van.id, "periodic_service")
+            .every_km(10_000)
+            .last_service(day(-100), odometer - 1_000),
+    )
+    .await
+    .unwrap();
+    (van, plan)
+}
+
+/// A job card of `van` delivered `days_ago` days ago: one hour at AED 120.
+pub async fn delivered_job(t: &Garage, van: &Vehicle, days_ago: i64) -> JobCard {
+    let (card, line) = job_in_progress(t, van, 1_000, 12_000).await;
+    finish_and_deliver(t, card.id, line).await;
+    let at = renox::db::now() - renox::chrono::TimeDelta::days(days_ago);
+    JobCard::query()
+        .where_(JobCard::ID.eq(card.id))
+        .update(t.db(), &[("delivered_at", &Some(at))])
+        .await
+        .unwrap();
+    t.reload(card.id).await
+}
+
+/// Gives the plan `plan_id` the booking `booking_id`, for the day `date`, as
+/// the daily run would have.
+pub async fn book_plan(t: &Garage, plan_id: i64, booking_id: i64, date: renox::chrono::NaiveDate) {
+    FleetService::query()
+        .where_(FleetService::ID.eq(plan_id))
+        .update(
+            t.db(),
+            &[
+                ("booking_id", &Some(booking_id)),
+                ("requested_for_date", &Some(date)),
+            ],
+        )
+        .await
+        .unwrap();
+}

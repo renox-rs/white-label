@@ -8,13 +8,17 @@
 use std::sync::{Arc, Mutex};
 
 use auto::claims::{self, Answer, NewClaim};
+use auto::fleet_contracts::{self, NewContract};
+use auto::fleet_services::{self, NewPlan};
 use auto::insurers::{self, NewInsurer};
-use auto::job_cards::{self, NewJobCard, NewLabour, Promise};
+use auto::job_cards::{self, Delivery, NewJobCard, NewLabour, Promise};
 use auto::vehicles::{self, NewVehicle};
-use auto::{Emirate, InsuranceClaim, JobCard, LabourLine, WorkStatus};
+use auto::{
+    Emirate, FleetContract, FleetService, InsuranceClaim, JobCard, LabourLine, Vehicle, WorkStatus,
+};
 use host::roles::{
-    ACCOUNTANT, BRANCH_MANAGER, INSURANCE_COORDINATOR, PROCUREMENT, SERVICE_ADVISOR, TECHNICIAN,
-    WORKSHOP_MANAGER,
+    ACCOUNTANT, BRANCH_MANAGER, FLEET_ACCOUNT_MANAGER, INSURANCE_COORDINATOR, OWNER, PROCUREMENT,
+    SERVICE_ADVISOR, TECHNICIAN, WORKSHOP_MANAGER,
 };
 use renox::chrono::TimeDelta;
 use renox::prelude::*;
@@ -26,6 +30,7 @@ use wl_invoicing::rate_cards::{self, LineInput};
 use wl_invoicing::{PayerAgreement, VatRecipient};
 use wl_kernel::documents::today;
 use wl_kernel::{LegalEntity, PartyId, Subject};
+use wl_scheduling::{AvailabilityRule, Resource, ResourceType, ServiceType, resource};
 
 use super::{company, person, tenant};
 
@@ -346,4 +351,207 @@ pub async fn sent_of(w: &World, type_key: &str) -> Vec<wl_notify::Message> {
         .get(w.db())
         .await
         .unwrap()
+}
+
+/// The workshop's staff, a fleet with a van under an active contract and the
+/// service plan that books it, and the workshop bay.
+pub struct FleetShop {
+    /// The service advisor.
+    pub sami: AuthUser,
+    /// The technician.
+    pub tareq: AuthUser,
+    /// The technician's user.
+    pub tareq_user: User,
+    /// The workshop manager.
+    pub waleed: AuthUser,
+    /// The fleet account manager.
+    pub fatima: AuthUser,
+    /// The fleet account manager's user.
+    pub fatima_user: User,
+    /// The accountant.
+    pub aisha: AuthUser,
+    /// The owner (approves a termination).
+    pub omar: User,
+    /// The fleet.
+    pub fleet: PartyId,
+    /// The fleet contact.
+    pub contact: PartyId,
+    /// The bay the services are booked on.
+    pub bay: Resource,
+    /// The periodic service.
+    pub periodic: ServiceType,
+    /// The contract, `active`: from 40 days ago to 300 days ahead, AED 120 an
+    /// hour, an early termination fee of AED 2,000.
+    pub contract: FleetContract,
+    /// The van (B 555) under it.
+    pub van: Vehicle,
+    /// The plan that books the periodic service of the van.
+    pub plan: FleetService,
+}
+
+/// The workshop of the bookings.
+pub fn workshop() -> Subject {
+    Subject::new("scheduling.location", 1)
+}
+
+/// The staff, the fleet with its contact, the bay and the van under an active
+/// contract with a plan that is not due (the van reads `odometer` km, the last
+/// service was at 50,000 km, every 10,000 km).
+pub async fn fleet_shop(w: &World, odometer: i64) -> FleetShop {
+    let (_, sami) = w.staff("Sami", SERVICE_ADVISOR).await;
+    let (tareq_user, tareq) = w.staff("Tareq", TECHNICIAN).await;
+    let (_, waleed) = w.staff("Waleed", WORKSHOP_MANAGER).await;
+    let (fatima_user, fatima) = w.staff("Fatima", FLEET_ACCOUNT_MANAGER).await;
+    let (_, aisha) = w.staff("Aisha", ACCOUNTANT).await;
+    let omar = person(&w.app, "Omar", OWNER).await;
+    let fleet = company(&w.app, "Al Noor Logistics").await;
+    let contact = tenant(&w.app, "Hamdan Saeed").await;
+
+    let mut bay = Resource::new("Bay 1", ResourceType::Bay).at(&workshop());
+    bay.save(w.db()).await.unwrap();
+    for weekday in 1..=7 {
+        AvailabilityRule::new(bay.id, weekday, 0, 1440)
+            .save(w.db())
+            .await
+            .unwrap();
+    }
+    let periodic = ServiceType::query()
+        .where_(ServiceType::CODE.eq("periodic_service"))
+        .first(w.db())
+        .await
+        .unwrap()
+        .expect("the seed stored the periodic service");
+    resource::offer(w.db(), periodic.id, bay.id).await.unwrap();
+
+    let van = vehicles::create(
+        w.state(),
+        &fatima,
+        NewVehicle::new(Emirate::Dubai, "B", "555", "Nissan", "Urvan", fleet.0).odometer(odometer),
+    )
+    .await
+    .unwrap();
+    let contract = fleet_contracts::create(
+        w.state(),
+        &fatima,
+        NewContract::new(
+            fleet.0,
+            "Fleet service 2026",
+            today() - TimeDelta::days(40),
+            today() + TimeDelta::days(300),
+        )
+        .contact(contact.0)
+        .labour_rate(12_000)
+        .fee(200_000),
+    )
+    .await
+    .unwrap();
+    fleet_contracts::add_vehicle(w.state(), &fatima, contract.id, van.id)
+        .await
+        .unwrap();
+    let plan = fleet_services::add_plan(
+        w.state(),
+        &fatima,
+        contract.id,
+        NewPlan::new(van.id, "periodic_service")
+            .every_km(10_000)
+            .last_service(today() - TimeDelta::days(100), 50_000),
+    )
+    .await
+    .unwrap();
+    fleet_contracts::attach_document(w.state(), &fatima, contract.id, "signed-fleet-2026")
+        .await
+        .unwrap();
+    let contract = fleet_contracts::activate(w.state(), &fatima, contract.id)
+        .await
+        .unwrap();
+    FleetShop {
+        sami,
+        tareq,
+        tareq_user,
+        waleed,
+        fatima,
+        fatima_user,
+        aisha,
+        omar,
+        fleet,
+        contact,
+        bay,
+        periodic,
+        contract,
+        van,
+        plan,
+    }
+}
+
+/// A job card of `van` under the fleet contract, checked in, with one hourly
+/// labour line of `hours_milli` at AED 120 the customer approved: in progress.
+/// Answers the job card and the labour line.
+pub async fn fleet_job(w: &World, shop: &FleetShop, hours_milli: i64) -> (JobCard, LabourLine) {
+    let van = Vehicle::find_or_404(w.db(), shop.van.id).await.unwrap();
+    let card = job_cards::check_in(
+        w.state(),
+        &shop.sami,
+        NewJobCard::new(van.id, "Periodic service")
+            .odometer(van.odometer_km + 10)
+            .condition("Clean")
+            .acknowledged_by("Hamdan Saeed")
+            .technician(shop.tareq_user.id)
+            .workshop(workshop()),
+    )
+    .await
+    .unwrap();
+    job_cards::start_inspection(w.state(), &shop.tareq, card.id)
+        .await
+        .unwrap();
+    let line = job_cards::add_labour(
+        w.state(),
+        &shop.tareq,
+        card.id,
+        NewLabour::hourly("Periodic service", hours_milli, 12_000),
+    )
+    .await
+    .unwrap();
+    job_cards::send_estimate(w.state(), &shop.sami, card.id, Promise::default())
+        .await
+        .unwrap();
+    let round = job_cards::pending_round(w.db(), card.id)
+        .await
+        .unwrap()
+        .unwrap();
+    job_cards::approve_by_link(w.state(), &round.token, "Hamdan Saeed", None, true)
+        .await
+        .unwrap();
+    (JobCard::find_or_404(w.db(), card.id).await.unwrap(), line)
+}
+
+/// The work of `line` is done, the job card passes quality control and is
+/// delivered: delivered.
+pub async fn fleet_deliver(w: &World, shop: &FleetShop, card: &JobCard, line: &LabourLine) -> JobCard {
+    job_cards::record_work(w.state(), &shop.tareq, line.id, WorkStatus::Done, None)
+        .await
+        .unwrap();
+    job_cards::finish_work(w.state(), &shop.tareq, card.id)
+        .await
+        .unwrap();
+    let all: Vec<String> = auto::job_card::QC_KEYS
+        .iter()
+        .map(|k| (*k).to_owned())
+        .collect();
+    job_cards::save_qc(w.state(), &shop.waleed, card.id, &all)
+        .await
+        .unwrap();
+    job_cards::pass_qc(w.state(), &shop.waleed, card.id)
+        .await
+        .unwrap();
+    job_cards::deliver(
+        w.state(),
+        &shop.sami,
+        card.id,
+        Delivery {
+            delivered_to: "Hamdan Saeed".to_owned(),
+            ..Delivery::default()
+        },
+    )
+    .await
+    .unwrap()
 }
