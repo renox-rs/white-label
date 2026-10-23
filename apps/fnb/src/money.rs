@@ -91,7 +91,7 @@ pub fn aed(fils: i64) -> String {
     let whole = (fils.abs() / 100).to_string();
     let mut grouped = String::new();
     for (at, digit) in whole.chars().enumerate() {
-        if at > 0 && (whole.len() - at) % 3 == 0 {
+        if at > 0 && (whole.len() - at).is_multiple_of(3) {
             grouped.push(',');
         }
         grouped.push(digit);

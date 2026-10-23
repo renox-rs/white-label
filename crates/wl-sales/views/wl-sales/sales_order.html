@@ -117,7 +117,7 @@
         <rx-entry :label="tx['amend.revision']" :value="order.revision"/>
         <rx-entry rx-if="order.refunded_amount" :label="tx['returns.refunded']" :value="refunded"/>
         <rx-entry :label="tx['orders.channel']" :value="order.channel"/>
-        <rx-entry :label="tx['orders.payment_mode']" :value="order.payment_mode"/>
+        <rx-entry :label="tx['orders.payment_mode']" :value="payment_mode_label"/>
         <rx-entry rx-if="order.reason" :label="tx['orders.reason']" :value="order.reason"/>
         <rx-entry rx-if="order.external_number" :label="tx['orders.external_number']" :value="order.external_number"/>
         <rx-entry rx-if="order.payment_mode == 'online'" :label="tx['orders.payment_label']" :value="payment_label"/>

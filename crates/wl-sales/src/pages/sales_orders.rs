@@ -296,6 +296,8 @@ pub struct PaymentRow {
 #[view(template = "wl-sales/sales_order.html")]
 pub(crate) struct ShowPage {
     payment_label: String,
+    /// How the order is paid, in words (`cash_on_delivery` is "Cash on delivery").
+    payment_mode_label: String,
     payment_due: String,
     awaiting_hint: String,
     payments: Vec<PaymentRow>,
@@ -498,6 +500,14 @@ async fn show(
         String::new()
     };
     Ok(View::typed(ShowPage {
+        payment_mode_label: {
+            let words = order.payment_mode.replace('_', " ");
+            let mut chars = words.chars();
+            chars
+                .next()
+                .map(|c| c.to_uppercase().collect::<String>() + chars.as_str())
+                .unwrap_or_default()
+        },
         payment_label: text(
             &lang,
             &format!("orders.payment_status.{}", order.payment_status.as_str()),
