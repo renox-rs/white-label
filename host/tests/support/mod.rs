@@ -274,6 +274,28 @@ pub async fn fnb_booted_with(tuning: host::Tuning) -> TestApp {
     app
 }
 
+/// The F&B host with the notification module changed by `tune` and `module`
+/// added (consents, a clock of its own, providers): nothing else is faked.
+pub async fn fnb_booted_rigged(
+    tune: impl FnOnce(wl_notify::WlNotify) -> wl_notify::WlNotify + 'static,
+    module: impl Module,
+) -> TestApp {
+    let config = wl_kernel::ClientConfig::load(FNB_CLIENT).expect("the F&B client");
+    let app = TestApp::new(
+        host::app_for_tuned(config, host::Tuning::default().notify(tune))
+            .expect("the app")
+            .module(module)
+            .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
 /// The logistics host, with `wl:install` and the seeds run as the demo does.
 pub async fn logistics_booted() -> TestApp {
     logistics_booted_with(host::Tuning::default()).await
