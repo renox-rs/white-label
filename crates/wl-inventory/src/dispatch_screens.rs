@@ -1,6 +1,7 @@
 //! The dispatch screens: the list of dispatches and one dispatch with its
-//! lines and the buttons that pick, dispatch, cancel and re-pick (issue
-//! #240; §4 *Dispatch*).
+//! lines and the buttons that pick, dispatch, cancel, re-pick, confirm a
+//! courier's delivery and record the refused goods that came back (issues
+//! #240 and #241; §4 *Dispatch*).
 //!
 //! | Route | Name | Needs |
 //! |---|---|---|
@@ -240,6 +241,8 @@ pub struct Actions {
     pick: Act,
     dispatch: Act,
     cancel: Act,
+    confirm: Act,
+    receive_back: Act,
 }
 
 /// One line of the record page.
@@ -407,6 +410,8 @@ async fn show(
         rows.push(line_row(&state, &lang, &dispatch, line, manage, &mut alerts).await?);
     }
     if wl_kernel::negotiate::wants_html(&headers) {
+        let in_return: i64 = lines.iter().map(DispatchLine::in_return_milli).sum();
+        let own_delivery = dispatch.handover.as_deref() == Some(Handover::OwnDelivery.as_str());
         let status = dispatch.status;
         let actions = Actions {
             pick: if manage && status == DispatchStatus::Draft {
@@ -424,8 +429,37 @@ async fn show(
             } else {
                 Act::hidden()
             },
+            confirm: if manage && status == DispatchStatus::Dispatched {
+                Act::unless(
+                    own_delivery.then(|| t(&lang, &format!("{PREFIX}blocked_own_delivery"))),
+                )
+            } else {
+                Act::hidden()
+            },
+            receive_back: if manage
+                && matches!(
+                    status,
+                    DispatchStatus::Delivered | DispatchStatus::Dispatched | DispatchStatus::Lost
+                )
+                && lines.iter().any(|line| line.refused_milli > 0)
+            {
+                Act::unless(
+                    (in_return == 0)
+                        .then(|| t(&lang, &format!("{PREFIX}blocked_nothing_in_return"))),
+                )
+            } else {
+                Act::hidden()
+            },
         };
-        let notes = alerts;
+        let mut notes = alerts;
+        if in_return > 0 && status != DispatchStatus::Picked {
+            let unit = rows.first().map(|row| row.unit.clone()).unwrap_or_default();
+            let quantity = quantity_with_unit(in_return, &unit);
+            notes.push(said(
+                "wl_inventory.dispatch.ui.in_return_note",
+                &[("quantity", &quantity)],
+            ));
+        }
         let page = DispatchPage {
             tx: tx(&lang),
             id,
