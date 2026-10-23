@@ -375,18 +375,8 @@ async fn aut_base_real_the_insurer_is_billed_through_a_payer_bill_and_the_custom
         customer_invoice.gross_total, 21_000,
         "the AED 200 excess and 5% VAT"
     );
-    // The system issues only a source set to issue by itself (off by
-    // default): the excess invoice is a draft the accountant reviews.
-    assert_eq!(customer_invoice.status, InvoiceStatus::Draft);
-    invoicer(w.state())
-        .issue(w.state(), InvoiceId(customer_invoice_id), Some(&aisha))
-        .await
-        .unwrap();
-    let customer_invoice = invoicer(w.state())
-        .find(w.db(), InvoiceId(customer_invoice_id))
-        .await
-        .unwrap()
-        .expect("the invoice exists");
+    // The accountant who invoices the claim issues the customer's part too
+    // (the system issues only a source set to issue by itself).
     assert_ne!(customer_invoice.status, InvoiceStatus::Draft);
 
     // The insurer's advice pays both lines; the customer pays the excess: the
