@@ -282,8 +282,24 @@ async fn cancelling_an_order_cancels_the_planned_work_order_and_unlinks_the_star
     let customer = company(&app, "Al Noor Trading LLC").await;
     let (planned_order, planned_line) = place(&app, &sales, customer, "PANEL", "10").await;
     let (started_order, started_line) = place(&app, &sales, customer, "PANEL", "8").await;
-    let planned = work_order_for(&app, &planned_order, &planned_line, &panel, 10_000, WorkOrderStatus::Planned).await;
-    let started = work_order_for(&app, &started_order, &started_line, &panel, 8_000, WorkOrderStatus::InProgress).await;
+    let planned = work_order_for(
+        &app,
+        &planned_order,
+        &planned_line,
+        &panel,
+        10_000,
+        WorkOrderStatus::Planned,
+    )
+    .await;
+    let started = work_order_for(
+        &app,
+        &started_order,
+        &started_line,
+        &panel,
+        8_000,
+        WorkOrderStatus::InProgress,
+    )
+    .await;
 
     app.acting_as(&sales);
     app.htmx()
@@ -307,15 +323,16 @@ async fn cancelling_an_order_cancels_the_planned_work_order_and_unlinks_the_star
         )
         .await
         .assert_status(303);
-    let waiting = wl_kernel::approvals::ApprovalRequest::pending_about(
-        app.db(),
-        &started_order.subject(),
-    )
-    .await
-    .unwrap();
+    let waiting =
+        wl_kernel::approvals::ApprovalRequest::pending_about(app.db(), &started_order.subject())
+            .await
+            .unwrap();
     assert_eq!(waiting.len(), 1, "the cancellation of a started line waits");
     assert_eq!(
-        WorkOrder::find_or_404(app.db(), started.id).await.unwrap().source,
+        WorkOrder::find_or_404(app.db(), started.id)
+            .await
+            .unwrap()
+            .source,
         WorkOrderSource::SalesOrder,
         "nothing changes before the approval"
     );

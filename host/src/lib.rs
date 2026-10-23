@@ -45,6 +45,7 @@ pub use app::logistics_seed;
 pub use app::logistics_settings;
 pub use app::manpower_demo;
 pub use app::manpower_seed;
+pub use app::manufacturing_demo;
 pub use app::manufacturing_seed;
 pub use app::manufacturing_settings;
 pub use app::negative_flow::{delivery_for, invoicing_for, payments_for};
@@ -95,6 +96,7 @@ pub const DEMO_COMMANDS: &[&str] = &[
     app::clinics_demo::COMMAND,
     app::fnb_demo::COMMAND,
     app::edtech_demo::COMMAND,
+    app::manufacturing_demo::COMMAND,
 ];
 
 /// The refusal for `command` when `app_env` is a production environment.
@@ -210,6 +212,8 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     app::logistics_rules::register_critical(&client_app);
     // `MFG.RUL.08` is compliance-critical for a manufacturer (BL-MFG-12).
     app::manufacturing_seed::register_critical(&client_app);
+    // The storekeeper and the supervisor open the tasks of 07 (BL-MFG-14).
+    app::manufacturing_seed::grant_roles(&client_app);
     app::negative_flow::register_approvals(&client_app);
     // What a client user of an accounting firm sees of its engagements.
     app::accounting_portal::register(&client_app);
@@ -288,6 +292,11 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // checklists and SOP library (BL-MFG-14).
     if client_app == app::manufacturing_seed::MANUFACTURING {
         app = app.module(app::manufacturing_seed::ManufacturingSeed);
+        // The demo company, after the installs: `manufacturing:demo`, and
+        // `db:seed` in local (never in production).
+        app = app.module(app::manufacturing_demo::ManufacturingDemo::new(
+            demo_client.clone(),
+        ));
     }
     // The page that shows the shared modules' settings of this client.
     let app = app

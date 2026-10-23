@@ -144,7 +144,7 @@ impl Module for Manufacturing {
         );
         app.nav(
             "app",
-            NavLink::route("manufacturing.returns", "nav.returns")
+            NavLink::route("manufacturing.returns", "nav.returned_goods")
                 .icon("undo-2")
                 .group("nav.app")
                 .order(14)

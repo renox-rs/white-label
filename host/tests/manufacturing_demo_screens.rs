@@ -1,0 +1,144 @@
+//! The screen map of the demo company (`host::manufacturing_demo::screen_map`,
+//! the map `manufacturing:demo` prints): every screen of F7 opens for the role
+//! that owns it, says words and not keys, and holds on a phone (every table in
+//! its own wrapper).
+
+mod manufacturing_demo_support;
+mod support;
+
+use manufacturing_demo_support::demo;
+use renox::prelude::*;
+use renox::testing::{TestApp, TestResponse};
+
+/// A GET as `email` the way a browser sends it.
+async fn browse(app: &TestApp, email: &str, path: &str) -> TestResponse {
+    let user = User::find_by_email(app.db(), email)
+        .await
+        .unwrap()
+        .unwrap_or_else(|| panic!("the demo login {email}"));
+    app.acting_as(&user);
+    app.request()
+        .header("accept", "text/html,application/xhtml+xml,*/*;q=0.8")
+        .get(path)
+        .await
+}
+
+/// The text a person reads on `html`: what is between the tags, without
+/// scripts and styles.
+fn visible(html: &str) -> String {
+    let mut out = String::new();
+    let mut rest = html;
+    while let Some(open) = rest.find('<') {
+        out.push_str(&rest[..open]);
+        rest = &rest[open..];
+        let skip = ["script", "style"]
+            .iter()
+            .find(|tag| rest[1..].starts_with(**tag))
+            .copied();
+        match skip {
+            Some(tag) => {
+                let close = format!("</{tag}>");
+                rest = rest.find(&close).map_or("", |at| &rest[at + close.len()..]);
+            }
+            None => rest = rest.find('>').map_or("", |at| &rest[at + 1..]),
+        }
+        out.push(' ');
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The raw words a screen must not show.
+fn no_raw_words(html: &str, url: &str) {
+    let text = visible(html);
+    for forbidden in [
+        "manufacturing.",
+        "nav.",
+        "finish_to_stock",
+        "return_to_stock",
+        "customer_specific",
+        "in_progress",
+        "on_hold",
+        "Some(",
+        "null",
+        "undefined",
+    ] {
+        if let Some(at) = text.find(forbidden) {
+            let from = at.saturating_sub(80);
+            let to = (at + 200).min(text.len());
+            panic!(
+                "{url} shows `{forbidden}`: ...{}...",
+                text.get(from..to).unwrap_or_default()
+            );
+        }
+    }
+}
+
+/// Every screen of the map answers 200 for its owner, shows visible words
+/// only, and keeps its tables in their wrappers (390 px).
+#[renox::test]
+async fn every_screen_of_the_map_opens_for_its_owner_in_words() {
+    let app = demo().await;
+    let screens = host::manufacturing_demo::screen_map(app.state())
+        .await
+        .unwrap();
+    assert!(screens.len() >= 35, "{} screens", screens.len());
+    for group in [
+        "Start",
+        "Work orders",
+        "Bills of materials",
+        "Quality",
+        "Sales",
+        "Stock and shipping",
+        "Money",
+        "People and documents",
+        "Customer portal (Al Noor buyer)",
+    ] {
+        assert!(
+            screens.iter().any(|screen| screen.group == group),
+            "no screen in `{group}`"
+        );
+    }
+    // A record page of each kind has its real id.
+    for prefix in [
+        "/manufacturing/work-orders/",
+        "/manufacturing/ncrs/",
+        "/boms/",
+        "/sales-orders/",
+        "/dispatches/",
+        "/recalls/",
+        "/manufacturing/recalls/",
+    ] {
+        assert!(
+            screens.iter().any(|screen| screen.url.starts_with(prefix)),
+            "no screen at {prefix}<id>"
+        );
+    }
+    for screen in &screens {
+        let response = browse(&app, screen.login, &screen.url).await;
+        assert_eq!(
+            response.status.as_u16(),
+            200,
+            "{} as {} ({})",
+            screen.url,
+            screen.login,
+            screen.what
+        );
+        let html = response.text();
+        // The settings pages name the registered keys on purpose.
+        if !screen.url.starts_with("/settings/") {
+            no_raw_words(&html, &screen.url);
+        }
+        // The pages of the vertical keep every table in the kit's wrapper;
+        // the shared grids (invoices, stock) are the platform's.
+        if screen.url.contains("/manufacturing/") {
+            assert_eq!(
+                html.matches("<table").count(),
+                html.matches("rx-table-wrap").count(),
+                "{}: every table scrolls inside its own box",
+                screen.url
+            );
+        }
+        assert!(!screen.what.is_empty());
+    }
+}

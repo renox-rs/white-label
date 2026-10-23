@@ -10,7 +10,8 @@
 //! [`property_tiles`] (units, leases, compliance), [`construction_tiles`]
 //! (projects, IPAs, guarantees, variations, absence, permits, orders, budget),
 //! [`manpower_tiles`] (contracts, requests, documents, deployments, absence,
-//! timesheets, payroll) and, for any other app, [`generic_tiles`] (the shared modules' figures
+//! timesheets, payroll), [`manufacturing_tiles`] (work orders, NCRs, returned
+//! goods, certificates, exports, recalls, orders on hold) and, for any other app, [`generic_tiles`] (the shared modules' figures
 //! only: no Property table is read). The decisions and the activity are the same for all.
 
 mod activity_label;
@@ -18,6 +19,7 @@ mod construction_tiles;
 mod edtech_tiles;
 mod generic_tiles;
 mod manpower_tiles;
+mod manufacturing_tiles;
 mod property_tiles;
 
 use std::sync::Arc;
@@ -170,6 +172,7 @@ pub async fn figures(state: &AppState, user: &AuthUser) -> Result<Figures> {
         "property" => property_tiles::figures(state, user).await,
         "construction" => construction_tiles::figures(state, user).await,
         "manpower" => manpower_tiles::figures(state, user).await,
+        "manufacturing" => manufacturing_tiles::figures(state, user).await,
         "edtech" => edtech_tiles::figures(state, user).await,
         _ => generic_tiles::figures(state, user).await,
     }

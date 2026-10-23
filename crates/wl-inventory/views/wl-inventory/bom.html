@@ -61,8 +61,8 @@
         <template rx-if="show_cost">
           <rx-entry :label="tx['cost']" :value="cost"/>
         </template>
-        <rx-entry :label="tx['released']" :value="released_at" :placeholder="tx['none']"/>
-        <rx-entry :label="tx['obsoleted']" :value="obsoleted_at" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['released']" :value="released_at" :placeholder="tx['not_released']"/>
+        <rx-entry :label="tx['obsoleted']" :value="obsoleted_at" :placeholder="tx['not_obsolete']"/>
       </rx-infolist>
     </rx-card>
     <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['lines']" card>

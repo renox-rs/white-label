@@ -736,6 +736,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Why is it voided?",
     ),
     ("manufacturing.screen.output.void_submit", "Ask to void"),
+    (
+        "manufacturing.screen.output.late",
+        "Entered late: {{ reason }}",
+    ),
     ("manufacturing.screen.output.voided", "Voided"),
     (
         "manufacturing.screen.output.void_waits",

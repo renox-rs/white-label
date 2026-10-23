@@ -1,0 +1,48 @@
+# The demo client of F7 (07 Light Manufacturing): a Sharjah corrugated packaging
+# maker with one plant. Data is fictional. Boot it with
+# CLIENT_CONFIG=clients/demo-manufacturing/client.toml; `manufacturing:demo`
+# (and `db:seed` in local) fills it with the demo company.
+
+[client]
+name    = "Emirates Pack Industries LLC"
+app     = "manufacturing"
+domain  = "demo.emiratespack.example"
+locales = ["en", "ar"]
+
+[branding]
+accent       = "#0F766E"
+second       = "#B45309"
+display_font = "Poppins"
+
+[modules]
+enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "sales", "hr", "inventory", "delivery", "portal"]
+
+[roles]
+# `PLT.RUL.04`: a compliance-critical rule that fails alerts the general
+# manager / owner (this vertical's owner role) and the company admin.
+owner = "owner"
+
+[[legal_entities]]
+code      = "EPI"
+name_en   = "Emirates Pack Industries LLC"
+emirate   = "sharjah"
+licensing_authority = "Sharjah Industrial Area (SAIF)"
+trade_licence_no = "9012345"
+trn       = "100000000000003"
+address_en = "Plot 14, Sharjah Industrial Area 12, Sharjah"
+default   = true
+
+# The UAE public holidays the business-day counts skip. Fixed dates are
+# listed; the moon-sighted ones follow the official announcement and are
+# amended here each year.
+[calendar]
+holidays = [
+  "2026-01-01",
+  "2026-03-20", "2026-03-21", "2026-03-22",
+  "2026-05-26", "2026-05-27", "2026-05-28", "2026-05-29",
+  "2026-06-16",
+  "2026-08-25",
+  "2026-12-02", "2026-12-03",
+  "2027-01-01",
+  "2027-03-10", "2027-03-11", "2027-03-12",
+]

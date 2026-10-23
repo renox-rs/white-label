@@ -207,6 +207,7 @@
           <rx-column :label="tx['output.status']">
             <rx-stack>
               <span><rx-badge :kind="report.status_kind" :text="report.status"/></span>
+              <span rx-if="report.late"><rx-badge kind="warning" :text="report.late"/></span>
               <span rx-if="report.reason">{{ tx['output.void_reason_label'] }}: {{ report.reason }}</span>
               <span rx-if="report.reversal_open">{{ tx['output.void_reversal_open'] }}</span>
             </rx-stack>

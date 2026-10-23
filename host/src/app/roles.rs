@@ -1114,6 +1114,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         PRODUCTION_PLANNER,
         &[
+            // The tasks 07 gives this role (`MFG.RUL.09`, `MFG.RUL.10`, the abort,
+            // the final inspection) are tickets (BL-MFG-14).
+            tickets::VIEW,
+            tickets::WORK,
             mfg::WORK_ORDERS_VIEW,
             mfg::WORK_ORDERS_CREATE,
             mfg::WORK_ORDERS_RELEASE,
@@ -1128,6 +1132,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         PRODUCTION_MANAGER,
         &[
+            // The tasks 07 gives this role (`MFG.RUL.09`, `MFG.RUL.10`, the abort,
+            // the final inspection) are tickets (BL-MFG-14).
+            tickets::VIEW,
+            tickets::WORK,
             mfg::WORK_ORDERS_VIEW,
             mfg::WORK_ORDERS_CREATE,
             mfg::WORK_ORDERS_RELEASE,
@@ -1172,6 +1180,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         QC_INSPECTOR,
         &[
+            // The tasks 07 gives this role (`MFG.RUL.09`, `MFG.RUL.10`, the abort,
+            // the final inspection) are tickets (BL-MFG-14).
+            tickets::VIEW,
+            tickets::WORK,
             mfg::WORK_ORDERS_VIEW,
             // `MFG.RUL.10`: inspects the lots that came back; passing releases
             // the lot, failing raises an NCR.
@@ -1849,6 +1861,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         SALES,
         &[
+            // The tasks 07 gives this role (`MFG.RUL.09`, `MFG.RUL.10`, the abort,
+            // the final inspection) are tickets (BL-MFG-14).
+            tickets::VIEW,
+            tickets::WORK,
             // 07 §3.1: enters, accepts, amends and cancels the orders of the
             // customers; a started line needs a manager (`SAL.ACL.05`).
             sales::SALES_ORDERS_VIEW,
@@ -1871,13 +1887,16 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::VIEW,
             inventory::ITEMS_VIEW,
             inventory::STOCK_VIEW,
-            tickets::VIEW,
             tickets::CREATE,
         ],
     ),
     (
         SALES_MANAGER,
         &[
+            // The tasks 07 gives this role (`MFG.RUL.09`, `MFG.RUL.10`, the abort,
+            // the final inspection) are tickets (BL-MFG-14).
+            tickets::VIEW,
+            tickets::WORK,
             sales::SALES_ORDERS_VIEW,
             sales::SALES_ORDERS_CREATE,
             sales::SALES_ORDERS_ACCEPT,
@@ -1901,7 +1920,6 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::VIEW,
             inventory::ITEMS_VIEW,
             inventory::STOCK_VIEW,
-            tickets::VIEW,
             tickets::CREATE,
         ],
     ),

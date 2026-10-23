@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn the_money_page_lists_every_line_once() {
-        let rows = money_rows(&["AWP".to_owned()]);
+        let rows = money_rows(&["EPI".to_owned()]);
         let numbers: Vec<String> = rows.iter().map(|r| r.number.clone()).collect();
         let expected: Vec<String> = (1..=25).map(|n| n.to_string()).collect();
         assert_eq!(numbers, expected);

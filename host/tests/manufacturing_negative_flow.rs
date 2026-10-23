@@ -350,7 +350,7 @@ async fn an_item_certificate_notifies_the_qc_inspectors_of_the_plants_that_hold_
 
     // The ICV certificate of the company goes to the general manager / owner.
     let owner = person(&app, "Omar", OWNER).await;
-    let nec = entity(&app, "AWP").await;
+    let nec = entity(&app, "EPI").await;
     let kind = DocumentKind::by_key(app.db(), "icv_certificate")
         .await
         .unwrap()
@@ -578,7 +578,7 @@ async fn every_write_off_needs_the_owner_or_the_admin() {
         .unwrap();
     assert_eq!(after.status, InvoiceStatus::WrittenOff);
 
-    let invoicing = host::invoicing_for("manufacturing", &["AWP".to_owned()]);
+    let invoicing = host::invoicing_for("manufacturing", &["EPI".to_owned()]);
     let config = invoicing.config();
     assert!(config.portal_disputes);
     assert_eq!(config.dispute_escalation_days, 14);
@@ -739,7 +739,7 @@ async fn cash_scene() -> (TestApp, LegalEntity, User, User) {
     let owner = person(&app, "Omar", OWNER).await;
     let accountant = person(&app, "Amal", ACCOUNTANT).await;
     SupplierBill::query().delete(app.db()).await.unwrap();
-    let awp = entity(&app, "AWP").await;
+    let awp = entity(&app, "EPI").await;
     (app, awp, owner, accountant)
 }
 
@@ -784,7 +784,7 @@ async fn two_hundred_thousand_in_every_week_alerts_no_one() {
 async fn the_forecast_has_thirteen_weeks_from_monday_and_runs_at_six() {
     let (app, awp, _owner, _accountant) = cash_scene().await;
     bank(&app, &awp, 30_000_000).await;
-    let module = host::invoicing_for("manufacturing", &["AWP".to_owned()]);
+    let module = host::invoicing_for("manufacturing", &["EPI".to_owned()]);
     let config = module.config().clone();
     let inputs =
         cash_forecast_load::load(app.state(), &config, std::slice::from_ref(&awp), today())
@@ -823,14 +823,14 @@ async fn the_forecast_has_thirteen_weeks_from_monday_and_runs_at_six() {
 #[renox::test]
 async fn the_budget_is_approved_by_the_owner_and_the_categories_are_the_accountants() {
     let app = manufacturing_booted().await;
-    let module = host::invoicing_for("manufacturing", &["AWP".to_owned()]);
+    let module = host::invoicing_for("manufacturing", &["EPI".to_owned()]);
     let config = module.config();
     assert!(!config.drawings_self_approve);
     assert_eq!(config.drawings_notify_role, "owner");
     assert_eq!(config.budget_variance_percent, 100);
     assert_eq!(config.budget_variance_role, "accountant");
     assert_eq!(config.cash_alert_roles, ["owner", "accountant"]);
-    assert_eq!(config.cash_threshold_of("AWP"), 20_000_000);
+    assert_eq!(config.cash_threshold_of("EPI"), 20_000_000);
     assert!(holds(ACCOUNTANT, wl_invoicing::permissions::BUDGETS_MANAGE));
     assert!(!holds(
         ACCOUNTANT,
@@ -995,7 +995,7 @@ async fn the_registration_kinds_have_the_qc_inspector_and_the_owner() {
         assert_eq!(kind.reminder_offsets.0, days, "{key}");
         assert!(kind.blocks(app.db()).await.unwrap().is_empty(), "{key}");
     }
-    let awp = entity(&app, "AWP").await;
+    let awp = entity(&app, "EPI").await;
     let subject = Subject::new("kernel.legal_entity", awp.id);
     let kind = DocumentKind::by_key(app.db(), "trademark_registration")
         .await

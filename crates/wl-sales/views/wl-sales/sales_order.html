@@ -3,7 +3,7 @@
     in the app. -#}
 <rx-page layout="layouts/app.html" :title="title">
   <rx-stack>
-    <rx-page-header :title="title" :subtitle="tx['orders.subtitle']" :back="route('wl_sales.sales_orders')" :back-label="tx['orders.title']"
+    <rx-page-header :title="title" :subtitle="customer" :back="route('wl_sales.sales_orders')" :back-label="tx['orders.title']"
                     :badge="status_label" :badge-kind="status_kind">
       <template rx-if="can_edit">
         <rx-action-sheet id="add-order-line" :label="tx['orders.add_line']" :action="route('wl_sales.sales_order_line', order.id)"

@@ -700,3 +700,16 @@ impl Module for ManufacturingSeed {
         app.seeder(|state: AppState| async move { install(&state).await.map(|_| ()) });
     }
 }
+
+/// What the roles that 07 shares with other verticals hold for 07's tasks: the
+/// storekeeper and the line supervisor are given tasks (a hold for material,
+/// the re-pick of a recalled dispatch) and open them as tickets.
+pub fn grant_roles(client_app: &str) {
+    if client_app != MANUFACTURING {
+        return;
+    }
+    use wl_ticketing::permissions as tickets;
+    for role in [STOREKEEPER, SUPERVISOR, LINE_OPERATOR] {
+        super::roles::grant_extra(role, &[tickets::VIEW, tickets::WORK]);
+    }
+}

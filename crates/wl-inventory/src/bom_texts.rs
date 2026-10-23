@@ -169,6 +169,8 @@ pub(crate) const BOM_TEXTS: &[(&str, &str)] = &[
         "This item has a draft version already.",
     ),
     ("wl_inventory.bom.ui.none", "None"),
+    ("wl_inventory.bom.ui.not_released", "Not released yet"),
+    ("wl_inventory.bom.ui.not_obsolete", "Still in use"),
     ("wl_inventory.bom.ui.status.draft", "Draft"),
     ("wl_inventory.bom.ui.status.released", "Released"),
     ("wl_inventory.bom.ui.status.obsolete", "Obsolete"),

@@ -132,6 +132,8 @@ pub(crate) struct ReportLine {
     status: String,
     status_kind: &'static str,
     reason: String,
+    /// The late-entry flag with its reason, empty for output made now.
+    late: String,
     waits: bool,
     can_void: bool,
     reversal_open: bool,
@@ -548,7 +550,20 @@ async fn build(
         } else {
             String::new()
         };
+        let late = match crate::late_report::LateReport::query()
+            .where_(crate::late_report::LateReport::REPORT_ID.eq(report.id))
+            .where_(crate::late_report::LateReport::LATE.eq(true))
+            .first(&state.db)
+            .await?
+        {
+            Some(entry) => crate::texts::english(
+                "manufacturing.screen.output.late",
+                &[("reason", &entry.late_reason.unwrap_or_default())],
+            ),
+            None => String::new(),
+        };
         reports.push(ReportLine {
+            late,
             id: report.id,
             number: report.number(),
             at: time_text(report.reported_at),

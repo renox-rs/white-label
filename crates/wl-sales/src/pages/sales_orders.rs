@@ -426,6 +426,8 @@ pub(crate) struct ShowPage {
     member: Option<String>,
     hold: Option<HoldView>,
     po: PoView,
+    /// The customer's name.
+    customer: String,
     release: ReleaseView,
     approvals: Vec<wl_kernel::approvals::ApprovalCard>,
     can_edit: bool,
@@ -676,6 +678,7 @@ async fn show(
         tx: texts::all(&lang),
         hold,
         po,
+        customer: super::party_name(&state, &lang, order.party_id).await,
         release,
         approvals,
         title: order.number.clone(),

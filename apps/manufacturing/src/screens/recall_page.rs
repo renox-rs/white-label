@@ -39,6 +39,8 @@ fn record_url(subject: &Subject) -> String {
 fn may_read(user: &AuthUser) -> bool {
     user.has_permission(permissions::RECALLS_VIEW)
         || user.has_permission(permissions::RECALLS_MANAGE)
+        || user.has_permission_anywhere(permissions::RECALLS_VIEW)
+        || user.has_permission_anywhere(permissions::RECALLS_MANAGE)
 }
 
 /// A recall of the list.

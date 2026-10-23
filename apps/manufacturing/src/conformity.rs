@@ -151,9 +151,11 @@ pub struct FlagAsk {
     pub kinds: Vec<String>,
 }
 
-/// Whether `user` keeps the flags.
+/// Whether `user` keeps the flags (the flags are the item's, so a production
+/// manager assigned to a plant keeps them).
 pub fn may_flag(user: &AuthUser) -> bool {
     user.has_permission(permissions::CONFORMITY_MANAGE)
+        || user.has_permission_anywhere(permissions::CONFORMITY_MANAGE)
 }
 
 /// Sets the flags of `item_id` as `by`.
