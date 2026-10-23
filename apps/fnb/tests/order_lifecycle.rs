@@ -403,3 +403,83 @@ async fn the_stock_side_of_a_line_is_its_recipe_at_the_outlets_store() {
         );
     }
 }
+
+/// BL-SAL-02 (#121) on the F&B deployment: an online order that is not paid
+/// yet is awaiting payment; the outlet does not see it in the orders to
+/// accept or on the kitchen board, no kitchen ticket exists, and it appears
+/// as `placed` once the gateway confirms the full payment.
+#[renox::test]
+async fn an_order_awaiting_payment_is_not_in_the_acceptance_list_or_the_kitchen() {
+    let w = boot_own_riders().await;
+    let c = customer(&w).await;
+    let party = c.0.to_string();
+    w.post(
+        &w.cashier,
+        "/sales-orders",
+        &[
+            ("party_id", party.as_str()),
+            ("channel", "website"),
+            ("payment_mode", "online"),
+        ],
+    )
+    .await
+    .assert_status(303);
+    let sales = SalesOrder::query()
+        .order_by_desc(SalesOrder::ID)
+        .first(w.db())
+        .await
+        .unwrap()
+        .expect("the sales order was entered");
+    w.post(
+        &w.cashier,
+        &format!("/sales-orders/{}/lines", sales.id),
+        &[
+            ("item_code", "shawarma-plate"),
+            ("quantity", "2"),
+            ("unit_price", "30.00"),
+            ("vat", "zero_rated"),
+        ],
+    )
+    .await
+    .assert_status(303);
+    w.post(
+        &w.cashier,
+        &format!("/sales-orders/{}/submit", sales.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
+    let waiting = SalesOrder::find_or_404(w.db(), sales.id).await.unwrap();
+    assert_eq!(waiting.status, SalesOrderStatus::AwaitingPayment);
+    let number = waiting.number.clone();
+
+    assert!(
+        fnb::FnbOrder::of_sales_order(w.db(), sales.id)
+            .await
+            .unwrap()
+            .is_none(),
+        "no F&B order yet"
+    );
+    w.get(&w.manager, "/orders")
+        .await
+        .assert_ok()
+        .assert_dont_see(&number);
+    w.get(&w.cook, "/kitchen")
+        .await
+        .assert_ok()
+        .assert_dont_see("shawarma-plate");
+
+    wl_sales::sales_orders::confirm_payment(w.state(), sales.id, waiting.gross_total)
+        .await
+        .expect("the gateway confirmed the payment");
+
+    let placed = fnb::FnbOrder::of_sales_order(w.db(), sales.id)
+        .await
+        .unwrap()
+        .expect("the F&B order exists once paid");
+    assert_eq!(placed.status, FnbOrderStatus::Placed);
+    w.get(&w.manager, "/orders")
+        .await
+        .assert_ok()
+        .assert_see(&placed.number);
+}
