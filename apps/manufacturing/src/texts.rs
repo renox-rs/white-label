@@ -119,6 +119,23 @@ const TEXTS: &[(&str, &str)] = &[
         "manufacturing.unlink.body",
         "{{ order }} was unlinked from its sales order ({{ reason }}). It keeps running and its output goes to free stock.",
     ),
+    ("manufacturing.void.reason", "Say why the report is voided."),
+    (
+        "manufacturing.void.not_posted",
+        "Only a posted report can be voided.",
+    ),
+    (
+        "manufacturing.void.locked",
+        "Output already used: the work order is {{ status }} and its reports are locked. The production manager corrects it with a reversing stock movement.",
+    ),
+    (
+        "manufacturing.void.waiting",
+        "A void of this report waits for approval.",
+    ),
+    (
+        "manufacturing.void.used",
+        "Output already used: the lot holds {{ left }} of the {{ good }} this report made. The production manager corrects it with a reversing stock movement.",
+    ),
     (
         "manufacturing.abort.pending",
         "Abort pending: an abort of this work order waits for approval.",
@@ -266,6 +283,33 @@ const TEXTS: &[(&str, &str)] = &[
         "manufacturing.screen.materials.waiting",
         "Waiting for stock",
     ),
+    ("manufacturing.screen.output.number", "Report"),
+    ("manufacturing.screen.output.status", "Status"),
+    ("manufacturing.screen.output.void", "Void"),
+    (
+        "manufacturing.screen.output.void_hint",
+        "The report was entered on the wrong work order. Its output and scrap are taken back once the line's supervisor or the production manager approves; enter a new report on the right work order.",
+    ),
+    (
+        "manufacturing.screen.output.void_reason",
+        "Why is it voided?",
+    ),
+    ("manufacturing.screen.output.void_submit", "Ask to void"),
+    ("manufacturing.screen.output.voided", "Voided"),
+    (
+        "manufacturing.screen.output.void_waits",
+        "Void waits for approval",
+    ),
+    ("manufacturing.screen.output.void_reason_label", "Reason"),
+    (
+        "manufacturing.screen.output.void_reversal_open",
+        "The stock reversal has not posted yet",
+    ),
+    (
+        "manufacturing.screen.done.void_requested",
+        "The void waits for approval.",
+    ),
+    ("manufacturing.screen.done.voided", "The report was voided."),
     ("manufacturing.screen.output.when", "When"),
     ("manufacturing.screen.output.good", "Good"),
     ("manufacturing.screen.output.scrap", "Scrap"),
@@ -439,6 +483,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("manufacturing.screen.done.issued", "Material issued."),
     ("manufacturing.screen.done.reported", "Output reported."),
+    ("manufacturing.screen.status.posted", "Posted"),
     ("manufacturing.screen.status.planned", "Planned"),
     ("manufacturing.screen.status.released", "Released"),
     ("manufacturing.screen.status.in_progress", "In progress"),

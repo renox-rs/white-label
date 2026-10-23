@@ -43,6 +43,9 @@ pub const WORK_ORDERS_ABORT_APPROVE: &str = "work_orders.abort_approve";
 /// See the costs of a work order: actual cost, scrap value and loss
 /// (`FIN.ACL.08` hides them from the floor roles).
 pub const WORK_ORDERS_COST_VIEW: &str = "work_orders.cost_view";
+/// Approve the void of a production report: the line's supervisor and the
+/// production manager (`PLT.ACL.09`, `MFG.ACL.10`); never the requester.
+pub const WORK_ORDERS_VOID_APPROVE: &str = "work_orders.void_approve";
 /// Keep the plants and the production lines.
 pub const PLANTS_MANAGE: &str = "plants.manage";
 
@@ -72,6 +75,7 @@ pub const ALL: &[&str] = &[
     WORK_ORDERS_ISSUE,
     WORK_ORDERS_CLOSE,
     WORK_ORDERS_ABORT_APPROVE,
+    WORK_ORDERS_VOID_APPROVE,
     WORK_ORDERS_COST_VIEW,
     PLANTS_MANAGE,
 ];

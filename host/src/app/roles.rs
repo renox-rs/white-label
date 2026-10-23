@@ -491,6 +491,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             mfg::WORK_ORDERS_ISSUE,
             mfg::WORK_ORDERS_CLOSE,
             mfg::WORK_ORDERS_ABORT_APPROVE,
+            mfg::WORK_ORDERS_VOID_APPROVE,
             mfg::WORK_ORDERS_COST_VIEW,
             mfg::PLANTS_MANAGE,
             prp::UNITS_VIEW,
@@ -977,6 +978,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             mfg::WORK_ORDERS_VIEW,
             mfg::WORK_ORDERS_REPORT,
             mfg::WORK_ORDERS_RELEASE,
+            // The supervisor approves the void of a production report on
+            // their line (`PLT.ACL.09`).
+            mfg::WORK_ORDERS_VOID_APPROVE,
         ],
     ),
     (
@@ -1044,6 +1048,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             mfg::WORK_ORDERS_REPORT,
             mfg::WORK_ORDERS_CLOSE,
             mfg::WORK_ORDERS_ABORT_APPROVE,
+            mfg::WORK_ORDERS_VOID_APPROVE,
             mfg::WORK_ORDERS_COST_VIEW,
             mfg::PLANTS_MANAGE,
             inventory::ITEMS_VIEW,

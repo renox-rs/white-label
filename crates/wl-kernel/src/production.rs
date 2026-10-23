@@ -213,6 +213,28 @@ pub struct ProduceOutput {
     pub user: Option<i64>,
 }
 
+/// A production report's good output taken out of the output lot again
+/// (a void, BL-MFG-04): the reversing movement of its `produce`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VoidOutput {
+    /// The work order, `manufacturing.work_order:5`.
+    pub source: Subject,
+    /// The finished item, `inventory.item:9`.
+    pub item: Subject,
+    /// The output lot, `inventory.lot:4`, for a lot-tracked item.
+    pub lot: Option<Subject>,
+    /// Where the finished goods were put, `inventory.location:2`.
+    pub location: Subject,
+    /// The good quantity of the report, in thousandths.
+    pub quantity_milli: i64,
+    /// The cost of one unit the report posted it at, in fils.
+    pub unit_cost: i64,
+    /// Why, for the movement: the report and the reason of the void.
+    pub reason: String,
+    /// The user who voided; `None` for the system.
+    pub user: Option<i64>,
+}
+
 /// The stock movements of a work order, posted inside the caller's
 /// transaction (07 §7.1 *Work order*: `abort` posts them in one transaction
 /// at the final approval; a production report posts its `produce`).
@@ -246,6 +268,42 @@ pub trait ProductionStock: Send + Sync + 'static {
         _request: ProduceOutput,
     ) -> ProductionFuture<'a, Option<Subject>> {
         Box::pin(async { Ok(None) })
+    }
+
+    /// The quantity of the output lot `lot` (of `item` when it has none) still
+    /// at `location`, in thousandths, that nothing has reserved: what a void
+    /// of a production report can take back. `None` when the module is off
+    /// and nothing can be told.
+    fn output_available<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _item: &'a Subject,
+        _lot: Option<&'a Subject>,
+        _location: &'a Subject,
+    ) -> ProductionFuture<'a, Option<i64>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Takes the good output of a voided production report out of the
+    /// output lot with a reversing movement. A 422 ("output already used")
+    /// when the lot no longer holds the quantity: part of it was moved,
+    /// issued or picked.
+    fn void_output<'a>(
+        &'a self,
+        _tx: &'a mut Transaction,
+        _request: VoidOutput,
+    ) -> ProductionFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
+    /// Reverses the `wastage` movement of the scrap of a voided production
+    /// report; `request` is the one the `wastage` was posted with.
+    fn void_waste<'a>(
+        &'a self,
+        _tx: &'a mut Transaction,
+        _request: WasteMaterial,
+    ) -> ProductionFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
     }
 
     /// Frees the output lot `lot` from the reservation for `line` of the

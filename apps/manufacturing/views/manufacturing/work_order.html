@@ -178,12 +178,40 @@
         </rx-stack>
       </rx-tab>
       <rx-tab key="output" :label="tx['tab.output']">
-        <rx-table :rows="reports" as="report" :key="report.at ~ report.good" :caption="tx['tab.output']" card>
-          <rx-column :label="tx['output.when']">{{ report.at }}</rx-column>
-          <rx-column :label="tx['output.good']" align="num">{{ report.good }}</rx-column>
-          <rx-column :label="tx['output.scrap']" align="num">{{ report.scrap }}</rx-column>
+        <rx-table :rows="reports" as="report" :key="report.id" :caption="tx['tab.output']" card>
+          <rx-column :label="tx['output.number']">
+            <template rx-if="report.voided"><s>{{ report.number }}</s></template>
+            <template rx-else>{{ report.number }}</template>
+          </rx-column>
+          <rx-column :label="tx['output.when']" hide-narrow>
+            <template rx-if="report.voided"><s>{{ report.at }}</s></template>
+            <template rx-else>{{ report.at }}</template>
+          </rx-column>
+          <rx-column :label="tx['output.good']" align="num">
+            <template rx-if="report.voided"><s>{{ report.good }}</s></template>
+            <template rx-else>{{ report.good }}</template>
+          </rx-column>
+          <rx-column :label="tx['output.scrap']" align="num">
+            <template rx-if="report.voided"><s>{{ report.scrap }}</s></template>
+            <template rx-else>{{ report.scrap }}</template>
+          </rx-column>
           <rx-column :label="tx['output.by']" hide-narrow>{{ report.by }}</rx-column>
+          <rx-column :label="tx['output.status']">
+            <rx-stack>
+              <span><rx-badge :kind="report.status_kind" :text="report.status"/></span>
+              <span rx-if="report.reason">{{ tx['output.void_reason_label'] }}: {{ report.reason }}</span>
+              <span rx-if="report.reversal_open">{{ tx['output.void_reversal_open'] }}</span>
+            </rx-stack>
+          </rx-column>
           <rx-column :label="tx['output.note']" hide-narrow>{{ report.note }}</rx-column>
+          <rx-row-actions>
+            <template rx-if="report.can_void">
+              <rx-action-sheet :id="'void-report-' ~ report.id" :label="tx['output.void']" :action="route('manufacturing.report_void', report.id)"
+                               :title="tx['output.void']" :description="tx['output.void_hint']" :submit-label="tx['output.void_submit']" icon="circle-x" danger>
+                <rx-textarea name="reason" :label="tx['output.void_reason']" :id="'void-report-reason-' ~ report.id" required/>
+              </rx-action-sheet>
+            </template>
+          </rx-row-actions>
           <rx-slot name="empty"><rx-empty :title="tx['output.empty']" :message="tx['output.empty_text']" icon="clipboard-check"/></rx-slot>
         </rx-table>
       </rx-tab>

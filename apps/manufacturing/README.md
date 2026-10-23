@@ -28,7 +28,8 @@ What is here so far:
 | The Work order with its machine: every state (`planned`, `released`, `in_progress`, `on_hold`, `completed`, `closed`, `cancelled`, `aborted`) and `release` (needs the line and a released BOM version; makes the pick list and keeps the standard cost), `start`, `hold` (material, machine or quality), `resume`, `complete` (needs good output), `close` (calculates the actual cost), `cancel` (only while nothing is issued or reported), `unlink` and `abort`; `cancel`, `close` and `unlink` have a system twin for `MFG.RUL.09` | §6, §7.1 *Work order* | `work_order`, `work_orders` |
 | The material pick list | §7.1 `release` | `pick_list` |
 | Material issued to a work order, one row per lot at its posted cost, through the kernel's `StockService` (a short quantity waits as a pending issue) | §4.2, §7.1 | `issue` |
-| The production report (good quantity and scrap, `produce` into the output lot in `quarantine`) and its machine with both states `posted` and `voided` | §6, §7.1 | `report` |
+| The production report (good quantity and scrap, `produce` into the output lot in `quarantine`, the scrap as a `wastage` movement) and its machine with both states `posted` and `voided` | §6, §7.1 | `report` |
+| Void of a production report entered on the wrong work order (BL-MFG-04, #385, `PLT.ACL.09`, `MFG.ACL.10`): the operator asks with a reason, the line's supervisor or the production manager (`work_orders.void_approve`) approves, never the requester; the report's `produce` and `wastage` movements are reversed, the totals of the work order recalculated and `RecordVoided` emitted; refused with "output already used" once the work order is completed or when the output lot holds less than the report made; the voided report stays struck through with its number and reason | §7.1 *Work order*, §3.3 | `report` |
 | The cost of a work order: issued, returned, scrap value, labour and overhead, actual cost, loss | §7.1, `MFG.CST.01` | `cost` |
 | Abort after materials were issued (`MFG.ACL.12`, BL-MFG-01, #382): the planner asks with an outcome, the production manager approves (a second step under `STK.ACL.02` above AED 2,000), then the return and `wastage` movements post, the output stays in quarantine with a final inspection requested, the cost is closed and the loss kept | §3.3, §4.2, §7.1 | `abort` |
 | Unlink from the sales order to stock (BL-MFG-02, #383) | §4.2, §7.1 | `unlink` |
@@ -40,7 +41,6 @@ Comes with other issues (the states they need are declared):
 | Issue | What | Where it plugs in |
 |---|---|---|
 | BL-MFG-03 | `MFG.RUL.09`: listens to the sales order events and calls `work_orders::cancel_by_system`, `unlink::unlink_by_system`, a quantity change and a new planned work order; `quantity_for_stock_milli` is the column | `work_orders`, `unlink` |
-| BL-MFG-04 | the `void` of a production report (state `voided`) with its reversing movements, and the `wastage` movement of a report's scrap | `report`, kernel `ProductionStock` |
 | BL-MFG-05 | the hold task for material: `hold` takes the reason `material`; the pending issue rows of `issue` | `issue`, `work_orders::hold` |
 | BL-MFG-08, 13, 15 | the NCR lifecycle (`open`, `dispositioned`, `closed`, `cancelled`) is not built yet | a new `ncr` module |
 | BL-MFG-09 | the lot required on an issue of a lot-tracked material | `issue::issue` |

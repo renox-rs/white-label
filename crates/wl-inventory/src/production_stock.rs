@@ -14,6 +14,13 @@
 //!   QC releases it, `MFG.ACL.02`) when the item is lot-tracked; an item that
 //!   is not lot-tracked has no lot.
 //!
+//! - `output_available`, `void_output` and `void_waste` serve the void of a
+//!   production report (BL-MFG-04): the good output leaves the lot again with
+//!   an `adjust` movement (as a reversed goods receipt does), refused with
+//!   "output already used" when the lot no longer holds the quantity at the
+//!   location (moved, issued or picked); the `wastage` of the scrap is
+//!   reversed with an `adjust` that has no location, as the wastage had none.
+//!
 //! Decisions where the spec is silent: the output lot is numbered by the
 //! caller (`F-WO-2026-0001`); reservations of output lots for order lines
 //! are not kept by this module yet, so `release_reservation` answers `false`
@@ -24,10 +31,11 @@ use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::inventory::LOT_SUBJECT_TYPE;
 use wl_kernel::production::{
-    ProduceOutput, ProductionFuture, ProductionStock, ReturnMaterial, WasteMaterial,
+    ProduceOutput, ProductionFuture, ProductionStock, ReturnMaterial, VoidOutput, WasteMaterial,
 };
 
-use crate::item::{Item, value_of};
+use crate::balance;
+use crate::item::{Item, quantity_text, value_of};
 use crate::lot::{Lot, LotStatus};
 use crate::movement::{MovementType, StockMovement};
 
@@ -140,6 +148,100 @@ pub async fn produce(tx: &mut Transaction, request: ProduceOutput) -> Result<Opt
     Ok(lot_id.map(|id| Subject::new(LOT_SUBJECT_TYPE, id)))
 }
 
+/// What of the output lot (of the item when it has none) is at `location`
+/// and not reserved, in thousandths.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn output_available<'c>(
+    db: impl renox::db::Executor<'c>,
+    item: &Subject,
+    lot: Option<&Subject>,
+    location: &Subject,
+) -> Result<i64> {
+    let found = balance::balance(
+        db,
+        item.subject_id,
+        location.subject_id,
+        lot.map(|lot| lot.subject_id),
+    )
+    .await?;
+    Ok((found.on_hand_milli - found.reserved_milli).max(0))
+}
+
+/// Takes the good output of a voided report out of the lot (see the module).
+///
+/// # Errors
+///
+/// 422 for a quantity that is not above zero, or "output already used" when
+/// the lot holds less than the quantity; a database error.
+pub async fn void_output(tx: &mut Transaction, request: VoidOutput) -> Result {
+    if request.quantity_milli <= 0 {
+        return Err(refused("The quantity must be above zero."));
+    }
+    let left = output_available(
+        &mut *tx,
+        &request.item,
+        request.lot.as_ref(),
+        &request.location,
+    )
+    .await?;
+    if left < request.quantity_milli {
+        return Err(refused(format!(
+            "Output already used: the lot holds {} of the {} the report made; the production manager corrects it with a reversing movement.",
+            quantity_text(left),
+            quantity_text(request.quantity_milli),
+        )));
+    }
+    StockMovement::leaving(
+        MovementType::Adjust,
+        request.item.subject_id,
+        request.lot.as_ref().map(|lot| lot.subject_id),
+        request.location.subject_id,
+        request.quantity_milli,
+        request.unit_cost,
+        value_of(request.quantity_milli, request.unit_cost),
+        &request.source,
+        Some(request.reason),
+        request.user,
+    )
+    .insert(&mut *tx)
+    .await?;
+    Ok(())
+}
+
+/// Reverses the `wastage` of a voided report's scrap (see the module).
+///
+/// # Errors
+///
+/// 422 for a quantity that is not above zero; a database error.
+pub async fn void_waste(tx: &mut Transaction, request: WasteMaterial) -> Result {
+    if request.quantity_milli <= 0 {
+        return Err(refused("The quantity must be above zero."));
+    }
+    let unit_cost = i64::try_from(
+        (i128::from(request.value) * 1_000 + i128::from(request.quantity_milli) / 2)
+            / i128::from(request.quantity_milli),
+    )
+    .unwrap_or(0);
+    let mut movement = StockMovement::moving(
+        MovementType::Adjust,
+        request.item.subject_id,
+        request.lot.as_ref().map(|lot| lot.subject_id),
+        None,
+        None,
+        request.quantity_milli,
+        unit_cost,
+        request.value,
+        &request.source,
+        request.user,
+    );
+    movement.reason = Some(request.reason);
+    movement.insert(&mut *tx).await?;
+    Ok(())
+}
+
 /// The module's [`ProductionStock`].
 #[derive(Debug, Clone, Copy, Default)]
 pub struct InventoryProduction;
@@ -167,5 +269,35 @@ impl ProductionStock for InventoryProduction {
         request: ProduceOutput,
     ) -> ProductionFuture<'a, Option<Subject>> {
         Box::pin(async move { produce(tx, request).await })
+    }
+
+    fn output_available<'a>(
+        &'a self,
+        state: &'a AppState,
+        item: &'a Subject,
+        lot: Option<&'a Subject>,
+        location: &'a Subject,
+    ) -> ProductionFuture<'a, Option<i64>> {
+        Box::pin(async move {
+            output_available(&state.db, item, lot, location)
+                .await
+                .map(Some)
+        })
+    }
+
+    fn void_output<'a>(
+        &'a self,
+        tx: &'a mut Transaction,
+        request: VoidOutput,
+    ) -> ProductionFuture<'a, ()> {
+        Box::pin(async move { void_output(tx, request).await })
+    }
+
+    fn void_waste<'a>(
+        &'a self,
+        tx: &'a mut Transaction,
+        request: WasteMaterial,
+    ) -> ProductionFuture<'a, ()> {
+        Box::pin(async move { void_waste(tx, request).await })
     }
 }

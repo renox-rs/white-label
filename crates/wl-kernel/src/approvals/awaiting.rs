@@ -157,6 +157,7 @@ const ACTION_LABELS: &[(&str, &str)] = &[
     ),
     ("manpower.terminate", "Terminate a client contract"),
     ("manufacturing.abort", "Abort a work order"),
+    ("manufacturing.report_void", "Void a production report"),
     (
         "notifications.broadcast_approval",
         "Send a broadcast to its audience",

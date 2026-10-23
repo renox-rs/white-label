@@ -16,6 +16,7 @@
 //! | `POST /manufacturing/work-orders/{id}/abort` | `manufacturing.abort` | `work_orders.release`; the production manager approves (BL-MFG-01) |
 //! | `POST /manufacturing/work-orders/{id}/issue` | `manufacturing.issue` | `work_orders.issue` |
 //! | `POST /manufacturing/work-orders/{id}/report` | `manufacturing.report` | `work_orders.report` |
+//! | `POST /manufacturing/reports/{id}/void` | `manufacturing.report_void` | `work_orders.report` on the line; the line's supervisor or the production manager (`work_orders.void_approve`) approves (BL-MFG-04) |
 //!
 //! The lists and the record page answer a page when the request names
 //! `text/html` and JSON otherwise ([`wl_kernel::negotiate`]); the actions
@@ -74,6 +75,8 @@ pub fn routes() -> Routes {
         .name("manufacturing.issue")
         .post("/manufacturing/work-orders/{id}/report", report_output)
         .name("manufacturing.report")
+        .post("/manufacturing/reports/{id}/void", void_report)
+        .name("manufacturing.report_void")
 }
 
 /// A 303 to `path`.
@@ -345,4 +348,22 @@ async fn report_output(
         &work_order_page::url(id),
         "manufacturing.screen.done.reported",
     ))
+}
+
+/// `POST /manufacturing/reports/{id}/void`: `reason`. The void waits for the
+/// approval of the line's supervisor or the production manager.
+async fn void_report(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let found = report::ProductionReport::find_or_404(&state.db, id).await?;
+    let outcome = report::void(&state, &user, id, &field(&form, "reason")).await?;
+    let key = match outcome {
+        wl_kernel::voids::VoidOutcome::Pending(_) => "manufacturing.screen.done.void_requested",
+        wl_kernel::voids::VoidOutcome::Voided(_) => "manufacturing.screen.done.voided",
+    };
+    Ok(done(&lang, &work_order_page::url(found.work_order_id), key))
 }

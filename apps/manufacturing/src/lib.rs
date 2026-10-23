@@ -85,7 +85,7 @@ impl Module for Manufacturing {
             .model::<ProductionReport>()
             .model::<AbortLine>();
         work_order::register();
-        report::register();
+        report::register(app);
         notices::register_types();
         // `MFG.ACL.12`: the posted quantities still match the request at the
         // final approval.
@@ -95,7 +95,8 @@ impl Module for Manufacturing {
         abort::listen(app);
         app.schedule()
             .every_minutes(5, ABORT_SWEEP_TASK, |state: AppState| async move {
-                abort::sweep(&state).await.map(|_| ())
+                abort::sweep(&state).await?;
+                report::sweep(&state).await.map(|_| ())
             });
     }
 }

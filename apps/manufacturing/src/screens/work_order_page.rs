@@ -24,6 +24,7 @@ use renox::axum::http::HeaderMap;
 use renox::prelude::*;
 use serde::Serialize;
 use wl_kernel::approvals::{ApprovalRequest, ApprovalStatus, awaiting::action_label, decide};
+use wl_kernel::voids::VoidRecord;
 
 use super::{
     Act, Texts, date_text, period_text, quantity_text, time_text, transition_text, user_text,
@@ -119,12 +120,20 @@ pub(crate) struct PickView {
 /// A production report.
 #[derive(Debug, Serialize, Clone)]
 pub(crate) struct ReportLine {
+    id: i64,
+    number: String,
     at: String,
     good: String,
     scrap: String,
     by: String,
     note: String,
     voided: bool,
+    status: String,
+    status_kind: &'static str,
+    reason: String,
+    waits: bool,
+    can_void: bool,
+    reversal_open: bool,
 }
 
 /// What the abort did with a part of the work in progress.
@@ -518,13 +527,49 @@ async fn build(
         .get(&state.db)
         .await?
     {
+        let voided = report.status == ReportStatus::Voided;
+        let waits = !voided && crate::report::waiting(state, &report).await?;
+        let reason = if voided {
+            VoidRecord::of_subject(&state.db, &report.subject())
+                .await?
+                .map(|void| void.reason)
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
         reports.push(ReportLine {
+            id: report.id,
+            number: report.number(),
             at: time_text(report.reported_at),
             good: quantity_text(report.good_milli),
             scrap: quantity_text(report.scrap_milli),
             by: user_text(state, report.operator_id, &not_set).await,
             note: report.note.clone().unwrap_or_default(),
-            voided: report.status == ReportStatus::Voided,
+            voided,
+            status: if voided {
+                t(lang, "manufacturing.screen.output.voided")
+            } else if waits {
+                t(lang, "manufacturing.screen.output.void_waits")
+            } else {
+                word(lang, "status", "posted")
+            },
+            status_kind: if voided {
+                "info"
+            } else if waits {
+                "warning"
+            } else {
+                "success"
+            },
+            reason,
+            waits,
+            // Void is not offered once the work order is completed, closed or
+            // aborted (`MFG.ACL.10`), nor while an abort or a void waits.
+            can_void: !voided
+                && !waits
+                && !gate.waiting
+                && order.status.is_open()
+                && user.has_permission_in(permissions::WORK_ORDERS_REPORT, &report.scope()),
+            reversal_open: voided && report.stock_reversed_at.is_none(),
         });
     }
 
@@ -552,14 +597,30 @@ async fn build(
     // Approvals, newest first.
     let mut approvals = Vec::new();
     let mut notes = Vec::new();
-    for request in ApprovalRequest::query()
+    let mut requests = ApprovalRequest::query()
         .where_(ApprovalRequest::SUBJECT_TYPE.eq(order.subject().subject_type.as_str()))
         .where_(ApprovalRequest::SUBJECT_ID.eq(order.id))
         .order_by_desc(ApprovalRequest::ID)
         .get(&state.db)
-        .await?
-    {
-        let title = action_label(lang, &request.action);
+        .await?;
+    // The voids of its production reports wait in the same list.
+    for line in &reports {
+        requests.extend(
+            ApprovalRequest::query()
+                .where_(ApprovalRequest::SUBJECT_TYPE.eq(crate::report::SUBJECT_TYPE))
+                .where_(ApprovalRequest::SUBJECT_ID.eq(line.id))
+                .get(&state.db)
+                .await?,
+        );
+    }
+    requests.sort_by_key(|request| std::cmp::Reverse(request.id));
+    for request in requests {
+        let mut title = action_label(lang, &request.action);
+        if request.subject_type == crate::report::SUBJECT_TYPE
+            && let Some(line) = reports.iter().find(|line| line.id == request.subject_id)
+        {
+            title = format!("{title} {}", line.number);
+        }
         let is_waiting = request.is_pending();
         if is_waiting {
             notes.push(tf(

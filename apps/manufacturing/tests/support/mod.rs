@@ -29,13 +29,14 @@ use wl_kernel::notify::{
 };
 use wl_kernel::production::{
     BillsOfMaterials, BomComponent, BomVersion, OrderLineInfo, OrderLines, ProduceOutput,
-    ProductionFuture, ProductionStock, ReturnMaterial, WasteMaterial, provide_boms,
+    ProductionFuture, ProductionStock, ReturnMaterial, VoidOutput, WasteMaterial, provide_boms,
     provide_order_lines, provide_production_stock,
 };
 use wl_kernel::sales::SalesOrderId;
 use wl_kernel::tickets::{
     OpenTicket, TaskComment, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
 };
+use wl_kernel::voids::RecordVoided;
 use wl_kernel::{BusinessCalendar, Subject};
 
 /// A manufacturer with no shared module besides the kernel.
@@ -65,6 +66,9 @@ pub const BOM: i64 = 3;
 pub const STORE: i64 = 21;
 /// The finished goods location of the line.
 pub const FINISHED: i64 = 22;
+
+/// The role of a line operator: reports on the work orders of the line.
+pub const OPERATOR_ROLE: &str = "line_operator";
 
 /// A date.
 pub fn date(year: i32, month: u32, day: u32) -> NaiveDate {
@@ -122,6 +126,12 @@ pub struct Stock {
     pub produced: Arc<Mutex<Vec<ProduceOutput>>>,
     /// The reservations released, `(lot, order, line)`.
     pub released: Arc<Mutex<Vec<(Subject, i64, i64)>>>,
+    /// The outputs taken out again by a void.
+    pub output_voided: Arc<Mutex<Vec<VoidOutput>>>,
+    /// The wastages reversed by a void.
+    pub waste_voided: Arc<Mutex<Vec<WasteMaterial>>>,
+    /// Thousandths of the output somebody else moved, issued or picked.
+    used: Arc<AtomicI64>,
     pending: Arc<AtomicI64>,
 }
 
@@ -134,6 +144,30 @@ impl Stock {
             quantity_milli,
             unit_cost,
         });
+    }
+
+    /// `quantity_milli` of the output lots were moved out by somebody else.
+    pub fn use_output(&self, quantity_milli: i64) {
+        self.used.fetch_add(quantity_milli, Ordering::SeqCst);
+    }
+
+    /// What of the output is still in the lots: made less used less voided.
+    pub fn output_left(&self) -> i64 {
+        let made: i64 = self
+            .produced
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|p| p.quantity_milli)
+            .sum();
+        let voided: i64 = self
+            .output_voided
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|v| v.quantity_milli)
+            .sum();
+        made - voided - self.used.load(Ordering::SeqCst)
     }
 
     /// The movements posted by the abort: returns, wastages.
@@ -226,6 +260,44 @@ impl ProductionStock for Stock {
                 .unwrap_or_else(|| Subject::new(LOT_SUBJECT_TYPE, 900 + request.source.subject_id));
             self.produced.lock().unwrap().push(request);
             Ok(Some(lot))
+        })
+    }
+
+    fn output_available<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _item: &'a Subject,
+        _lot: Option<&'a Subject>,
+        _location: &'a Subject,
+    ) -> ProductionFuture<'a, Option<i64>> {
+        Box::pin(async move { Ok(Some(self.output_left())) })
+    }
+
+    fn void_output<'a>(
+        &'a self,
+        _tx: &'a mut renox::db::Transaction,
+        request: VoidOutput,
+    ) -> ProductionFuture<'a, ()> {
+        Box::pin(async move {
+            if self.output_left() < request.quantity_milli {
+                return Err(Error::Status(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "Output already used".to_owned(),
+                ));
+            }
+            self.output_voided.lock().unwrap().push(request);
+            Ok(())
+        })
+    }
+
+    fn void_waste<'a>(
+        &'a self,
+        _tx: &'a mut renox::db::Transaction,
+        request: WasteMaterial,
+    ) -> ProductionFuture<'a, ()> {
+        Box::pin(async move {
+            self.waste_voided.lock().unwrap().push(request);
+            Ok(())
         })
     }
 
@@ -470,6 +542,7 @@ struct Fakes {
     unlinked: Recorded<WorkOrderUnlinked>,
     cancelled: Recorded<WorkOrderCancelled>,
     completed: Recorded<WorkOrderCompleted>,
+    voided: Recorded<RecordVoided>,
 }
 
 impl Module for Fakes {
@@ -488,6 +561,7 @@ impl Module for Fakes {
         record(app, &self.unlinked);
         record(app, &self.cancelled);
         record(app, &self.completed);
+        record(app, &self.voided);
     }
 }
 
@@ -513,6 +587,8 @@ pub struct Booted {
     pub cancelled: Recorded<WorkOrderCancelled>,
     /// `WorkOrderCompleted`.
     pub completed: Recorded<WorkOrderCompleted>,
+    /// `RecordVoided`.
+    pub voided: Recorded<RecordVoided>,
     /// Seconds the clock was moved forward from the real one.
     clock_secs: AtomicI64,
     /// The users made, for their emails.
@@ -569,6 +645,11 @@ impl Booted {
     pub async fn supervisor(&self, name: &str, line: &Line) -> User {
         self.user_in(name, perm::SUPERVISOR_ROLE, &line.scope())
             .await
+    }
+
+    /// A line operator of `line` only.
+    pub async fn operator(&self, name: &str, line: &Line) -> User {
+        self.user_in(name, OPERATOR_ROLE, &line.scope()).await
     }
 
     /// A QC inspector of the plant.
@@ -757,6 +838,7 @@ pub async fn boot() -> Booted {
     let unlinked = Recorded::default();
     let cancelled = Recorded::default();
     let completed = Recorded::default();
+    let voided = Recorded::default();
     let fakes = Fakes {
         stock: stock.clone(),
         boms: boms.clone(),
@@ -767,6 +849,7 @@ pub async fn boot() -> Booted {
         unlinked: unlinked.clone(),
         cancelled: cancelled.clone(),
         completed: completed.clone(),
+        voided: voided.clone(),
     };
     let app = App::new()
         .module(Auth::new())
@@ -814,6 +897,7 @@ pub async fn boot() -> Booted {
             perm::WORK_ORDERS_REPORT,
             perm::WORK_ORDERS_CLOSE,
             perm::WORK_ORDERS_ABORT_APPROVE,
+            perm::WORK_ORDERS_VOID_APPROVE,
             perm::WORK_ORDERS_COST_VIEW,
         ],
     )
@@ -829,7 +913,13 @@ pub async fn boot() -> Booted {
             perm::WORK_ORDERS_VIEW,
             perm::WORK_ORDERS_REPORT,
             perm::WORK_ORDERS_RELEASE,
+            perm::WORK_ORDERS_VOID_APPROVE,
         ],
+    )
+    .await;
+    define(
+        OPERATOR_ROLE,
+        &[perm::WORK_ORDERS_VIEW, perm::WORK_ORDERS_REPORT],
     )
     .await;
     define(perm::QC_ROLE, &[perm::WORK_ORDERS_VIEW]).await;
@@ -845,6 +935,7 @@ pub async fn boot() -> Booted {
         unlinked,
         cancelled,
         completed,
+        voided,
         clock_secs: AtomicI64::new(0),
         made: AtomicI64::new(0),
         _views: views,

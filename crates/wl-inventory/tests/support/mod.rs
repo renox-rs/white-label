@@ -1727,6 +1727,31 @@ impl Booted {
         moved.save(self.db()).await.unwrap();
     }
 
+    /// `quantity_milli` of `item` taken out of `location` (and `lot`) by an
+    /// `issue` movement of an earlier order.
+    pub async fn stock_out(
+        &self,
+        item: &Item,
+        location: &Location,
+        lot: Option<&Lot>,
+        quantity_milli: i64,
+    ) {
+        let source = Subject::new("inventory.dispatch", 900);
+        let mut moved = StockMovement::leaving(
+            wl_inventory::movement::MovementType::Issue,
+            item.id,
+            lot.map(|l| l.id),
+            location.id,
+            quantity_milli,
+            0,
+            0,
+            &source,
+            None,
+            None,
+        );
+        moved.save(self.db()).await.unwrap();
+    }
+
     /// A lot `number` of `item` in `status`.
     pub async fn lot(&self, item: &Item, number: &str, status: LotStatus) -> Lot {
         let mut lot = Lot {
