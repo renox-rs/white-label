@@ -46,6 +46,7 @@ use crate::claim::InsuranceClaim;
 use crate::job_card::{JOB_CARD_SUBJECT_TYPE, JobCard, JobCardStatus};
 use crate::job_card_machine::{DECLINE, DECLINE_SYSTEM, JobInput};
 use crate::job_stops::close_booking;
+use crate::permissions;
 use crate::reasons::ESTIMATE_DECLINED;
 use crate::stop::{self, NO_RESPONSE};
 use crate::texts::english;
@@ -68,7 +69,11 @@ pub fn collect_type() -> NotificationTypeDef {
         .group(GROUP_BOOKINGS)
         .category(Category::Transactional)
         .channels(&[NotifyChannel::Sms])
-        .give_up(&[GiveUpReaction::MarkContactInvalid])
+        .give_up(&[
+            GiveUpReaction::MarkContactInvalid,
+            GiveUpReaction::StaffTask,
+        ])
+        .staff_role(permissions::SERVICE_ADVISOR_ROLE)
         .template(
             NotifyChannel::Sms,
             "en",

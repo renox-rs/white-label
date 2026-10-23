@@ -18,7 +18,10 @@ use support::{PATIENT, boot, in_hours};
 async fn a_service_is_booked_for_the_first_free_slot_from_a_day() {
     let t = boot().await;
     let bay = t.doctor("Bay 1").await;
-    t.service_with("periodic_service", &[&bay], |_| {}).await;
+    t.service_with("periodic_service", &[&bay], |service| {
+        service.check_in_required = true;
+    })
+    .await;
     let from = in_hours(30);
     let request = ServiceBooking::new(PATIENT, "periodic_service", from)
         .for_subject(Subject::new("auto.vehicle", 3))
