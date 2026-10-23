@@ -9,7 +9,7 @@ Each client gets their own branded app, in English and Arabic, hosted in the UAE
 brand, every app runs the same tested modules for parties, documents, invoicing, payments,
 stock, scheduling, HR and more. Only the vertical's own workflows differ.
 
-> **Status: building F1 (Property); phase F*n* builds vertical *n*.** This repository holds the full design (business context,
+> **Status: phase F*n* builds vertical *n*; built so far: 01 Property, 02 Construction, 03 Logistics, 04 Accounting, 05 Clinics, 09 Manpower and 10 EdTech (`apps/*`; F6 to F8 are open).** This repository holds the full design (business context,
 > state machines, access rules, automations and UAE compliance notes) and, since
 > [decision 0004](docs/decisions/0004-start-f1-build.md), the code: `crates/wl-*`, `apps/*`, `host`.
 

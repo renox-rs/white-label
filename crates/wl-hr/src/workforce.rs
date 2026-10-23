@@ -11,7 +11,7 @@ use wl_kernel::workforce::{EmployeeId, LeaveCalendar, StaffProfile, Workforce, W
 
 use crate::absence::{AbsenceReport, ContactAttempt};
 use crate::assignees;
-use crate::employee::{Employee, EmployeeScope, EmployeeStatus};
+use crate::employee::{Employee, EmployeeScope, EmployeeStatus, EmploymentType};
 use crate::leave::{LeaveRequest, LeaveStatus};
 
 /// The workforce of the HR module. `portal_days` is how many days the
@@ -163,6 +163,18 @@ impl Workforce for Staff {
             Ok(Employee::find(&state.db, employee.0)
                 .await?
                 .is_some_and(|row| row.status == EmployeeStatus::Active))
+        })
+    }
+
+    fn is_freelance<'a>(
+        &'a self,
+        state: &'a AppState,
+        employee: EmployeeId,
+    ) -> WorkforceFuture<'a, bool> {
+        Box::pin(async move {
+            Ok(Employee::find(&state.db, employee.0)
+                .await?
+                .is_some_and(|row| row.employment_type == EmploymentType::Freelance))
         })
     }
 

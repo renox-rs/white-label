@@ -482,6 +482,54 @@ pub struct SubscriptionPastDue {
 
 impl Event for SubscriptionPastDue {}
 
+/// A pause cause was added to a subscription (`pause`): a user's pause (staff,
+/// or the party through the vertical), the vertical's own agreement pause or a
+/// party block. Emitted once per cause added, whether the subscription was
+/// `active`, `past_due` or already `paused`. 10 `EDU.RUL.14` freezes the
+/// enrolment of a membership a user paused; the vertical ignores the cause it
+/// asked for itself ([`PauseCause::Agreement`]) so that the two sides do not
+/// loop.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubscriptionPaused {
+    /// The subscription.
+    pub subscription: SubscriptionId,
+    /// Who is billed.
+    pub party: PartyId,
+    /// The agreement it bills.
+    pub source: Subject,
+    /// The cause that was added.
+    pub cause: PauseCause,
+    /// The last day of a [`PauseCause::User`] pause.
+    pub until: Option<NaiveDate>,
+    /// Whether this cause paused the subscription (it was not `paused` before).
+    pub first: bool,
+}
+
+impl Event for SubscriptionPaused {}
+
+/// A pause cause was removed from a subscription (`resume`): a user's pause
+/// ended or was lifted, the vertical's agreement resumed, a party was
+/// unblocked. Emitted once per cause removed, also when other causes keep the
+/// subscription `paused`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubscriptionResumed {
+    /// The subscription.
+    pub subscription: SubscriptionId,
+    /// Who is billed.
+    pub party: PartyId,
+    /// The agreement it bills.
+    pub source: Subject,
+    /// The cause that was removed.
+    pub cause: PauseCause,
+    /// Whether no cause is left and the subscription is no longer `paused`.
+    pub resumed: bool,
+    /// Whether it went back to `past_due` (a cycle invoice from before the
+    /// pause is still overdue) rather than `active`.
+    pub to_past_due: bool,
+}
+
+impl Event for SubscriptionResumed {}
+
 /// A subscription was suspended (`suspend`, `FIN.RUL.06`): the vertical
 /// blocks the service.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

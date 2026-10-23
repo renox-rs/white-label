@@ -37,7 +37,9 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::calendar::BusinessCalendar;
 use wl_kernel::documents::dubai_date;
-use wl_kernel::scheduling::{BookingConflict, ConflictCause, availability_source};
+use wl_kernel::scheduling::{
+    AvailabilityBlockAdded, BookingConflict, ConflictCause, availability_source,
+};
 use wl_kernel::workforce::{LeaveApproved, LeaveCancelled};
 
 use crate::booking::{Booking, BookingResource, BookingStatus, default_initiator};
@@ -278,12 +280,9 @@ pub async fn add_block(
     if block.ends_at <= block.starts_at {
         return Err(Refusal::invalid("wl_scheduling.problem.block_period"));
     }
-    if Resource::find(&state.db, block.resource_id)
-        .await?
-        .is_none()
-    {
+    let Some(resource) = Resource::find(&state.db, block.resource_id).await? else {
         return Err(Refusal::invalid("wl_scheduling.problem.unknown_resource"));
-    }
+    };
     let existing = match &block.source_ref {
         Some(reference) => {
             AvailabilityBlock::query()
@@ -295,15 +294,31 @@ pub async fn add_block(
         }
         None => None,
     };
-    let block = match existing {
-        Some(found) => found,
+    let (block, added) = match existing {
+        Some(found) => (found, false),
         None => {
             block.created_at = Some(at);
             block.save(&state.db).await?;
-            block
+            (block, true)
         }
     };
     let flagged = raise_for_block(state, &block, at).await?;
+    if added {
+        // Told once per new block, whether or not a booking is overlapped: a
+        // vertical with work of its own on the resource (10: a tutor's class
+        // sessions) looks for it.
+        state
+            .emit(AvailabilityBlockAdded {
+                resource: block.resource_id,
+                employee: resource.employee_id,
+                block: block.id,
+                source: block.source.clone(),
+                reason: block.reason.clone(),
+                starts_at: block.starts_at,
+                ends_at: block.ends_at,
+            })
+            .await?;
+    }
     Ok((block, flagged))
 }
 

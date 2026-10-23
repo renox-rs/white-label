@@ -6,6 +6,7 @@
 use accounting::permissions as acc;
 use clinics::permissions as cln;
 use construction::permissions as con;
+use edtech::permissions as edu;
 use logistics::permissions as log;
 use manpower::permissions as mpw;
 use property::permissions as prp;
@@ -109,6 +110,20 @@ pub const BILLING_COORDINATOR: &str = cln::BILLING_COORDINATOR_ROLE;
 pub const CALL_CENTRE_AGENT: &str = cln::CALL_CENTRE_ROLE;
 /// The nurse or assistant (05 §3.1): records the consumables used.
 pub const NURSE: &str = cln::NURSE_ROLE;
+/// The centre manager of a campus (10 §3.1): runs the timetable and the
+/// tutors, approves terminations, exceeds a batch's capacity within the
+/// room's limit and renews the centre permit.
+pub const CENTRE_MANAGER: &str = edu::CENTRE_MANAGER_ROLE;
+/// The admissions counsellor, the front desk (10 §3.1): enquiries, trial
+/// classes, enrolments and the fee collected at the desk.
+pub const COUNSELLOR: &str = edu::COUNSELLOR_ROLE;
+/// The academic coordinator (10 §3.1): courses, batches, tutor and room
+/// allocation; the responsible role of the course approval and the tutor
+/// documents.
+pub const ACADEMIC_COORDINATOR: &str = edu::COORDINATOR_ROLE;
+/// The tutor or trainer (10 §3.1): teaches the sessions of the batches
+/// assigned and marks attendance.
+pub const TUTOR: &str = edu::TUTOR_ROLE;
 /// HR: keeps the employee records, starts and follows onboardings, and is the
 /// `hr` owner of onboarding steps (wl-hr §3, §6).
 pub const HR: &str = "hr";
@@ -414,6 +429,22 @@ pub const ROLES: &[(&str, &[&str])] = &[
             cln::PERMITS_VIEW,
             cln::PERMITS_MANAGE,
             cln::APPOINTMENTS_CALL,
+            // 10: the courses, batches and sessions of the centres.
+            edu::COURSES_VIEW,
+            edu::COURSES_MANAGE,
+            edu::BATCHES_VIEW,
+            edu::BATCHES_MANAGE,
+            edu::BATCHES_APPROVE,
+            edu::SEATS_EXCEED,
+            edu::SESSIONS_VIEW,
+            edu::SESSIONS_TEACH,
+            edu::ENROLMENTS_VIEW,
+            edu::ENROLMENTS_MANAGE,
+            edu::ENROLMENTS_APPROVE,
+            edu::ENROLMENTS_REFUND_APPROVE,
+            edu::CERTIFICATES_VIEW,
+            edu::CERTIFICATES_ISSUE,
+            edu::CERTIFICATES_REVOKE,
             inventory::RECALLS_MANAGE,
             // The last prices and the supplier scores (`STK.SUP.01`).
             inventory::STOCK_COST_VIEW,
@@ -706,6 +737,13 @@ pub const ROLES: &[(&str, &[&str])] = &[
         ACCOUNTANT,
         &[
             hr::LEAVE_REQUEST,
+            edu::COURSES_VIEW,
+            edu::BATCHES_VIEW,
+            edu::SESSIONS_VIEW,
+            edu::ENROLMENTS_VIEW,
+            // Decides the refund of a withdrawal, never the one who asked
+            // (`FIN.ACL.04`).
+            edu::ENROLMENTS_REFUND_APPROVE,
             acc::AML_RAISE,
             sales::LOYALTY_VIEW,
             // Told of WPS rejections (`HRM.RUL.11`), reads the run.
@@ -820,6 +858,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
         OWNER,
         &[
             hr::LEAVE_REQUEST,
+            edu::COURSES_VIEW,
+            edu::BATCHES_VIEW,
+            edu::SESSIONS_VIEW,
+            edu::ENROLMENTS_VIEW,
+            edu::CERTIFICATES_VIEW,
             invoices::VIEW,
             invoices::RECEIVABLES_VIEW,
             invoices::SUPPLIER_BILLS_VIEW,
@@ -1153,6 +1196,113 @@ pub const ROLES: &[(&str, &[&str])] = &[
             scheduling::VIEW,
             cln::VISITS_VIEW,
             cln::CHARGES_DESK,
+        ],
+    ),
+    (
+        CENTRE_MANAGER,
+        &[
+            hr::LEAVE_REQUEST,
+            hr::LEAVE_VIEW,
+            hr::LEAVE_APPROVE,
+            scheduling::VIEW,
+            scheduling::VIEW_DETAILS,
+            scheduling::MANAGE,
+            scheduling::RESOURCES_MANAGE,
+            parties::VIEW,
+            edu::COURSES_VIEW,
+            edu::BATCHES_VIEW,
+            edu::BATCHES_MANAGE,
+            edu::BATCHES_APPROVE,
+            edu::SEATS_EXCEED,
+            edu::SESSIONS_VIEW,
+            edu::ENROLMENTS_VIEW,
+            edu::ENROLMENTS_MANAGE,
+            edu::ENROLMENTS_APPROVE,
+            edu::ENROLMENTS_REFUND_APPROVE,
+            edu::CERTIFICATES_VIEW,
+            edu::CERTIFICATES_ISSUE,
+            // Decides the refunds of withdrawals and terminations (10 §3.1
+            // "discounts and refunds approval", `FIN.ACL.04`: never the user
+            // who asked): reads the payments and refunds, approves a refund.
+            payments::VIEW,
+            payments::REFUNDS_APPROVE,
+            // The campaigns and their acquisition figures (10 §3.1 "reports");
+            // a cost over a campaign's budget needs a manager (`SAL.ACL.07`).
+            sales::CAMPAIGNS_VIEW,
+            sales::CAMPAIGNS_COSTS_MANAGE,
+            sales::ACQUISITION_REPORTS_VIEW,
+            // The complaints and tasks the ticket categories send to the
+            // centre manager (10 §9): opened, assigned and worked here.
+            tickets::VIEW,
+            tickets::CREATE,
+            tickets::ASSIGN,
+            tickets::WORK,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
+            tickets::TASKS_REVIEW,
+            // The owner of the front desk and refunds SOPs publishes their
+            // versions (`DOC.RUL.04`, 10 §7.2).
+            documents::SOPS_MANAGE,
+        ],
+    ),
+    (
+        ACADEMIC_COORDINATOR,
+        &[
+            hr::LEAVE_REQUEST,
+            scheduling::VIEW,
+            scheduling::RESOURCES_MANAGE,
+            edu::COURSES_VIEW,
+            edu::COURSES_MANAGE,
+            edu::BATCHES_VIEW,
+            edu::BATCHES_MANAGE,
+            edu::SESSIONS_VIEW,
+            edu::ENROLMENTS_VIEW,
+            edu::CERTIFICATES_VIEW,
+            edu::CERTIFICATES_ISSUE,
+            // The classroom issues and the tasks of the coordinator.
+            tickets::VIEW,
+            tickets::CREATE,
+            tickets::WORK,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
+            documents::SOPS_MANAGE,
+        ],
+    ),
+    (
+        COUNSELLOR,
+        &[
+            hr::LEAVE_REQUEST,
+            scheduling::VIEW,
+            scheduling::MANAGE,
+            parties::VIEW,
+            parties::CREATE,
+            parties::UPDATE,
+            sales::LEADS_VIEW,
+            sales::LEADS_MANAGE,
+            payments::VIEW,
+            payments::RECORD,
+            edu::COURSES_VIEW,
+            edu::BATCHES_VIEW,
+            edu::SESSIONS_VIEW,
+            edu::ENROLMENTS_VIEW,
+            edu::ENROLMENTS_MANAGE,
+            edu::CERTIFICATES_VIEW,
+            // The tasks the system gives the front desk (a payment charged
+            // back, a call to make) and the complaints it raises.
+            tickets::VIEW,
+            tickets::CREATE,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
+        ],
+    ),
+    (
+        TUTOR,
+        &[
+            hr::LEAVE_REQUEST,
+            scheduling::VIEW,
+            edu::BATCHES_VIEW,
+            edu::SESSIONS_VIEW,
+            edu::SESSIONS_TEACH,
         ],
     ),
     (

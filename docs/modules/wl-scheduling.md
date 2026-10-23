@@ -346,6 +346,7 @@ from a date) providers for `booking.book` and `booking.check_in`.
 | `BookingReassigned` | `reassign` | booking, old resources, new resources, reason code |
 | `SlotReleased` | any transition that frees a slot | resource(s), start, end, service type |
 | `BookingConflict` | a new block overlaps bookings; a resource will not be eligible at a booking's start (`SCH.RUL.05`) | resource, cause (`block` or `eligibility`), block or the expiring qualification/document, affected bookings, earliest start |
+| `AvailabilityBlockAdded` | a new availability block is added to a resource, whether or not it overlaps a booking (a block already there is not announced again) | resource, employee behind it, block, source (`manual`, `leave`, `roster`, `holiday`), reason, start, end; a vertical with work of its own on the resource (10: a tutor's class sessions, `EDU.RUL.12`) reads it |
 | `WaitingListOffered` | `offer` | entry, slot, hold until |
 
 **Attaches to:** a booking's `Subject` is any record: patient, vehicle, student, unit.

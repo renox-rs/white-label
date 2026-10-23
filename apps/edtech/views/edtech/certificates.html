@@ -1,0 +1,16 @@
+{#- edtech: the certificates, newest first, with the number, the name, the
+    course and the status in words. Replace it with
+    resources/views/edtech/certificates.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['certificates.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['certificates.title']" :subtitle="tx['certificates.subtitle']"/>
+    <rx-table :rows="certificates" as="row" :key="row.id" :caption="tx['certificates.title']" card>
+      <rx-column :label="tx['certificates.number']"><a href="{{ route('edtech.certificate', row.id) }}">{{ row.number }}</a></rx-column>
+      <rx-column :label="tx['certificates.student']">{{ row.student }}</rx-column>
+      <rx-column :label="tx['certificates.course']" hide-narrow>{{ row.course }}</rx-column>
+      <rx-column :label="tx['certificates.completed']" hide-narrow>{{ row.completed }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['certificates.empty']" icon="award"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

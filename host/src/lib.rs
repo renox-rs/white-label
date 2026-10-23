@@ -31,6 +31,10 @@ pub use app::clinics_seed;
 pub use app::construction_demo;
 pub use app::construction_seed;
 pub use app::demo_data;
+pub use app::edtech_demo;
+pub use app::edtech_money;
+pub use app::edtech_seed;
+pub use app::edtech_settings;
 pub use app::logistics_demo;
 pub use app::logistics_rules;
 pub use app::logistics_seed;
@@ -82,6 +86,7 @@ pub const DEMO_COMMANDS: &[&str] = &[
     app::logistics_demo::COMMAND,
     app::manpower_demo::COMMAND,
     app::clinics_demo::COMMAND,
+    app::edtech_demo::COMMAND,
 ];
 
 /// The refusal for `command` when `app_env` is a production environment.
@@ -174,11 +179,18 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // The connections of the Clinics client and their manual fallbacks
     // (BL-CLN-15).
     app::clinics_seed::register_integrations(&client_app);
+    // The connections of the EdTech client and their manual fallbacks, and
+    // the owner alert of `DOC.RUL.03` (BL-EDU-17).
+    app::edtech_settings::register_integrations(&client_app);
+    app::edtech_settings::register_critical(&client_app);
     // The manual fallbacks of the integrations of a manpower agency (BL-MPW-20).
     app::manpower_seed::register_integrations(&client_app);
     // HR and the accountant see the confidential labour cases and grievances
     // of a manpower agency (BL-MPW-20); the accountant of 04 does not.
     app::manpower_seed::grant_roles(&client_app);
+    // The owner of an EdTech centre decides the override of a document block
+    // (BL-EDU-17).
+    app::edtech_settings::grant_roles(&client_app);
     app::logistics_seed::register_integrations(&client_app);
     app::logistics_rules::register_critical(&client_app);
     app::negative_flow::register_approvals(&client_app);
@@ -219,6 +231,13 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
         // The demo clinic, after the installs: `clinics:demo`, and `db:seed`
         // in local (never in production).
         app = app.module(app::clinics_demo::ClinicsDemo::new(demo_client.clone()));
+    }
+    // The EdTech client's service types and ticket categories (BL-EDU-17).
+    if client_app == app::edtech_seed::EDTECH {
+        app = app.module(app::edtech_seed::EdtechSeed);
+        // The demo centre, after the installs: `edtech:demo`, and `db:seed`
+        // in local (never in production).
+        app = app.module(app::edtech_demo::EdtechDemo::new(demo_client.clone()));
     }
     // The Construction client's categories, checklists and SOPs (BL-CON-17,
     // BL-CON-18).
@@ -282,12 +301,13 @@ pub const VERTICALS: &[&str] = &[
     "clinics",
     "manpower",
     "logistics",
+    "edtech",
 ];
 
 /// The refusal of a vertical app that is not built.
 fn unbuilt_vertical(name: &str) -> ConfigError {
     ConfigError(format!(
-        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction`, `clinics`, `manpower` and `logistics`"
+        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction`, `clinics`, `manpower`, `logistics` and `edtech`"
     ))
 }
 
@@ -310,6 +330,7 @@ fn mount_vertical(app: renox::App, name: &str) -> Result<renox::App, ConfigError
         "clinics" => Ok(app.module(clinics::Clinics)),
         "manpower" => Ok(app.module(manpower::Manpower)),
         "logistics" => Ok(app.module(logistics::Logistics)),
+        "edtech" => Ok(app.module(edtech::EdTech)),
         other => Err(unbuilt_vertical(other)),
     }
 }
@@ -330,6 +351,7 @@ fn enable(
             app::property_seed::register_documents(client_app);
             app::accounting_seed::register_documents(client_app);
             app::clinics_seed::register_documents(client_app);
+            app::edtech_seed::register_documents(client_app);
             app::logistics_seed::register_documents(client_app);
             if client_app == app::construction_seed::CONSTRUCTION {
                 app::construction_seed::register_documents();
@@ -340,7 +362,11 @@ fn enable(
             Ok(app.module(wl_documents::WlDocuments))
         }
         "notify" => {
-            let module = app::clinics_seed::notify_for(client_app);
+            let module = if client_app == app::edtech_seed::EDTECH {
+                app::edtech_settings::notify_for()
+            } else {
+                app::clinics_seed::notify_for(client_app)
+            };
             Ok(app.module(match tuning.notify.take() {
                 Some(tune) => tune(module),
                 None => module,
@@ -375,7 +401,11 @@ fn enable(
             )
         }
         "portal" => Ok(app.module(wl_portal::WlPortal)),
-        "scheduling" => Ok(app.module(app::clinics_seed::scheduling_for(client_app))),
+        "scheduling" => Ok(app.module(if client_app == app::edtech_seed::EDTECH {
+            app::edtech_seed::scheduling_for(client_app)
+        } else {
+            app::clinics_seed::scheduling_for(client_app)
+        })),
         "delivery" => Ok(app.module(app::negative_flow::delivery_for(client_app))),
         other => Err(ConfigError(format!(
             "[modules] `{other}` is not built yet; remove it from client.toml for now"

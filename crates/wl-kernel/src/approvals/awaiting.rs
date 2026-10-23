@@ -97,6 +97,11 @@ const ACTION_LABELS: &[(&str, &str)] = &[
     ),
     ("construction.variation_abandon", "Abandon a variation"),
     ("documents.block_override", "Override a document block"),
+    ("edtech.terminate", "Terminate a running batch"),
+    (
+        "edtech.withdraw",
+        "Withdraw an enrolment and refund the student",
+    ),
     ("hr.cancel_onboarding", "Cancel an onboarding"),
     (
         "hr.record_death",

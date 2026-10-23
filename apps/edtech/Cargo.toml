@@ -1,0 +1,20 @@
+[package]
+name = "edtech"
+description = "EdTech: the vertical app for training and tutoring centres (courses, batches, sessions, enrolments and certificates)."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../../crates/wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"
+# The real modules in the integration tests: scheduling (the resources the
+# batches name and the availability the sessions supply to) and HR.
+wl-scheduling = { path = "../../crates/wl-scheduling" }
+wl-hr = { path = "../../crates/wl-hr" }

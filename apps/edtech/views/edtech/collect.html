@@ -1,0 +1,31 @@
+{#- edtech: the money to collect after a card payment was charged back: what is
+    open, the payer, the invoices, and the two ways out: send a payment link or
+    withdraw the student. Replace it with resources/views/edtech/collect.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['chargeback.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['chargeback.title']" :subtitle="number" :back="enrolment_url" :back-label="number">
+      <template rx-if="can_send">
+        <rx-confirm :id="'enrolment-payment-link-' ~ id" :label="tx['chargeback.send_link']" :action="route('edtech.enrolment_payment_link', id)" method="POST"
+                    :title="tx['chargeback.send_link']" :message="tx['chargeback.send_link_message']" :confirm-label="tx['chargeback.send_link']" :cancel-label="tx['button_cancel']" icon="send"/>
+      </template>
+      <rx-link-button :href="withdraw_url" :label="tx['chargeback.withdraw']" icon="trash" variant="secondary"/>
+    </rx-page-header>
+    <rx-include template="wl-kernel/integration_banner.html"/>
+    <rx-alert kind="info" :message="tx['chargeback.subtitle']"/>
+    <rx-card :title="tx['chargeback.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['chargeback.amount']" :value="amount"/>
+        <rx-entry :label="tx['enrolments.student']" :value="student"/>
+        <rx-entry :label="tx['chargeback.payer']" :value="payer"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="rows" as="row" :key="row.invoice" :caption="tx['chargeback.invoices']" card>
+      <rx-column :label="tx['chargeback.invoice']">{{ row.invoice }}</rx-column>
+      <rx-column :label="tx['chargeback.balance']">{{ row.balance }}</rx-column>
+      <rx-column :label="tx['chargeback.reopened_on']">{{ row.reopened }}</rx-column>
+      <rx-column :label="tx['chargeback.reason']">{{ row.reason }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['chargeback.empty']" icon="receipt"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

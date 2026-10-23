@@ -1,0 +1,40 @@
+{#- edtech: the enrolments, newest first, with the student, what each is for,
+    the fee and the status in words, and the action that enrols a student
+    (party picker for the student, the guardian and the payer; the batch from
+    the open ones). Replace it with resources/views/edtech/enrolments.html in
+    the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['enrolments.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['enrolments.title']" :subtitle="tx['enrolments.subtitle']">
+      <template rx-if="can_manage">
+        <rx-action-sheet id="enrolment-new" :label="tx['enrolments.new']" :action="route('edtech.enrolment_create')"
+                         :title="tx['enrolments.new']" :description="tx['enrolments.new_description']" :submit-label="tx['enrolments.new']" icon="plus">
+          <rx-select name="kind" :label="tx['enrolments.kind']" :options="kind_options" :selected="'course'" id="enrolment-new-kind"/>
+          <rx-select name="student" :label="tx['enrolments.student']" :options="[]" :placeholder="tx['enrolments.party_placeholder']" options-url="{{ route('edtech.party_options') }}" id="enrolment-new-student" required/>
+          <rx-select name="guardian" :label="tx['enrolments.guardian']" :options="[]" :placeholder="tx['enrolments.party_placeholder']" options-url="{{ route('edtech.party_options') }}" id="enrolment-new-guardian"/>
+          <rx-select name="payer" :label="tx['enrolments.payer']" :options="[]" :placeholder="tx['enrolments.party_placeholder']" options-url="{{ route('edtech.party_options') }}" id="enrolment-new-payer"/>
+          <rx-select name="batch" :label="tx['enrolments.batch']" :options="batch_options" :selected="batch_selected" id="enrolment-new-batch"/>
+          <rx-input name="item_code" :label="tx['enrolments.item_code']" id="enrolment-new-item-code"/>
+          <rx-input name="item_name" :label="tx['enrolments.item_name']" id="enrolment-new-item-name"/>
+          <rx-input name="credits" type="number" :label="tx['enrolments.credits']" id="enrolment-new-credits"/>
+          <rx-input name="price" :label="tx['enrolments.price']" :hint="tx['enrolments.money_hint']" id="enrolment-new-price" required/>
+          <rx-input name="discount" :label="tx['enrolments.discount']" :hint="tx['enrolments.money_hint']" id="enrolment-new-discount"/>
+          <rx-input name="registration_fee" :label="tx['enrolments.registration_fee']" :hint="tx['enrolments.money_hint']" id="enrolment-new-registration"/>
+          <rx-input name="admin_fee" :label="tx['enrolments.admin_fee']" :hint="tx['enrolments.money_hint']" id="enrolment-new-admin"/>
+          <rx-input name="instalments" type="number" :label="tx['enrolments.instalments']" value="1" id="enrolment-new-instalments"/>
+          <rx-checkbox name="terms" :label="tx['enrolments.terms_accepted']" id="enrolment-new-terms"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-include template="wl-kernel/integration_banner.html"/>
+    <rx-table :rows="enrolments" as="row" :key="row.id" :caption="tx['enrolments.title']" card>
+      <rx-column :label="tx['enrolments.number']"><a href="{{ route('edtech.enrolment', row.id) }}">{{ row.number }}</a></rx-column>
+      <rx-column :label="tx['enrolments.student']">{{ row.student }}</rx-column>
+      <rx-column :label="tx['enrolments.kind']" hide-narrow>{{ row.kind }}</rx-column>
+      <rx-column :label="tx['enrolments.subject']" hide-narrow>{{ row.subject }}</rx-column>
+      <rx-column :label="tx['enrolments.fee']">{{ row.fee }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['enrolments.empty']" icon="clipboard-list"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

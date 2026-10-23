@@ -1,0 +1,90 @@
+{#- edtech: one batch: its status, dates, weekly pattern, seats, tutor and
+    room, and the actions of the coordinator. Replace it with
+    resources/views/edtech/batch.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="course" :badge="status" :badge-kind="status_kind">
+      <template rx-if="can_open">
+        <rx-confirm :id="'batch-open-' ~ id" :label="tx['batches.open']" :action="route('edtech.batch_open', id)" method="POST"
+                    :title="tx['batches.open']" :message="tx['batches.open_message']" :confirm-label="tx['batches.open']" :cancel-label="tx['button_cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_change_tutor">
+        <rx-action-sheet :id="'batch-tutor-' ~ id" :label="tx['tutors.change']" :action="route('edtech.batch_tutor', id)"
+                         :title="tx['tutors.change']" :description="tx['tutors.change_description']" :submit-label="tx['tutors.change']" icon="user">
+          <rx-select name="tutor" :label="tx['batches.tutor_pick']" :options="tutor_options" :id="'batch-tutor-resource-' ~ id" required/>
+          <rx-input name="from" type="date" :label="tx['tutors.from']" :value="from_date" :id="'batch-tutor-from-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_wait">
+        <rx-action-sheet :id="'batch-waiting-' ~ id" :label="tx['waiting.add']" :action="route('edtech.batch_waiting', id)"
+                         :title="tx['waiting.add']" :description="tx['waiting.add_description']" :submit-label="tx['waiting.add']" icon="plus">
+          <rx-select name="student" :label="tx['waiting.student']" :options="[]" :placeholder="tx['enrolments.party_placeholder']" options-url="{{ route('edtech.party_options') }}" :id="'batch-waiting-student-' ~ id" required/>
+          <rx-select name="payer" :label="tx['waiting.payer']" :options="[]" :placeholder="tx['enrolments.party_placeholder']" options-url="{{ route('edtech.party_options') }}" :id="'batch-waiting-payer-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_cancel">
+        <rx-action-sheet :id="'batch-cancel-' ~ id" :label="tx['batches.cancel']" :action="route('edtech.batch_cancel', id)"
+                         :title="tx['batches.cancel']" :description="tx['batches.cancel_description']" :submit-label="tx['batches.cancel']" icon="trash" danger>
+          <rx-input name="reason" :label="tx['batches.reason']" :id="'batch-cancel-reason-' ~ id" required/>
+          <template rx-for="row in exit_rows">
+            <rx-select :name="'choice_' ~ row.id" :label="row.label" :options="exit_options" :selected="'withdraw'" :id="'batch-cancel-choice-' ~ row.id"/>
+          </template>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_terminate">
+        <rx-action-sheet :id="'batch-terminate-' ~ id" :label="tx['batches.terminate']" :action="route('edtech.batch_terminate', id)"
+                         :title="tx['batches.terminate']" :description="tx['batches.terminate_description']" :submit-label="tx['batches.terminate']" icon="trash" danger>
+          <rx-select name="reason" :label="tx['batches.reason']" :options="reason_options" :selected="'venue'" :id="'batch-terminate-reason-' ~ id"/>
+          <rx-input name="note" :label="tx['batches.termination_note']" :id="'batch-terminate-note-' ~ id"/>
+          <template rx-for="row in exit_rows">
+            <rx-select :name="'choice_' ~ row.id" :label="row.label" :options="exit_options" :selected="'withdraw'" :id="'batch-terminate-choice-' ~ row.id"/>
+          </template>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-alert rx-if="pending" kind="warning" :message="tx['batches.pending_approval']"/>
+    <rx-include template="wl-kernel/approval_card.html"/>
+    <rx-card :title="tx['batches.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['batches.course']" :value="course"/>
+        <rx-entry :label="tx['batches.dates']" :value="dates"/>
+        <rx-entry :label="tx['batches.pattern']" :value="pattern"/>
+        <rx-entry :label="tx['batches.seats']" :value="seats"/>
+        <rx-entry :label="tx['batches.free_seats']" :value="free_seats"/>
+        <rx-entry :label="tx['batches.tutor']" :value="tutor"/>
+        <rx-entry :label="tx['batches.room']" :value="room"/>
+      </rx-infolist>
+    </rx-card>
+    <template rx-if="show_waiting">
+      <rx-table :rows="waiting" as="row" :key="row.id" :caption="tx['waiting.title']" card>
+        <rx-column :label="tx['waiting.student']">{{ row.student }}</rx-column>
+        <rx-column :label="tx['waiting.payer']" hide-narrow>{{ row.payer }}</rx-column>
+        <rx-column :label="tx['waiting.since']">{{ row.since }}</rx-column>
+        <rx-column :label="tx['waiting.remove']">
+          <template rx-if="can_unwait">
+            <rx-confirm :id="'waiting-remove-' ~ row.id" :label="tx['waiting.remove']" :action="route('edtech.waiting_remove', row.id)" method="POST"
+                        :title="tx['waiting.remove']" :message="tx['waiting.remove_message']" :confirm-label="tx['waiting.remove']" :cancel-label="tx['button_cancel']" icon="trash"/>
+          </template>
+        </rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['waiting.empty']" icon="users"/></rx-slot>
+      </rx-table>
+    </template>
+    <rx-table :rows="tutor_history" as="row" :key="row.from" :caption="tx['tutors.history']" card>
+      <rx-column :label="tx['batches.tutor']">{{ row.tutor }}</rx-column>
+      <rx-column :label="tx['tutors.scope']">{{ row.scope }}</rx-column>
+      <rx-column :label="tx['tutors.from']">{{ row.from }}</rx-column>
+      <rx-column :label="tx['tutors.to']">{{ row.to }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['tutors.none']" icon="user"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="sessions" as="row" :key="row.id" :caption="tx['batches.sessions']" card>
+      <rx-column :label="tx['sessions.number']"><a href="{{ route('edtech.session', row.id) }}">{{ row.number }}</a></rx-column>
+      <rx-column :label="tx['sessions.date']">{{ row.date }}</rx-column>
+      <rx-column :label="tx['sessions.time']">{{ row.time }}</rx-column>
+      <rx-column :label="tx['sessions.tutor']" hide-narrow>{{ row.tutor }}</rx-column>
+      <rx-column :label="tx['sessions.make_up']" hide-narrow>{{ row.make_up }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+      <rx-column :label="tx['sessions.flag_column']" hide-narrow>{{ row.flag }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['batches.no_sessions']" icon="calendar-days"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

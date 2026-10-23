@@ -6,6 +6,11 @@
   <rx-stack>
     <rx-page-header :title="title" :subtitle="party_name" :back="route('wl_payments.refunds.index')" :back-label="tx['refunds.title']"
                     :badge="status_label" :badge-kind="status_kind">
+      <rx-action-sheet rx-if="can_pay" :id="'pay-refund-' ~ refund.id" :label="tx['refunds.pay.action']" :action="route('wl_payments.refunds.pay', refund.id)"
+                       :title="tx['refunds.pay.title']" :description="tx['refunds.pay.description']" :submit-label="tx['refunds.pay.submit']" icon="banknote">
+        <rx-select name="method" :label="tx['refunds.pay.method']" :options="pay_methods" :selected="pay_selected" :id="'pay-refund-method-' ~ refund.id" required/>
+        <rx-input name="reference" :label="tx['refunds.pay.reference']" :hint="tx['refunds.pay.reference_hint']" :id="'pay-refund-reference-' ~ refund.id" required/>
+      </rx-action-sheet>
       <template rx-if="can_fail"><rx-include template="wl-payments/_fail_sheet.html"/></template>
       <rx-confirm rx-if="can_retry" :id="'retry-refund-' ~ refund.id" :label="tx['refunds.retry.action']" :action="route('wl_payments.refunds.retry', refund.id)" method="POST"
                   :title="tx['refunds.retry.title']" :message="tx['refunds.retry.message']" :confirm-label="tx['refunds.retry.action']" icon="refresh-cw"/>

@@ -519,5 +519,46 @@ a tutor permit expiring · 3 leads with no follow-up for a week · a batch below
 5. Manager dashboard: batch fill rates, lead conversion, revenue per course.
    **Wow 3:** which courses actually make money.
 
+**Implemented as** `clients/demo-edtech/client.toml` (*Gulf Skills Training Centre LLC*, one legal
+entity, the modules parties, documents, notify, invoicing, ticketing, payments, sales, hr, attendance,
+scheduling and portal) and the seeds of `host/src/app/edtech_seed.rs`, `edtech_settings.rs` and
+`edtech_money.rs`: a fresh deployment starts with the three service types (trial class, placement test,
+one-to-one), the ticket categories, the document kinds (centre permit, course approval, police clearance,
+tutor permit or freelance visa, student ID, guardian consent, trademark registration, other certification),
+the lead sources, the loyalty programme, the onboarding checklists, the SOP library and the budget
+categories. `APP_ENV=local CLIENT_CONFIG=clients/demo-edtech/client.toml cargo run -p host -- migrate`,
+then `-- serve`.
+
+**The demo company (`edtech:demo`).** `host/src/app/edtech_demo/` makes *Gulf Skills Training Centre LLC*
+(one legal entity and no campuses in the client file, so one site) at a smaller size than the table above,
+with the same stories. `APP_ENV=local CLIENT_CONFIG=clients/demo-edtech/client.toml cargo run -p host --
+migrate`, then `-- edtech:demo` (or `-- db:seed`, which runs it in `local` only), then `-- serve`; the logins
+are on the login page, password `password123`: `admin@`, `owner@`, `manager@` (centre manager), `counsellor@`,
+`coordinator@` (academic coordinator), `accountant@` and five tutors (`tutor@`, `omar@`, `layla@`, `ravi@`,
+`hind@`), all `@gulfskills.example`. Every date is relative to today, money is in fils, names are in English
+and Arabic, and the seed is deterministic and idempotent (an audit entry marks it done). It takes about 7 s
+in a debug build.
+
+| Screen | What the seed puts there |
+|---|---|
+| Courses | eight courses in four programmes (language, IT, exam preparation, kids), two with a KHDA approval on file |
+| Batches | sixteen: planned (2), open (3, one full with a waiting list), running (5), completed (2), cancelled (2), terminated (2) |
+| Sessions | scheduled, held and cancelled (one with a make-up); held ones carry present, late, absent and excused marks, an excused notice earns a make-up right, two missed sessions in a row start the absence rule |
+| Tutors (wl-hr) | three employed and two freelance, with police clearance and permit as documents: one clearance ends in 20 days, one ended 10 days ago, one freelance permit ends in 34 days; the sessions after the date are flagged and the coordinator has the task |
+| Enrolments | pending payment (a discount waiting for the centre manager, a seat held 48 hours), active, frozen (by the student; by a block), withdrawn with a refund, lapsed, completed, transferred, a package of private sessions with credits used, instalments |
+| Students | nineteen students (children and a sixteen-year-old with guardians, one blocked) and a corporate payer |
+| Money | invoices issued by the accountant, cash, card and transfer payments, one online card payment charged back (the counsellor has the task to collect), refunds requested, approved and rejected |
+| Certificates | draft, issued (public page `/verify/certificate/{code}`), revoked, superseded and reissued |
+| Documents | the centre permit ends in 45 days, so the batches that run later stay planned and cannot be opened |
+| Leads, campaigns, tickets | leads in every state (three untouched for a week), four campaigns (draft, running, ended), a complaint, a fee query, a classroom issue and tasks |
+
+Everything a person does at a screen is a request to the app's own router as the demo user who does it,
+so the permissions, guards and machines are the real ones; a batch of the past is planned and opened on the
+seed's clock of that day and each session is marked on the evening it was taught. The only record inserted
+in a state is the online card payment (`insert_in_state`), because no gateway adapter is installed in the demo
+(as in the clinics demo). Not seeded: a membership enrolment with its subscription (the freeze with the cause
+*linked*), online self-booking of trial classes, assessments and submissions (Later in the spec), and the
+Abu Dhabi satellite, the 35 tutors and the volumes of the table above.
+
 **Must not appear.** Real students or minors' photos, real school names, real KHDA permit
 numbers.
