@@ -96,13 +96,13 @@ impl World {
 
 /// A cancelled job card that began to wait `back` days ago, with a storage fee
 /// of AED 50 a day agreed at check-in.
-async fn waiting(w: &World, sami: &AuthUser, back: i64, code: &str) -> JobCard {
+async fn waiting(w: &World, sami: &AuthUser, back: i64, code: &str, number: &str) -> JobCard {
     let owner = tenant(&w.app, "Mona Hassan").await;
     let vehicle = vehicles::create(
         w.state(),
         sami,
-        NewVehicle::new(Emirate::Dubai, "A", "12345", "Toyota", "Hilux", owner.0)
-            .vin("JTHBK262582012345")
+        NewVehicle::new(Emirate::Dubai, "A", number, "Toyota", "Hilux", owner.0)
+            .vin(&format!("JTHBK2625820{number}"))
             .odometer(52_000),
     )
     .await
@@ -144,7 +144,7 @@ async fn aut_05_real_release_invoices_six_days_of_storage() {
     settings::set(w.db(), settings::STORAGE_FEE_ENABLED, "1", None)
         .await
         .unwrap();
-    let card = waiting(&w, &sami, 9, "customer_stopped").await;
+    let card = waiting(&w, &sami, 9, "customer_stopped", "12345").await;
     let start = storage::start_of(&card).expect("cancelled");
     storage::process(w.state(), start + renox::chrono::Duration::days(3))
         .await
@@ -168,7 +168,7 @@ async fn aut_05_real_release_invoices_six_days_of_storage() {
 async fn aut_05_real_no_storage_invoice_when_off_or_after_a_total_loss() {
     let w = boot().await;
     let (_, sami) = w.staff("Sami", SERVICE_ADVISOR).await;
-    let off = waiting(&w, &sami, 9, "customer_stopped").await;
+    let off = waiting(&w, &sami, 9, "customer_stopped", "12345").await;
     let start = storage::start_of(&off).unwrap();
     storage::process(w.state(), start + renox::chrono::Duration::days(3))
         .await
@@ -181,7 +181,7 @@ async fn aut_05_real_no_storage_invoice_when_off_or_after_a_total_loss() {
     settings::set(w.db(), settings::STORAGE_FEE_ENABLED, "1", None)
         .await
         .unwrap();
-    let lost = waiting(&w, &sami, 9, "total_loss").await;
+    let lost = waiting(&w, &sami, 9, "total_loss", "22222").await;
     storage::process(w.state(), start + renox::chrono::Duration::days(3))
         .await
         .unwrap();
@@ -198,7 +198,7 @@ async fn aut_05_real_the_branch_manager_has_a_task_at_thirty_days() {
     let w = boot().await;
     let (_, sami) = w.staff("Sami", SERVICE_ADVISOR).await;
     let (_, _basma) = w.staff("Basma", BRANCH_MANAGER).await;
-    let card = waiting(&w, &sami, 31, "customer_stopped").await;
+    let card = waiting(&w, &sami, 31, "customer_stopped", "12345").await;
     let start = dubai_date(card.closed_at.expect("closed"));
     storage::process(w.state(), start + renox::chrono::Duration::days(29))
         .await
