@@ -1,0 +1,16 @@
+[package]
+name = "manufacturing"
+description = "Manufacturing: the vertical app for light manufacturers (work orders, production reporting, quality)."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../../crates/wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"

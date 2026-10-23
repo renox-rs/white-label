@@ -57,6 +57,7 @@
     "portal_deployments": "Workers on site",
     "portal_timesheets": "Timesheets",
     "deployments": "Deployments",
+    "work_orders": "Work orders",
     "absence": "Absence cases",
     "payroll": "Payroll runs",
     "settlements": "Final settlements",

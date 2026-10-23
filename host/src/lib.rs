@@ -300,6 +300,7 @@ pub const VERTICALS: &[&str] = &[
     "construction",
     "clinics",
     "manpower",
+    "manufacturing",
     "logistics",
     "edtech",
 ];
@@ -307,7 +308,7 @@ pub const VERTICALS: &[&str] = &[
 /// The refusal of a vertical app that is not built.
 fn unbuilt_vertical(name: &str) -> ConfigError {
     ConfigError(format!(
-        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction`, `clinics`, `manpower`, `logistics` and `edtech`"
+        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction`, `clinics`, `manpower`, `manufacturing`, `logistics` and `edtech`"
     ))
 }
 
@@ -329,6 +330,7 @@ fn mount_vertical(app: renox::App, name: &str) -> Result<renox::App, ConfigError
         "construction" => Ok(app.module(construction::Construction)),
         "clinics" => Ok(app.module(clinics::Clinics)),
         "manpower" => Ok(app.module(manpower::Manpower)),
+        "manufacturing" => Ok(app.module(manufacturing::Manufacturing)),
         "logistics" => Ok(app.module(logistics::Logistics)),
         "edtech" => Ok(app.module(edtech::EdTech)),
         other => Err(unbuilt_vertical(other)),

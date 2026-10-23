@@ -1,0 +1,224 @@
+{#- manufacturing: one work order (docs/UX.md section 2.2): its status, the facts, the
+    actions this person may run now (a blocked one is disabled and says why), and
+    the tabs Overview, Materials, Output, Approvals and Activity. Replace it with
+    resources/views/manufacturing/work_order.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['order.title'] ~ ': ' ~ number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="subtitle" :badge="status" :badge-kind="status_kind"
+                    :back="route('manufacturing.work_orders')" :back-label="tx['orders.title']"/>
+    <rx-form-errors/>
+    <rx-alert rx-for="note in notes" kind="info" :message="note"/>
+    <template rx-if="actions.release.shown and actions.release.blocked">
+      <rx-alert kind="warning" :message="actions.release.blocked"/>
+    </template>
+    <template rx-if="actions.complete.shown and actions.complete.blocked">
+      <rx-alert kind="warning" :message="actions.complete.blocked"/>
+    </template>
+    <template rx-if="actions.cancel.shown and actions.cancel.blocked">
+      <rx-alert kind="warning" :message="actions.cancel.blocked"/>
+    </template>
+    <template rx-if="actions.abort.shown and actions.abort.blocked">
+      <rx-alert kind="warning" :message="actions.abort.blocked"/>
+    </template>
+    <rx-row>
+      <template rx-if="actions.release.shown">
+        <template rx-if="actions.release.blocked">
+          <rx-button :label="tx['action.release']" variant="primary" icon="arrow-right" :disabled-reason="actions.release.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="release-order" :label="tx['action.release']" :action="route('manufacturing.release', id)"
+                           :title="tx['action.release']" :description="tx['action.release_hint']" :submit-label="tx['action.release']" variant="primary" icon="arrow-right"/>
+        </template>
+      </template>
+      <template rx-if="actions.start.shown">
+        <template rx-if="actions.start.blocked">
+          <rx-button :label="tx['action.start']" variant="primary" icon="play" :disabled-reason="actions.start.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="start-order" :label="tx['action.start']" :action="route('manufacturing.start', id)"
+                           :title="tx['action.start']" :description="tx['action.start_hint']" :submit-label="tx['action.start']" variant="primary" icon="play"/>
+        </template>
+      </template>
+      <template rx-if="actions.hold.shown">
+        <template rx-if="actions.hold.blocked">
+          <rx-button :label="tx['action.hold']" variant="secondary" icon="pause" :disabled-reason="actions.hold.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="hold-order" :label="tx['action.hold']" :action="route('manufacturing.hold', id)"
+                           :title="tx['action.hold']" :description="tx['action.hold_hint']" :submit-label="tx['action.hold']" variant="secondary" icon="pause">
+            <rx-select name="reason" :label="tx['form.hold_reason']" :options="hold_reasons" :selected="hold_selected"/>
+          </rx-action-sheet>
+        </template>
+      </template>
+      <template rx-if="actions.resume.shown">
+        <template rx-if="actions.resume.blocked">
+          <rx-button :label="tx['action.resume']" variant="primary" icon="play" :disabled-reason="actions.resume.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="resume-order" :label="tx['action.resume']" :action="route('manufacturing.resume', id)"
+                           :title="tx['action.resume']" :description="tx['action.resume_hint']" :submit-label="tx['action.resume']" variant="primary" icon="play"/>
+        </template>
+      </template>
+      <template rx-if="actions.issue.shown">
+        <template rx-if="actions.issue.blocked">
+          <rx-button :label="tx['action.issue']" variant="secondary" icon="package" :disabled-reason="actions.issue.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="issue-order" :label="tx['action.issue']" :action="route('manufacturing.issue', id)"
+                           :title="tx['action.issue']" :description="tx['action.issue_hint']" :submit-label="tx['action.issue']" variant="secondary" icon="package">
+            <rx-input name="item_id" type="number" :label="tx['form.material']" id="issue-order-item" required/>
+            <rx-input name="quantity" type="text" :label="tx['form.quantity']" :hint="tx['form.quantity_hint']" id="issue-order-quantity" required/>
+            <rx-input name="lot_id" type="number" :label="tx['form.lot']" :hint="tx['form.lot_hint']" id="issue-order-lot"/>
+          </rx-action-sheet>
+        </template>
+      </template>
+      <template rx-if="actions.report.shown">
+        <template rx-if="actions.report.blocked">
+          <rx-button :label="tx['action.report']" variant="secondary" icon="clipboard-check" :disabled-reason="actions.report.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="report-order" :label="tx['action.report']" :action="route('manufacturing.report', id)"
+                           :title="tx['action.report']" :description="tx['action.report_hint']" :submit-label="tx['action.report']" variant="secondary" icon="clipboard-check">
+            <rx-input name="good" type="text" :label="tx['form.good']" :hint="tx['form.quantity_hint']" id="report-order-good" required/>
+            <rx-input name="scrap" type="text" :label="tx['form.scrap']" :hint="tx['form.quantity_hint']" id="report-order-scrap"/>
+            <rx-textarea name="note" :label="tx['form.note']" id="report-order-note"/>
+          </rx-action-sheet>
+        </template>
+      </template>
+      <template rx-if="actions.complete.shown">
+        <template rx-if="actions.complete.blocked">
+          <rx-button :label="tx['action.complete']" variant="primary" icon="check" :disabled-reason="actions.complete.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="complete-order" :label="tx['action.complete']" :action="route('manufacturing.complete', id)"
+                           :title="tx['action.complete']" :description="tx['action.complete_hint']" :submit-label="tx['action.complete']" variant="primary" icon="check"/>
+        </template>
+      </template>
+      <template rx-if="actions.close.shown">
+        <template rx-if="actions.close.blocked">
+          <rx-button :label="tx['action.close']" variant="primary" icon="lock" :disabled-reason="actions.close.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="close-order" :label="tx['action.close']" :action="route('manufacturing.close', id)"
+                           :title="tx['action.close']" :description="tx['action.close_hint']" :submit-label="tx['action.close']" variant="primary" icon="lock"/>
+        </template>
+      </template>
+      <template rx-if="actions.unlink.shown">
+        <template rx-if="actions.unlink.blocked">
+          <rx-button :label="tx['action.unlink']" variant="secondary" icon="unlink" :disabled-reason="actions.unlink.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="unlink-order" :label="tx['action.unlink']" :action="route('manufacturing.unlink', id)"
+                           :title="tx['action.unlink']" :description="tx['action.unlink_hint']" :submit-label="tx['action.unlink']" variant="secondary" icon="unlink">
+            <rx-textarea name="reason" :label="tx['form.unlink_reason']" id="unlink-order-reason" required/>
+          </rx-action-sheet>
+        </template>
+      </template>
+      <template rx-if="actions.cancel.shown">
+        <template rx-if="actions.cancel.blocked">
+          <rx-button :label="tx['action.cancel']" variant="plain-danger" icon="circle-x" :disabled-reason="actions.cancel.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="cancel-order" :label="tx['action.cancel']" :action="route('manufacturing.cancel', id)"
+                           :title="tx['action.cancel']" :description="tx['action.cancel_hint']" :submit-label="tx['action.cancel']" variant="plain-danger" icon="circle-x" danger>
+            <rx-textarea name="reason" :label="tx['form.cancel_reason']" id="cancel-order-reason" required/>
+          </rx-action-sheet>
+        </template>
+      </template>
+      <template rx-if="actions.abort.shown">
+        <template rx-if="actions.abort.blocked">
+          <rx-button :label="tx['action.abort']" variant="plain-danger" icon="octagon-x" :disabled-reason="actions.abort.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="abort-order" :label="tx['action.abort']" :action="route('manufacturing.abort', id)"
+                           :title="tx['action.abort']" :description="tx['action.abort_hint']" :submit-label="tx['action.abort']" variant="plain-danger" icon="octagon-x" danger>
+            <rx-textarea name="reason" :label="tx['form.abort_reason']" id="abort-order-reason" required/>
+            <rx-input rx-for="row in returns" :name="row.name" type="text" :label="row.label" :hint="row.hint" :id="row.name"/>
+          </rx-action-sheet>
+        </template>
+      </template>
+    </rx-row>
+    <rx-tabs id="order-tabs" selected="overview" :label="tx['order.title']">
+      <rx-tab key="overview" :label="tx['tab.overview']">
+        <rx-stack>
+          <rx-card :title="tx['order.title']">
+            <rx-infolist columns="2">
+              <rx-entry rx-for="fact in facts" :label="fact.label" :value="fact.value"/>
+            </rx-infolist>
+          </rx-card>
+          <rx-card rx-if="costs" :title="tx['cost.title']">
+            <rx-infolist columns="2">
+              <rx-entry rx-for="fact in costs" :label="fact.label" :value="fact.value"/>
+            </rx-infolist>
+          </rx-card>
+          <rx-table rx-if="outcome" :rows="outcome" as="line" :key="line.what ~ line.item ~ line.quantity" :caption="tx['abort.outcome']" card>
+            <rx-column :label="tx['abort.what']">{{ line.what }}</rx-column>
+            <rx-column :label="tx['materials.item']">{{ line.item }}</rx-column>
+            <rx-column :label="tx['materials.quantity']" align="num">{{ line.quantity }}</rx-column>
+            <rx-column :label="tx['materials.value'] if show_costs else ''" align="num" hide-narrow>{{ line.value }}</rx-column>
+          </rx-table>
+        </rx-stack>
+      </rx-tab>
+      <rx-tab key="materials" :label="tx['tab.materials']">
+        <rx-stack>
+          <rx-table :rows="pick" as="line" :key="line.item" :caption="tx['materials.pick']" card>
+            <rx-column :label="tx['materials.item']">{{ line.item }}</rx-column>
+            <rx-column :label="tx['materials.required']" align="num">{{ line.required }}</rx-column>
+            <rx-slot name="empty"><rx-empty :title="tx['materials.pick_empty']" :message="tx['materials.pick_empty_text']" icon="package"/></rx-slot>
+          </rx-table>
+          <rx-table :rows="issues" as="line" :key="line.item ~ line.lot ~ line.quantity" :caption="tx['materials.issued']" card>
+            <rx-column :label="tx['materials.item']">{{ line.item }}</rx-column>
+            <rx-column :label="tx['materials.lot']" hide-narrow>{{ line.lot }}</rx-column>
+            <rx-column :label="tx['materials.quantity']" align="num">{{ line.quantity }}</rx-column>
+            <rx-column :label="tx['materials.returned']" align="num" hide-narrow>{{ line.returned }}</rx-column>
+            <rx-column :label="tx['materials.value'] if show_costs else ''" align="num" hide-narrow>{{ line.cost }}</rx-column>
+            <rx-column :label="tx['fields.status']"><rx-badge rx-if="line.waiting" kind="warning" :text="tx['materials.waiting']"/></rx-column>
+            <rx-slot name="empty"><rx-empty :title="tx['materials.empty']" :message="tx['materials.empty_text']" icon="package"/></rx-slot>
+          </rx-table>
+        </rx-stack>
+      </rx-tab>
+      <rx-tab key="output" :label="tx['tab.output']">
+        <rx-table :rows="reports" as="report" :key="report.at ~ report.good" :caption="tx['tab.output']" card>
+          <rx-column :label="tx['output.when']">{{ report.at }}</rx-column>
+          <rx-column :label="tx['output.good']" align="num">{{ report.good }}</rx-column>
+          <rx-column :label="tx['output.scrap']" align="num">{{ report.scrap }}</rx-column>
+          <rx-column :label="tx['output.by']" hide-narrow>{{ report.by }}</rx-column>
+          <rx-column :label="tx['output.note']" hide-narrow>{{ report.note }}</rx-column>
+          <rx-slot name="empty"><rx-empty :title="tx['output.empty']" :message="tx['output.empty_text']" icon="clipboard-check"/></rx-slot>
+        </rx-table>
+      </rx-tab>
+      <rx-tab key="approvals" :label="tx['tab.approvals']">
+        <rx-table :rows="approvals" as="approval" :key="approval.id" :caption="tx['tab.approvals']" card>
+          <rx-column :label="tx['approval.request']">{{ approval.title }}</rx-column>
+          <rx-column :label="tx['fields.status']"><rx-badge :kind="approval.status_kind" :text="approval.status"/></rx-column>
+          <rx-column :label="tx['approval.requester']" hide-narrow>{{ approval.requester }}</rx-column>
+          <rx-column :label="tx['approval.requested']" hide-narrow>{{ approval.requested }}</rx-column>
+          <rx-column :label="tx['approval.decided']" hide-narrow>{{ approval.decided }}</rx-column>
+          <rx-column :label="tx['approval.note']">{{ approval.note }}</rx-column>
+          <rx-column :label="tx['approval.decision']">
+            <template rx-if="approval.can_decide">
+              <rx-action-sheet :id="'approve-' ~ approval.id" :label="tx['approval.approve']" :action="route('wl_kernel.approvals.approve', approval.id)"
+                               :title="tx['approval.approve']" :submit-label="tx['approval.approve']" variant="primary" icon="check">
+                <rx-textarea name="comment" :label="tx['approval.comment']" :hint="tx['approval.comment_optional']" :id="'approve-comment-' ~ approval.id"/>
+              </rx-action-sheet>
+              <rx-action-sheet :id="'reject-' ~ approval.id" :label="tx['approval.reject']" :action="route('wl_kernel.approvals.reject', approval.id)"
+                               :title="tx['approval.reject']" :submit-label="tx['approval.reject']" icon="circle-x" danger>
+                <rx-textarea name="comment" :label="tx['approval.comment']" :hint="tx['approval.comment_required']" :id="'reject-comment-' ~ approval.id" required/>
+              </rx-action-sheet>
+            </template>
+          </rx-column>
+          <rx-slot name="empty"><rx-empty :title="tx['approval.empty']" :message="tx['approval.empty_text']" icon="clock"/></rx-slot>
+        </rx-table>
+      </rx-tab>
+      <rx-tab key="activity" :label="tx['tab.activity']">
+        <rx-table :rows="activity" as="row" :key="row.at ~ row.what" :caption="tx['tab.activity']" card>
+          <rx-column :label="tx['activity.when']">{{ row.at }}</rx-column>
+          <rx-column :label="tx['activity.what']">{{ row.what }}</rx-column>
+          <rx-column :label="tx['activity.by']" hide-narrow>{{ row.by }}</rx-column>
+          <rx-column :label="tx['activity.reason']">{{ row.reason }}</rx-column>
+          <rx-slot name="empty"><rx-empty :title="tx['activity.empty']" icon="clock"/></rx-slot>
+        </rx-table>
+      </rx-tab>
+    </rx-tabs>
+  </rx-stack>
+</rx-page>

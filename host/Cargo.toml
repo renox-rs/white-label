@@ -15,6 +15,7 @@ wl-kernel = { path = "../crates/wl-kernel" }
 property = { path = "../apps/property" }
 construction = { path = "../apps/construction" }
 manpower = { path = "../apps/manpower" }
+manufacturing = { path = "../apps/manufacturing" }
 accounting = { path = "../apps/accounting" }
 clinics = { path = "../apps/clinics" }
 edtech = { path = "../apps/edtech" }

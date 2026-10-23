@@ -974,6 +974,7 @@ dependencies = [
  "http-body-util",
  "logistics",
  "manpower",
+ "manufacturing",
  "property",
  "renox",
  "serde",
@@ -1500,6 +1501,16 @@ dependencies = [
 
 [[package]]
 name = "manpower"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-kernel",
+]
+
+[[package]]
+name = "manufacturing"
 version = "0.1.0"
 dependencies = [
  "renox",
