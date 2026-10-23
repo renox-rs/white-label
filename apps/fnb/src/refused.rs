@@ -130,3 +130,107 @@ pub(crate) async fn after_delivered(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wl_kernel::sales::{OrderLineView, OrderView, SalesOrderId};
+    use wl_kernel::{PartyId, Subject};
+
+    fn sale_line(id: i64, quantity_milli: i64, gross: i64) -> OrderLineView {
+        OrderLineView {
+            id,
+            line_no: id,
+            item_code: format!("ITEM-{id}"),
+            description: format!("Item {id}"),
+            is_item: true,
+            quantity_milli,
+            fulfilled_milli: 0,
+            cancelled_milli: 0,
+            unit_price: gross / (quantity_milli / 1000).max(1),
+            gross,
+        }
+    }
+
+    fn view(lines: Vec<OrderLineView>) -> OrderView {
+        OrderView {
+            id: SalesOrderId(1),
+            number: "SO-1".to_owned(),
+            party: PartyId(1),
+            channel: "website".to_owned(),
+            external_number: None,
+            payment_mode: "online".to_owned(),
+            prepaid: true,
+            currency: "AED".to_owned(),
+            gross_total: lines.iter().map(|l| l.gross).sum(),
+            legal_entity: None,
+            status: "confirmed".to_owned(),
+            revision: 1,
+            refunded_amount: 0,
+            aggregator: false,
+            lines,
+        }
+    }
+
+    fn delivered(subject_type: &str, id: i64, refused_milli: i64) -> DeliveredLine {
+        DeliveredLine {
+            line: Some(Subject::new(subject_type, id)),
+            description: "line".to_owned(),
+            quantity_milli: 2_000,
+            delivered_milli: 2_000 - refused_milli,
+            refused_milli,
+            refusal_reason: (refused_milli > 0).then(|| "wrong_item".to_owned()),
+        }
+    }
+
+    #[test]
+    fn a_line_refused_in_full_is_worth_the_whole_line() {
+        let view = view(vec![sale_line(7, 2_000, 8_000)]);
+        let lines = [delivered(SALE_LINE_SUBJECT_TYPE, 7, 2_000)];
+        assert_eq!(refused_value(&lines, &view), vec![(7, 8_000)]);
+    }
+
+    #[test]
+    fn a_part_of_a_line_is_worth_its_share() {
+        let view = view(vec![sale_line(7, 2_000, 8_000)]);
+        let lines = [delivered(SALE_LINE_SUBJECT_TYPE, 7, 500)];
+        assert_eq!(refused_value(&lines, &view), vec![(7, 2_000)]);
+    }
+
+    #[test]
+    fn a_line_nothing_was_refused_of_is_left_out() {
+        let view = view(vec![sale_line(7, 2_000, 8_000), sale_line(8, 1_000, 1_200)]);
+        let lines = [
+            delivered(SALE_LINE_SUBJECT_TYPE, 7, 0),
+            delivered(SALE_LINE_SUBJECT_TYPE, 8, 1_000),
+        ];
+        assert_eq!(refused_value(&lines, &view), vec![(8, 1_200)]);
+    }
+
+    #[test]
+    fn a_line_of_another_source_or_an_unknown_sale_line_is_left_out() {
+        let view = view(vec![sale_line(7, 2_000, 8_000)]);
+        let lines = [
+            delivered("logistics.shipment_line", 7, 1_000),
+            delivered(SALE_LINE_SUBJECT_TYPE, 99, 1_000),
+            DeliveredLine {
+                line: None,
+                ..delivered(SALE_LINE_SUBJECT_TYPE, 7, 1_000)
+            },
+        ];
+        assert!(refused_value(&lines, &view).is_empty());
+    }
+
+    #[test]
+    fn a_sale_line_without_quantity_is_never_divided_by() {
+        let view = view(vec![sale_line(7, 0, 0)]);
+        let lines = [delivered(SALE_LINE_SUBJECT_TYPE, 7, 1_000)];
+        assert!(refused_value(&lines, &view).is_empty());
+    }
+
+    #[test]
+    fn a_refused_line_is_the_business_fault_of_category_wrong_item() {
+        assert_eq!(CATEGORY, "wrong_item");
+        assert_eq!(PARTY, "business");
+    }
+}
