@@ -460,6 +460,7 @@
 | BL-MPW-31 | [#511](https://github.com/renox-rs/white-label/issues/511) |
 | BL-MPW-32 | [#512](https://github.com/renox-rs/white-label/issues/512) |
 | BL-MPW-33 | [#513](https://github.com/renox-rs/white-label/issues/513) |
+| BL-MPW-34 | [#518](https://github.com/renox-rs/white-label/issues/518) |
 | BL-EDU-01 | [#436](https://github.com/renox-rs/white-label/issues/436) |
 | BL-EDU-02 | [#437](https://github.com/renox-rs/white-label/issues/437) |
 | BL-EDU-03 | [#438](https://github.com/renox-rs/white-label/issues/438) |
