@@ -14,9 +14,6 @@ use crate::permissions;
 use crate::texts::{screen_texts, t};
 use crate::work_order::{WorkOrder, WorkOrderStatus};
 
-/// The address of the page.
-pub(crate) const URL: &str = "/manufacturing/aborted";
-
 /// One aborted work order.
 #[derive(Debug, Serialize, Clone)]
 pub(crate) struct Row {

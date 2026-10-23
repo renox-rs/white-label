@@ -1243,7 +1243,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("manufacturing.screen.portal.invoice", "Invoice"),
     ("manufacturing.screen.portal.balance", "Balance"),
     ("manufacturing.screen.portal.due", "Due"),
-    ("manufacturing.screen.portal.dispute", "Dispute this invoice"),
+    (
+        "manufacturing.screen.portal.dispute",
+        "Dispute this invoice",
+    ),
     (
         "manufacturing.screen.portal.dispute_hint",
         "Tell us what is wrong with the invoice. Reminders for it pause while we look.",
