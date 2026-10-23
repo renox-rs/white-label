@@ -6,6 +6,8 @@ pub mod balance;
 pub mod chase;
 pub mod config;
 pub mod dispatch;
+pub mod dispatch_deliver;
+mod dispatch_deliver_pages;
 mod dispatch_events;
 mod dispatch_pages;
 pub mod dispatch_pick;
@@ -385,6 +387,7 @@ impl Module for WlInventory {
             .merge(transfer_screens::routes())
             .merge(receipt_screens::routes())
             .merge(dispatch_pages::routes())
+            .merge(dispatch_deliver_pages::routes())
             .merge(dispatch_screens::routes())
     }
 
@@ -702,6 +705,7 @@ impl Module for WlInventory {
             .register();
         events::register(app);
         dispatch_events::register(app);
+        dispatch_deliver::register(app);
         hold_decide::register(app);
         // `STK.RUL.07`: the deciders of an open hold are reminded every H
         // hours and the escalation role told every 2 x H.

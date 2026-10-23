@@ -15,6 +15,7 @@
 //! | the entity, the lines, the draft, the machine | this file | base of #240 to #244 |
 //! | `pick` (released lots, no held quantity, stock reserved), `cancel`, re-picking a line | [`crate::dispatch_pick`] | #240 |
 //! | `dispatch` (no lot on hold, the credit re-check, the hand-over, the movements, the delivery note) | [`crate::dispatch_send`] | #240 |
+//! | `confirm_delivery` per line and the refused goods received back into quarantine | [`crate::dispatch_deliver`] | #241 |
 //! | the kernel events and the listeners of `wl-delivery`'s events | [`crate::dispatch_events`] | all |
 //!
 //! Not built here: `return` (comes with the dispatch return issue) and
@@ -499,6 +500,7 @@ impl StateMachine for Dispatch {
             .terminal();
         let machine = crate::dispatch_pick::add_to(machine);
         let machine = crate::dispatch_send::add_to(machine);
+        let machine = crate::dispatch_deliver::add_to(machine);
         machine
     }
 }

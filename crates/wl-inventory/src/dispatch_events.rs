@@ -16,9 +16,11 @@
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use wl_kernel::Subject;
-use wl_kernel::inventory::{DispatchSent, DispatchedLine, ITEM_SUBJECT_TYPE, LOT_SUBJECT_TYPE};
+use wl_kernel::inventory::{
+    DISPATCH_LINE_SUBJECT_TYPE, DispatchSent, DispatchedLine, ITEM_SUBJECT_TYPE, LOT_SUBJECT_TYPE,
+};
 
-use crate::dispatch::{Dispatch, DispatchLine, lines_of};
+use crate::dispatch::{Dispatch, DispatchLine, lines_of, of_delivery_source};
 use crate::dispatch_send::DISPATCH;
 use crate::item::value_of;
 
@@ -38,6 +40,18 @@ pub fn event_lines(lines: &[DispatchLine]) -> Vec<DispatchedLine> {
             value: value_of(line.quantity_milli, line.unit_cost),
         })
         .collect()
+}
+
+/// The line id behind a source line reference of a delivery event.
+pub(crate) fn line_id(line: &Option<Subject>) -> Option<i64> {
+    line.as_ref()
+        .filter(|line| line.subject_type == DISPATCH_LINE_SUBJECT_TYPE)
+        .map(|line| line.subject_id)
+}
+
+/// The dispatch a delivery event is about, `None` for another source.
+pub(crate) async fn dispatch_of(state: &AppState, source: &Subject) -> Result<Option<Dispatch>> {
+    of_delivery_source(&state.db, source).await
 }
 
 /// The recipient of `dispatch`, when it is a party.
@@ -103,5 +117,15 @@ mod tests {
             (8_000, 2_000)
         );
         assert_eq!(lines[0].value, 50_000);
+    }
+
+    #[test]
+    fn only_a_dispatch_line_reference_names_a_line() {
+        assert_eq!(
+            line_id(&Some(Subject::new(DISPATCH_LINE_SUBJECT_TYPE, 3))),
+            Some(3)
+        );
+        assert_eq!(line_id(&Some(Subject::new("sales.line", 3))), None);
+        assert_eq!(line_id(&None), None);
     }
 }
