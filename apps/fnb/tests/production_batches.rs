@@ -15,10 +15,14 @@ use wl_inventory::{LotStatus, StockHold};
 use wl_kernel::Subject;
 use wl_kernel::approvals::{self, ApprovalRequest};
 
+use wl_inventory::balance::available_to_take;
+use wl_inventory::permissions as iperm;
+use wl_inventory::transfer::{NewTransfer, NewTransferLine};
+
 use support::stock::{
     finish, hold, kitchen, lot, lot_now, made_lot, plan, reload, start, wastage_of,
 };
-use support::{World, boot};
+use support::{World, boot, make_user};
 
 /// The hold lines of the hold `hold`, as stored now.
 async fn lines_of(w: &World, hold: &StockHold) -> Vec<wl_inventory::StockHoldLine> {
@@ -381,4 +385,82 @@ async fn a_planned_batch_is_cancelled_and_a_started_one_is_not() {
     )
     .await
     .assert_status(422);
+}
+
+/// AC3 (every outlet): the lot of B2 was transferred in part to the Marina
+/// kitchen; when the lot is held, nothing of it can be taken at the central
+/// kitchen or at the Marina kitchen, and once it is released it can again.
+#[renox::test]
+async fn a_held_lot_is_unavailable_at_every_location_its_batch_was_transferred_to() {
+    let w = boot().await;
+    let k = kitchen(&w).await;
+    let t5 = lot(&w, &k.tomato, "T5", &k.central, 40_000, 6).await;
+    let b2 = plan(&w, &k).await;
+    start(&w, &k.chef, &k, &b2, &t5).await.assert_status(303);
+    finish(&w, &k.chef, &b2, "10", 4).await.assert_status(303);
+    let l20 = made_lot(&w, &b2).await;
+    let mover = make_user(w.db(), "Tariq", &[iperm::STOCK_TRANSFER, iperm::STOCK_VIEW]).await;
+    let transfer = wl_inventory::transfer::create_draft(
+        w.db(),
+        None,
+        NewTransfer {
+            from_location_id: k.central.id,
+            to_location_id: w.store.id,
+            lines: vec![NewTransferLine {
+                item_id: k.sauce.id,
+                lot_id: Some(l20.id),
+                quantity_milli: 4_000,
+            }],
+        },
+    )
+    .await
+    .unwrap();
+    w.post(&mover, &format!("/transfers/{}/send", transfer.id), &[])
+        .await;
+    w.post(&mover, &format!("/transfers/{}/receive", transfer.id), &[])
+        .await;
+    let free = |location: i64| {
+        let db = w.db().clone();
+        let sauce = k.sauce.clone();
+        async move { available_to_take(&db, &sauce, location).await.unwrap() }
+    };
+    assert_eq!(free(k.central.id).await, 6_000);
+    assert_eq!(free(w.store.id).await, 4_000);
+
+    let placed = hold(&w, &l20, "quality").await;
+
+    assert_eq!(reload(&w, &b2).await.status, BatchStatus::OnHold);
+    assert_eq!(free(k.central.id).await, 0, "blocked where it was made");
+    assert_eq!(free(w.store.id).await, 0, "blocked where it was sent");
+
+    // One line per location the lot is at: the chef decides each.
+    let held_lines = lines_of(&w, &placed).await;
+    assert_eq!(held_lines.len(), 2);
+    for line in held_lines {
+        w.post(
+            &k.chef,
+            &format!("/stock-hold-lines/{}/release", line.id),
+            &[],
+        )
+        .await
+        .assert_ok();
+    }
+    assert_eq!(free(k.central.id).await, 6_000);
+    assert_eq!(free(w.store.id).await, 4_000);
+}
+
+/// AC1 (expired lot): starting a batch with a lot past its expiry date is
+/// refused, naming the lot, and the batch stays planned.
+#[renox::test]
+async fn starting_a_batch_with_an_expired_lot_is_refused() {
+    let w = boot().await;
+    let k = kitchen(&w).await;
+    let old = lot(&w, &k.tomato, "T1", &k.central, 40_000, -1).await;
+    let b1 = plan(&w, &k).await;
+
+    let refused = start(&w, &k.chef, &k, &b1, &old).await;
+
+    refused.assert_status(422);
+    assert!(refused.text().contains("T1"), "{}", refused.text());
+    assert_eq!(reload(&w, &b1).await.status, BatchStatus::Planned);
 }
