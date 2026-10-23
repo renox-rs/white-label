@@ -12,6 +12,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "The code printed on the certificate, for example 3WDJL0ICIJ",
     ),
     ("edtech.verify.check", "Check the certificate"),
+    (
+        "edtech.sessions.problem.past",
+        "The session cannot move to a time that has already passed. Give a later date or time.",
+    ),
     ("edtech.desk.action", "Record a payment"),
     (
         "edtech.desk.description",

@@ -498,6 +498,10 @@ pub async fn reschedule(
     let starts_at = BusinessCalendar::default().from_local(date.and_time(time));
     let ends_at = starts_at + length;
     if session.status == SessionStatus::Scheduled {
+        // A class that has not been taught moves to a time that has not come.
+        if starts_at <= renox::db::now() {
+            return Err(refused(english("edtech.sessions.problem.past", &[])));
+        }
         if let Some(resource) = session.tutor_resource_id {
             let batch = Batch::find_or_404(&state.db, session.batch_id).await?;
             let tutor = Tutor {
