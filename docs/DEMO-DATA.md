@@ -428,6 +428,17 @@ ready but not collected for 5 days.
 
 **Must not appear.** Real car-brand logos, real insurer names, real VINs or plates.
 
+**Implemented as** `clients/demo-auto/client.toml` (a fictional Deira / Sharjah parts trader with a
+workshop; parties, documents, notify, invoicing, ticketing, payments, sales, hr, scheduling,
+inventory and portal) and the seeds of `host/src/app/auto_seed.rs`, `auto_settings.rs` and
+`auto_money.rs`: a fresh deployment starts with the workshop service types, the ticket categories,
+the document kinds (police accident report, claim documents, trade licence, fleet contract), the
+08 values for the shared modules (back-orders on the counter, phone and sales rep channels, the
+cheque, cash and stock limits, the loyalty programme, the onboarding checklists and the SOP
+library) and the two settings pages. **There is no demo company yet: the command `auto:demo` is
+future work and not built**, so the 10-minute script above is walked by hand on an empty
+deployment (the tests of `apps/auto` and `host/tests/auto_*.rs` hold the fixtures).
+
 ---
 
 ## 09 — Manpower: *Khaleej Workforce Solutions*
