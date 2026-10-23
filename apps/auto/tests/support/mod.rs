@@ -14,7 +14,13 @@ use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_kernel::calendar::BusinessCalendar;
 use wl_kernel::documents::dubai_date;
+use wl_kernel::parties::provide_directory;
 use wl_scheduling::WlScheduling;
+
+/// The stand-ins of the parties and the invoice book.
+pub mod money;
+
+pub use money::{Books, People};
 
 /// The pages extend the app's layout; a package test has no app, so it
 /// brings the smallest one.
@@ -53,11 +59,16 @@ pub fn at(date: NaiveDate, hour: u32, minute: u32) -> DateTime {
 /// Provides the probe route that gives a test the signed-in user.
 struct Harness {
     who: Arc<Mutex<Option<renox::AuthUser>>>,
+    people: People,
 }
 
 impl Module for Harness {
     fn name(&self) -> &'static str {
         "auto-test-harness"
+    }
+
+    fn register(&self, app: &mut Registry) {
+        provide_directory(app, self.people.clone());
     }
 
     fn routes(&self) -> Routes {
@@ -76,6 +87,8 @@ impl Module for Harness {
 pub struct Garage {
     /// The app.
     pub app: TestApp,
+    /// The parties the workshop knows.
+    pub people: People,
     who: Arc<Mutex<Option<renox::AuthUser>>>,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
@@ -88,6 +101,7 @@ pub async fn boot() -> Garage {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, LAYOUT).unwrap();
     let who = Arc::new(Mutex::new(None));
+    let people = People::default();
     let mut scheduling_module = WlScheduling::new();
     for (code, initiated_by) in auto::reasons::SCHEDULING_REASON_CODES {
         scheduling_module = scheduling_module.reason_code(code, *initiated_by);
@@ -98,7 +112,10 @@ pub async fn boot() -> Garage {
         .module(renox::audit::Audit)
         .module(scheduling_module)
         .module(auto::Auto)
-        .module(Harness { who: who.clone() });
+        .module(Harness {
+            who: who.clone(),
+            people: people.clone(),
+        });
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -109,6 +126,7 @@ pub async fn boot() -> Garage {
         .expect("wl:install runs");
     Garage {
         app,
+        people,
         who,
         _views: views,
     }
