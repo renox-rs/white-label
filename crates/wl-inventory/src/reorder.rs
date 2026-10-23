@@ -766,4 +766,19 @@ mod tests {
         assert_eq!(machine.find(DISMISS).unwrap().to_state(), Some("dismissed"));
         assert_eq!(machine.find(CONVERT).unwrap().to_state(), Some("converted"));
     }
+
+    #[test]
+    fn stk_rul_04_an_open_purchase_order_covers_a_back_order_once() {
+        // 3 back-ordered at one location, 1 on order: 2 are uncovered.
+        let mut cover = 1_000;
+        assert_eq!(uncovered_milli(3_000, &mut cover), 2_000);
+        assert_eq!(cover, 0);
+        // The cover is used up across locations, never twice.
+        let mut cover = 4_000;
+        assert_eq!(uncovered_milli(3_000, &mut cover), 0);
+        assert_eq!(uncovered_milli(3_000, &mut cover), 2_000);
+        // Nothing on order: the whole back-order is demand.
+        let mut none = 0;
+        assert_eq!(uncovered_milli(2_000, &mut none), 2_000);
+    }
 }
