@@ -20,6 +20,7 @@ pub(crate) mod aborted_page;
 pub(crate) mod conformity_page;
 pub(crate) mod exports_page;
 pub(crate) mod inspections_page;
+pub(crate) mod names;
 pub(crate) mod ncr_page;
 pub(crate) mod ncrs_page;
 pub(crate) mod recall_page;

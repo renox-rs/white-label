@@ -105,25 +105,23 @@ pub(crate) fn may_see(user: &AuthUser, ncr: &Ncr) -> bool {
 }
 
 /// The item of an NCR in words.
-pub(crate) fn item_text(lang: &Lang, item_id: i64) -> String {
-    tf(lang, "manufacturing.screen.item_name", &[("id", &item_id)])
+pub(crate) async fn item_text(state: &AppState, lang: &Lang, item_id: i64) -> String {
+    super::names::item_text(state, lang, item_id).await
 }
 
 /// The lot of an NCR in words: the number on the pack, else a dash.
-pub(crate) fn lot_text(lang: &Lang, ncr: &Ncr) -> String {
-    ncr.lot_number
-        .clone()
-        .or_else(|| ncr.lot_id.map(|id| id.to_string()))
-        .map_or_else(
-            || t(lang, "manufacturing.screen.not_set"),
-            |number| {
-                tf(
-                    lang,
-                    "manufacturing.screen.ncr.lot_name",
-                    &[("number", &number)],
-                )
-            },
-        )
+pub(crate) async fn lot_text(state: &AppState, lang: &Lang, ncr: &Ncr) -> String {
+    if let Some(number) = &ncr.lot_number {
+        return tf(
+            lang,
+            "manufacturing.screen.ncr.lot_name",
+            &[("number", number)],
+        );
+    }
+    match ncr.lot_id {
+        Some(id) => super::names::lot_text(state, lang, id).await,
+        None => t(lang, "manufacturing.screen.not_set"),
+    }
 }
 
 /// `GET /manufacturing/ncrs`: the page for a browser, JSON otherwise.
@@ -153,8 +151,8 @@ pub(crate) async fn show(
             id: ncr.id,
             url: super::ncr_page::url(ncr.id),
             number: ncr.number.clone(),
-            item: item_text(&lang, ncr.item_id),
-            lot: lot_text(&lang, &ncr),
+            item: item_text(&state, &lang, ncr.item_id).await,
+            lot: lot_text(&state, &lang, &ncr).await,
             quantity: quantity_text(ncr.quantity_milli),
             cause: word(&lang, "cause", ncr.cause.as_str()),
             disposition: ncr.disposition.map_or_else(

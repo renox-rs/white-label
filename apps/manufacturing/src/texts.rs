@@ -612,7 +612,8 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("manufacturing.screen.not_set", "Not set"),
     ("manufacturing.screen.no_line", "No line yet"),
-    ("manufacturing.screen.item_name", "Item {{ id }}"),
+    ("manufacturing.screen.item_name", "{{ name }} ({{ code }})"),
+    ("manufacturing.screen.item_unknown", "Item {{ id }}"),
     ("manufacturing.screen.source.stock", "Stock"),
     (
         "manufacturing.screen.source.sales_order",

@@ -249,8 +249,31 @@ pub struct ReturnMove {
     pub updated_at: Option<DateTime>,
 }
 
-fn item_name(id: i64) -> String {
-    english("manufacturing.screen.item_name", &[("id", &id)])
+/// The item in English words: its name and code, else `Item 6`.
+async fn item_name(state: &AppState, id: i64) -> String {
+    let subject = Subject::new(wl_kernel::inventory::ITEM_SUBJECT_TYPE, id);
+    match wl_kernel::inventory::stock_service(state)
+        .item_label(state, &subject)
+        .await
+    {
+        Ok(Some(label)) => english(
+            "manufacturing.screen.item_name",
+            &[("name", &label.name), ("code", &label.code)],
+        ),
+        _ => english("manufacturing.screen.item_unknown", &[("id", &id)]),
+    }
+}
+
+/// The lot in English words: `Lot L-001`, else `Lot 10`.
+async fn lot_name(state: &AppState, lot: &Subject) -> String {
+    let number = match wl_kernel::inventory::stock_service(state)
+        .lot_number(state, lot)
+        .await
+    {
+        Ok(Some(number)) => number,
+        _ => lot.subject_id.to_string(),
+    };
+    english("manufacturing.screen.ncr.lot_name", &[("number", &number)])
 }
 
 /// The key of a quarantine event: the dispatch, whether it came back whole,
@@ -384,8 +407,8 @@ async fn inspect(
         .start(state, INSPECTION_TEMPLATE, on.clone())
         .await?;
     let lot_name = match &line.lot {
-        Some(lot) => lot.to_string(),
-        None => item_name(line.item.subject_id),
+        Some(lot) => lot_name(state, lot).await,
+        None => item_name(state, line.item.subject_id).await,
     };
     let reason = line.reason.clone().unwrap_or_default();
     if let Some(run) = run {
@@ -514,7 +537,7 @@ async fn decide(state: &AppState, event: &DispatchGoodsQuarantined, number: &str
             },
         )
         .await?;
-        let item_text = item_name(item);
+        let item_text = item_name(state, item).await;
         let params: [(&str, &(dyn std::fmt::Display + Sync)); 6] = [
             ("order", &order_number),
             ("line", &line_id),

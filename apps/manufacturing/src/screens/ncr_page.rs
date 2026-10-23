@@ -278,11 +278,11 @@ async fn build(state: &AppState, user: &AuthUser, lang: &Lang, ncr: &Ncr) -> Res
     let mut facts = vec![
         Fact {
             label: t(lang, "manufacturing.screen.fact.item"),
-            value: item_text(lang, ncr.item_id),
+            value: item_text(state, lang, ncr.item_id).await,
         },
         Fact {
             label: t(lang, "manufacturing.screen.ncr.fact.lot"),
-            value: lot_text(lang, ncr),
+            value: lot_text(state, lang, ncr).await,
         },
         Fact {
             label: t(lang, "manufacturing.screen.fact.quantity"),
@@ -521,7 +521,7 @@ async fn build(state: &AppState, user: &AuthUser, lang: &Lang, ncr: &Ncr) -> Res
         tx: screen_texts(lang),
         id: ncr.id,
         number: ncr.number.clone(),
-        subtitle: item_text(lang, ncr.item_id),
+        subtitle: item_text(state, lang, ncr.item_id).await,
         status: word(lang, "ncr_status", status.as_str()),
         status_key: status.as_str().to_owned(),
         status_kind: status_kind(status),

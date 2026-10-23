@@ -132,7 +132,7 @@ pub(crate) async fn show(
             id: order.id,
             url: super::work_order_page::url(order.id),
             number: order.number.clone(),
-            item: super::work_order_page::item_text(&lang, order.item_id),
+            item: super::work_order_page::item_text(&state, &lang, order.item_id).await,
             line,
             quantity: quantity_text(order.quantity_milli),
             produced: quantity_text(order.good_milli),

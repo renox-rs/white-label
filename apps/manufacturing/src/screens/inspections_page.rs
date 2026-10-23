@@ -116,11 +116,7 @@ pub(crate) async fn show(
         rows.push(Row {
             id: found.id,
             lot,
-            item: tf(
-                &lang,
-                "manufacturing.screen.item_name",
-                &[("id", &found.item_id)],
-            ),
+            item: super::names::item_text(&state, &lang, found.item_id).await,
             quantity: quantity_text(found.quantity_milli),
             reason: found.reason.clone().unwrap_or_default(),
             dispatch: found.dispatch_number.clone(),

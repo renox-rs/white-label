@@ -17,8 +17,7 @@
 //!   *Cancel* of a started work order is drawn disabled, naming `abort`.
 //! - **Costs** (actual cost, scrap value and loss) show only to holders of
 //!   `work_orders.cost_view` (`FIN.ACL.08`); the JSON leaves them out too.
-//! - The item shows as `Item 9` until the page can read the item catalogue
-//!   through a kernel contract.
+//! - The item shows as its name and code, read through the stock service.
 
 use renox::axum::http::HeaderMap;
 use renox::prelude::*;
@@ -72,9 +71,9 @@ pub(crate) async fn source_text(
     ))
 }
 
-/// The item of a work order in words.
-pub(crate) fn item_text(lang: &Lang, item_id: i64) -> String {
-    tf(lang, "manufacturing.screen.item_name", &[("id", &item_id)])
+/// The item of a work order in words: its name and code.
+pub(crate) async fn item_text(state: &AppState, lang: &Lang, item_id: i64) -> String {
+    super::names::item_text(state, lang, item_id).await
 }
 
 /// A fact of the overview.
@@ -369,7 +368,7 @@ async fn build(
     let mut facts = vec![
         Fact {
             label: t(lang, "manufacturing.screen.fact.item"),
-            value: item_text(lang, order.item_id),
+            value: item_text(state, lang, order.item_id).await,
         },
         Fact {
             label: t(lang, "manufacturing.screen.fact.line"),
@@ -429,7 +428,7 @@ async fn build(
     if let Some(lot) = order.output_lot_id {
         facts.push(Fact {
             label: t(lang, "manufacturing.screen.fact.output_lot"),
-            value: tf(lang, "manufacturing.screen.fact.lot_name", &[("id", &lot)]),
+            value: super::names::lot_text(state, lang, lot).await,
         });
     }
     if let Some(reason) = order.unlink_reason.as_deref() {
@@ -482,20 +481,24 @@ async fn build(
         .await?
         .into_iter()
         .filter(|line| !line.withdrawn)
-        .map(|line| PickView {
-            item: item_text(lang, line.item_id),
+        .collect::<Vec<_>>();
+    let mut pick_views = Vec::new();
+    for line in pick {
+        pick_views.push(PickView {
+            item: item_text(state, lang, line.item_id).await,
             required: quantity_text(line.required_milli),
-        })
-        .collect();
+        });
+    }
+    let pick = pick_views;
     let issued = MaterialIssue::of_order(&state.db, order.id).await?;
-    let issues: Vec<IssueLine> = issued
-        .iter()
-        .map(|issue| IssueLine {
-            item: item_text(lang, issue.item_id),
-            lot: issue.lot_id.map_or_else(
-                || not_set.clone(),
-                |lot| tf(lang, "manufacturing.screen.fact.lot_name", &[("id", &lot)]),
-            ),
+    let mut issues: Vec<IssueLine> = Vec::new();
+    for issue in &issued {
+        issues.push(IssueLine {
+            item: item_text(state, lang, issue.item_id).await,
+            lot: match issue.lot_id {
+                Some(lot) => super::names::lot_text(state, lang, lot).await,
+                None => not_set.clone(),
+            },
             quantity: quantity_text(issue.quantity_milli),
             returned: quantity_text(issue.returned_milli),
             cost: if show_costs {
@@ -504,8 +507,8 @@ async fn build(
                 String::new()
             },
             waiting: issue.pending_issue_id.is_some(),
-        })
-        .collect();
+        });
+    }
 
     // What can go back to the store in the abort sheet.
     let mut returns = Vec::new();
@@ -523,7 +526,7 @@ async fn build(
             label: tf(
                 lang,
                 "manufacturing.screen.abort.return_label",
-                &[("item", &item_text(lang, key.0))],
+                &[("item", &item_text(state, lang, key.0).await)],
             ),
             hint: tf(
                 lang,
@@ -608,9 +611,10 @@ async fn build(
     {
         outcome.push(OutcomeLine {
             what: word(lang, "outcome", &line.kind),
-            item: line
-                .item_id
-                .map_or_else(|| not_set.clone(), |item| item_text(lang, item)),
+            item: match line.item_id {
+                Some(item) => item_text(state, lang, item).await,
+                None => not_set.clone(),
+            },
             quantity: quantity_text(line.quantity_milli),
             value: if show_costs {
                 super::aed(line.value)
@@ -751,7 +755,7 @@ async fn build(
         tx: screen_texts(lang),
         id: order.id,
         number: order.number.clone(),
-        subtitle: item_text(lang, order.item_id),
+        subtitle: item_text(state, lang, order.item_id).await,
         status: word(lang, "status", status.as_str()),
         status_key: status.as_str().to_owned(),
         status_kind: super::work_orders_page::status_kind(status),

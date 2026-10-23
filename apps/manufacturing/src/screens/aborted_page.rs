@@ -64,7 +64,7 @@ pub(crate) async fn show(
         rows.push(Row {
             url: super::work_order_page::url(order.id),
             number: order.number.clone(),
-            item: super::work_order_page::item_text(&lang, order.item_id),
+            item: super::work_order_page::item_text(&state, &lang, order.item_id).await,
             reason: order.abort_reason.clone().unwrap_or_default(),
             stopped: order.aborted_at.map_or_else(String::new, time_text),
             requested_by: user_text(&state, order.abort_requested_by, &unknown).await,

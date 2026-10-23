@@ -111,11 +111,7 @@ pub(crate) async fn show(
                 "manufacturing.screen.returns.line_name",
                 &[("id", &found.line_id)],
             ),
-            item: tf(
-                &lang,
-                "manufacturing.screen.item_name",
-                &[("id", &found.item_id)],
-            ),
+            item: super::names::item_text(&state, &lang, found.item_id).await,
             dispatch: found.dispatch_number.clone(),
             dispatch_url: format!("/dispatches/{}", found.dispatch_id),
             customer: party_text(

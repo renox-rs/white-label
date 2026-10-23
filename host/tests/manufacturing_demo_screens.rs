@@ -74,6 +74,23 @@ fn no_raw_words(html: &str, url: &str) {
     }
 }
 
+/// An item or a lot shown as its id (`Item 6`, `Lot 10`) instead of its name
+/// or number.
+fn no_bare_ids(html: &str, url: &str) {
+    let text = visible(html);
+    for word in ["Item ", "Lot "] {
+        for (at, _) in text.match_indices(word) {
+            let after = text[at + word.len()..].chars().next();
+            assert!(
+                !after.is_some_and(|c| c.is_ascii_digit()),
+                "{url} shows `{word}<id>`: ...{}...",
+                text.get(at.saturating_sub(40)..(at + 60).min(text.len()))
+                    .unwrap_or_default()
+            );
+        }
+    }
+}
+
 /// Every screen of the map answers 200 for its owner, shows visible words
 /// only, and keeps its tables in their wrappers (390 px).
 #[renox::test]
@@ -128,6 +145,7 @@ async fn every_screen_of_the_map_opens_for_its_owner_in_words() {
         // The settings pages name the registered keys on purpose.
         if !screen.url.starts_with("/settings/") {
             no_raw_words(&html, &screen.url);
+            no_bare_ids(&html, &screen.url);
         }
         // The pages of the vertical keep every table in the kit's wrapper;
         // the shared grids (invoices, stock) are the platform's.

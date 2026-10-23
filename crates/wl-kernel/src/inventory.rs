@@ -1001,6 +1001,15 @@ pub struct StockChoice {
     pub lots: Vec<StockLot>,
 }
 
+/// The code and name of an item, as a screen of another module shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ItemLabel {
+    /// The item's code, e.g. `CHK-FRZ`.
+    pub code: String,
+    /// The item's name in English.
+    pub name: String,
+}
+
 /// The stock service other modules call (wl-inventory §6 `StockService`).
 /// Without the inventory module [`stock_service`] gives [`NoStockService`],
 /// which posts nothing.
@@ -1059,6 +1068,28 @@ pub trait StockService: Send + Sync + 'static {
         _item: &'a Subject,
         _location: &'a Subject,
     ) -> StockFuture<'a, Option<i64>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// The code and name of `item` (`inventory.item:9`), for a screen that
+    /// shows an item in words. `None` when the module is off or the item is
+    /// unknown; the caller then shows the id.
+    fn item_label<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _item: &'a Subject,
+    ) -> StockFuture<'a, Option<ItemLabel>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// The number printed on the pack of `lot` (`inventory.lot:4`). `None`
+    /// when the module is off or the lot is unknown; the caller then shows
+    /// the id.
+    fn lot_number<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _lot: &'a Subject,
+    ) -> StockFuture<'a, Option<String>> {
         Box::pin(async { Ok(None) })
     }
 

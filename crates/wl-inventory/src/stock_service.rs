@@ -473,6 +473,33 @@ impl StockService for InventoryStock {
         })
     }
 
+    fn item_label<'a>(
+        &'a self,
+        state: &'a AppState,
+        item: &'a Subject,
+    ) -> StockFuture<'a, Option<wl_kernel::inventory::ItemLabel>> {
+        Box::pin(async move {
+            Ok(Item::find(&state.db, item.subject_id).await?.map(|found| {
+                wl_kernel::inventory::ItemLabel {
+                    code: found.code,
+                    name: found.name_en,
+                }
+            }))
+        })
+    }
+
+    fn lot_number<'a>(
+        &'a self,
+        state: &'a AppState,
+        lot: &'a Subject,
+    ) -> StockFuture<'a, Option<String>> {
+        Box::pin(async move {
+            Ok(Lot::find(&state.db, lot.subject_id)
+                .await?
+                .map(|found| found.number))
+        })
+    }
+
     fn source_cancelled<'a>(
         &'a self,
         state: &'a AppState,
