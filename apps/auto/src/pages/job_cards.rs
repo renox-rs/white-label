@@ -22,8 +22,10 @@
 
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
+use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::documents::dubai_text;
 
+use super::stops::{self, StopView};
 use super::vehicles::{HistoryRow, km_text, vehicle_text};
 use super::{
     Texts, parse_km, parse_milli, parse_money, parse_number_or_zero, parse_optional_date,
@@ -36,6 +38,7 @@ use crate::job_card::{FUEL_LEVELS, JobCard, JobCardStatus, QC_KEYS};
 use crate::job_cards::{
     self, Delivery, Intake, NewJobCard, NewLabour, NewPart, Promise, may_work, visible_to,
 };
+use crate::job_stops;
 use crate::labour_line::{LabourPricing, LineStatus, WorkStatus, hours_text};
 use crate::labour_operation::LabourOperation;
 use crate::money_text;
@@ -83,8 +86,6 @@ pub fn routes() -> Routes {
         .name("auto.job_card_approve")
         .post("/auto/job-cards/{id}/decline", decline)
         .name("auto.job_card_decline")
-        .post("/auto/job-cards/{id}/cancel", cancel)
-        .name("auto.job_card_cancel")
         .post("/auto/job-cards/{id}/void", void)
         .name("auto.job_card_void")
         .post("/auto/job-cards/{id}/wait-parts", wait_parts)
@@ -708,6 +709,10 @@ pub(crate) struct ShowPage {
     raw_findings: String,
     raw_technician: String,
     is_accident: bool,
+    // The cancel, the release and the special orders (BL-AUT-01).
+    stop: StopView,
+    cancel_waits: bool,
+    approvals: Vec<ApprovalCard>,
 }
 
 /// Whether a user sees the customer's name on a job card.
@@ -909,6 +914,10 @@ async fn show(
         text(&lang, "none")
     };
     let none = || text(&lang, "none");
+    let stop = stops::view_of(&lang, &user, &card, &estimate);
+    let approval_cards =
+        approvals::cards_for(&state.db, &card.subject(), &user, &lang).await?;
+    let cancel_waits = job_stops::cancel_pending(&state.db, card.id).await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         id: card.id,
@@ -1010,6 +1019,7 @@ async fn show(
                     | JobCardStatus::AwaitingApproval
             ),
         can_cancel: advises
+            && !cancel_waits
             && matches!(
                 status,
                 JobCardStatus::Inspecting
@@ -1073,6 +1083,9 @@ async fn show(
             .map(|id| id.to_string())
             .unwrap_or_default(),
         is_accident: card.accident_damage,
+        stop,
+        cancel_waits,
+        approvals: approval_cards,
     }))
 }
 
@@ -1454,18 +1467,6 @@ async fn decline(
 ) -> Result<Response> {
     job_cards::decline(&state, &user, id, &form.reason).await?;
     done(&lang, "jobs.declined")
-}
-
-/// `POST /auto/job-cards/{id}/cancel`.
-async fn cancel(
-    State(state): State<AppState>,
-    user: AuthUser,
-    lang: Lang,
-    Path(id): Path<i64>,
-    Form(form): Form<ReasonForm>,
-) -> Result<Response> {
-    job_cards::cancel(&state, &user, id, &form.reason).await?;
-    done(&lang, "jobs.cancelled")
 }
 
 /// `POST /auto/job-cards/{id}/void`.

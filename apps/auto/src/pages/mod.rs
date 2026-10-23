@@ -8,6 +8,7 @@ pub mod fleet;
 pub mod insurers;
 pub mod job_cards;
 pub mod labour;
+pub mod stops;
 pub mod supplier_claims;
 pub mod vehicles;
 
@@ -30,6 +31,7 @@ pub fn routes() -> Routes {
         .merge(job_cards::routes())
         .merge(job_cards::public_routes())
         .merge(labour::routes())
+        .merge(stops::routes())
         .merge(claims::routes())
         .merge(insurers::routes())
         .merge(fleet::routes())

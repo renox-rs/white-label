@@ -14,7 +14,7 @@
 //! | [`PASS_QC`] | quality_check | ready | `job_cards.qc` | `qc_checklist_complete`, `qc_findings_closed` (slot) |
 //! | [`FAIL_QC`] | quality_check | in_progress | `job_cards.qc` | a reason (the findings) |
 //! | [`DELIVER`] | ready | delivered | `job_cards.advise` | `qc_checklist_complete`, `added_work_approved`, `substitute_closed` and `payment_cleared` (slots) |
-//! | [`CANCEL`] / [`CANCEL_SYSTEM`] | inspecting, awaiting_approval, in_progress, awaiting_parts, quality_check | cancelled | `job_cards.advise` / system | a reason; `work_done_recorded`, `acknowledged`, `approved_if_below_work_done` (slots) |
+//! | [`CANCEL`] / [`CANCEL_APPROVED`] / [`CANCEL_SYSTEM`] | inspecting, awaiting_approval, in_progress, awaiting_parts, quality_check | cancelled | `job_cards.advise`, approved by the branch manager (`AUT.ACL.21`) / the kernel after the approval / system (a claim) | a reason; `work_done_recorded`, `acknowledged`, `approved_if_below_work_done` |
 //! | [`VOID`] | checked_in | voided | `job_cards.advise` | a reason; `nothing_recorded`, `no_claim_linked` (slots) |
 //!
 //! Decisions:
@@ -29,11 +29,21 @@
 //!   declined, the job goes on) are two transitions of the one `decline` of the
 //!   spec table.
 //! - The guards marked *slot* pass for now: they are the places where the
-//!   issues of the negative flows add their rules (BL-AUT-01 `cancel`,
-//!   BL-AUT-02 `void`, BL-AUT-03 `decline`, BL-AUT-04 `wait_parts` and
-//!   `parts_arrived`, BL-AUT-05 .. BL-AUT-07 `deliver`, `pass_qc` and
-//!   `approve`). A slot keeps its name so that a test names the guard that
-//!   refused.
+//!   issues of the negative flows add their rules (BL-AUT-02 `void`,
+//!   BL-AUT-03 `decline`, BL-AUT-04 `wait_parts` and `parts_arrived`,
+//!   BL-AUT-05 .. BL-AUT-07 `deliver`, `pass_qc` and `approve`). A slot keeps
+//!   its name so that a test names the guard that refused. The three guards of
+//!   `cancel` (BL-AUT-01) read what the service recorded in the input
+//!   ([`StopRecord`]): the work done per line, the customer's acknowledgement,
+//!   and whether the branch manager's approval is in place when the bill is
+//!   below the work done (`AUT.ACL.21`).
+//! - `cancel` is the action `auto.job_card_cancel` of the kernel's approvals
+//!   ([`cancel_policy`]): when the advisor bills less than the work done, or
+//!   the customer refuses to sign, the kernel defers the run as a request that
+//!   a holder of `job_cards.approve` other than the advisor decides, and runs
+//!   [`CANCEL_APPROVED`] (the same guards and effects) after the approval with
+//!   the input the request kept. The job card stays as it is while it waits,
+//!   and refuses new labour and parts ([`crate::job_stops::cancel_pending`]).
 //! - Effects only touch the job card's own rows (the estimate rounds and
 //!   lines) and the vehicle's next service; the invoice, the booking and the
 //!   stock are the service's, after the commit ([`crate::job_cards`]).
@@ -50,8 +60,11 @@ use crate::job_card::{JobCard, JobCardStatus, QcCheck};
 use crate::labour_line::{LabourLine, LineStatus};
 use crate::part_line::PartLine;
 use crate::permissions;
+use crate::stop::StopRecord;
 use crate::texts::english;
 use crate::vehicle::Vehicle;
+use wl_kernel::SubjectMachine;
+use wl_kernel::approvals::{self, PolicyDefault};
 
 /// `checked_in → inspecting`: the technician starts diagnosing.
 pub const START_INSPECTION: &str = "start_inspection";
@@ -94,6 +107,15 @@ pub const CANCEL: &str = "cancel";
 /// `inspecting .. quality_check → cancelled`: a claim was withdrawn or the
 /// vehicle declared a total loss, or a private estimate was not signed.
 pub const CANCEL_SYSTEM: &str = "cancel_system";
+/// `inspecting .. quality_check → cancelled`: the kernel runs it after the
+/// branch manager approved a bill below the work done or a refused signature
+/// (`AUT.ACL.21`).
+pub const CANCEL_APPROVED: &str = "cancel_approved";
+/// The approval action of `cancel` (`AUT.ACL.21`).
+pub const CANCEL_ACTION: &str = "auto.job_card_cancel";
+/// The input key the approval policy of `cancel` reads: 1 when the branch
+/// manager must approve, 0 when not.
+pub const NEEDS_APPROVAL_KEY: &str = "needs_approval";
 /// `checked_in → voided`: the job card was opened in error.
 pub const VOID: &str = "void";
 
@@ -135,6 +157,20 @@ pub struct JobInput {
     /// How many lines the customer has not answered ([`DELIVER`]).
     #[serde(default)]
     pub added_open: Option<i64>,
+    /// The reason as the advisor gave it ([`CANCEL`]); the kernel hands it to
+    /// the approved run.
+    #[serde(default)]
+    pub reason: Option<String>,
+    /// What the advisor recorded for a stopped job ([`CANCEL`]).
+    #[serde(default)]
+    pub stop: Option<StopRecord>,
+    /// 1 when the cancel needs the branch manager's approval, 0 when not: the
+    /// input key of the approval policy ([`NEEDS_APPROVAL_KEY`]).
+    #[serde(default)]
+    pub needs_approval: Option<i64>,
+    /// The service found the approval policy of `cancel` in force.
+    #[serde(default)]
+    pub approval_ready: bool,
     /// Who collected the vehicle ([`DELIVER`]).
     #[serde(default)]
     pub delivered_to: Option<String>,
@@ -216,8 +252,9 @@ impl StateMachine for JobCard {
             .transition(pass_qc())
             .transition(fail_qc())
             .transition(deliver())
-            .transition(cancel(CANCEL, false))
-            .transition(cancel(CANCEL_SYSTEM, true))
+            .transition(cancel(CANCEL, CancelBy::Advisor))
+            .transition(cancel(CANCEL_APPROVED, CancelBy::Approval))
+            .transition(cancel(CANCEL_SYSTEM, CancelBy::System))
             .transition(void())
     }
 }
@@ -616,10 +653,29 @@ fn deliver() -> Transition<JobCard> {
     })
 }
 
-/// `cancel`: the job is stopped after work started; the reason is recorded.
-fn cancel(name: &'static str, system: bool) -> Transition<JobCard> {
+/// Who runs a `cancel`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CancelBy {
+    /// The service advisor (`job_cards.advise`); the kernel defers the run
+    /// when the branch manager must approve.
+    Advisor,
+    /// The kernel, after the branch manager approved.
+    Approval,
+    /// The system: a claim that was withdrawn or a total loss.
+    System,
+}
+
+/// `cancel`: the job is stopped after work started. The reason, the work done
+/// per line, the customer's acknowledgement and the bill are recorded
+/// (`AUT.ACL.21`); what follows (the invoice, the parts back to stock, the
+/// booking) is the service's, after the commit ([`crate::job_stops`]).
+fn cancel(name: &'static str, by: CancelBy) -> Transition<JobCard> {
     let transition = Transition::new(name)
-        .label("Cancel")
+        .label(if by == CancelBy::Approval {
+            "Cancel (approved)"
+        } else {
+            "Cancel"
+        })
         .from([
             JobCardStatus::Inspecting,
             JobCardStatus::AwaitingApproval,
@@ -629,32 +685,50 @@ fn cancel(name: &'static str, system: bool) -> Transition<JobCard> {
         ])
         .to(JobCardStatus::Cancelled)
         .reason_required();
-    let transition = if system {
-        transition.system()
-    } else {
-        transition.permission(permissions::JOB_CARDS_ADVISE)
+    let transition = match by {
+        CancelBy::Advisor => transition.permission(permissions::JOB_CARDS_ADVISE),
+        CancelBy::Approval | CancelBy::System => transition.system(),
     };
-    let transition = slot(transition, "work_done_recorded");
-    let transition = slot(transition, "acknowledged");
-    slot(transition, "approved_if_below_work_done").effect(|c: &JobCard, ctx, tx| {
-        let id = c.id;
-        let reason = ctx.reason().map(str::to_owned);
-        Box::pin(async move {
-            // The round the customer never answered ends with the job card.
-            crate::approval_rounds::supersede(tx, id).await?;
-            let none: Option<DateTime> = None;
-            set_job_card(
-                tx,
-                id,
-                &[
-                    ("closed_reason", &reason),
-                    ("closed_at", &Some(now())),
-                    ("awaiting_since", &none),
-                ],
-            )
-            .await
+    transition
+        .guard("work_done_recorded", |_c: &JobCard, ctx| {
+            let ok = input_of(ctx).stop.is_some_and(|stop| stop.work_recorded);
+            Box::pin(async move { check(ok, "auto.stop.problem.work_not_recorded") })
         })
-    })
+        .guard("acknowledged", |_c: &JobCard, ctx| {
+            let ok = input_of(ctx).stop.is_some_and(|stop| stop.acknowledged());
+            Box::pin(async move { check(ok, "auto.stop.problem.not_acknowledged") })
+        })
+        .guard("approved_if_below_work_done", move |_c: &JobCard, ctx| {
+            let input = input_of(ctx);
+            let ok = match by {
+                // The run the kernel makes after the approval.
+                CancelBy::Approval => input.by.is_some(),
+                // A claim's run bills the customer the work done.
+                CancelBy::System => input.stop.is_some_and(|stop| !stop.lowered()),
+                // The advisor's run: a bill below the work done or a refused
+                // signature runs only with the approval policy in force, so
+                // that the kernel defers it for the branch manager.
+                CancelBy::Advisor => input.needs_approval == Some(0) || input.approval_ready,
+            };
+            Box::pin(async move { check(ok, "auto.stop.problem.approval") })
+        })
+        .effect(|c: &JobCard, ctx, tx| {
+            let card = c.clone();
+            let input = input_of(ctx);
+            let reason = ctx.reason().map(str::to_owned);
+            Box::pin(async move { crate::job_stops::record_in(tx, &card, &input, reason).await })
+        })
+}
+
+/// The default approval policy of `cancel` (`AUT.ACL.21`): a request whose
+/// input says `needs_approval` (a bill below the work done, or a refused
+/// signature) needs one step by a holder of `job_cards.approve` (the branch
+/// manager), never the advisor who asked.
+pub fn cancel_policy() -> PolicyDefault {
+    PolicyDefault::new(CANCEL_ACTION)
+        .amount_above(0)
+        .input_key(NEEDS_APPROVAL_KEY)
+        .step_permission(permissions::JOB_CARDS_APPROVE)
 }
 
 /// `void`: the job card was opened in error.
@@ -680,9 +754,23 @@ fn void() -> Transition<JobCard> {
     })
 }
 
-/// Registers the machine for `rnx state:diagram`.
+/// The job card in the kernel's registry, so the approvals can run
+/// [`CANCEL_APPROVED`] after the approval and the page the approvals link to.
+pub fn subject_machine() -> SubjectMachine {
+    SubjectMachine::of::<JobCard>(crate::job_card::JOB_CARD_SUBJECT_TYPE)
+        .action(CANCEL, CANCEL_ACTION)
+        .build()
+}
+
+/// Registers the machine for `rnx state:diagram` and with the kernel, the
+/// approval policy of `cancel` and the page the approvals link to.
 pub(crate) fn register() {
+    subject_machine().register();
     renox::state_machine::register::<JobCard>();
+    cancel_policy().register();
+    approvals::register_subject_link(crate::job_card::JOB_CARD_SUBJECT_TYPE, |id| {
+        format!("/auto/job-cards/{id}")
+    });
 }
 
 #[cfg(test)]
@@ -752,6 +840,7 @@ mod tests {
             (FAIL_QC, vec!["quality_check"], "in_progress"),
             (DELIVER, vec!["ready"], "delivered"),
             (CANCEL, open.clone(), "cancelled"),
+            (CANCEL_APPROVED, open.clone(), "cancelled"),
             (CANCEL_SYSTEM, open, "cancelled"),
             (VOID, vec!["checked_in"], "voided"),
         ];
@@ -761,6 +850,7 @@ mod tests {
             DECLINE_SYSTEM,
             DECLINE_ADDED_SYSTEM,
             PARTS_ARRIVED,
+            CANCEL_APPROVED,
             CANCEL_SYSTEM,
         ];
         for (name, from, to) in expected {
@@ -815,20 +905,24 @@ mod tests {
                 "payment_cleared"
             ]
         );
-        assert_eq!(
-            guards(CANCEL),
-            [
-                "work_done_recorded",
-                "acknowledged",
-                "approved_if_below_work_done"
-            ]
-        );
+        for name in [CANCEL, CANCEL_APPROVED, CANCEL_SYSTEM] {
+            assert_eq!(
+                guards(name),
+                [
+                    "work_done_recorded",
+                    "acknowledged",
+                    "approved_if_below_work_done"
+                ],
+                "{name}"
+            );
+        }
         assert_eq!(guards(VOID), ["nothing_recorded", "no_claim_linked"]);
         for name in [
             DECLINE,
             DECLINE_SYSTEM,
             FAIL_QC,
             CANCEL,
+            CANCEL_APPROVED,
             CANCEL_SYSTEM,
             VOID,
         ] {

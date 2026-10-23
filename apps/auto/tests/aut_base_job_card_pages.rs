@@ -301,15 +301,23 @@ async fn aut_base_the_advisor_actions_run_the_machine() {
     assert_eq!(round.method.as_deref(), Some("signature"));
     assert_eq!(round.decided_by_user, Some(sami.id));
 
-    let no_reason = t
+    let unsigned = t
         .app
         .htmx()
-        .post(&format!("{base}/cancel"), &[("reason", " ")])
+        .post(&format!("{base}/cancel"), &[("code", "customer_stopped")])
         .await;
-    no_reason.assert_status(422);
+    unsigned.assert_status(422);
+    assert!(unsigned.text().contains("acknowledged"), "{}", unsigned.text());
     t.app
         .htmx()
-        .post(&format!("{base}/cancel"), &[("reason", "customer stopped")])
+        .post(
+            &format!("{base}/cancel"),
+            &[
+                ("code", "customer_stopped"),
+                ("ack", "signed"),
+                ("ack_name", "Mona Hassan"),
+            ],
+        )
         .await
         .assert_ok();
     assert_eq!(t.reload(card.id).await.status, JobCardStatus::Cancelled);
@@ -318,7 +326,7 @@ async fn aut_base_the_advisor_actions_run_the_machine() {
         .await
         .assert_ok()
         .assert_see("Cancelled")
-        .assert_see("customer stopped");
+        .assert_see("The customer stopped the job");
 }
 
 /// The labour menu page lists the operations and adds one; the menu is for the

@@ -76,6 +76,7 @@ pub async fn issue(
     if !may_issue(by, &card) {
         return Err(Error::Forbidden);
     }
+    crate::job_stops::ensure_not_pending(&state.db, card.id).await?;
     if line.approval != LineStatus::Approved
         || !matches!(
             card.status,
@@ -211,6 +212,7 @@ pub async fn fit(
     if !may_work(by, &card) {
         return Err(Error::Forbidden);
     }
+    crate::job_stops::ensure_not_pending(&state.db, card.id).await?;
     if card.status != JobCardStatus::InProgress {
         return Err(refused(english("auto.parts.problem.not_now", &[])));
     }
@@ -295,7 +297,13 @@ pub async fn return_unfitted(state: &AppState, job_card_id: i64) -> Result<Vec<P
     let card = JobCard::find_or_404(&state.db, job_card_id).await?;
     let estimate = Estimate::load(&state.db, card.id).await?;
     let mut back = Vec::new();
-    for line in estimate.parts.iter().filter(|l| l.unfitted_milli() > 0) {
+    // A special order the customer agreed to is billed and handed over with
+    // the vehicle, not given back.
+    for line in estimate
+        .parts
+        .iter()
+        .filter(|l| l.unfitted_milli() > 0 && !(l.special_order && l.special_order_agreed))
+    {
         back.push(give_back(state, &card, line).await?);
     }
     Ok(back)

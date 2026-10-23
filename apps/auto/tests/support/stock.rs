@@ -17,6 +17,7 @@ struct Inner {
     items: BTreeMap<String, (i64, i64)>,
     consumed: Vec<ConsumeRequest>,
     returned: Vec<ReturnRequest>,
+    cleared: Vec<Subject>,
     store: bool,
 }
 
@@ -58,6 +59,11 @@ impl Stock {
     /// The returns asked for, oldest first.
     pub fn returned(&self) -> Vec<ReturnRequest> {
         self.0.lock().unwrap().returned.clone()
+    }
+
+    /// The sources whose pending issues were cleared, oldest first.
+    pub fn cleared(&self) -> Vec<Subject> {
+        self.0.lock().unwrap().cleared.clone()
     }
 
     fn code_of(&self, item: &Subject) -> Option<String> {
@@ -154,5 +160,14 @@ impl StockService for Stock {
                 posted_milli: posted,
             })
         })
+    }
+
+    fn source_cancelled<'a>(
+        &'a self,
+        _state: &'a AppState,
+        source: &'a Subject,
+    ) -> StockFuture<'a, usize> {
+        self.0.lock().unwrap().cleared.push(source.clone());
+        Box::pin(async { Ok(0) })
     }
 }

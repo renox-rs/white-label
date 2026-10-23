@@ -40,7 +40,7 @@ use crate::db::refused;
 use crate::estimate::Estimate;
 use crate::job_card::{FUEL_LEVELS, JobCard, JobCardStatus, QC_KEYS, QcCheck};
 use crate::job_card_machine::{
-    APPROVE, APPROVE_SYSTEM, CANCEL, DECLINE, DECLINE_ADDED, DECLINE_ADDED_SYSTEM, DECLINE_SYSTEM,
+    APPROVE, APPROVE_SYSTEM, DECLINE, DECLINE_ADDED, DECLINE_ADDED_SYSTEM, DECLINE_SYSTEM,
     DELIVER, FAIL_QC, FINISH_WORK, JobInput, PASS_QC, SEND_ESTIMATE, START_INSPECTION, VOID,
     WAIT_PARTS,
 };
@@ -674,6 +674,7 @@ impl NewPart {
 /// The job card for drafting lines: open to lines, and the user may work it.
 async fn card_for_lines(state: &AppState, by: &AuthUser, id: i64) -> Result<JobCard> {
     let card = load_for_work(state, by, id).await?;
+    crate::job_stops::ensure_not_pending(&state.db, card.id).await?;
     if !card.status.takes_lines() {
         return Err(refused(english("auto.jobs.problem.no_lines_now", &[])));
     }
@@ -1036,17 +1037,6 @@ pub async fn decline(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> 
     run(state, by, &card, transition, Some(reason), input).await
 }
 
-/// `cancel`: the job is stopped after work started, with a reason.
-///
-/// # Errors
-///
-/// A 403 without `job_cards.advise`; a 422 without a reason or in another
-/// state.
-pub async fn cancel(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> Result<JobCard> {
-    let card = load(state, by, id, permissions::JOB_CARDS_ADVISE).await?;
-    run(state, by, &card, CANCEL, Some(reason), input_for(by)).await
-}
-
 /// `void`: the job card was opened in error.
 ///
 /// # Errors
@@ -1086,6 +1076,7 @@ pub async fn record_work(
 ) -> Result<LabourLine> {
     let line = LabourLine::find_or_404(&state.db, line_id).await?;
     let card = load_for_work(state, by, line.job_card_id).await?;
+    crate::job_stops::ensure_not_pending(&state.db, card.id).await?;
     if line.approval != LineStatus::Approved || card.status != JobCardStatus::InProgress {
         return Err(refused(english("auto.jobs.problem.work_not_now", &[])));
     }

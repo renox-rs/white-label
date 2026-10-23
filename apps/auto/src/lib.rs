@@ -26,6 +26,7 @@ pub mod insurers;
 pub mod job_card;
 pub mod job_card_machine;
 pub mod job_cards;
+pub mod job_stops;
 pub mod labour_line;
 pub mod labour_menu;
 pub mod labour_operation;
@@ -34,7 +35,10 @@ pub mod part_line;
 pub mod parts;
 pub mod permissions;
 pub mod reasons;
+pub mod release;
 pub mod seed;
+pub mod stop;
+pub mod stop_billing;
 pub mod supplier_claim;
 pub mod supplier_claim_machine;
 pub mod supplier_claims;
@@ -43,6 +47,7 @@ mod texts;
 mod texts_claims;
 mod texts_fleet;
 mod texts_jobs;
+mod texts_stops;
 mod texts_supplier;
 mod texts_vehicles;
 pub mod vehicle;
@@ -61,6 +66,7 @@ pub use fleet_job::FleetJob;
 pub use fleet_service::FleetService;
 pub use insurer::Insurer;
 pub use job_card::{JobCard, JobCardStatus};
+pub use job_stops::JobCardCancelled;
 pub use labour_line::{LabourLine, LabourPricing, LineStatus, WorkStatus};
 pub use labour_operation::LabourOperation;
 pub use part_line::{PartCondition, PartLine};
@@ -215,6 +221,10 @@ impl Module for Auto {
         // workshop booking opens.
         job_card_machine::register();
         bookings::register(app);
+        // A job card stopped after the work started: the invoice, the stock,
+        // the purchaser's task and the booking follow the cancel, and the
+        // booking asks the job card what was done.
+        job_stops::register(app);
         // The insurance claim: the machine, and the listeners that settle it
         // when its invoices are paid.
         claim_machine::register();

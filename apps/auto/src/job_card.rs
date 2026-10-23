@@ -197,6 +197,49 @@ pub struct JobCard {
     pub invoice_id: Option<i64>,
     /// When the invoice was raised.
     pub invoiced_at: Option<DateTime>,
+    /// Why the job card ended, as a code: `customer_stopped`,
+    /// `claim_withdrawn`, `total_loss`, `no_response`, `customer_left`.
+    pub closed_code: Option<String>,
+    /// The user who asked for the cancel (the requester of its approval).
+    pub stopped_by: Option<i64>,
+    /// How the customer acknowledged the work done: `signed`,
+    /// `refused_to_sign`, `insurer_notice` or `written_withdrawal`.
+    pub ack_method: Option<String>,
+    /// The customer who acknowledged the summary of the work done.
+    pub ack_name: Option<String>,
+    /// The customer's signature, as the form sent it.
+    pub ack_signature: Option<String>,
+    /// The member of staff who witnessed a refusal to sign.
+    pub ack_witness: Option<String>,
+    /// The insurer's notice or the customer's written withdrawal (a document
+    /// reference).
+    pub ack_document: Option<String>,
+    /// When the acknowledgement was recorded.
+    pub ack_at: Option<DateTime>,
+    /// The value of the work done on a stopped job before VAT, in fils.
+    pub work_done_value: i64,
+    /// What the stopped or declined job card was billed before VAT, in fils.
+    pub billed_net: i64,
+    /// The advisor billed less than the work done (the branch manager
+    /// approved it).
+    pub bill_lowered: bool,
+    /// The customer is on account: the vehicle may be released unpaid
+    /// (`AUT.ACL.17`).
+    pub on_account: bool,
+    /// When everything that follows the end of the job card was done.
+    pub closing_done_at: Option<DateTime>,
+    /// When the booking was cancelled with the job card.
+    pub booking_cancelled_at: Option<DateTime>,
+    /// When the vehicle was released.
+    pub released_at: Option<DateTime>,
+    /// Who took the vehicle.
+    pub released_to: Option<String>,
+    /// `safe` or `as_is`.
+    pub release_condition: Option<String>,
+    /// The customer's signature on a release as is.
+    pub release_signature: Option<String>,
+    /// The user who recorded the release.
+    pub released_by: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: JobCardStatus,
     /// The user who opened it.

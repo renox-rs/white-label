@@ -61,9 +61,37 @@
         </rx-action-sheet>
       </template>
       <template rx-if="can_cancel">
-        <rx-action-sheet :id="'job-cancel-' ~ id" :label="tx['jobs.cancel']" :action="route('auto.job_card_cancel', id)"
-                         :title="tx['jobs.cancel']" :description="tx['jobs.cancel_description']" :submit-label="tx['jobs.cancel']" icon="trash">
-          <rx-textarea name="reason" :label="tx['jobs.reason']" :id="'job-cancel-reason-' ~ id" required/>
+        <rx-action-sheet :id="'job-cancel-' ~ id" :label="tx['stop.title']" :action="route('auto.job_card_cancel', id)"
+                         :title="tx['stop.title']" :description="tx['stop.description'] ~ ' ' ~ tx['stop.value'] ~ ': ' ~ stop.value" :submit-label="tx['stop.title']" icon="trash" danger>
+          <rx-select name="code" :label="tx['stop.reason']" :options="stop.code_options" :selected="'customer_stopped'" :id="'job-cancel-code-' ~ id"/>
+          <rx-input name="note" :label="tx['stop.note']" :id="'job-cancel-note-' ~ id"/>
+          <template rx-for="row in stop.labour">
+            <rx-select :name="'work_' ~ row.id" :label="row.label" :options="work_options" :selected="row.work" :id="'job-cancel-work-' ~ row.id"/>
+            <rx-input :name="'hours_' ~ row.id" :label="tx['stop.hours']" :value="row.hours" :id="'job-cancel-hours-' ~ row.id"/>
+          </template>
+          <template rx-for="row in stop.parts">
+            <rx-input :name="'fitted_' ~ row.id" :label="row.label" :value="row.fitted" :id="'job-cancel-fitted-' ~ row.id"/>
+          </template>
+          <rx-select name="ack" :label="tx['stop.ack']" :options="stop.ack_options" :selected="'signed'" :id="'job-cancel-ack-' ~ id"/>
+          <rx-input name="ack_name" :label="tx['stop.ack_name']" :id="'job-cancel-ack-name-' ~ id"/>
+          <rx-input name="ack_signature" :label="tx['stop.ack_signature']" :hint="tx['stop.ack_signature_hint']" :id="'job-cancel-ack-signature-' ~ id"/>
+          <rx-input name="ack_witness" :label="tx['stop.ack_witness']" :id="'job-cancel-ack-witness-' ~ id"/>
+          <rx-input name="ack_document" :label="tx['stop.ack_document']" :id="'job-cancel-ack-document-' ~ id"/>
+          <rx-input name="bill" :label="tx['stop.bill']" :hint="tx['stop.bill_hint']" :id="'job-cancel-bill-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="stop.can_release">
+        <rx-action-sheet :id="'job-release-' ~ id" :label="tx['release.title']" :action="route('auto.job_card_release', id)"
+                         :title="tx['release.title']" :description="tx['release.description']" :submit-label="tx['release.title']" icon="truck">
+          <rx-input name="released_to" :label="tx['release.to']" :id="'job-release-to-' ~ id" required/>
+          <rx-select name="condition" :label="tx['release.condition']" :options="stop.release_options" :selected="'safe'" :id="'job-release-condition-' ~ id"/>
+          <rx-input name="signature" :label="tx['release.signature']" :hint="tx['release.signature_hint']" :id="'job-release-signature-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="stop.can_on_account">
+        <rx-action-sheet :id="'job-on-account-' ~ id" :label="tx['release.on_account']" :action="route('auto.job_card_on_account', id)"
+                         :title="tx['release.on_account']" :description="tx['release.on_account_description']" :submit-label="tx['release.on_account']" icon="handshake">
+          <rx-checkbox name="on_account" :label="tx['release.on_account']" :checked="stop.on_account" :id="'job-on-account-box-' ~ id"/>
         </rx-action-sheet>
       </template>
       <template rx-if="can_void">
@@ -73,6 +101,8 @@
         </rx-action-sheet>
       </template>
     </rx-page-header>
+    <rx-alert rx-if="cancel_waits" kind="warning" :message="tx['stop.pending_banner']"/>
+    <rx-include template="wl-kernel/approval_card.html"/>
     <rx-alert rx-if="closed_reason" kind="info" :message="tx['jobs.closed_because'] ~ ' ' ~ closed_reason"/>
     <rx-alert rx-if="qc_findings" kind="warning" :message="tx['jobs.qc_findings'] ~ ': ' ~ qc_findings"/>
     <rx-alert rx-if="can_invoice" kind="warning" :message="tx['jobs.not_invoiced']"/>
@@ -185,6 +215,24 @@
           <rx-checkbox name="special_order" :label="tx['jobs.special_order']" :hint="tx['jobs.special_order_hint']" :id="'job-part-special-' ~ id"/>
         </rx-action-sheet>
       </rx-toolbar>
+    </rx-card>
+    <rx-card rx-if="stop.summary" :title="tx['stop.summary']">
+      <rx-table :rows="stop.summary" as="row" :key="row[0]" :caption="tx['stop.summary']">
+        <rx-column :label="tx['jobs.what']">{{ row[0] }}</rx-column>
+        <rx-column :label="tx['stop.entry.value']">{{ row[1] }}</rx-column>
+      </rx-table>
+    </rx-card>
+    <rx-card rx-if="stop.orders" :title="tx['stop.order']">
+      <rx-table :rows="stop.orders" as="row" :key="row.id" :caption="tx['stop.order']">
+        <rx-column :label="tx['jobs.description']">{{ row.description }}</rx-column>
+        <rx-column :label="tx['stop.order_number']">{{ row.order }}</rx-column>
+        <rx-row-actions>
+          <rx-action-sheet :id="'part-order-' ~ row.id" :label="tx['stop.order']" :action="route('auto.job_card_part_order', id, row.id)"
+                           :title="tx['stop.order']" :description="tx['stop.order_description']" :submit-label="tx['stop.order']" icon="package">
+            <rx-input name="order" :label="tx['stop.order_number']" :value="row.raw" :id="'part-order-number-' ~ row.id"/>
+          </rx-action-sheet>
+        </rx-row-actions>
+      </rx-table>
     </rx-card>
     <rx-card :title="tx['jobs.totals']">
       <rx-infolist columns="3">

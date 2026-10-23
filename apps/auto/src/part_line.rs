@@ -76,6 +76,11 @@ pub struct PartLine {
     pub fitted_milli: i64,
     /// The quantity given back.
     pub returned_milli: i64,
+    /// When a special-order part billed on a stopped job was handed over with
+    /// the vehicle.
+    pub handed_over_at: Option<DateTime>,
+    /// The purchase order (wl-inventory) a special-order part was ordered on.
+    pub purchase_order_id: Option<i64>,
     /// The order of the line on the estimate.
     pub line_no: i64,
     /// The user who drafted it.

@@ -8,6 +8,7 @@
 
 use std::sync::{Arc, Mutex};
 
+use auto::JobCardCancelled;
 use auto::job_card::JobCard;
 use auto::labour_line::{LabourLine, LabourPricing, LineStatus};
 use auto::part_line::{PartCondition, PartLine};
@@ -22,11 +23,13 @@ use renox::testing::TestApp;
 use wl_kernel::calendar::BusinessCalendar;
 use wl_kernel::documents::dubai_date;
 use wl_kernel::inventory::provide_stock_service;
+use wl_kernel::notify::provide_notifier;
 use wl_kernel::invoicing::provide_invoicer;
 use wl_kernel::parties::provide_directory;
 use wl_kernel::payer_bills::provide_payer_bills;
 use wl_kernel::rate_cards::provide_rate_cards;
 use wl_kernel::tickets::provide_task_creator;
+use wl_kernel::voids::RecordVoided;
 use wl_scheduling::WlScheduling;
 
 /// The stand-ins of the parties and the invoice book.
@@ -47,10 +50,42 @@ pub mod stock;
 /// The stand-in of the ticket book.
 pub mod tickets;
 
+/// The stand-in of the notifier.
+pub mod messages;
+
+pub use messages::Messages;
 pub use money::{Books, People};
 pub use payer::{Cards, PayerBooks};
 pub use stock::Stock;
 pub use tickets::Tickets;
+
+/// Everything of one type `E` emitted so far.
+#[derive(Clone)]
+pub struct Recorded<E>(Arc<Mutex<Vec<E>>>);
+
+impl<E: Clone> Recorded<E> {
+    /// Nothing recorded yet.
+    pub fn new() -> Self {
+        Recorded(Arc::new(Mutex::new(Vec::new())))
+    }
+
+    /// The events, oldest first.
+    pub fn all(&self) -> Vec<E> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+/// `app` listening for `E`, recorded into `into`.
+pub fn record<E: Event + Clone>(app: App, into: &Recorded<E>) -> App {
+    let into = into.clone();
+    app.listen(move |event: E, _state: AppState| {
+        let into = into.clone();
+        async move {
+            into.0.lock().unwrap().push(event);
+            Ok(())
+        }
+    })
+}
 
 /// The pages extend the app's layout; a package test has no app, so it
 /// brings the smallest one.
@@ -96,6 +131,7 @@ struct Harness {
     payer_books: PayerBooks,
     cards: Cards,
     tickets: Tickets,
+    messages: Messages,
 }
 
 impl Module for Harness {
@@ -110,6 +146,7 @@ impl Module for Harness {
         provide_payer_bills(app, self.payer_books.clone());
         provide_rate_cards(app, self.cards.clone());
         provide_task_creator(app, self.tickets.clone());
+        provide_notifier(app, self.messages.clone());
     }
 
     fn routes(&self) -> Routes {
@@ -138,8 +175,14 @@ pub struct Garage {
     pub payer_books: PayerBooks,
     /// The rate cards of the insurers.
     pub cards: Cards,
-    /// The warranty tickets.
+    /// The warranty tickets and the tasks opened.
     pub tickets: Tickets,
+    /// The notifications asked of the notifier.
+    pub messages: Messages,
+    /// `JobCardCancelled`.
+    pub cancelled: Recorded<JobCardCancelled>,
+    /// `RecordVoided`.
+    pub voided: Recorded<RecordVoided>,
     who: Arc<Mutex<Option<renox::AuthUser>>>,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
@@ -155,10 +198,13 @@ pub async fn boot() -> Garage {
     let (people, books, stock) = (People::default(), Books::default(), Stock::default());
     let (payer_books, cards) = (PayerBooks::default(), Cards::default());
     let tickets = Tickets::default();
+    let messages = Messages::default();
     let mut scheduling_module = WlScheduling::new();
     for (code, initiated_by) in auto::reasons::SCHEDULING_REASON_CODES {
         scheduling_module = scheduling_module.reason_code(code, *initiated_by);
     }
+    let cancelled = Recorded::<JobCardCancelled>::new();
+    let voided = Recorded::<RecordVoided>::new();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -173,7 +219,10 @@ pub async fn boot() -> Garage {
             payer_books: payer_books.clone(),
             cards: cards.clone(),
             tickets: tickets.clone(),
+            messages: messages.clone(),
         });
+    let app = record(app, &cancelled);
+    let app = record(app, &voided);
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -190,6 +239,9 @@ pub async fn boot() -> Garage {
         payer_books,
         cards,
         tickets,
+        messages,
+        cancelled,
+        voided,
         who,
         _views: views,
     }

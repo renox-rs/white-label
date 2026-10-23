@@ -14,6 +14,7 @@ use auto::job_card_machine::{
 use auto::job_cards::{
     self, Delivery, Intake, NewJobCard, NewLabour, NewPart, Promise, visible_to,
 };
+use auto::job_stops::{self, StopRequest};
 use auto::labour_menu::{self, NewOperation};
 use auto::{
     ApprovalStatus, JobCard, JobCardStatus, LabourPricing, LineStatus, PartCondition, WorkStatus,
@@ -794,16 +795,30 @@ async fn aut_base_the_transitions_the_issues_extend_are_declared_and_their_slots
 
     // cancel: after work started, not from checked_in.
     let running = t.card_in(&vehicle, JobCardStatus::InProgress).await;
-    let cancelled = job_cards::cancel(t.state(), &sami, running.id, "customer stopped")
-        .await
-        .unwrap();
+    let stopped = job_stops::cancel(
+        t.state(),
+        &sami,
+        running.id,
+        StopRequest::new("customer_stopped").signed("Mona Hassan"),
+    )
+    .await
+    .unwrap();
+    let cancelled = stopped.card;
     assert_eq!(cancelled.status, JobCardStatus::Cancelled);
-    assert_eq!(cancelled.closed_reason.as_deref(), Some("customer stopped"));
+    assert_eq!(
+        cancelled.closed_reason.as_deref(),
+        Some("The customer stopped the job")
+    );
     let fresh = t.card_in(&vehicle, JobCardStatus::CheckedIn).await;
     assert!(
-        job_cards::cancel(t.state(), &sami, fresh.id, "customer stopped")
-            .await
-            .is_err()
+        job_stops::cancel(
+            t.state(),
+            &sami,
+            fresh.id,
+            StopRequest::new("customer_stopped").signed("Mona Hassan"),
+        )
+        .await
+        .is_err()
     );
     let closed = job_cards::void(t.state(), &sami, cancelled.id, "again").await;
     assert!(closed.is_err(), "a closed job card takes no transition");
