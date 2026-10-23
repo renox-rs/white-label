@@ -689,6 +689,53 @@ async fn the_screens_show_the_hold_and_offer_its_clearing_with_the_release() {
         .assert_redirect(&page);
 }
 
+/// Must not: a role without `credit.view` never sees why the account is on
+/// hold: not on the order, not in the list, not in the refusal, and the
+/// account page is closed to it.
+#[renox::test]
+async fn a_role_without_credit_view_never_sees_the_reason_of_the_hold() {
+    let (t, _credit) = boot().await;
+    let (rep, _) = rep_and_accountant(&t).await;
+    group(&t, &rep).await;
+    let maker = seller(&t).await;
+    t.app.acting_as(&maker);
+    let order = confirmed(&t, &maker).await;
+    bounce(&t, CUSTOMER, 31).await;
+
+    let clerk = t.user("Clara", &[perm::SALES_ORDERS_VIEW]).await;
+    t.app.acting_as(&clerk);
+    for page in [
+        format!("/sales-orders/{}", order.id),
+        "/sales-orders?view=credit_hold".to_owned(),
+    ] {
+        let response = t.app.get(&page).await;
+        response.assert_ok().assert_see("On credit hold");
+        let text = response.text().to_lowercase();
+        for secret in [
+            "cheque",
+            "account is on hold",
+            "account on hold",
+            "over the credit limit",
+        ] {
+            assert!(!text.contains(secret), "{page} shows `{secret}`");
+        }
+    }
+    t.app
+        .get(&format!("/credit/accounts/{CUSTOMER}"))
+        .await
+        .assert_forbidden();
+
+    // The refusal of a new order on account says only that the account is on hold.
+    let draft = draft(&t, &maker, "phone", "on_account", 800_000).await;
+    t.app.acting_as(&maker);
+    let refused = t
+        .app
+        .post(&format!("/sales-orders/{}/submit", draft.id), &[("x", "")])
+        .await;
+    refused.assert_status(422);
+    assert!(!refused.text().to_lowercase().contains("cheque"));
+}
+
 /// Every template of the module compiles with its texts.
 #[renox::test]
 async fn the_templates_still_compile() {
