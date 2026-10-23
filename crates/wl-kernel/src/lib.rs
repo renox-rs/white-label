@@ -4,6 +4,7 @@
 pub mod approvals;
 pub mod attendance;
 pub mod automation;
+pub mod backorders;
 pub mod bank_statements;
 pub mod block_effects;
 pub mod block_guard;

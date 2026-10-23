@@ -2532,6 +2532,31 @@ async fn without_inventory_no_recall_holds_returned_goods() {
     );
 }
 
+/// 08 Auto (#136): without an inventory module nothing is short, and without a
+/// sales module no back-order is open.
+#[renox::test]
+async fn without_inventory_every_reservation_succeeds_and_without_sales_nothing_is_back_ordered() {
+    use wl_kernel::Subject;
+    use wl_kernel::backorders::{ReserveStock, back_orders, stock_reservations};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let owner = Subject::new("sales.sales_order", 5);
+    let reserved = stock_reservations(app.state())
+        .reserve(app.state(), ReserveStock::new("BRK-PAD", 5_000, owner.clone(), 9))
+        .await
+        .unwrap();
+    assert_eq!(reserved.reserved_milli, 5_000);
+    assert_eq!(
+        stock_reservations(app.state())
+            .release(app.state(), &owner, None, None)
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(back_orders(app.state()).open(app.state()).await.unwrap().is_empty());
+}
+
 /// 08 Auto: without a scheduling module the booking actions link and complete
 /// nothing, and without an inventory module a return posts nothing.
 #[renox::test]
