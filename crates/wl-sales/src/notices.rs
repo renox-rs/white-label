@@ -54,6 +54,13 @@ pub const LOYALTY_PROGRAMME_OFF: &str = "sales.loyalty_programme_off";
 /// A member is told that the account was closed.
 pub const LOYALTY_CLOSED: &str = "sales.loyalty_closed";
 
+/// The customer is told that the online payment of an order failed (BL-SAL-03).
+pub const ORDER_PAYMENT_FAILED: &str = "sales.order_payment_failed";
+
+/// The customer is told that a payment for an order that cannot take it is
+/// refunded (`SAL.RUL.06`).
+pub const ORDER_LATE_PAYMENT: &str = "sales.order_late_payment_refunded";
+
 /// The owner of a lead is told that its win was reverted.
 pub const LEAD_WIN_REVERTED: &str = "sales.lead_win_reverted";
 
@@ -104,6 +111,8 @@ pub(crate) fn register_types() {
     notify::register_type(english_type(LOYALTY_CLOSED, "loyalty_closed"));
     notify::register_type(english_type(ADJUSTMENT_REJECTED, "adjustment_rejected"));
     notify::register_type(english_type(ADJUSTMENT_RETURNED, "adjustment_returned"));
+    notify::register_type(english_type(ORDER_PAYMENT_FAILED, "order_payment_failed"));
+    notify::register_type(english_type(ORDER_LATE_PAYMENT, "order_late_payment"));
 }
 
 /// `fils` as `4,000.00`.
@@ -408,6 +417,41 @@ pub(crate) async fn loyalty_closed(
         .data(json!({
             "code": account.code,
             "points": points,
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the customer of `order` that the online payment failed and that a new
+/// order can be placed (the failed order cannot be retried).
+pub(crate) async fn order_payment_failed(
+    state: &AppState,
+    order: &crate::sales_order::SalesOrder,
+) -> Result {
+    let request = NotifyRequest::new(ORDER_PAYMENT_FAILED, order.subject())
+        .to_party(order.party())
+        .subject_label(&order.number)
+        .data(json!({
+            "number": order.number,
+            "total": aed(order.gross_total),
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the customer of `order` that the payment of `amount` fils, which the
+/// order could not take, is on its way back.
+pub(crate) async fn order_late_payment(
+    state: &AppState,
+    order: &crate::sales_order::SalesOrder,
+    amount: i64,
+) -> Result {
+    let request = NotifyRequest::new(ORDER_LATE_PAYMENT, order.subject())
+        .to_party(order.party())
+        .subject_label(&order.number)
+        .data(json!({
+            "number": order.number,
+            "amount": aed(amount),
         }));
     notify::notifier(state).notify(state, request).await?;
     Ok(())

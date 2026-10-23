@@ -72,6 +72,20 @@ pub enum SalesOrderStatus {
     Cancelled,
 }
 
+/// Where the online payment of an order is (§3 *Payment status*).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum OrderPaymentStatus {
+    /// Not paid online (on account, on delivery, at the counter).
+    #[default]
+    NotRequired,
+    /// Waiting for the gateway.
+    Pending,
+    /// The gateway confirmed the full total.
+    Received,
+    /// The payment failed or the window ended.
+    Failed,
+}
+
 /// A sales order.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(
@@ -121,12 +135,119 @@ pub struct SalesOrder {
     pub confirmed_at: Option<DateTime>,
     /// When its last open quantity was fulfilled.
     pub fulfilled_at: Option<DateTime>,
+    /// The order number in the channel's own system (an aggregator's),
+    /// as sent (BL-SAL-01).
+    pub external_number: Option<String>,
+    /// [`external_number`](Self::external_number) trimmed and lower-cased; the
+    /// unique key with the channel. Empty when the number is not checked.
+    pub external_key: Option<String>,
+    /// The state the order had before a credit hold (`release` goes back to
+    /// it, BL-SAL-10).
+    pub held_from: Option<String>,
+    /// Where the online payment is.
+    pub payment_status: OrderPaymentStatus,
+    /// When the payment window ends (set when the order waits for the gateway).
+    pub payment_due_at: Option<DateTime>,
+    /// The payment link of wl-payments the customer pays through.
+    pub payment_link_id: Option<i64>,
+    /// The path of the public page of that link.
+    pub payment_link: Option<String>,
+    /// The promo code a use of which the order holds (BL-SAL-02, BL-SAL-03).
+    pub promo_code_id: Option<i64>,
+    /// What the returns of the order refunded so far, in fils: the order's
+    /// *amount refunded* (BL-SAL-14). Never above what was paid for it.
+    pub refunded_amount: i64,
     /// Where it is; changed only by the machine.
     pub status: SalesOrderStatus,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
     pub updated_at: Option<DateTime>,
+}
+
+/// The `outcome` of an [`OrderPayment`] while it is handled.
+pub const PAYMENT_CLAIMED: &str = "claimed";
+/// The payment confirmed the order (`confirm_payment`).
+pub const PAYMENT_CONFIRMED: &str = "confirmed";
+/// The payment was refunded as late or unusable (`SAL.RUL.06`).
+pub const PAYMENT_REFUND_REQUESTED: &str = "refund_requested";
+/// The refund of the payment was refused by wl-payments.
+pub const PAYMENT_REFUND_REFUSED: &str = "refund_refused";
+
+/// A payment the gateway confirmed for an order, handled once (BL-SAL-02,
+/// BL-SAL-04): the row is the claim that makes a second `PaymentReceived`
+/// for the same payment change nothing.
+#[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+#[model(table = "wl_sales_order_payments", unique(payment_id), index(order_id))]
+pub struct OrderPayment {
+    /// The primary key.
+    pub id: i64,
+    /// The order.
+    #[model(references = "wl_sales_sales_orders")]
+    pub order_id: i64,
+    /// The payment (`wl-payments`).
+    pub payment_id: i64,
+    /// The amount, in fils.
+    pub amount: i64,
+    /// What was done with it: `claimed`, `confirmed`, `refund_requested` or
+    /// `refund_refused`.
+    pub outcome: String,
+    /// The refund `wl-payments` was asked for, if any.
+    pub refund_id: Option<i64>,
+    /// When the row was created.
+    pub created_at: Option<DateTime>,
+    /// When the row was last changed.
+    pub updated_at: Option<DateTime>,
+}
+
+impl OrderPayment {
+    /// The payments handled for `order`, oldest first.
+    pub async fn of_order(db: &Db, order: i64) -> Result<Vec<OrderPayment>> {
+        OrderPayment::query()
+            .where_(OrderPayment::ORDER_ID.eq(order))
+            .order_by(OrderPayment::ID)
+            .get(db)
+            .await
+    }
+}
+
+impl SalesOrderStatus {
+    /// Whether the outlet, kitchen, dispatch and acceptance lists show an
+    /// order in this state: not a draft, and not one still waiting for the
+    /// gateway (BL-SAL-02).
+    pub fn reaches_fulfilment(self) -> bool {
+        !matches!(
+            self,
+            SalesOrderStatus::Draft | SalesOrderStatus::AwaitingPayment
+        )
+    }
+}
+
+impl SalesOrder {
+    /// The orders the outlet, kitchen, dispatch and acceptance lists show,
+    /// newest first: an order waiting for its online payment is not among
+    /// them until the payment is confirmed (BL-SAL-02).
+    pub async fn visible_to_fulfilment(db: &Db, limit: usize) -> Result<Vec<SalesOrder>> {
+        Ok(SalesOrder::query()
+            .where_(SalesOrder::STATUS.ne(SalesOrderStatus::Draft))
+            .where_(SalesOrder::STATUS.ne(SalesOrderStatus::AwaitingPayment))
+            .order_by_desc(SalesOrder::ID)
+            .get(db)
+            .await?
+            .into_iter()
+            .take(limit)
+            .collect())
+    }
+
+    /// The order of `channel` that already has the external number `key`
+    /// (trimmed, lower case).
+    pub async fn of_external(db: &Db, channel: &str, key: &str) -> Result<Option<SalesOrder>> {
+        SalesOrder::query()
+            .where_(SalesOrder::CHANNEL.eq(channel))
+            .where_(SalesOrder::EXTERNAL_KEY.eq(key))
+            .first(db)
+            .await
+    }
 }
 
 impl SalesOrder {

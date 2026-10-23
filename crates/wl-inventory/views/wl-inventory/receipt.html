@@ -16,6 +16,7 @@
                          :title="tx['receipt.reverse']" :description="tx['receipt.reverse_description']" :submit-label="tx['receipt.reverse']" icon="rotate-ccw"/>
       </template>
     </rx-page-header>
+    <rx-alert rx-if="warning" kind="warning" :message="warning"/>
     <rx-include template="wl-kernel/approval_card.html"/>
     <rx-card :title="tx['receipt.details']">
       <rx-infolist columns="2">

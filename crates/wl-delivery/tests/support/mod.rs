@@ -19,6 +19,7 @@ use wl_delivery::{
     seed,
 };
 use wl_kernel::custody::CashCustody;
+use wl_kernel::delivery::{DeliveryDiscarded, DeliveryReturned, DeliveryWastage};
 use wl_kernel::documents::{DocumentGuard, today};
 use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary};
 use wl_kernel::payments::PaymentRecorder;
@@ -37,6 +38,7 @@ pub mod notices;
 pub mod payments;
 pub mod roster;
 pub mod tickets;
+pub mod wastage;
 
 use custody::FakeCustody;
 use documents::Documents;
@@ -44,6 +46,7 @@ use notices::Notices;
 use payments::FakePayments;
 use roster::{Roster, employee_of};
 use tickets::TicketDesk;
+use wastage::WastageDesk;
 
 /// The pages extend the app's layout; a package test has no app, so it
 /// brings the smallest one.
@@ -141,6 +144,14 @@ pub struct World {
     pub handed_over: Recorded<RunHandedOver>,
     /// `RunAborted`.
     pub aborted: Recorded<RunAborted>,
+    /// `DeliveryReturned`.
+    pub returned: Recorded<DeliveryReturned>,
+    /// `DeliveryDiscarded`.
+    pub discarded: Recorded<DeliveryDiscarded>,
+    /// The stock side: what a discard is worth and the discards recorded.
+    pub wastage: WastageDesk,
+    /// Approves a wastage above the limit (`stock.approve`).
+    pub stock_approver: User,
     /// The notices asked of the kernel's notifier.
     pub notices: Notices,
     /// The tickets the module opened, resolved and commented on.
@@ -572,6 +583,9 @@ async fn boot_full(
     let run_closed = Recorded::new();
     let handed_over = Recorded::new();
     let aborted = Recorded::new();
+    let returned = Recorded::new();
+    let discarded = Recorded::new();
+    let wastage = WastageDesk::default();
     let notices = Notices::default();
     let notifier: Arc<dyn wl_kernel::notify::Notifier> = Arc::new(notices.clone());
     let tickets = TicketDesk::default();
@@ -581,6 +595,7 @@ async fn boot_full(
     let guard: Arc<dyn DocumentGuard> = Arc::new(docs.clone());
     let workforce: Arc<dyn Workforce> = Arc::new(roster.clone());
     let creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
+    let stock_side: Arc<dyn DeliveryWastage> = Arc::new(wastage.clone());
     let app = App::new()
         .module(Auth::new())
         .module(renox::audit::Audit)
@@ -588,7 +603,8 @@ async fn boot_full(
         .module(module)
         .provide(guard)
         .provide(workforce)
-        .provide(notifier);
+        .provide(notifier)
+        .provide(stock_side);
     let app = if real_tickets {
         app.module(wl_ticketing::WlTicketing::new())
     } else {
@@ -621,6 +637,8 @@ async fn boot_full(
     let app = record(app, &run_closed);
     let app = record(app, &handed_over);
     let app = record(app, &aborted);
+    let app = record(app, &returned);
+    let app = record(app, &discarded);
     let mut modules = vec!["parties"];
     if custody_from == Custody::Real {
         modules.push("invoicing");
@@ -695,6 +713,7 @@ async fn boot_full(
         &[perm::VIEW, perm::POD_VIEW, perm::APPROVE_COD_DIFFERENCE],
     )
     .await;
+    let stock_approver = make_user(app.db(), "Sana", &[perm::VIEW, "stock.approve"]).await;
     World {
         app,
         _views: views,
@@ -714,6 +733,10 @@ async fn boot_full(
         run_closed,
         handed_over,
         aborted,
+        returned,
+        discarded,
+        wastage,
+        stock_approver,
         notices,
         tickets,
         custody,

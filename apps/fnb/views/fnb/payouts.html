@@ -1,0 +1,36 @@
+{#- fnb: the aggregators' payout statements, newest first, with the import
+    form (the accountant pastes the CSV the aggregator's partner portal gives).
+    A statement with the same aggregator and reference as one that is not void
+    is refused and the refusal names the existing one. Replace it with
+    resources/views/fnb/payouts.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['payout.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['payout.title']" :subtitle="tx['payout.subtitle']">
+      <template rx-if="can_import">
+        <rx-action-sheet id="payout-import" :label="tx['payout.import']" :action="route('fnb.payout_import')"
+                         :title="tx['payout.import_title']" :description="tx['payout.import_description']" :submit-label="tx['payout.import']" icon="upload">
+          <rx-select name="aggregator" :label="tx['payout.aggregator']" id="payout-import-aggregator" :options="aggregators" :selected="''" :placeholder="tx['payout.aggregator']"/>
+          <rx-input name="reference" :label="tx['payout.reference']" :hint="tx['payout.reference_hint']" id="payout-import-reference" required/>
+          <rx-input name="file_name" :label="tx['payout.file_name']" id="payout-import-file"/>
+          <rx-input name="period_from" type="date" :label="tx['payout.period_from']" id="payout-import-from"/>
+          <rx-input name="period_to" type="date" :label="tx['payout.period_to']" id="payout-import-to"/>
+          <rx-textarea name="content" :label="tx['payout.content']" :hint="tx['payout.content_hint']" id="payout-import-content" required/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-table :rows="statements" as="statement" :key="statement.id" :caption="tx['payout.title']">
+      <rx-column :label="tx['payout.number']">
+        <rx-stack>
+          <span><a href="{{ statement.url }}"{% if statement.voided %} class="wl-voided"{% endif %}>{{ statement.number }}</a></span>
+          <span class="rx-subtitle">{{ statement.reference }}</span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['payout.aggregator']">{{ statement.aggregator }}</rx-column>
+      <rx-column :label="tx['payout.period']" hide-narrow>{{ statement.period }}</rx-column>
+      <rx-column :label="tx['payout.lines']" align="num" hide-narrow>{{ statement.lines }}</rx-column>
+      <rx-column :label="tx['payout.net']" align="num">{{ statement.net | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['state']"><rx-badge :kind="statement.status_kind" :text="statement.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['payout.empty']" :message="tx['payout.empty_text']" icon="file-spreadsheet"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

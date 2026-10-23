@@ -1,0 +1,369 @@
+//! The texts of the payout statement screens and rules (BL-FNB-09,
+//! BL-FNB-10) and of the reports (BL-FNB-08): keys `fnb.payout.*` (messages,
+//! tasks, toasts) and `fnb.screen.*` (what a template reads as `tx['...']`).
+
+/// Every text of the payout statements and the reports.
+pub(crate) const PAYOUT_TEXTS: &[(&str, &str)] = &[
+    // Toasts.
+    ("fnb.payout.imported", "Payout statement imported."),
+    (
+        "fnb.payout.matched",
+        "Payout statement matched: the receivable is booked.",
+    ),
+    (
+        "fnb.payout.disputed",
+        "Payout statement disputed: a follow-up task was made.",
+    ),
+    ("fnb.payout.resolved", "Dispute resolved."),
+    ("fnb.payout.party_set", "Responsible party set."),
+    ("fnb.payout.explained", "Line explained."),
+    (
+        "fnb.payout.late_entered",
+        "Order entered late; the statements of the aggregator are matched again.",
+    ),
+    ("fnb.payout.late_pending", "Late entry sent for approval."),
+    // What the history says.
+    ("fnb.payout.history.imported", "Imported from {{ file }}"),
+    ("fnb.payout.history.matched", "Matched"),
+    (
+        "fnb.payout.refund_reason",
+        "Refunded by the aggregator on {{ number }}",
+    ),
+    // Refusals.
+    (
+        "fnb.payout.problem.identity",
+        "Choose the aggregator and give the statement reference.",
+    ),
+    (
+        "fnb.payout.problem.duplicate",
+        "The statement {{ reference }} of {{ aggregator }} is already imported as {{ number }} (see /payouts/{{ id }}). Void that one first if it was the wrong file.",
+    ),
+    (
+        "fnb.payout.problem.period",
+        "The period ends before it starts: check the first and the last day.",
+    ),
+    (
+        "fnb.payout.problem.no_preset",
+        "There is no column preset for {{ aggregator }}: add it before importing its files.",
+    ),
+    (
+        "fnb.payout.problem.file",
+        "The file cannot be read. {{ problem }}",
+    ),
+    (
+        "fnb.payout.problem.unmatched",
+        "Match is not possible while a line has no order: enter the order as a late entry, or explain the line.",
+    ),
+    (
+        "fnb.payout.problem.party_missing",
+        "Match is not possible while a refund line has no responsible party: set business or aggregator for it.",
+    ),
+    (
+        "fnb.payout.problem.dispute_lines",
+        "Choose the lines that are disputed.",
+    ),
+    (
+        "fnb.payout.problem.closed",
+        "The statement is matched, settled or void: its lines no longer change here.",
+    ),
+    (
+        "fnb.payout.problem.party",
+        "The responsible party is business or aggregator.",
+    ),
+    (
+        "fnb.payout.problem.not_refund",
+        "Only a refund line has a responsible party.",
+    ),
+    (
+        "fnb.payout.problem.category",
+        "That complaint category is not on the list.",
+    ),
+    (
+        "fnb.payout.problem.note",
+        "Write why the line has no order.",
+    ),
+    (
+        "fnb.payout.problem.has_order",
+        "The line has its order: there is nothing to explain.",
+    ),
+    (
+        "fnb.payout.problem.not_imported",
+        "Only an imported statement is matched.",
+    ),
+    (
+        "fnb.payout.problem.not_disputed",
+        "Only a disputed statement is resolved.",
+    ),
+    (
+        "fnb.payout.problem.answer",
+        "Write the aggregator's answer.",
+    ),
+    (
+        "fnb.payout.problem.not_disputed_refund",
+        "Only a disputed refund line can be taken back by the aggregator.",
+    ),
+    (
+        "fnb.payout.problem.amount",
+        "That is not an amount in dirhams.",
+    ),
+    (
+        "fnb.payout.problem.late_day",
+        "Give the day the order happened.",
+    ),
+    ("fnb.payout.problem.late_time", "Give the time as HH:MM."),
+    (
+        "fnb.payout.problem.late_number",
+        "Give the aggregator and the order number.",
+    ),
+    (
+        "fnb.payout.problem.late_exists",
+        "That order is recorded already.",
+    ),
+    // The tasks.
+    (
+        "fnb.payout.task.unmatched_title",
+        "Reconcile {{ number }}: unmatched lines",
+    ),
+    (
+        "fnb.payout.task.unmatched_body",
+        "Lines of payout statement {{ number }} worth {{ amount }} have no order. Enter the orders as late entries or explain the lines: {{ link }}",
+    ),
+    ("fnb.payout.task.matched", "The statement was matched."),
+    (
+        "fnb.payout.task.dispute_title",
+        "Follow up the dispute of {{ number }}",
+    ),
+    (
+        "fnb.payout.task.dispute_body",
+        "Payout statement {{ number }} is disputed with the aggregator: {{ reason }}. Record its answer when it comes: {{ link }}",
+    ),
+    ("fnb.payout.task.resolved", "The dispute was resolved."),
+    // The screens.
+    ("fnb.screen.payout.title", "Payout statements"),
+    (
+        "fnb.screen.payout.subtitle",
+        "What the aggregators pay for the orders of a period, matched to the orders.",
+    ),
+    ("fnb.screen.payout.import", "Import a statement"),
+    (
+        "fnb.screen.payout.import_title",
+        "Import a payout statement",
+    ),
+    (
+        "fnb.screen.payout.import_description",
+        "Paste the CSV from the aggregator's partner portal. The columns are read with the aggregator's preset.",
+    ),
+    ("fnb.screen.payout.aggregator", "Aggregator"),
+    ("fnb.screen.payout.reference", "Statement reference"),
+    (
+        "fnb.screen.payout.reference_hint",
+        "The aggregator's own identifier of the payout; the same reference is imported once.",
+    ),
+    ("fnb.screen.payout.file_name", "File name"),
+    ("fnb.screen.payout.period_from", "Period from"),
+    ("fnb.screen.payout.period_to", "Period to"),
+    ("fnb.screen.payout.content", "File content (CSV)"),
+    (
+        "fnb.screen.payout.content_hint",
+        "One row per order. Excel files are saved as CSV first.",
+    ),
+    ("fnb.screen.payout.number", "Statement"),
+    ("fnb.screen.payout.period", "Period"),
+    ("fnb.screen.payout.lines", "Lines"),
+    ("fnb.screen.payout.net", "Net payout"),
+    ("fnb.screen.payout.empty", "No payout statements yet"),
+    (
+        "fnb.screen.payout.empty_text",
+        "Import the first statement an aggregator sent.",
+    ),
+    ("fnb.screen.payout.match", "Match"),
+    ("fnb.screen.payout.match_title", "Match the statement"),
+    (
+        "fnb.screen.payout.match_message",
+        "The net payout is booked as owed by the aggregator and each refund line becomes a sales return, refunded by the channel.",
+    ),
+    ("fnb.screen.payout.dispute", "Dispute"),
+    (
+        "fnb.screen.payout.dispute_title",
+        "Dispute lines with the aggregator",
+    ),
+    (
+        "fnb.screen.payout.dispute_description",
+        "Tick the lines the aggregator got wrong, for example a refund the kitchen did not cause. A follow-up task is made.",
+    ),
+    ("fnb.screen.payout.resolve", "Resolve"),
+    ("fnb.screen.payout.resolve_title", "Resolve the dispute"),
+    (
+        "fnb.screen.payout.resolve_description",
+        "Record the aggregator's answer. Tick a refund the aggregator takes back: its sales return is reversed.",
+    ),
+    ("fnb.screen.payout.answer", "The aggregator's answer"),
+    ("fnb.screen.payout.adjustment", "Adjustment"),
+    (
+        "fnb.screen.payout.adjustment_hint",
+        "What the answer adds to the receivable in dirhams; a minus sign takes from it.",
+    ),
+    (
+        "fnb.screen.payout.reverse_refund",
+        "The aggregator takes the refund back",
+    ),
+    ("fnb.screen.payout.late", "Enter a missing order"),
+    (
+        "fnb.screen.payout.late_title",
+        "Enter an order as a late entry",
+    ),
+    (
+        "fnb.screen.payout.late_description",
+        "The statement names an order the kitchen never recorded. Enter it with the aggregator's number and the time it happened.",
+    ),
+    ("fnb.screen.payout.late_number", "Aggregator order number"),
+    ("fnb.screen.payout.late_day", "Day it happened"),
+    ("fnb.screen.payout.late_time", "Time it happened"),
+    (
+        "fnb.screen.payout.late_time_hint",
+        "HH:MM; noon when blank.",
+    ),
+    ("fnb.screen.payout.late_gross", "Order value with VAT"),
+    ("fnb.screen.payout.late_reason", "Why it is late"),
+    (
+        "fnb.screen.payout.late_reason_hint",
+        "Required when the order happened long before today.",
+    ),
+    ("fnb.screen.payout.details", "Statement"),
+    ("fnb.screen.payout.preset", "Column preset"),
+    ("fnb.screen.payout.gross", "Gross"),
+    ("fnb.screen.payout.commission", "Commission"),
+    ("fnb.screen.payout.promo", "Promotions"),
+    ("fnb.screen.payout.refunds", "Refunds"),
+    ("fnb.screen.payout.refund", "Refund"),
+    ("fnb.screen.payout.receivable", "Receivable booked"),
+    ("fnb.screen.payout.unmatched_amount", "Lines with no order"),
+    ("fnb.screen.payout.dispute_reason", "Why it is disputed"),
+    ("fnb.screen.payout.resolve_note", "The aggregator's answer"),
+    ("fnb.screen.payout.void_reason", "Why it was voided"),
+    (
+        "fnb.screen.payout.differences",
+        "Differences with the orders",
+    ),
+    ("fnb.screen.payout.lines_title", "Lines"),
+    ("fnb.screen.payout.order", "Aggregator order"),
+    ("fnb.screen.payout.return", "Sales return"),
+    ("fnb.screen.payout.return_made", "Refunded by the channel"),
+    ("fnb.screen.payout.return_taken_back", "Taken back"),
+    ("fnb.screen.payout.set_party", "Set the party"),
+    (
+        "fnb.screen.payout.set_party_title",
+        "Who is responsible for the refund",
+    ),
+    (
+        "fnb.screen.payout.set_party_description",
+        "Business when the kitchen caused it; aggregator when it did not. Match waits for it.",
+    ),
+    ("fnb.screen.payout.category", "Complaint category"),
+    ("fnb.screen.payout.explain", "Explain"),
+    (
+        "fnb.screen.payout.explain_title",
+        "Explain a line with no order",
+    ),
+    (
+        "fnb.screen.payout.explain_description",
+        "Say why the line is fine without an order, for example a fee of the aggregator.",
+    ),
+    ("fnb.screen.payout.no_lines", "No lines"),
+    ("fnb.screen.payout.line_matched", "Order found"),
+    ("fnb.screen.payout.line_late", "Entered late"),
+    ("fnb.screen.payout.line_explained", "Explained"),
+    ("fnb.screen.payout.line_unmatched", "No order"),
+    ("fnb.screen.payout.line_disputed", "Disputed"),
+    (
+        "fnb.screen.payout.note_unmatched",
+        "Match is not available: a line has no order. Enter the order as a late entry or explain the line.",
+    ),
+    (
+        "fnb.screen.payout.note_party",
+        "Match is not available: a refund line has no responsible party. Set it on the line.",
+    ),
+    (
+        "fnb.screen.payout.note_settled",
+        "The payout was received and allocated: a settled statement cannot be voided. Correct it with a dispute on a later statement.",
+    ),
+    ("fnb.screen.payout.status.imported", "Imported"),
+    ("fnb.screen.payout.status.matched", "Matched"),
+    ("fnb.screen.payout.status.disputed", "Disputed"),
+    ("fnb.screen.payout.status.settled", "Settled"),
+    ("fnb.screen.payout.status.voided", "Void"),
+    ("fnb.screen.payout.party.business", "Business"),
+    ("fnb.screen.payout.party.aggregator", "Aggregator"),
+    ("fnb.screen.payout.party.driver_or_rider", "Rider"),
+    ("fnb.screen.payout.party.rider", "Rider"),
+    ("fnb.screen.payout.party.supplier", "Supplier"),
+    ("fnb.screen.payout.party.customer", "Customer"),
+    ("fnb.screen.payout.category.cold", "Cold"),
+    ("fnb.screen.payout.category.late", "Late"),
+    ("fnb.screen.payout.category.missing_item", "Missing item"),
+    ("fnb.screen.payout.category.wrong_item", "Wrong item"),
+    ("fnb.screen.payout.category.quality", "Quality"),
+    (
+        "fnb.screen.payout.category.service_not_delivered",
+        "Not delivered",
+    ),
+    ("fnb.screen.payout.category.other", "Other"),
+    (
+        "fnb.screen.payout.difference.compensation",
+        "The aggregator cancelled the order: no compensation on the statement",
+    ),
+    (
+        "fnb.screen.payout.difference.refund",
+        "A line was cancelled on the order: no refund on the statement",
+    ),
+    // The reports (BL-FNB-08).
+    (
+        "fnb.screen.report.refunds_title",
+        "Refunds after completion",
+    ),
+    (
+        "fnb.screen.report.refunds_subtitle",
+        "By complaint category and responsible party, including the refunds the aggregators deduct from their payouts.",
+    ),
+    ("fnb.screen.report.failed_title", "Failed deliveries"),
+    (
+        "fnb.screen.report.failed_subtitle",
+        "Own-rider deliveries that failed, by reason.",
+    ),
+    ("fnb.screen.report.faults_title", "Rider faults"),
+    (
+        "fnb.screen.report.faults_subtitle",
+        "Entries on the riders' records. They are for the kitchen manager and HR and never change pay.",
+    ),
+    ("fnb.screen.report.faults_empty", "No rider faults"),
+    (
+        "fnb.screen.report.refunds_empty",
+        "No refunds in the period",
+    ),
+    ("fnb.screen.report.refunds_list", "Refunds"),
+    (
+        "fnb.screen.report.failed_empty",
+        "No failed deliveries in the period",
+    ),
+    ("fnb.screen.report.by_category", "By category and party"),
+    ("fnb.screen.report.from", "From"),
+    ("fnb.screen.report.to", "To"),
+    ("fnb.screen.report.brand", "Brand"),
+    ("fnb.screen.report.outlet", "Outlet"),
+    ("fnb.screen.report.all", "All"),
+    ("fnb.screen.report.show", "Show"),
+    ("fnb.screen.report.category", "Category"),
+    ("fnb.screen.report.count", "Refunds"),
+    ("fnb.screen.report.net", "Net of VAT"),
+    ("fnb.screen.report.gross", "With VAT"),
+    ("fnb.screen.report.total", "Total net / gross"),
+    ("fnb.screen.report.how", "Resolved by"),
+    ("fnb.screen.report.day", "Day"),
+    ("fnb.screen.report.rider", "Rider"),
+    ("fnb.screen.report.resolution.refund", "Refund"),
+    ("fnb.screen.report.resolution.credit_note", "Credit note"),
+    (
+        "fnb.screen.report.resolution.refunded_by_channel",
+        "Refunded by the aggregator",
+    ),
+];

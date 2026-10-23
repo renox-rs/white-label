@@ -5,6 +5,13 @@
 <rx-page layout="layouts/app.html" :title="tx['driver.title']">
   <rx-stack>
     <rx-page-header :title="tx['driver.title']" :subtitle="today"/>
+    <rx-table :rows="stops" as="stop" :key="stop.id" card>
+      <rx-column :label="tx['fields.sequence']">{{ stop.sequence }}</rx-column>
+      <rx-column :label="tx['fields.recipient']"><a href="/driver/stops/{{ stop.id }}">{{ stop.recipient }}</a></rx-column>
+      <rx-column :label="tx['fields.address']">{{ stop.address or stop.area }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ stop.status }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['driver.none']" icon="truck"/></rx-slot>
+    </rx-table>
  <rx-confirm rx-for="run in returnable" :id="'return-run-' ~ run[0]" :label="tx['close.return'] ~ ' ' ~ run[1]" :action="route('wl_delivery.run_return', run[0])" method="POST"
                   :title="tx['close.return']" :message="tx['close.stops_hint']" :confirm-label="tx['close.return']"/>
     <rx-form rx-for="h in waiting" :action="route('wl_delivery.hand_over_confirm', h.id)" novalidate>
@@ -47,12 +54,5 @@
         </div>
       </rx-card>
     </rx-form>
-    <rx-table :rows="stops" as="stop" :key="stop.id" card>
-      <rx-column :label="tx['fields.sequence']">{{ stop.sequence }}</rx-column>
-      <rx-column :label="tx['fields.recipient']"><a href="/driver/stops/{{ stop.id }}">{{ stop.recipient }}</a></rx-column>
-      <rx-column :label="tx['fields.address']">{{ stop.address or stop.area }}</rx-column>
-      <rx-column :label="tx['fields.status']">{{ stop.status }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['driver.none']" icon="truck"/></rx-slot>
-    </rx-table>
   </rx-stack>
 </rx-page>

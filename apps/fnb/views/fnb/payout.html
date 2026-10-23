@@ -1,0 +1,108 @@
+{#- fnb: a payout statement: its totals, its lines with the order each was
+    matched to, the refund returns they became and the actions per line (set
+    the responsible party of a refund, explain a line with no order), the
+    differences with the orders flagged for the payout, and the buttons: match,
+    dispute, resolve, void, and the cashier's late entry of a missing order.
+    Replace it with resources/views/fnb/payout.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="statement.number">
+  <rx-stack>
+    <rx-page-header :title="statement.number" :subtitle="aggregator_label ~ ' / ' ~ statement.reference" :back="route('fnb.payouts')" :back-label="tx['payout.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-confirm rx-if="can_match" :id="'match-' ~ statement.id" :label="tx['payout.match']" :action="route('fnb.payout_match', statement.id)" method="POST"
+                  :title="tx['payout.match_title']" :message="tx['payout.match_message']" :confirm-label="tx['payout.match']"/>
+      <rx-action-sheet rx-if="can_dispute" :id="'dispute-' ~ statement.id" :label="tx['payout.dispute']" :action="route('fnb.payout_dispute', statement.id)"
+                       :title="tx['payout.dispute_title']" :description="tx['payout.dispute_description']" :submit-label="tx['payout.dispute']" icon="triangle-alert" variant="danger" danger>
+        <rx-textarea name="reason" :label="tx['reason']" :id="'dispute-reason-' ~ statement.id" required/>
+        <rx-checkbox rx-for="line in disputable" :name="'line_' ~ line.id" :label="line.order_number ~ ' / ' ~ (line.net | money(currency='AED'))" :id="'dispute-line-' ~ line.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_resolve" :id="'resolve-' ~ statement.id" :label="tx['payout.resolve']" :action="route('fnb.payout_resolve', statement.id)"
+                       :title="tx['payout.resolve_title']" :description="tx['payout.resolve_description']" :submit-label="tx['payout.resolve']" icon="check">
+        <rx-textarea name="answer" :label="tx['payout.answer']" :id="'resolve-answer-' ~ statement.id" required/>
+        <rx-input name="adjustment" :label="tx['payout.adjustment']" :hint="tx['payout.adjustment_hint']" :id="'resolve-adjustment-' ~ statement.id"/>
+        <rx-checkbox rx-for="line in reversible" :name="'reverse_' ~ line.id" :label="tx['payout.reverse_refund'] ~ ': ' ~ line.order_number" :id="'resolve-reverse-' ~ line.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_late" :id="'late-' ~ statement.id" :label="tx['payout.late']" :action="route('fnb.late_order')"
+                       :title="tx['payout.late_title']" :description="tx['payout.late_description']" :submit-label="tx['payout.late']" icon="clock">
+        <input type="hidden" name="aggregator" value="{{ aggregator }}"/>
+        <input type="hidden" name="back" value="{{ statement.id }}"/>
+        <rx-input name="order_number" :label="tx['payout.late_number']" :id="'late-number-' ~ statement.id" required/>
+        <rx-input name="occurred_on" type="date" :label="tx['payout.late_day']" :value="today" :id="'late-day-' ~ statement.id" required/>
+        <rx-input name="occurred_time" :label="tx['payout.late_time']" :hint="tx['payout.late_time_hint']" :id="'late-time-' ~ statement.id"/>
+        <rx-input name="gross" :label="tx['payout.late_gross']" :id="'late-gross-' ~ statement.id"/>
+        <rx-textarea name="reason" :label="tx['payout.late_reason']" :hint="tx['payout.late_reason_hint']" :id="'late-reason-' ~ statement.id"/>
+      </rx-action-sheet>
+      <rx-include template="wl-kernel/void_action.html"/>
+    </rx-page-header>
+    <rx-card rx-if="notes" :title="tx['notes']">
+      <rx-stack>
+        <p rx-for="note in notes">{{ note }}</p>
+      </rx-stack>
+    </rx-card>
+    <rx-card :title="tx['payout.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['payout.number']" :value="statement.number" copyable/>
+        <rx-entry :label="tx['payout.aggregator']" :value="aggregator_label"/>
+        <rx-entry :label="tx['payout.reference']" :value="statement.reference" copyable/>
+        <rx-entry :label="tx['payout.period']" :value="period" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['payout.file_name']" :value="statement.file_name" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['payout.preset']" :value="statement.preset" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['payout.gross']" :value="statement.gross_total" format="money"/>
+        <rx-entry :label="tx['payout.commission']" :value="statement.commission_total" format="money"/>
+        <rx-entry :label="tx['payout.promo']" :value="statement.promo_total" format="money"/>
+        <rx-entry :label="tx['payout.refunds']" :value="statement.refund_total" format="money"/>
+        <rx-entry :label="tx['payout.net']" :value="statement.net_total" format="money"/>
+        <rx-entry :label="tx['payout.receivable']" :value="statement.receivable_amount" format="money"/>
+        <rx-entry :label="tx['payout.unmatched_amount']" rx-if="unmatched" :value="unmatched_amount" format="money"/>
+        <rx-entry :label="tx['payout.dispute_reason']" rx-if="statement.dispute_reason" :value="statement.dispute_reason" span="full"/>
+        <rx-entry :label="tx['payout.resolve_note']" rx-if="statement.resolve_note" :value="statement.resolve_note" span="full"/>
+        <rx-entry :label="tx['payout.void_reason']" rx-if="statement.void_reason" :value="statement.void_reason" span="full"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card rx-if="differences" :title="tx['payout.differences']">
+      <rx-table :rows="differences" as="difference" :key="difference.order_number ~ difference.kind" :caption="tx['payout.differences']">
+        <rx-column :label="tx['number']"><a href="{{ difference.order_url }}">{{ difference.order_number }}</a></rx-column>
+        <rx-column :label="tx['what']">{{ difference.kind }}</rx-column>
+        <rx-column :label="tx['amount']" align="num">{{ difference.amount | money(currency='AED') }}</rx-column>
+      </rx-table>
+    </rx-card>
+    <rx-card :title="tx['payout.lines_title']">
+      <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['payout.lines_title']">
+        <rx-column :label="tx['payout.order']">
+          <rx-stack>
+            <span rx-if="line.order_url"><a href="{{ line.order_url }}">{{ line.order_number }}</a></span>
+            <span rx-if="not line.order_url">{{ line.order_number }}</span>
+            <span rx-if="line.explanation" class="rx-subtitle">{{ line.explanation }}</span>
+          </rx-stack>
+        </rx-column>
+        <rx-column :label="tx['payout.gross']" align="num" hide-narrow>{{ line.gross | money(currency='AED') }}</rx-column>
+        <rx-column :label="tx['payout.commission']" align="num" hide-narrow>{{ line.commission | money(currency='AED') }}</rx-column>
+        <rx-column :label="tx['payout.promo']" align="num" hide-narrow>{{ line.promo | money(currency='AED') }}</rx-column>
+        <rx-column :label="tx['payout.refund']" align="num">
+          <rx-stack>
+            <span>{{ line.refund | money(currency='AED') }}</span>
+            <span rx-if="line.reason" class="rx-subtitle">{{ line.reason }}</span>
+            <span rx-if="line.category" class="rx-subtitle">{{ line.category }} / {{ line.party_label }}</span>
+          </rx-stack>
+        </rx-column>
+        <rx-column :label="tx['payout.net']" align="num">{{ line.net | money(currency='AED') }}</rx-column>
+        <rx-column :label="tx['payout.return']" hide-narrow>
+          <span rx-if="line.returned"><a href="{{ line.return_url }}">{{ tx['payout.return_made'] }}</a></span>
+          <span rx-if="line.taken_back">{{ tx['payout.return_taken_back'] }}</span>
+        </rx-column>
+        <rx-column :label="tx['state']"><rx-badge :kind="line.state_kind" :text="line.state_label"/></rx-column>
+        <rx-row-actions>
+          <rx-action-sheet rx-if="line.needs_party and can_edit_lines" :id="'party-' ~ line.id" :label="tx['payout.set_party']" :action="route('fnb.payout_line_party', statement.id, line.id)"
+                           :title="tx['payout.set_party_title']" :description="tx['payout.set_party_description']" :submit-label="tx['payout.set_party']" icon="user-round">
+            <rx-select name="party" :label="tx['party']" :id="'party-party-' ~ line.id" :selected="line.party or 'business'" :options="parties"/>
+            <rx-select name="category" :label="tx['payout.category']" :id="'party-category-' ~ line.id" :selected="'other'" :options="categories"/>
+          </rx-action-sheet>
+          <rx-action-sheet rx-if="line.can_explain and can_edit_lines" :id="'explain-' ~ line.id" :label="tx['payout.explain']" :action="route('fnb.payout_line_explain', statement.id, line.id)"
+                           :title="tx['payout.explain_title']" :description="tx['payout.explain_description']" :submit-label="tx['payout.explain']" icon="message-square">
+            <rx-textarea name="note" :label="tx['note']" :id="'explain-note-' ~ line.id" required/>
+          </rx-action-sheet>
+        </rx-row-actions>
+        <rx-slot name="empty"><rx-empty :title="tx['payout.no_lines']" icon="file-spreadsheet"/></rx-slot>
+      </rx-table>
+    </rx-card>
+  </rx-stack>
+</rx-page>

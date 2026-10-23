@@ -30,7 +30,7 @@
 //!   cancelled* and no movement ([`cancel_for_source`]).
 //!
 //! Decisions: a pending issue only exists where negative stock is blocked
-//! (`allow_consumption` comes with BL-STK-19); a posted chunk of a split
+//! (`allow_consumption`, BL-STK-19, lets an item that is not lot-tracked go below zero instead); a posted chunk of a split
 //! pending issue is a row of its own pointing at the original
 //! (`split_from_id`); a stock count's approved adjustments will call
 //! [`post_on_arrival`] with `count` when the count lines are built.

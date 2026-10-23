@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 pub mod abort;
+pub mod attempted;
 pub mod close;
 pub mod cod;
 pub mod day_list;
@@ -37,7 +38,7 @@ pub use plan::NewRun;
 pub use reasons::{CodReason, FailureReason, RefusalReason};
 pub use request::Deliveries;
 pub use run::{Run, RunStatus, VehicleType};
-pub use settings::DeliverySettings;
+pub use settings::{DeliverySettings, PerishableAction, PerishablePolicy};
 
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
@@ -186,6 +187,42 @@ impl WlDelivery {
         self
     }
 
+    /// Sets what follows a failed visit and a run `abort` for perishable
+    /// deliveries of `source_type` (`WRK.RUL.16`, §7). The module default is
+    /// *discard* for both; 06 sets *return* after a failed visit and
+    /// *discard* when the run was aborted.
+    pub fn perishable_policy(
+        mut self,
+        source_type: &str,
+        on_failed_visit: settings::PerishableAction,
+        on_abort: settings::PerishableAction,
+    ) -> Self {
+        self.settings
+            .set_perishable_policy(source_type, on_failed_visit, on_abort);
+        self
+    }
+
+    /// Sets the wastage value, in fils, above which a discard needs a second
+    /// person's approval (`STK.ACL.02`, §7: AED 1,000; 06: AED 200).
+    pub fn discard_approval_limit(mut self, fils: i64) -> Self {
+        self.settings.set_discard_approval_fils(fils);
+        self
+    }
+
+    /// Sets the delivery promise of `source_type` in minutes: the perishable
+    /// hand-over window (BL-DLV-10) for a request that gives none.
+    pub fn promise_minutes(mut self, source_type: &str, minutes: i64) -> Self {
+        self.settings.set_promise_minutes(source_type, minutes);
+        self
+    }
+
+    /// Turns `WRK.RUL.08` on (default off, see
+    /// [`DeliverySettings::set_attempt_rule`]).
+    pub fn attempt_rule(mut self, on: bool) -> Self {
+        self.settings.set_attempt_rule(on);
+        self
+    }
+
     /// Sets the days a delivery may go untraced before `WRK.RUL.17` marks
     /// it lost (§7: 7).
     pub fn untraced_days(mut self, days: i64) -> Self {
@@ -282,6 +319,10 @@ impl Module for WlDelivery {
         // reversal: the cash, the ticket and `DeliveryReversed`.
         reverse::register(app);
         proof::register(app);
+        // `reattempt`, `return` and `discard` after a failed attempt, the
+        // approval of a wastage above the limit (`STK.ACL.02`) and what
+        // follows a return or a discard.
+        attempted::register(app, self.settings.discard_approval_fils());
         // The notices of an aborted run.
         notices::register_types();
         // A run closes when the driver's cash handover of it is counted.

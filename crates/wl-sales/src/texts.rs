@@ -723,6 +723,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_sales.orders.create", "Enter an order"),
     ("wl_sales.orders.customer", "Customer (party id)"),
+    ("wl_sales.orders.customer_name", "Customer"),
     ("wl_sales.orders.channel", "Channel"),
     ("wl_sales.orders.payment_mode", "Payment"),
     ("wl_sales.orders.number", "Order"),
@@ -815,6 +816,79 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_sales.orders.problem.no_quantities",
         "Give at least one quantity.",
+    ),
+    (
+        "wl_sales.orders.problem.duplicate_external",
+        "This channel already sent that order number: it is order :number (id :id). No second order was made.",
+    ),
+    (
+        "wl_sales.orders.problem.promo_unknown",
+        "There is no promo code with this name.",
+    ),
+    (
+        "wl_sales.orders.problem.promo_ended",
+        "This promo code has ended.",
+    ),
+    (
+        "wl_sales.orders.problem.promo_used_up",
+        "This promo code has no uses left.",
+    ),
+    ("wl_sales.orders.external_number", "External order number"),
+    ("wl_sales.orders.promo_code", "Promo code"),
+    ("wl_sales.orders.payment_label", "Online payment"),
+    (
+        "wl_sales.orders.payment_status.not_required",
+        "Not paid online",
+    ),
+    (
+        "wl_sales.orders.payment_status.pending",
+        "Waiting for the gateway",
+    ),
+    ("wl_sales.orders.payment_status.received", "Received"),
+    ("wl_sales.orders.payment_status.failed", "Failed"),
+    ("wl_sales.orders.payment_due", "Pay by"),
+    ("wl_sales.orders.payment_link", "Payment link"),
+    (
+        "wl_sales.orders.awaiting_hint",
+        "Waiting for the gateway until :due. The outlet, kitchen and dispatch do not see this order until the full amount is confirmed; if it is not, the order is cancelled as payment failed.",
+    ),
+    ("wl_sales.orders.tab.active", "Orders"),
+    ("wl_sales.orders.tab.awaiting", "Awaiting payment"),
+    (
+        "wl_sales.orders.awaiting_empty",
+        "No order is waiting for its payment",
+    ),
+    ("wl_sales.orders.payments", "Payments"),
+    ("wl_sales.orders.payment_id", "Payment"),
+    ("wl_sales.orders.payment_amount", "Amount"),
+    ("wl_sales.orders.payment_outcome", "What was done"),
+    ("wl_sales.orders.payment_refund", "Refund"),
+    (
+        "wl_sales.orders.payments_empty",
+        "No online payment was received for this order",
+    ),
+    ("wl_sales.orders.outcome.claimed", "Being handled"),
+    ("wl_sales.orders.outcome.confirmed", "Confirmed the order"),
+    (
+        "wl_sales.orders.outcome.refund_requested",
+        "Refund requested (late payment)",
+    ),
+    (
+        "wl_sales.orders.outcome.refund_refused",
+        "Refund could not be requested: a person must check it",
+    ),
+    ("wl_sales.orders.late_payment_reason", "late payment"),
+    (
+        "wl_sales.orders.late_task_title",
+        "Late payment for order :number",
+    ),
+    (
+        "wl_sales.orders.late_task_body",
+        "Payment :payment of :amount arrived for order :number, which cannot take it (cancelled, rejected, already paid or a different amount). A full refund was requested; the order did not change.",
+    ),
+    (
+        "wl_sales.orders.late_task_unrefunded",
+        "Payment :payment of :amount arrived for order :number, which cannot take it, but the refund could not be requested. Please refund it.",
     ),
     ("wl_sales.returns.title", "Sales returns"),
     (
@@ -1717,6 +1791,22 @@ const TEXTS: &[(&str, &str)] = &[
         "The loyalty programme has stopped earning points. You can redeem the {{ points }} points on your account {{ code }} until {{ closing_date }}; what is left then expires.",
     ),
     (
+        "wl_sales.notices.order_payment_failed_subject",
+        "Your payment did not go through",
+    ),
+    (
+        "wl_sales.notices.order_payment_failed_body",
+        "The payment for order {{ number }} ({{ total }}) failed, so the order was cancelled and nothing was charged. Payment failed, please try again: place a new order.",
+    ),
+    (
+        "wl_sales.notices.order_late_payment_subject",
+        "Your payment is being refunded",
+    ),
+    (
+        "wl_sales.notices.order_late_payment_body",
+        "Your payment of {{ amount }} for order {{ number }} arrived after the order could no longer take it, so it is being refunded in full.",
+    ),
+    (
         "wl_sales.notices.loyalty_closed_subject",
         "Your loyalty account is closed",
     ),
@@ -1745,6 +1835,8 @@ pub(crate) fn t_with(lang: &Lang, key: &str, params: &[(&str, &dyn Display)]) ->
 pub(crate) fn all(lang: &Lang) -> BTreeMap<&'static str, String> {
     TEXTS
         .iter()
+        .chain(crate::texts_changes::CHANGE_TEXTS.iter())
+        .chain(crate::texts_till::TILL_TEXTS.iter())
         .map(|(key, _)| (key.trim_start_matches("wl_sales."), t(lang, key)))
         .collect()
 }
@@ -1754,6 +1846,8 @@ pub(crate) fn all(lang: &Lang) -> BTreeMap<&'static str, String> {
 pub(crate) fn english(key: &str, params: &[(&str, &dyn Display)]) -> String {
     let text = TEXTS
         .iter()
+        .chain(crate::texts_changes::CHANGE_TEXTS.iter())
+        .chain(crate::texts_till::TILL_TEXTS.iter())
         .find(|(k, _)| *k == key)
         .map_or(key, |(_, text)| *text);
     let params: Vec<(&str, String)> = params.iter().map(|(k, v)| (*k, v.to_string())).collect();
@@ -1766,7 +1860,12 @@ mod tests {
 
     #[test]
     fn keys_are_unique_and_prefixed() {
-        let mut keys: Vec<&str> = TEXTS.iter().map(|(key, _)| *key).collect();
+        let mut keys: Vec<&str> = TEXTS
+            .iter()
+            .chain(crate::texts_changes::CHANGE_TEXTS.iter())
+            .chain(crate::texts_till::TILL_TEXTS.iter())
+            .map(|(key, _)| *key)
+            .collect();
         assert!(keys.iter().all(|key| key.starts_with("wl_sales.")));
         let count = keys.len();
         keys.sort_unstable();

@@ -1,0 +1,32 @@
+{#- fnb: the orders, newest first, with their status, channel, how they are paid
+    and, for a failed delivery, why it failed. Replace it with
+    resources/views/fnb/orders.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['title']">
+  <rx-stack>
+    <rx-page-header :title="tx['title']" :subtitle="tx['subtitle']"/>
+    <rx-table :rows="orders" as="order" :key="order.id" :caption="tx['title']">
+      <rx-column :label="tx['number']">
+        <rx-stack>
+          <span><a href="{{ order.url }}">{{ order.number }}</a></span>
+          <span class="rx-subtitle">{{ order.channel }}</span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['customer']">
+        <rx-stack>
+          <span>{{ order.recipient }}</span>
+          <span class="rx-subtitle">{{ order.area }}</span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['kind']" hide-narrow>{{ order.kind }}</rx-column>
+      <rx-column :label="tx['payment']" hide-narrow>{{ order.payment }}</rx-column>
+      <rx-column :label="tx['total']" align="num">{{ order.total | money(currency='AED') }}</rx-column>
+      <rx-column :label="tx['state']">
+        <rx-stack>
+          <rx-badge :kind="order.status_kind" :text="order.status"/>
+          <span rx-if="order.failure" class="rx-subtitle">{{ order.failure }}</span>
+        </rx-stack>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['empty']" :message="tx['empty_text']" icon="utensils"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

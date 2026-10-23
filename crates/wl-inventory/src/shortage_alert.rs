@@ -150,14 +150,19 @@ async fn first_not_admin(db: &Db, ids: &[i64]) -> Result<Option<i64>> {
 }
 
 /// Whether `item_id` is still short at `location_id`: a pending issue is
-/// `open` (see the module docs for the balance below zero).
+/// `open`, or the balance is below zero (`allow_consumption`).
 async fn still_short(db: &Db, item_id: i64, location_id: i64) -> Result<bool> {
-    PendingIssue::query()
+    let pending = PendingIssue::query()
         .where_(PendingIssue::ITEM_ID.eq(item_id))
         .where_(PendingIssue::LOCATION_ID.eq(location_id))
         .where_(PendingIssue::STATUS.eq(PendingStatus::Open))
         .exists(db)
-        .await
+        .await?;
+    if pending {
+        return Ok(true);
+    }
+    // `allow_consumption` (BL-STK-19): the balance itself is below zero.
+    Ok(crate::balance::on_hand_at(db, item_id, location_id, None).await? < 0)
 }
 
 /// `STK.RUL.06` when a pending issue is recorded: tells the storekeeper of

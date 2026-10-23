@@ -1,0 +1,80 @@
+{#- fnb: the channels of each outlet: the brands on the ordering site and the
+    aggregators' tablets, the outage banner while the kitchen devices are silent
+    (the brands show "temporarily closed" and the aggregators are paused by
+    hand), the buttons to pause and to resume (only a manager resumes, the
+    system never does), and the paper orders of the outage with the sheet that
+    enters one as a late entry with its business time. Replace it with
+    resources/views/fnb/outlet_channels.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['channels.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['channels.title']" :subtitle="tx['channels.subtitle']"/>
+    <rx-card rx-for="outlet in outlets" :title="outlet.name">
+      <rx-stack>
+        <rx-alert rx-if="outlet.banner" :kind="outlet.banner_kind" :message="outlet.banner"/>
+        <rx-alert rx-if="outlet.reason" kind="warning" :message="outlet.reason"/>
+        <rx-infolist rx-if="outlet.outage_id" columns="2">
+          <rx-entry :label="tx['channels.outage_since']" :value="outlet.silent_since"/>
+          <rx-entry :label="tx['channels.devices_back_at']" :value="outlet.back_at" :placeholder="tx['closing.none']"/>
+          <rx-entry :label="tx['channels.prompts']" :value="outlet.prompts"/>
+        </rx-infolist>
+        <p rx-if="not outlet.outage_id" class="rx-subtitle">{{ tx['channels.no_outage'] }}</p>
+        <div>
+          <rx-action-sheet rx-if="outlet.can_pause_all" :id="'pause-outlet-' ~ outlet.id" :label="tx['channels.pause_all']" :action="route('fnb.outlet_pause', outlet.id)"
+                           :title="tx['channels.pause_all_title']" :description="tx['channels.pause_all_description']" :submit-label="tx['channels.pause_all']" icon="pause">
+            <rx-textarea name="reason" :label="tx['channels.reason']" :id="'pause-outlet-reason-' ~ outlet.id" required/>
+          </rx-action-sheet>
+          <rx-confirm rx-if="outlet.can_resume" :id="'resume-outage-' ~ outlet.id" :label="tx['channels.resume_all']" :action="route('fnb.outage_resume', outlet.outage_id)" method="POST"
+                      :title="tx['channels.resume_all_title']" :message="tx['channels.resume_all_message']" :confirm-label="tx['channels.resume_all']" icon="play"/>
+          <rx-action-sheet rx-if="outlet.can_paper" :id="'paper-' ~ outlet.id" :label="tx['channels.paper_add']" :action="route('fnb.paper_order_enter')"
+                           :title="tx['channels.paper_title']" :description="tx['channels.paper_description']" :submit-label="tx['channels.paper_add']" icon="file-pen-line">
+            <input type="hidden" name="outlet" value="{{ outlet.id }}"/>
+            <rx-input name="reference" :label="tx['channels.paper_reference']" :id="'paper-reference-' ~ outlet.id" required/>
+            <rx-select name="channel" :label="tx['channels.paper_channel']" :id="'paper-channel-' ~ outlet.id" :options="paper_channels" :selected="'counter'"/>
+            <rx-input name="amount" :label="tx['channels.paper_amount']" :id="'paper-amount-' ~ outlet.id" required/>
+            <rx-select name="method" :label="tx['channels.paper_method']" :id="'paper-method-' ~ outlet.id" :options="methods" :selected="'cash'"/>
+            <rx-input name="occurred_on" type="date" :label="tx['channels.paper_day']" :value="today" :id="'paper-day-' ~ outlet.id" required/>
+            <rx-input name="occurred_time" :label="tx['channels.paper_time']" :hint="tx['channels.paper_time_hint']" :id="'paper-time-' ~ outlet.id" required/>
+            <rx-textarea name="reason" :label="tx['channels.paper_reason']" :id="'paper-reason-' ~ outlet.id"/>
+            <rx-input name="outage_reference" :label="tx['channels.paper_outage']" :id="'paper-outage-' ~ outlet.id"/>
+          </rx-action-sheet>
+        </div>
+        <rx-table :rows="outlet.channels" as="channel" :key="channel.id" :caption="outlet.name">
+          <rx-column :label="tx['channels.channel']">{{ channel.name }}</rx-column>
+          <rx-column :label="tx['channels.kind']" hide-narrow>{{ channel.kind }}</rx-column>
+          <rx-column :label="tx['state']">
+            <rx-badge rx-if="channel.paused" kind="error" :text="tx['channels.paused']"/>
+            <rx-badge rx-if="not channel.paused" kind="success" :text="tx['channels.open']"/>
+          </rx-column>
+          <rx-column :label="tx['channels.since']" hide-narrow>{{ channel.since }}</rx-column>
+          <rx-row-actions>
+            <rx-confirm rx-if="channel.can_pause" :id="'pause-channel-' ~ channel.id" :label="tx['channels.pause']" :action="route('fnb.outlet_channel_pause', channel.id)" method="POST"
+                        :title="tx['channels.pause_title']" :message="tx['channels.pause_message']" :confirm-label="tx['channels.pause']" icon="pause"/>
+            <rx-confirm rx-if="channel.can_resume" :id="'resume-channel-' ~ channel.id" :label="tx['channels.resume']" :action="route('fnb.outlet_channel_resume', channel.id)" method="POST"
+                        :title="tx['channels.resume_title']" :message="tx['channels.resume_message']" :confirm-label="tx['channels.resume']" icon="play"/>
+          </rx-row-actions>
+          <rx-slot name="empty"><rx-empty :title="tx['channels.empty']" :message="tx['channels.empty_text']" icon="power"/></rx-slot>
+        </rx-table>
+        <rx-card rx-if="outlet.paper" :title="tx['channels.paper']">
+          <rx-table :rows="outlet.paper" as="order" :key="order.reference ~ order.business_time" :caption="tx['channels.paper']">
+            <rx-column :label="tx['channels.paper_reference']">{{ order.reference }}</rx-column>
+            <rx-column :label="tx['channels.paper_channel']" hide-narrow>{{ order.channel }}</rx-column>
+            <rx-column :label="tx['channels.paper_amount']" align="num">{{ order.amount }}</rx-column>
+            <rx-column :label="tx['channels.paper_business_time']">{{ order.business_time }}</rx-column>
+            <rx-column :label="tx['channels.paper_entered']" hide-narrow>{{ order.entered }}</rx-column>
+            <rx-column :label="tx['channels.paper_flag']"><rx-badge rx-if="order.late" kind="warning" :text="tx['channels.yes']"/></rx-column>
+            <rx-slot name="empty"><rx-empty :title="tx['channels.paper_empty']" icon="file-text"/></rx-slot>
+          </rx-table>
+        </rx-card>
+        <rx-card rx-if="outlet.history" :title="tx['channels.history']">
+          <rx-table :rows="outlet.history" as="outage" :key="outage.since" :caption="tx['channels.history']">
+            <rx-column :label="tx['channels.outage_since']">{{ outage.since }}</rx-column>
+            <rx-column :label="tx['channels.source']" hide-narrow>{{ outage.source }}</rx-column>
+            <rx-column :label="tx['state']"><rx-badge :kind="outage.status_kind" :text="outage.status"/></rx-column>
+            <rx-column :label="tx['channels.resumed_at']" hide-narrow>{{ outage.resumed_at }}</rx-column>
+          </rx-table>
+        </rx-card>
+      </rx-stack>
+    </rx-card>
+    <rx-empty rx-if="not outlets" :title="tx['channels.empty']" :message="tx['channels.empty_text']" icon="power"/>
+  </rx-stack>
+</rx-page>

@@ -13,6 +13,12 @@
 //! failure run: it is set by `degrade`, kept by `go_down` and cleared by
 //! `recover` and `enable`. N counts from it, because `go_down` only starts
 //! from `degraded`.
+//!
+//! A connection is a `service` the platform calls or a `device` at a site
+//! that calls the platform (BL-KRN-07, [`super::devices`]): for a device a
+//! missed heartbeat is the failed call, and `degrade` takes the time of the
+//! last heartbeat (or of the window start) as `failed_since`, so N is minutes
+//! of silence.
 
 use renox::db::{Json, Transaction, now};
 use renox::prelude::*;
@@ -66,6 +72,14 @@ impl ConnectionStatus {
     }
 }
 
+/// The `kind` of a connection the platform calls.
+pub const KIND_SERVICE: &str = "service";
+/// The `kind` of a connection whose health signal is a device's heartbeat.
+pub const KIND_DEVICE: &str = "device";
+/// The heartbeat interval of a device connection when none is set, in
+/// seconds (§7 *Device connections*: 1 minute).
+pub const DEFAULT_HEARTBEAT_SECONDS: i64 = 60;
+
 /// One external system a module talks to (`wl_integration_connections`).
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(table = "wl_integration_connections", state_machine, unique(key))]
@@ -101,6 +115,20 @@ pub struct IntegrationConnection {
     pub disabled_reason: Option<String>,
     /// When the status last changed.
     pub status_changed_at: Option<DateTime>,
+    /// `service` (the platform calls it) or `device` (it calls the platform).
+    pub kind: String,
+    /// The outlet, branch or site a device connection belongs to.
+    pub scope: Option<String>,
+    /// The seconds between the heartbeats of a device.
+    pub heartbeat_seconds: i64,
+    /// When the active window opens, in minutes after midnight in
+    /// Asia/Dubai; `None` with `window_end`: always active.
+    pub window_start: Option<i64>,
+    /// When the active window closes, in minutes after midnight.
+    pub window_end: Option<i64>,
+    /// Whether the connection groups the devices of its scope: it is `down`
+    /// only when none of them answers.
+    pub grouped: bool,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -133,6 +161,20 @@ impl IntegrationConnection {
         }
     }
 
+    /// Whether the connection is a device's, health by its heartbeat.
+    pub fn is_device(&self) -> bool {
+        self.kind == KIND_DEVICE
+    }
+
+    /// The seconds between heartbeats (60 when not set).
+    pub fn interval_seconds(&self) -> i64 {
+        if self.heartbeat_seconds > 0 {
+            self.heartbeat_seconds
+        } else {
+            DEFAULT_HEARTBEAT_SECONDS
+        }
+    }
+
     /// When the connection goes `down` if nothing succeeds, once it is
     /// `degraded`.
     pub fn goes_down_at(&self) -> Option<DateTime> {
@@ -155,6 +197,15 @@ pub(super) async fn set(
         .update(&mut *tx, &all)
         .await?;
     Ok(())
+}
+
+/// The time the failures began, when the `degrade` run carries it (a device:
+/// the last heartbeat or the window start).
+fn since_of(ctx: &TransitionCtx) -> Option<DateTime> {
+    ctx.input()
+        .get("failed_since")
+        .and_then(Value::as_str)
+        .and_then(|text| text.parse::<DateTime>().ok())
 }
 
 /// The error a `degrade` run carries in its input.
@@ -191,8 +242,12 @@ impl StateMachine for IntegrationConnection {
                     .effect(|c: &IntegrationConnection, ctx, tx| {
                         let id = c.id;
                         let error = error_of(ctx);
+                        let since = since_of(ctx);
                         Box::pin(async move {
-                            let at = now();
+                            // A device's silence began at its last heartbeat
+                            // (or the window start), not when it was noticed.
+                            let changed = now();
+                            let at = since.unwrap_or(changed);
                             set(
                                 tx,
                                 id,
@@ -200,7 +255,7 @@ impl StateMachine for IntegrationConnection {
                                     ("failed_since", &Some(at)),
                                     ("outage_since", &Some(at)),
                                     ("last_error", &error),
-                                    ("status_changed_at", &Some(at)),
+                                    ("status_changed_at", &Some(changed)),
                                 ],
                             )
                             .await

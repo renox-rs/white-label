@@ -76,6 +76,11 @@ impl Deliveries {
             window_to: request.window_to,
             instructions: request.instructions.trim().to_owned(),
             perishable: request.perishable,
+            placed_at: request.placed_at.or_else(|| Some(renox::db::now())),
+            promise_minutes: request
+                .promise_minutes
+                .filter(|minutes| *minutes > 0)
+                .or_else(|| settings.promise_minutes(&request.source.subject_type)),
             amount_to_collect: request.collect_amount,
             pod_methods: methods
                 .iter()

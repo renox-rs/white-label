@@ -10,6 +10,8 @@
 //! | `POST /deliveries/{id}/open-review` | `wl_delivery.open_review` | `deliveries.manage` (field `reason`) |
 //! | `POST /deliveries/{id}/close-review` | `wl_delivery.close_review` | `deliveries.manage` (fields `outcome`, `note`) |
 //! | `POST /deliveries/{id}/found` | `wl_delivery.found` | `deliveries.manage` (field `depot`) |
+//! | `POST /deliveries/{id}/reattempt` | `wl_delivery.reattempt` | `deliveries.manage` (a failed delivery back in the queue; never a perishable one) |
+//! | `POST /deliveries/{id}/return` | `wl_delivery.return` | `deliveries.manage` (field `goods_confirmed`: `1` once the goods are back at the origin) |
 //! | `POST /deliveries/{id}/trace` | `wl_delivery.trace` | `deliveries.manage` (fields `kind`: `scan`, `note` or `depot_receipt`; `note`, `depot`) |
 //! | `POST /deliveries/{id}/mark-lost` | `wl_delivery.mark_lost` | `deliveries.reverse` (fields `reason`, `liability`) |
 //! | `GET /runs` | `wl_delivery.runs` | `runs.view` |
@@ -28,6 +30,7 @@
 //! | `GET /driver/stops/{id}` | `wl_delivery.stop` | `runs.drive` (404 for anyone else's stop) |
 //! | `POST /driver/stops/{id}/deliver` | `wl_delivery.stop_deliver` | `deliveries.complete` and the run's driver |
 //! | `POST /driver/stops/{id}/fail` | `wl_delivery.stop_fail` | `deliveries.complete` and the run's driver |
+//! | `POST /driver/stops/{id}/discard` | `wl_delivery.stop_discard` | `deliveries.complete` and the run's driver (fields `reason`, `photo`; the "discard with photo" task of `WRK.RUL.16`) |
 //! | `POST /driver/stops/{id}/no-answer` | `wl_delivery.stop_no_answer` | `deliveries.complete` and the run's driver (withdraws the cash difference request and fails the visit with *refused to pay*) |
 //! | `POST /deliveries/{id}/reverse` | `wl_delivery.reverse` | `deliveries.reverse`, not the run's driver (fields `reason`, `liability`, `note`) |
 //! | `POST /deliveries/{id}/reverse/approve` | `wl_delivery.reverse_approve` | `deliveries.reverse`, neither the requester nor the run's driver (fields `cash_treatment`, `comment`) |
@@ -55,6 +58,7 @@ use wl_kernel::delivery::ReviewOutcome;
 use wl_kernel::documents::{dubai_text, today};
 
 use crate::abort::{self, AbortRequest};
+use crate::attempted::{self, DiscardOutcome};
 use crate::close;
 use crate::cod;
 use crate::day_list::{StopView, stop_of, stops_of};
@@ -110,6 +114,10 @@ pub fn routes() -> Routes {
                 .name("wl_delivery.found")
                 .post("/deliveries/{id}/trace", store_trace)
                 .name("wl_delivery.trace")
+                .post("/deliveries/{id}/reattempt", store_reattempt)
+                .name("wl_delivery.reattempt")
+                .post("/deliveries/{id}/return", store_return_delivery)
+                .name("wl_delivery.return")
                 .require_permission(permissions::MANAGE),
         )
         .merge(
@@ -180,6 +188,8 @@ pub fn routes() -> Routes {
                 .name("wl_delivery.stop_fail")
                 .post("/driver/stops/{id}/no-answer", store_no_answer)
                 .name("wl_delivery.stop_no_answer")
+                .post("/driver/stops/{id}/discard", store_discard)
+                .name("wl_delivery.stop_discard")
                 .require_permission(permissions::COMPLETE),
         )
 }
@@ -415,6 +425,8 @@ pub(crate) struct CodRequestRow {
 pub(crate) struct ShowPage {
     tx: Texts,
     delivery: Delivery,
+    /// The record the delivery is for, in words (`SO-2026-0014`).
+    source_label: String,
     status_label: String,
     status_kind: &'static str,
     card: Card,
@@ -456,6 +468,29 @@ pub(crate) struct ShowPage {
     can_decide_cod: bool,
     /// `(value, label)` of who may absorb a cash difference.
     cod_absorbers: Vec<(String, String)>,
+    /// Whether the viewer may put a failed delivery back in the queue.
+    can_reattempt: bool,
+    /// Whether the viewer may return a failed delivery to the origin.
+    can_return: bool,
+    /// Why a reattempt is not offered, as text (a perishable delivery).
+    reattempt_hint: Option<String>,
+    /// What the rules decided for a failed delivery that waits for its goods.
+    resolution: Option<String>,
+    /// What was discarded, once it was.
+    discard: Option<DiscardRow>,
+    /// `(value, label)`: no or yes.
+    yes_no: Vec<(String, String)>,
+    /// The discard waiting for a second person (the approval cards).
+    approvals: Vec<wl_kernel::approvals::ApprovalCard>,
+}
+
+/// The discard of a perishable delivery, as the page shows it.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct DiscardRow {
+    reason: String,
+    photo: String,
+    at: String,
+    wastage: String,
 }
 
 /// The window as text: `from - to`.
@@ -671,6 +706,36 @@ async fn show(
             )
         })
         .collect();
+    let attempted_now = delivery.status == DeliveryStatus::Attempted;
+    let can_reattempt = manager && attempted_now && !delivery.perishable;
+    let can_return = manager && attempted_now;
+    let reattempt_hint = (manager && attempted_now && delivery.perishable)
+        .then(|| t("attempted.perishable_no_reattempt"));
+    let resolution = if attempted_now {
+        delivery
+            .resolution
+            .as_ref()
+            .map(|key| t(&format!("attempted.resolution.{key}")))
+    } else {
+        None
+    };
+    let discard = delivery.discarded_at.map(|at| DiscardRow {
+        reason: delivery.discard_reason.clone().unwrap_or_default(),
+        photo: delivery.discard_photo_ref.clone().unwrap_or_default(),
+        at: dubai_text(at),
+        wastage: aed(delivery.wastage_value),
+    });
+    let mut approvals_cards = Vec::new();
+    if attempted_now {
+        for request in
+            wl_kernel::approvals::pending_for(&state.db, &delivery.delivery_id().subject()).await?
+        {
+            if request.action == attempted::ACTION {
+                approvals_cards
+                    .push(wl_kernel::approvals::card(&state.db, &request, &user, &lang).await?);
+            }
+        }
+    }
     let card = Card {
         window: window_text(&delivery),
         run: run.as_ref().map(|r| r.number.clone()),
@@ -683,8 +748,13 @@ async fn show(
         }),
         attempts: format!("{} / {}", delivery.attempts, delivery.max_attempts),
     };
+    let source = delivery.source();
+    let source_label = wl_kernel::documents::subject_label(&state.db, &source)
+        .await?
+        .unwrap_or_else(|| wl_kernel::documents::default_subject_label(&source));
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
+        source_label,
         status_label: t(&format!("status.{}", delivery.status.as_str())),
         status_kind: status_kind(delivery.status),
         delivery,
@@ -712,6 +782,13 @@ async fn show(
         cod_request,
         can_decide_cod,
         cod_absorbers,
+        can_reattempt,
+        can_return,
+        reattempt_hint,
+        resolution,
+        discard,
+        yes_no: vec![("0".to_owned(), t("no")), ("1".to_owned(), t("yes"))],
+        approvals: approvals_cards,
     }))
 }
 
@@ -755,6 +832,53 @@ async fn store_unassign(
         .map_err(TransitionError::into_error)?;
     Ok((
         Toast::success(texts::t(&lang, "wl_delivery.actions.unassigned")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /deliveries/{id}/reattempt`: puts a failed delivery back in the
+/// queue for the next run. A perishable delivery, one with no attempts left
+/// and one whose reason does not allow it answer 422.
+async fn store_reattempt(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(delivery): Found<Delivery>,
+) -> Result<Response> {
+    attempted::reattempt(&state, &user, &delivery)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_delivery.actions.reattempted")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that returns a failed delivery to the origin.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct ReturnForm {
+    /// `1` once the goods are back at the origin, scanned or ticked.
+    #[serde(default)]
+    pub goods_confirmed: String,
+}
+
+/// `POST /deliveries/{id}/return`: returns a failed delivery to the origin;
+/// 422 until the goods are confirmed there.
+async fn store_return_delivery(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(delivery): Found<Delivery>,
+    Form(form): Form<ReturnForm>,
+) -> Result<Response> {
+    let confirmed = matches!(form.goods_confirmed.trim(), "1" | "true" | "yes" | "on");
+    attempted::return_delivery(&state, &user, &delivery, confirmed)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_delivery.actions.returned")),
         renox::HxRefresh,
     )
         .into_response())
@@ -1178,7 +1302,7 @@ pub fn runs_grid(lang: &Lang) -> Grid {
         )
         .column(Column::date("run_date", &t("fields.date")).mobile())
         .column(
-            Column::text("driver", &t("fields.driver"))
+            Column::text("driver", &t("fields.driver_name"))
                 .computed(
                     "(SELECT \"users\".\"name\" FROM \"users\" WHERE \"users\".\"id\" = {T}.\"driver_user_id\")",
                 )
@@ -1213,17 +1337,33 @@ pub(crate) struct RunsPage {
     tx: Texts,
     can_dispatch: bool,
     vehicle_types: Vec<(String, String)>,
+    /// `(user id, name)` of who may drive: the sheet that plans a run picks one.
+    drivers: Vec<(String, String)>,
+    today: String,
     runs: GridPage<Run>,
 }
 
 /// `GET /runs`.
-async fn runs(lang: Lang, user: AuthUser, request: GridRequest) -> Result<View> {
+async fn runs(
+    State(state): State<AppState>,
+    lang: Lang,
+    user: AuthUser,
+    request: GridRequest,
+) -> Result<View> {
     let t = texts_in(&lang);
+    let drivers =
+        renox::auth::permissions::users_with_permission(&state.db, permissions::RUNS_DRIVE)
+            .await?
+            .into_iter()
+            .map(|u| (u.id.to_string(), u.name))
+            .collect();
     let runs = runs_grid(&lang).page(Run::query(), &request).await?;
     Ok(View::typed(RunsPage {
         tx: texts::all(&lang),
         can_dispatch: user.has_permission(permissions::RUNS_DISPATCH),
         vehicle_types: options(&t, "vehicle", VehicleType::ALL.iter().map(|v| v.as_str())),
+        drivers,
+        today: today().format("%Y-%m-%d").to_string(),
         runs,
     }))
 }
@@ -1233,8 +1373,9 @@ async fn runs(lang: Lang, user: AuthUser, request: GridRequest) -> Result<View> 
 pub struct RunForm {
     /// The day, `2026-11-12`.
     pub run_date: NaiveDate,
-    /// The driver's user id.
-    pub driver_user_id: i64,
+    /// The driver's user id; blank when none was chosen.
+    #[serde(default)]
+    pub driver_user_id: String,
     /// The vehicle type's key.
     pub vehicle_type: String,
     /// The vehicle's asset id; blank for an on-foot rider.
@@ -1266,8 +1407,14 @@ async fn store_run(
             )
         })?),
     };
+    let driver_user_id = form.driver_user_id.trim().parse::<i64>().map_err(|_| {
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            texts::t(&lang, "wl_delivery.runs.driver_needed"),
+        )
+    })?;
     let mut new =
-        NewRun::new(form.run_date, form.driver_user_id).vehicle(vehicle_type, vehicle_asset_id);
+        NewRun::new(form.run_date, driver_user_id).vehicle(vehicle_type, vehicle_asset_id);
     new.depot = form.depot.clone().unwrap_or_default();
     let run = plan::create_run(&state, new).await?;
     Ok((
@@ -1366,6 +1513,12 @@ pub(crate) struct StopRow {
     status: String,
     /// Whether the stop is still out (it can be handed over).
     open: bool,
+    /// Whether the goods are perishable: a hand-over needs its expected
+    /// arrival (BL-DLV-10).
+    perishable: bool,
+    /// The latest arrival a receiving run may promise (Asia/Dubai), when the
+    /// source gave a delivery promise.
+    window_end: Option<String>,
 }
 
 /// `GET /runs/{id}`.
@@ -1393,6 +1546,8 @@ async fn run_show(
             area: d.area.clone(),
             status: t(&format!("status.{}", d.status.as_str())),
             open: d.status == DeliveryStatus::OutForDelivery,
+            perishable: d.perishable,
+            window_end: hand_over::window_end(&d).map(dubai_text),
         })
         .collect();
     let card = RunCard {
@@ -1563,11 +1718,29 @@ async fn store_hand_over(
     let to_run_id = field(&fields, "to_run_id")
         .and_then(|text| text.parse::<i64>().ok())
         .ok_or_else(|| unprocessable(texts::t(&lang, "wl_delivery.hand_over.to_run_unknown")))?;
+    let delivery_ids = ticked_ids(&fields, "delivery_");
+    // The arrival the receiving run expects, per stop (`arrival_{id}`, Dubai
+    // time): needed for a perishable stop.
+    let mut arrivals = Vec::new();
+    for id in &delivery_ids {
+        let Some(text) = field(&fields, &format!("arrival_{id}")) else {
+            continue;
+        };
+        let base = match Delivery::find(&state.db, *id).await? {
+            Some(delivery) => delivery.placed_at.unwrap_or_else(renox::db::now),
+            None => renox::db::now(),
+        };
+        let at = hand_over::parse_arrival(text, base).ok_or_else(|| {
+            unprocessable(texts::t(&lang, "wl_delivery.hand_over.arrival_format"))
+        })?;
+        arrivals.push((*id, at));
+    }
     let proposal = Proposal {
         to_run_id,
         reason: field(&fields, "reason").unwrap_or_default().to_owned(),
         note: field(&fields, "note").unwrap_or_default().to_owned(),
-        delivery_ids: ticked_ids(&fields, "delivery_"),
+        delivery_ids,
+        arrivals,
     };
     hand_over::propose(&state, &user, &run, &proposal)
         .await
@@ -1705,10 +1878,16 @@ pub(crate) struct WaitingRow {
 /// `GET /driver`: today's stops of the signed-in driver.
 async fn driver(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
     let day = today();
+    let t = texts_in(&lang);
+    // The list says each stop's state in words, not by its key.
     let stops = stops_of(&state.db, user.id, day)
         .await?
         .iter()
-        .map(|stop| stop.view())
+        .map(|stop| {
+            let mut view = stop.view();
+            view.status = t(&format!("status.{}", view.status));
+            view
+        })
         .collect();
     let returnable = Run::query()
         .where_(Run::DRIVER_USER_ID.eq(user.id))
@@ -1720,7 +1899,6 @@ async fn driver(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Re
         .into_iter()
         .map(|run| (run.id, run.number))
         .collect();
-    let t = texts_in(&lang);
     let mut waiting = Vec::new();
     for hand_over in hand_over::waiting_for(&state.db, user.id).await? {
         let from_run = Run::find(&state.db, hand_over.run_id)
@@ -1739,6 +1917,8 @@ async fn driver(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Re
                 area: d.area.clone(),
                 status: t(&format!("status.{}", d.status.as_str())),
                 open: true,
+                perishable: d.perishable,
+                window_end: hand_over::window_end(&d).map(dubai_text),
             })
             .collect();
         waiting.push(WaitingRow {
@@ -1784,6 +1964,17 @@ pub(crate) struct StopPage {
     failure_reasons: Vec<(String, String)>,
     otp_options: Vec<(String, String)>,
     cod: CodView,
+    /// The "discard with photo" task of `WRK.RUL.16`.
+    discard: DiscardTask,
+}
+
+/// The "discard with photo" task on the stop screen.
+#[derive(Serialize, Debug, Clone, Default)]
+pub(crate) struct DiscardTask {
+    /// The rule asked the driver to discard the goods.
+    pending: bool,
+    /// A discard waits for a second person's approval.
+    waiting: bool,
 }
 
 /// What the stop page shows of a cash difference (`WRK.ACL.09`).
@@ -1849,6 +2040,13 @@ async fn stop(
             .map(|r| (r.code, r.name_en))
             .collect(),
     };
+    let discard = DiscardTask {
+        pending: delivery.status == DeliveryStatus::Attempted
+            && delivery.resolution.as_deref() == Some(attempted::RESOLUTION_DISCARD),
+        waiting: cod::pending_request(&state.db, delivery.id, attempted::ACTION)
+            .await?
+            .is_some(),
+    };
     Ok(View::typed(StopPage {
         tx: texts::all(&lang),
         stop: found.view(),
@@ -1862,12 +2060,26 @@ async fn stop(
         failure_reasons,
         otp_options: vec![("0".to_owned(), t("no")), ("1".to_owned(), t("yes"))],
         cod,
+        discard,
         delivery,
     }))
 }
 
 fn unprocessable(message: String) -> Error {
     Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message)
+}
+
+/// A refusal (422) of a posted form, said on the form the driver filled in
+/// (what they typed is kept) instead of on an error page.
+fn on_the_form(error: Error, fields: &HashMap<String, String>) -> Error {
+    match error {
+        Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message) => {
+            let mut errors = renox::validation::Errors::new();
+            errors.add("form", message);
+            Error::Validation(renox::validation::ValidationError::new(errors).with_input(fields))
+        }
+        other => other,
+    }
 }
 
 /// The text field `name` of the posted form, blank as none.
@@ -1939,7 +2151,7 @@ async fn store_deliver(
     };
     let outcome = proof::deliver(&state, &user, &delivery, form, renox::db::now())
         .await
-        .map_err(TransitionError::into_error)?;
+        .map_err(|e| on_the_form(TransitionError::into_error(e), &fields))?;
     let toast = match outcome {
         proof::DeliverOutcome::Delivered => {
             Toast::success(texts::t(&lang, "wl_delivery.driver.delivered"))
@@ -2063,6 +2275,40 @@ async fn store_fail(
     .map_err(TransitionError::into_error)?;
     Ok((
         Toast::success(texts::t(&lang, "wl_delivery.driver.failed")),
+        Redirect::route("wl_delivery.driver", &[])?,
+    )
+        .into_response())
+}
+
+/// `POST /driver/stops/{id}/discard`: the "discard with photo" task of
+/// `WRK.RUL.16` (fields `reason`, `photo`). The delivery is discarded and the
+/// wastage recorded, or, above the limit, a second person is asked.
+async fn store_discard(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(fields): Form<HashMap<String, String>>,
+) -> Result<Response> {
+    let found = stop_of(&state.db, user.id, today(), id)
+        .await?
+        .ok_or(Error::NotFound)?;
+    let outcome = attempted::discard(
+        &state,
+        &user,
+        &found.delivery,
+        field(&fields, "reason").unwrap_or_default(),
+        field(&fields, "photo").unwrap_or_default(),
+        renox::db::now(),
+    )
+    .await
+    .map_err(TransitionError::into_error)?;
+    let message = match outcome {
+        DiscardOutcome::Discarded => "wl_delivery.attempted.discarded",
+        DiscardOutcome::Requested(_) => "wl_delivery.attempted.waiting_approval",
+    };
+    Ok((
+        Toast::success(texts::t(&lang, message)),
         Redirect::route("wl_delivery.driver", &[])?,
     )
         .into_response())

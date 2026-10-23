@@ -3,6 +3,7 @@
 
 use renox::prelude::*;
 
+use crate::dispatch_screens::DISPATCH_TEXTS;
 use crate::screen_texts::SCREEN_TEXTS;
 use crate::stock_ui_texts::STOCK_TEXTS;
 
@@ -764,6 +765,22 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_inventory.hold.placed", "Stock hold placed."),
     (
+        "wl_inventory.batch.bad_request",
+        "A batch needs a quantity above zero, an expiry day and at least one ingredient lot.",
+    ),
+    (
+        "wl_inventory.batch.lot_short",
+        "Lot {{ lot }} has {{ left }} at the kitchen; the batch used {{ used }}.",
+    ),
+    (
+        "wl_inventory.batch.wrong_lot",
+        "Lot {{ lot }} is not a lot of an item that can go into the batch.",
+    ),
+    (
+        "wl_inventory.batch.on_hold",
+        "Lot {{ lot }} is on hold: decide the hold line instead of wasting the lot.",
+    ),
+    (
         "wl_inventory.hold.warning",
         "{{ location }} is on {{ reason }} hold.",
     ),
@@ -957,6 +974,7 @@ pub(crate) fn english(key: &str) -> &str {
         .iter()
         .chain(SCREEN_TEXTS)
         .chain(STOCK_TEXTS)
+        .chain(DISPATCH_TEXTS)
         .find(|(k, _)| *k == key)
         .map_or(key, |(_, text)| text)
 }
@@ -993,7 +1011,12 @@ mod tests {
     #[test]
     fn every_key_is_in_the_package_namespace_and_unique() {
         let mut seen = std::collections::BTreeSet::new();
-        for (key, _) in TEXTS.iter().chain(SCREEN_TEXTS).chain(STOCK_TEXTS) {
+        for (key, _) in TEXTS
+            .iter()
+            .chain(SCREEN_TEXTS)
+            .chain(STOCK_TEXTS)
+            .chain(DISPATCH_TEXTS)
+        {
             assert!(key.starts_with("wl_inventory."), "{key}");
             assert!(seen.insert(*key), "{key} twice");
         }

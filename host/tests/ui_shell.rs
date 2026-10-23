@@ -205,3 +205,34 @@ async fn the_menu_page_lists_the_links_the_person_may_open() {
         "a member is not shown the users link"
     );
 }
+
+/// BL-KRN-07 (#31): the settings of the heartbeat of the devices are reached
+/// from the sidebar: the company admin (`integrations.view`) sees an
+/// Integrations link in the admin group that opens the page; someone without
+/// the permission sees no link.
+#[renox::test]
+async fn the_admin_sidebar_links_to_the_integrations() {
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    let admin = admin(&app).await;
+    app.acting_as(&admin);
+    let page = app.get("/dashboard").await;
+    page.assert_ok();
+    let html = page.text();
+    assert!(
+        html.contains("href=\"/integrations\""),
+        "the admin sidebar has no link to /integrations"
+    );
+    assert!(html.contains("Integrations"));
+    app.get("/integrations").await.assert_ok();
+
+    let mut plain = User::register(app.db(), "Pia", "pia@example.com", "secret123")
+        .await
+        .unwrap();
+    plain.email_verified_at = Some(renox::db::now());
+    plain.save(app.db()).await.unwrap();
+    app.acting_as(&plain);
+    let page = app.get("/dashboard").await;
+    page.assert_ok();
+    assert!(!page.text().contains("href=\"/integrations\""));
+}

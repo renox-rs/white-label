@@ -15,6 +15,7 @@ pub mod report;
 pub mod sales_orders;
 pub mod sales_returns;
 pub mod segments;
+pub mod till_sessions;
 
 use renox::prelude::*;
 
@@ -36,6 +37,7 @@ pub fn routes() -> Routes {
         .merge(sales_orders::routes())
         .merge(sales_returns::routes())
         .merge(segments::routes())
+        .merge(till_sessions::routes())
 }
 
 /// The name of the party `id` in the page's language, else `#id`: a member

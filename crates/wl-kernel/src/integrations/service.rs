@@ -88,6 +88,9 @@ pub struct Report {
     pub obsolete: usize,
     /// Connections that went `down`.
     pub went_down: usize,
+    /// Device connections that changed state because a heartbeat was missed
+    /// or came back (BL-KRN-07).
+    pub devices_changed: usize,
 }
 
 /// The definition of `key`, or a 400 saying it is not registered.
@@ -184,8 +187,24 @@ async fn announce(
 /// failures begin now); one that is already `degraded` or `down` keeps its
 /// `failed since` and notes the error; a `disabled` one is left alone.
 pub async fn report_failure(state: &AppState, key: &str, error: &str) -> Result {
+    report_failure_since(state, key, error, None).await
+}
+
+/// [`report_failure`] for a failure that began at `since` rather than now: a
+/// device's silence began at its last heartbeat (or the window start), so
+/// `failed since` takes that time and N is minutes of silence (BL-KRN-07).
+pub async fn report_failure_since(
+    state: &AppState,
+    key: &str,
+    error: &str,
+    since: Option<DateTime>,
+) -> Result {
     ensure(&state.db, key).await?;
-    let degraded = run_system(state, key, transitions::DEGRADE, json!({ "error": error })).await?;
+    let mut input = json!({ "error": error });
+    if let Some(since) = since {
+        input["failed_since"] = json!(since.to_rfc3339());
+    }
+    let degraded = run_system(state, key, transitions::DEGRADE, input).await?;
     if degraded.is_none() {
         IntegrationConnection::where_eq("key", key)
             .where_op("status", "!=", ConnectionStatus::Disabled)
@@ -452,7 +471,11 @@ pub fn down_key(since: DateTime) -> String {
 /// The scheduled run: retries what is due, then runs `go_down` where N
 /// minutes have passed.
 pub async fn run_due(state: &AppState) -> Result<Report> {
-    let mut report = Report::default();
+    // Missed heartbeats are the failed calls of the devices (BL-KRN-07).
+    let mut report = Report {
+        devices_changed: super::devices::check(state).await?,
+        ..Report::default()
+    };
     let connections = IntegrationConnection::query()
         .where_op("status", "!=", ConnectionStatus::Disabled)
         .order_by(IntegrationConnection::ID)
@@ -474,6 +497,13 @@ pub async fn run_due(state: &AppState) -> Result<Report> {
         .get(&state.db)
         .await?;
     for connection in degraded {
+        // Silence outside a device's active window is not counted: no new
+        // `go_down`, and so no alert, until the window opens again.
+        if connection.is_device()
+            && !super::devices::in_window(super::devices::window_of(&connection), now())
+        {
+            continue;
+        }
         if connection.goes_down_at().is_some_and(|at| at <= now())
             && go_down(state, &connection).await?
         {
@@ -559,6 +589,19 @@ pub(crate) fn schedule(app: &mut Registry) {
                 "{} calls sent, {} obsolete, {} connections down.",
                 report.sent, report.obsolete, report.went_down
             );
+            Ok(())
+        },
+    );
+    app.command(
+        "integrations:beat",
+        "Send a heartbeat for every device of a device connection (--connection KEY), for demo \
+         data and for a check by hand",
+        |args, state: AppState| async move {
+            let Some(key) = args.value("--connection") else {
+                return Err(Error::BadRequest("--connection KEY is needed".to_owned()));
+            };
+            let devices = super::devices::beat_all(&state, key).await?;
+            println!("{devices} heartbeats recorded for {key}.");
             Ok(())
         },
     );

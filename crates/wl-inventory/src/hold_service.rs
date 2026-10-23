@@ -22,12 +22,15 @@ use renox::state_machine::{Outcome, StateMachine, TransitionError};
 use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::inventory::{
-    HeldLine, ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE, StockHoldPlaced,
+    HeldLine, HoldDecision, HoldLineView, HoldView, ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE,
+    LOT_SUBJECT_TYPE, LocationInfo, STOCK_HOLD_LINE_SUBJECT_TYPE, STOCK_HOLD_SUBJECT_TYPE,
+    StockHoldPlaced,
 };
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
 
 use crate::balance;
-use crate::item::Item;
+use crate::hold_decide::{DecideOutcome, Decision, decide};
+use crate::item::{Item, value_of};
 use crate::location::Location;
 use crate::lot::{self, Lot, LotStatus};
 use crate::movement::StockMovement;
@@ -559,6 +562,89 @@ impl wl_kernel::inventory::StockHoldService for InventoryHolds {
             )
             .await?;
             Ok(Some(placed.subject()))
+        })
+    }
+
+    fn view<'a>(
+        &'a self,
+        state: &'a AppState,
+        hold: &'a Subject,
+    ) -> wl_kernel::inventory::StockFuture<'a, Option<HoldView>> {
+        Box::pin(async move {
+            if hold.subject_type != STOCK_HOLD_SUBJECT_TYPE {
+                return Ok(None);
+            }
+            let Some(found) = StockHold::find(&state.db, hold.subject_id).await? else {
+                return Ok(None);
+            };
+            let mut lines = Vec::new();
+            for line in lines_of(&state.db, found.id).await? {
+                let item = Item::find_or_404(&state.db, line.item_id).await?;
+                lines.push(HoldLineView {
+                    line: Subject::new(STOCK_HOLD_LINE_SUBJECT_TYPE, line.id),
+                    item: Subject::new(ITEM_SUBJECT_TYPE, item.id),
+                    item_code: item.code.clone(),
+                    item_name: item.name_en.clone(),
+                    location: Subject::new(LOCATION_SUBJECT_TYPE, line.location_id),
+                    lot: line.lot_id.map(|id| Subject::new(LOT_SUBJECT_TYPE, id)),
+                    quantity_milli: line.quantity_milli,
+                    value: value_of(line.quantity_milli, item.average_cost),
+                    status: line.status.as_str().to_owned(),
+                });
+            }
+            Ok(Some(HoldView {
+                hold: found.subject(),
+                number: found.number.clone().unwrap_or_default(),
+                reason: found.reason.clone(),
+                open: found.status == HoldStatus::Open,
+                lines,
+            }))
+        })
+    }
+
+    fn locations<'a>(
+        &'a self,
+        state: &'a AppState,
+    ) -> wl_kernel::inventory::StockFuture<'a, Vec<LocationInfo>> {
+        Box::pin(async move {
+            Ok(Location::query()
+                .order_by(Location::CODE)
+                .get(&state.db)
+                .await?
+                .into_iter()
+                .map(|location| LocationInfo {
+                    location: location.subject(),
+                    code: location.code,
+                    name: location.name_en,
+                })
+                .collect())
+        })
+    }
+
+    fn decide<'a>(
+        &'a self,
+        state: &'a AppState,
+        user: &'a AuthUser,
+        line: &'a Subject,
+        outcome: &'a str,
+    ) -> wl_kernel::inventory::StockFuture<'a, Option<HoldDecision>> {
+        Box::pin(async move {
+            if line.subject_type != STOCK_HOLD_LINE_SUBJECT_TYPE {
+                return Ok(None);
+            }
+            let decision = match outcome {
+                "release" => Decision::Release,
+                "discard" => Decision::Discard,
+                "return_to_supplier" => Decision::ReturnToSupplier,
+                _ => return Err(refused(said("wl_inventory.hold.bad_form", &[]))),
+            };
+            let done = decide(state, user, line.subject_id, decision)
+                .await
+                .map_err(TransitionError::into_error)?;
+            Ok(Some(match done {
+                DecideOutcome::Decided(_) => HoldDecision::Decided,
+                DecideOutcome::Waiting(_) => HoldDecision::Waiting,
+            }))
         })
     }
 }

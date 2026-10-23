@@ -150,7 +150,7 @@ pub use drawings::{
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use held_funds::{FundsSource, HeldFund, HeldFundsSource, held_for_all};
 pub use integrations::{
-    ConnectionStatus, Delivery, Inbound, IntegrationConnection, IntegrationDef,
+    ConnectionStatus, Delivery, DeviceBeat, Inbound, IntegrationConnection, IntegrationDef,
     IntegrationStatusChanged, Match, Outbound, QueuedCall,
 };
 pub use invoicing::{
@@ -276,6 +276,8 @@ pub mod permissions {
     pub const INTEGRATIONS_VIEW: &str = "integrations.view";
     /// Disable and enable an integration connection.
     pub const INTEGRATIONS_MANAGE: &str = "integrations.manage";
+    /// Send heartbeats as a device at a site (BL-KRN-07).
+    pub const INTEGRATIONS_HEARTBEAT: &str = "integrations.heartbeat";
 }
 
 /// The templates, compiled in. An app replaces one with a file of the same
@@ -413,6 +415,17 @@ impl Module for WlKernel {
                 .group("nav.admin")
                 .order(30)
                 .permission(permissions::LEGAL_ENTITIES_VIEW),
+        );
+        // The connections of the company with the outside (gateways, devices,
+        // channels): their heartbeat, status and settings. The label is the
+        // app's `nav.integrations` text.
+        app.nav(
+            "app",
+            NavLink::route(integrations::web::route_names::LIST, "nav.integrations")
+                .icon("link")
+                .group("nav.admin")
+                .order(31)
+                .permission(permissions::INTEGRATIONS_VIEW),
         );
         let config = Arc::clone(&self.config);
         app.command(
