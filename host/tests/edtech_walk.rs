@@ -323,3 +323,32 @@ async fn the_coordinator_plans_a_batch_picking_the_tutor_and_the_room_by_name() 
         "the room's capacity is its limit"
     );
 }
+
+/// The dashboard of an EdTech client shows the figures of the centre to the
+/// roles whose pages list them: the manager the sessions, the enrolments, the
+/// batches and the certificates; the tutor the sessions only.
+#[renox::test]
+async fn the_dashboard_shows_the_figures_of_the_centre() {
+    use host::roles::{CENTRE_MANAGER, TUTOR};
+    let w = boot().await;
+    let (manager, _) = w.staff("Mona", CENTRE_MANAGER).await;
+    let (tutor, _) = w.staff("Tariq", TUTOR).await;
+    w.app.acting_as(&manager);
+    w.app
+        .get("/dashboard")
+        .await
+        .assert_ok()
+        .assert_see("Sessions today")
+        .assert_see("Enrolments waiting for payment")
+        .assert_see("Batches open for enrolment")
+        .assert_see("Certificates to issue")
+        .assert_dont_see("Units available");
+    w.app.acting_as(&tutor);
+    w.app
+        .get("/dashboard")
+        .await
+        .assert_ok()
+        .assert_see("Sessions today")
+        .assert_dont_see("Enrolments waiting for payment")
+        .assert_dont_see("Certificates to issue");
+}

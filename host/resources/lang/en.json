@@ -129,6 +129,7 @@
     "welcome": "Welcome back,",
     "lead": "Where the portfolio stands today, and what waits for you.",
     "lead_construction": "Where your projects stand today, and what waits for you.",
+    "lead_edtech": "The classes, the enrolments and the certificates of the centre today.",
     "lead_generic": "What waits for you today.",
     "lead_manpower": "What needs your action in the agency today.",
     "quiet": "Nothing needs your action",
@@ -145,6 +146,11 @@
       "timesheets_many": ":count timesheets waiting for you"
     },
     "tiles": {
+      "sessions_today": "Sessions today",
+      "sessions_flagged": "Sessions flagged",
+      "enrolments_waiting": "Enrolments waiting for payment",
+      "batches_open": "Batches open for enrolment",
+      "certificates_draft": "Certificates to issue",
       "units_available": "Units available",
       "units_leased": "Units leased",
       "leases_expiring": "Leases ending in 90 days",

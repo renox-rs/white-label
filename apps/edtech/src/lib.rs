@@ -18,6 +18,7 @@ pub mod course;
 pub mod courses;
 pub mod credits;
 mod db;
+pub mod dashboard;
 pub mod defaults;
 pub mod desk;
 pub mod documents;
