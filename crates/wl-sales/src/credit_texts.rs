@@ -197,6 +197,35 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "The account of {{ customer }} is on hold after a bounced cheque ({{ source }}). {{ orders }} order(s) on account were put on credit hold; new orders and counter sales on account are refused until a credit releaser clears the hold with another's approval.",
     ),
     (
+        "wl_sales.po.duplicate",
+        "Customer PO number :po is already used by order :number (:status). Send a new number, or a call-off number.",
+    ),
+    (
+        "wl_sales.po.duplicate_call_off",
+        "Customer PO number :po with call-off number :call_off is already used by order :number (:status). Send a new call-off number.",
+    ),
+    (
+        "wl_sales.po.portal_duplicate",
+        "This PO number is already on order :number (:status).",
+    ),
+    ("wl_sales.po.customer_po", "Customer PO number"),
+    ("wl_sales.po.call_off", "Call-off number"),
+    ("wl_sales.po.with_call_off", ":po, call-off :call_off"),
+    ("wl_sales.po.change", "Change the PO number"),
+    (
+        "wl_sales.po.change_description",
+        "The customer's own PO number and, for a call-off against a blanket PO, its call-off number.",
+    ),
+    ("wl_sales.po.saved", "PO number saved."),
+    (
+        "wl_sales.po.submit_blocked",
+        "This PO number is already used by order :number (:status). Change it before the order is submitted.",
+    ),
+    (
+        "wl_sales.po.not_draft",
+        "The PO number of an order can only be changed while it is a draft.",
+    ),
+    (
         "wl_sales.notices.order_credit_hold_subject",
         "Order {{ number }} is on credit hold",
     ),

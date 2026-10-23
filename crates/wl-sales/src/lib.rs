@@ -46,6 +46,7 @@ pub mod package_machine;
 pub mod package_reopen;
 pub mod packages;
 pub mod pages;
+pub mod po_number;
 pub mod policy;
 pub mod promo_code;
 pub mod redeem;
@@ -633,6 +634,7 @@ impl Module for WlSales {
         app.model::<AccountHoldClearing>();
         app.model::<SalesOrder>();
         app.model::<FulfilmentRecord>();
+        app.model::<po_number::PoKey>();
         app.model::<SalesReturn>();
         app.model::<SalesReturnLine>();
         app.model::<LoyaltyProgramme>();

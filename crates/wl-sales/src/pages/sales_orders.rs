@@ -9,6 +9,7 @@
 //! | `POST /sales-orders/{id}/lines` | `wl_sales.sales_order_line` | `sales_orders.create` |
 //! | `POST /sales-orders/{id}/submit` | `wl_sales.sales_order_submit` | `sales_orders.create` |
 //! | `POST /sales-orders/{id}/cancel-line` | `wl_sales.sales_order_cancel_line` | `sales_orders.cancel` |
+//! | `POST /sales-orders/{id}/reference` | `wl_sales.sales_order_reference` | `sales_orders.create` |
 //! | `POST /sales-orders/{id}/accept` | `wl_sales.sales_order_accept` | `sales_orders.accept` |
 //! | `POST /sales-orders/{id}/release` | `wl_sales.sales_order_release` | `credit.release` |
 //!
@@ -69,6 +70,8 @@ pub fn routes() -> Routes {
                 .name("wl_sales.sales_order_line")
                 .post("/sales-orders/{id}/submit", submit)
                 .name("wl_sales.sales_order_submit")
+                .post("/sales-orders/{id}/reference", reference)
+                .name("wl_sales.sales_order_reference")
                 .require_permission(permissions::SALES_ORDERS_CREATE),
         )
         .merge(
@@ -264,6 +267,24 @@ pub struct ReleaseView {
     pub kinds: Vec<(String, String)>,
 }
 
+/// The customer PO number of an order as its page shows it.
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct PoView {
+    /// The reference and call-off number in words; empty for none.
+    pub reference: String,
+    /// The reference as typed, for the edit sheet.
+    pub customer_po: String,
+    /// The call-off number as typed.
+    pub call_off: String,
+    /// The existing order that already holds the number: its id, number and
+    /// status in words, while the draft cannot be submitted.
+    pub clash_id: Option<i64>,
+    /// The existing order's number.
+    pub clash_number: String,
+    /// Why *Submit* is disabled; empty when it is not.
+    pub blocked: String,
+}
+
 /// What the order page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-sales/sales_order.html")]
@@ -280,6 +301,7 @@ pub(crate) struct ShowPage {
     actions: Vec<Available>,
     member: Option<String>,
     hold: Option<HoldView>,
+    po: PoView,
     release: ReleaseView,
     approvals: Vec<wl_kernel::approvals::ApprovalCard>,
     can_edit: bool,
@@ -363,6 +385,7 @@ async fn show(
             | SalesOrderStatus::Rejected
     );
     let hold = hold_view(&user, &lang, &order);
+    let po = po_view(&state, &lang, &order).await?;
     let release = release_view(&state, &user, &lang, &order).await?;
     let approvals = if order.status == SalesOrderStatus::CreditHold {
         wl_kernel::approvals::cards_for(&state.db, &order.subject(), &user, &lang).await?
@@ -372,6 +395,7 @@ async fn show(
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         hold,
+        po,
         release,
         approvals,
         title: order.number.clone(),
@@ -517,6 +541,62 @@ async fn release(
         .into_response())
 }
 
+/// The PO number of `order` for its page, and the order that clashes with it.
+async fn po_view(state: &AppState, lang: &Lang, order: &SalesOrder) -> Result<PoView> {
+    let customer_po = order.customer_po.clone().unwrap_or_default();
+    let call_off = order.call_off.clone().unwrap_or_default();
+    let reference = match (customer_po.is_empty(), call_off.is_empty()) {
+        (true, _) => String::new(),
+        (false, true) => customer_po.clone(),
+        (false, false) => texts::t_with(
+            lang,
+            "wl_sales.po.with_call_off",
+            &[("po", &customer_po), ("call_off", &call_off)],
+        ),
+    };
+    let clash = crate::po_number::clash_of(state, order).await?;
+    let (clash_id, clash_number, blocked) = match &clash {
+        Some(other) => {
+            let status = text(lang, &format!("orders.status.{}", other.status.as_str()));
+            (
+                Some(other.id),
+                other.number.clone(),
+                texts::t_with(
+                    lang,
+                    "wl_sales.po.submit_blocked",
+                    &[("number", &other.number), ("status", &status)],
+                ),
+            )
+        }
+        None => (None, String::new(), String::new()),
+    };
+    Ok(PoView {
+        reference,
+        customer_po,
+        call_off,
+        clash_id,
+        clash_number,
+        blocked,
+    })
+}
+
+/// `POST /sales-orders/{id}/reference`: changes the customer PO number and
+/// call-off number of the draft order (`customer_po`, `call_off`).
+async fn reference(
+    State(state): State<AppState>,
+    lang: Lang,
+    Found(order): Found<SalesOrder>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let get = |key: &str| form.get(key).map_or("", |v| v.trim());
+    crate::po_number::set_reference(&state, order.id, get("customer_po"), get("call_off")).await?;
+    Ok((
+        Toast::success(text(&lang, "po.saved")),
+        Redirect::route("wl_sales.sales_order", &[&order.id])?,
+    )
+        .into_response())
+}
+
 /// The credit hold card of `order`, if it is on credit hold.
 fn hold_view(user: &AuthUser, lang: &Lang, order: &SalesOrder) -> Option<HoldView> {
     if order.status != SalesOrderStatus::CreditHold {
@@ -571,6 +651,9 @@ async fn create(
         }
         new = new.payment_mode(get("payment_mode"));
     }
+    new = new
+        .customer_po(get("customer_po"))
+        .call_off(get("call_off"));
     let order = sales_orders::create(&state, Some(user.id), new).await?;
     Ok((
         Toast::success(text(&lang, "orders.created")),

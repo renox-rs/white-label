@@ -14,7 +14,13 @@
           <rx-input name="unit_price" :label="tx['counter.unit_price']" id="add-order-line-price" required/>
           <rx-checkbox name="loyalty_excluded" :label="tx['counter.loyalty_excluded']" id="add-order-line-excluded"/>
         </rx-action-sheet>
-        <rx-confirm :id="'submit-order-' ~ order.id" :label="tx['orders.submit']" :action="route('wl_sales.sales_order_submit', order.id)" method="POST"
+        <rx-action-sheet id="order-reference" :label="tx['po.change']" :action="route('wl_sales.sales_order_reference', order.id)"
+                         :title="tx['po.change']" :description="tx['po.change_description']" :submit-label="tx['po.change']" icon="pencil">
+          <rx-input name="customer_po" :label="tx['po.customer_po']" id="order-reference-po" :value="po.customer_po"/>
+          <rx-input name="call_off" :label="tx['po.call_off']" id="order-reference-call-off" :value="po.call_off"/>
+        </rx-action-sheet>
+        <rx-button rx-if="po.blocked" :label="tx['orders.submit']" icon="check" :disabled-reason="po.blocked"/>
+        <rx-confirm rx-else :id="'submit-order-' ~ order.id" :label="tx['orders.submit']" :action="route('wl_sales.sales_order_submit', order.id)" method="POST"
                     :title="tx['orders.submit']" :message="tx['orders.submit_message']" :confirm-label="tx['orders.submit']" :cancel-label="tx['cancel']" icon="check"/>
       </template>
       <rx-action-sheet rx-if="redeem.can_redeem" id="redeem-sales_order" :label="tx['redeem.redeem']" :action="route('wl_sales.sales_order_redeem', order.id)"
@@ -57,6 +63,8 @@
         <rx-transition-actions :actions="actions" action="/sales-orders/{{ order.id }}/transitions"/>
       </template>
     </rx-page-header>
+    <rx-alert rx-if="po.clash_id" kind="warning" :message="po.blocked"/>
+    <p rx-if="po.clash_id"><a href="{{ route('wl_sales.sales_order', po.clash_id) }}">{{ po.clash_number }}</a></p>
     <rx-include template="wl-kernel/approval_card.html"/>
     <rx-card rx-if="hold" :title="tx['credit.hold_title']">
       <p>{{ tx['credit.hold_goods_reserved'] }}</p>
@@ -84,6 +92,7 @@
         <rx-entry :label="tx['counter.total']" :value="gross"/>
         <rx-entry :label="tx['orders.channel']" :value="order.channel"/>
         <rx-entry :label="tx['orders.payment_mode']" :value="order.payment_mode"/>
+        <rx-entry rx-if="po.reference" :label="tx['po.customer_po']" :value="po.reference"/>
         <rx-entry rx-if="order.reason" :label="tx['orders.reason']" :value="order.reason"/>
         <rx-entry rx-if="member" :label="tx['loyalty.member']" :value="member"/>
         <rx-entry rx-if="redeem.summary" :label="tx['redeem.redeem']" :value="redeem.summary"/>

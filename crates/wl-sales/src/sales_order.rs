@@ -111,6 +111,10 @@ pub struct SalesOrder {
     pub revision: i64,
     /// The user who entered it.
     pub created_by: Option<i64>,
+    /// The customer's own PO number, as typed.
+    pub customer_po: Option<String>,
+    /// The call-off number against a blanket PO, as typed.
+    pub call_off: Option<String>,
     /// The loyalty account attached before the order is fulfilled.
     pub loyalty_account_id: Option<i64>,
     /// The user who attached it.

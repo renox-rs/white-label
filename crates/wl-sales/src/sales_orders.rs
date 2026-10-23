@@ -68,6 +68,10 @@ pub struct NewSalesOrder {
     pub payment_mode: String,
     /// The legal entity whose order it is.
     pub legal_entity: Option<i64>,
+    /// The customer's own PO number.
+    pub customer_po: Option<String>,
+    /// The call-off number against a blanket PO.
+    pub call_off: Option<String>,
 }
 
 impl NewSalesOrder {
@@ -78,7 +82,21 @@ impl NewSalesOrder {
             channel: "phone".to_owned(),
             payment_mode: crate::sales_order::PAYMENT_ON_ACCOUNT.to_owned(),
             legal_entity: None,
+            customer_po: None,
+            call_off: None,
         }
+    }
+
+    /// With the customer's PO number (blank for none).
+    pub fn customer_po(mut self, po: &str) -> Self {
+        self.customer_po = (!po.trim().is_empty()).then(|| po.trim().to_owned());
+        self
+    }
+
+    /// With the call-off number against a blanket PO (blank for none).
+    pub fn call_off(mut self, call_off: &str) -> Self {
+        self.call_off = (!call_off.trim().is_empty()).then(|| call_off.trim().to_owned());
+        self
     }
 
     /// Through `channel`.
@@ -111,6 +129,8 @@ pub async fn create(state: &AppState, by: Option<i64>, new: NewSalesOrder) -> Re
             number,
             party_id: new.party.0,
             legal_entity_id: new.legal_entity,
+            customer_po: new.customer_po,
+            call_off: new.call_off,
             channel: new.channel,
             payment_mode: new.payment_mode,
             currency: DEFAULT_CURRENCY.to_owned(),
@@ -174,6 +194,9 @@ pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<SalesOrd
         && CustomerAccount::of_party(&state.db, order.party_id)
             .await?
             .is_some();
+    // The customer's PO number: refused naming the order that holds it, else
+    // claimed by this submit (`Unique customer PO number per customer`).
+    let po = crate::po_number::claim_for(state, &order).await?;
     let mut input = SubmitInput {
         line_count: lines.len() as i64,
         net: t.net,
@@ -181,6 +204,7 @@ pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<SalesOrd
         gross: t.gross,
         credit_gate,
         hold: None,
+        po,
     };
     let mut name = if order.payment_mode == PAYMENT_ONLINE {
         SUBMIT_ONLINE
@@ -197,13 +221,17 @@ pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<SalesOrd
         name = SUBMIT_HOLD;
         input.hold = Some(hold);
     }
-    let _ = order
+    if let Err(error) = order
         .transition(name)
         .by(by)
         .input(&input)
         .run(state)
         .await
-        .map_err(|e| e.into_error())?;
+        .map_err(|e| e.into_error())
+    {
+        // Another submit may have claimed the PO number a moment ago.
+        return Err(crate::po_number::explain_race(state, &order, error).await);
+    }
     // The points held for the order stay held until it resolves.
     crate::redeem::order_placed(state, &Subject::new(SALES_ORDER_SUBJECT_TYPE, id)).await?;
     SalesOrder::find_or_404(&state.db, id).await

@@ -55,6 +55,7 @@ use wl_kernel::machines::SubjectMachine;
 use wl_kernel::sales::{CreditFailure, FulfilledLine, SALES_ORDER_SUBJECT_TYPE};
 
 use crate::permissions;
+use crate::po_number::{PoKey, Reference};
 use crate::policy;
 use crate::sale_line::SaleLine;
 use crate::sales_order::{FulfilmentRecord, SalesOrder, SalesOrderStatus};
@@ -141,7 +142,7 @@ pub struct AcceptInput {
 }
 
 /// What the `submit` family takes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubmitInput {
     /// How many lines the order has.
     pub line_count: i64,
@@ -158,6 +159,10 @@ pub struct SubmitInput {
     /// The hold the credit check calls for (`submit_hold`).
     #[serde(default)]
     pub hold: Option<HoldInput>,
+    /// The customer PO number the order claims (the setting *Unique customer
+    /// PO number per customer* is on and the order has a reference).
+    #[serde(default)]
+    pub po: Option<Reference>,
 }
 
 /// What `confirm_payment` takes.
@@ -386,7 +391,7 @@ fn submit(name: &str, label: &str, to: SalesOrderStatus) -> Transition<SalesOrde
             Box::pin(async move { check(held == holds, "wl_sales.orders.problem.input") })
         })
         .effect(move |order: &SalesOrder, ctx, tx| {
-            let id = order.id;
+            let (id, party_id) = (order.id, order.party_id);
             let input = ctx.input_as::<SubmitInput>().ok();
             Box::pin(async move {
                 let Some(input) = input else {
@@ -408,6 +413,19 @@ fn submit(name: &str, label: &str, to: SalesOrderStatus) -> Transition<SalesOrde
                     .await?;
                 if let Some(hold) = input.hold {
                     write_hold(tx, id, &hold, SalesOrderStatus::Confirmed).await?;
+                }
+                // The unique key lets only one of two concurrent submits
+                // claim the customer's PO number.
+                if let Some(po) = input.po {
+                    PoKey {
+                        order_id: id,
+                        party_id,
+                        po_key: po.po_key,
+                        call_off_key: po.call_off_key,
+                        ..PoKey::default()
+                    }
+                    .insert(&mut *tx)
+                    .await?;
                 }
                 Ok(())
             })
