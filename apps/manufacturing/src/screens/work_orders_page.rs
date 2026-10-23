@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use super::{Texts, period_text, quantity_text};
 use crate::permissions;
 use crate::plant::{Line, Plant};
-use crate::texts::{screen_texts, t, tf, word};
-use crate::work_order::{WorkOrder, WorkOrderSource, WorkOrderStatus};
+use crate::texts::{screen_texts, t, word};
+use crate::work_order::{WorkOrder, WorkOrderStatus};
 
 /// The address of the list.
 pub(crate) const URL: &str = "/manufacturing/work-orders";
@@ -137,14 +137,7 @@ pub(crate) async fn show(
             quantity: quantity_text(order.quantity_milli),
             produced: quantity_text(order.good_milli),
             period: period_text(&lang, order.planned_start, order.planned_end),
-            source: match order.source {
-                WorkOrderSource::SalesOrder => tf(
-                    &lang,
-                    "manufacturing.screen.source.sales_order",
-                    &[("order", &order.sales_order_id.unwrap_or_default())],
-                ),
-                WorkOrderSource::Stock => t(&lang, "manufacturing.screen.source.stock"),
-            },
+            source: super::work_order_page::source_text(&state, &lang, &order).await?,
             status: word(&lang, "status", order.status.as_str()),
             status_kind: status_kind(order.status),
         });

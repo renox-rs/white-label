@@ -45,6 +45,31 @@ pub(crate) fn url(id: i64) -> String {
     format!("/manufacturing/work-orders/{id}")
 }
 
+/// The source of a work order in words: the number of its sales order (the
+/// order's id while the sales side does not tell it), or stock.
+pub(crate) async fn source_text(
+    state: &AppState,
+    lang: &Lang,
+    order: &WorkOrder,
+) -> Result<String> {
+    if order.source != WorkOrderSource::SalesOrder {
+        return Ok(t(lang, "manufacturing.screen.source.stock"));
+    }
+    let id = order.sales_order_id.unwrap_or_default();
+    let number = match (order.order(), order.sales_order_line_id) {
+        (Some(sales), Some(line)) => wl_kernel::production::order_lines(state)
+            .line(state, sales, line)
+            .await?
+            .and_then(|info| info.number),
+        _ => None,
+    };
+    Ok(tf(
+        lang,
+        "manufacturing.screen.source.sales_order",
+        &[("order", &number.unwrap_or_else(|| id.to_string()))],
+    ))
+}
+
 /// The item of a work order in words.
 pub(crate) fn item_text(lang: &Lang, item_id: i64) -> String {
     tf(lang, "manufacturing.screen.item_name", &[("id", &item_id)])
@@ -348,14 +373,7 @@ async fn build(
         },
         Fact {
             label: t(lang, "manufacturing.screen.fact.source"),
-            value: match order.source {
-                WorkOrderSource::SalesOrder => tf(
-                    lang,
-                    "manufacturing.screen.source.sales_order",
-                    &[("order", &order.sales_order_id.unwrap_or_default())],
-                ),
-                WorkOrderSource::Stock => t(lang, "manufacturing.screen.source.stock"),
-            },
+            value: source_text(state, lang, order).await?,
         },
         Fact {
             label: t(lang, "manufacturing.screen.fact.planned"),
