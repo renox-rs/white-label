@@ -451,6 +451,96 @@ async fn an_amendment_that_lowers_a_line_shrinks_the_reservation() {
     assert_eq!(reload(&t, &dispatch).await.status, DispatchStatus::Picked);
 }
 
+/// An amendment that raises a line reserves the extra stock: the picked
+/// dispatch line grows and the available quantity falls with it; applied
+/// twice it counts once.
+#[renox::test]
+async fn an_amendment_that_raises_a_line_reserves_the_extra_stock() {
+    let t = boot().await;
+    let item = t.item("RICE").await;
+    let store = t.location("OUTLET-1", None).await;
+    t.stock_in(&item, &store, None, 10_000, 300).await;
+    let dispatch = picked(&t, &store, &[(&item, 3_000, 81)]).await;
+    assert_eq!(t.available(&item, &store, None).await, 7_000);
+
+    let event = SalesOrderAmended {
+        order: SalesOrderId(ORDER),
+        party: PartyId(1),
+        revision: 2,
+        lines: vec![AmendedLine {
+            line: 81,
+            quantity_before_milli: 3_000,
+            quantity_after_milli: 5_000,
+            unit_price_before: 100,
+            unit_price_after: 100,
+            held_milli: 0,
+        }],
+        value_before: 300,
+        value_after: 500,
+        reason: "two more".to_owned(),
+    };
+    t.state().emit(event.clone()).await.unwrap();
+    t.state().emit(event).await.unwrap();
+
+    let grown = lines_of(t.db(), dispatch.id).await.unwrap();
+    assert_eq!(grown[0].quantity_milli, 5_000);
+    assert_eq!(t.available(&item, &store, None).await, 5_000);
+    assert_eq!(reload(&t, &dispatch).await.status, DispatchStatus::Picked);
+}
+
+/// A raise beyond the stock available reserves what is there and notes the
+/// rest on the effect; a line with no dispatch in the store gets nothing.
+#[renox::test]
+async fn an_amendment_that_raises_a_line_reserves_only_what_the_stock_covers() {
+    let t = boot().await;
+    let item = t.item("RICE").await;
+    let store = t.location("OUTLET-1", None).await;
+    t.stock_in(&item, &store, None, 4_000, 300).await;
+    let dispatch = picked(&t, &store, &[(&item, 3_000, 81)]).await;
+
+    t.state()
+        .emit(SalesOrderAmended {
+            order: SalesOrderId(ORDER),
+            party: PartyId(1),
+            revision: 2,
+            lines: vec![
+                AmendedLine {
+                    line: 81,
+                    quantity_before_milli: 3_000,
+                    quantity_after_milli: 6_000,
+                    unit_price_before: 100,
+                    unit_price_after: 100,
+                    held_milli: 0,
+                },
+                AmendedLine {
+                    line: 82,
+                    quantity_before_milli: 1_000,
+                    quantity_after_milli: 2_000,
+                    unit_price_before: 100,
+                    unit_price_after: 100,
+                    held_milli: 0,
+                },
+            ],
+            value_before: 400,
+            value_after: 800,
+            reason: "more".to_owned(),
+        })
+        .await
+        .unwrap();
+
+    let grown = lines_of(t.db(), dispatch.id).await.unwrap();
+    assert_eq!(grown[0].quantity_milli, 4_000, "only the 1 kg that was free");
+    assert_eq!(t.available(&item, &store, None).await, 0);
+    let effects = wl_inventory::sales_cancel::CancelEffect::of_order(t.db(), ORDER)
+        .await
+        .unwrap();
+    let first = effects.iter().find(|e| e.sale_line_id == 81).unwrap();
+    assert_eq!(first.action, "added");
+    assert!(first.note.as_deref().unwrap_or_default().contains("2000 short"));
+    let second = effects.iter().find(|e| e.sale_line_id == 82).unwrap();
+    assert_eq!(second.action, "none");
+}
+
 /// The screen: a dispatcher picks a draft, cancelling needs a reason, and a
 /// user without the permission is refused.
 #[renox::test]

@@ -29,7 +29,12 @@
 //!   dispatcher (a holder of `dispatch.manage` at the location) gets a task.
 //!
 //! An amendment that lowers a line (`SalesOrderAmended`) trims the same
-//! quantity off the dispatch lines of that sale line.
+//! quantity off the dispatch lines of that sale line; one that raises a line
+//! adds the quantity to the last draft or picked dispatch line of the sale
+//! line, so a picked dispatch reserves the extra stock too, as far as the
+//! stock at the location is available (the rest is noted on the effect). A
+//! line with no dispatch in the store gets nothing: its stock is reserved when
+//! it is picked.
 //!
 //! Idempotency is per event and line: every application leaves a
 //! [`CancelEffect`] with a key made of the event kind, order, line, quantity,
@@ -552,7 +557,8 @@ pub async fn on_order_cancelled(state: &AppState, event: &SalesOrderCancelled) -
 }
 
 /// `SalesOrderAmended`: a line lowered by the amendment gives back the same
-/// quantity from its dispatch lines (the reservation shrinks).
+/// quantity from its dispatch lines (the reservation shrinks); a line raised
+/// adds the quantity to its dispatch line (the reservation grows).
 ///
 /// # Errors
 ///
@@ -561,7 +567,18 @@ pub async fn on_amended(state: &AppState, event: &SalesOrderAmended) -> Result {
     let order = event.order.subject();
     for line in &event.lines {
         let lowered = line.quantity_before_milli - line.quantity_after_milli;
-        if lowered <= 0 {
+        if lowered < 0 {
+            reserve_more(
+                state,
+                format!("amended:{}:{}:{}", event.order, event.revision, line.line),
+                &order,
+                line.line,
+                -lowered,
+            )
+            .await?;
+            continue;
+        }
+        if lowered == 0 {
             continue;
         }
         apply_line(
@@ -577,6 +594,84 @@ pub async fn on_amended(state: &AppState, event: &SalesOrderAmended) -> Result {
         )
         .await?;
     }
+    Ok(())
+}
+
+/// Adds `added` thousandths to the last draft or picked dispatch line of the
+/// sale line `line` of `order`: the reservation of a picked dispatch grows
+/// with it, up to the stock available at its location and lot.
+async fn reserve_more(
+    state: &AppState,
+    key: String,
+    order: &Subject,
+    line: i64,
+    added: i64,
+) -> Result {
+    if CancelEffect::query()
+        .where_(CancelEffect::EFFECT_KEY.eq(key.clone()))
+        .exists(&state.db)
+        .await?
+    {
+        return Ok(());
+    }
+    let mut tx = state.db.begin().await?;
+    let rows = DispatchLine::query()
+        .where_(DispatchLine::SALE_LINE_ID.eq(Some(line)))
+        .order_by_desc(DispatchLine::ID)
+        .get(&mut tx)
+        .await?;
+    let mut action = "none";
+    let mut note = Some("no dispatch in the store".to_owned());
+    for row in rows {
+        let dispatch = Dispatch::find_or_404(&mut tx, row.dispatch_id).await?;
+        if dispatch.source() != *order || !dispatch.status.in_store() {
+            continue;
+        }
+        let room = if dispatch.status == DispatchStatus::Picked {
+            balance::balance(&mut tx, row.item_id, dispatch.location_id, row.lot_id)
+                .await?
+                .available_milli()
+        } else {
+            added
+        };
+        let grow = added.min(room.max(0));
+        if grow > 0 {
+            DispatchLine::query()
+                .where_(DispatchLine::ID.eq(row.id))
+                .update(
+                    &mut tx,
+                    &[
+                        ("quantity_milli", &(row.quantity_milli + grow)),
+                        ("updated_at", &renox::db::now()),
+                    ],
+                )
+                .await?;
+        }
+        action = if grow > 0 { "added" } else { "none" };
+        note = Some(if grow < added {
+            format!(
+                "dispatch {}: {grow} of {added} reserved, {} short",
+                dispatch.id,
+                added - grow
+            )
+        } else {
+            format!("dispatch {}", dispatch.id)
+        });
+        break;
+    }
+    let mut effect = CancelEffect {
+        effect_key: key,
+        order_id: order.subject_id,
+        sale_line_id: line,
+        outcome: None,
+        quantity_milli: added,
+        action: action.to_owned(),
+        value: 0,
+        note,
+        ..CancelEffect::default()
+    };
+    effect.insert(&mut tx).await?;
+    tx.commit().await?;
     Ok(())
 }
 
