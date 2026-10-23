@@ -414,6 +414,17 @@ impl Module for WlKernel {
                 .order(30)
                 .permission(permissions::LEGAL_ENTITIES_VIEW),
         );
+        // The connections of the company with the outside (gateways, devices,
+        // channels): their heartbeat, status and settings. The label is the
+        // app's `nav.integrations` text.
+        app.nav(
+            "app",
+            NavLink::route(integrations::web::route_names::LIST, "nav.integrations")
+                .icon("link")
+                .group("nav.admin")
+                .order(31)
+                .permission(permissions::INTEGRATIONS_VIEW),
+        );
         let config = Arc::clone(&self.config);
         app.command(
             "wl:install",
