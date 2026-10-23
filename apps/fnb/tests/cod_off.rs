@@ -95,10 +95,17 @@ fn manager_told(w: &World) -> bool {
 async fn a_second_customer_side_failure_within_90_days_turns_cash_on_delivery_off() {
     let w = boot_own_riders().await;
     let c = w.customer("Customer C").await;
-    past_failure(&w, c, 70).await;
-    assert!(cod_allowed(&w, c).await);
+    // The first failure is a real one: the rider records it in the PWA; 70
+    // days later the second is recorded the same way.
+    let first = failure(&w, "website", c, "cash_on_delivery", "not_home").await;
+    assert_eq!(first.failure_reason.as_deref(), Some(reason::CUSTOMER_UNREACHABLE));
+    assert!(cod_allowed(&w, c).await, "one failure is not enough");
+    w.travel(TimeDelta::days(70));
 
-    let order = failure(&w, "website", c, "cash_on_delivery", "refused").await;
+    let order = w
+        .app
+        .at_travelled_time(failure(&w, "website", c, "cash_on_delivery", "refused"))
+        .await;
 
     assert_eq!(order.failure_reason.as_deref(), Some(reason::REFUSED));
     let flag = flag_of(&w, c).await.expect("a flag was made");
