@@ -118,3 +118,88 @@ async fn aut_08_real_an_unsigned_private_estimate_is_cancelled_after_seven_days(
         .unwrap();
     assert!(claim.payer_bill_id.is_none());
 }
+
+/// The e-mail channel, where the insurer's mailbox refuses everything for good.
+struct RefusingEmail;
+
+impl wl_notify::ChannelProvider for RefusingEmail {
+    fn name(&self) -> &'static str {
+        "refusing-email"
+    }
+
+    fn channel(&self) -> wl_kernel::notify::NotifyChannel {
+        wl_kernel::notify::NotifyChannel::Email
+    }
+
+    fn available(&self, _state: &AppState) -> bool {
+        true
+    }
+
+    fn send<'a>(
+        &'a self,
+        _state: &'a AppState,
+        outgoing: &'a wl_notify::Outgoing,
+    ) -> wl_notify::channels::ProviderFuture<'a, std::result::Result<String, wl_notify::SendError>>
+    {
+        Box::pin(async move {
+            if outgoing.address == "claims@orient.example" {
+                Err(wl_notify::SendError::permanent("550", "mailbox unknown"))
+            } else {
+                Ok(format!("mail:{}", outgoing.message.0))
+            }
+        })
+    }
+}
+
+/// The withdrawal letter cannot be delivered (the insurer's mailbox refuses it
+/// for good): the real notifier gives up and, the letter being statutory, the
+/// insurance coordinator gets a real task about the claim (#404, #414 point 11).
+#[renox::test]
+async fn aut_08_real_a_withdrawal_letter_that_gives_up_opens_a_task_for_the_coordinator() {
+    let w = support::autofx::boot_tuned(
+        host::Tuning::default().notify(|n| n.provider(RefusingEmail)),
+        |app| app,
+    )
+    .await;
+    let s = shop(&w, None).await;
+    let job = approved_job(&w, &s, &[("Panel repair", 6_000, 20_000)], &[0]).await;
+
+    claims::withdraw(
+        w.state(),
+        &s.carla,
+        job.claim.id,
+        Withdrawal::new("Withdrawn by the customer")
+            .document("withdrawal-letter-80")
+            .stop(),
+    )
+    .await
+    .unwrap();
+    w.app.run_all_jobs().await;
+
+    let tasks: Vec<_> = wl_ticketing::Ticket::query()
+        .get(w.db())
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|t| {
+            t.source_key
+                .as_deref()
+                .is_some_and(|k| k.starts_with("notify.statutory:"))
+        })
+        .collect();
+    assert_eq!(tasks.len(), 1, "one task for the coordinator: {tasks:?}");
+    assert!(
+        tasks[0].title.contains("another means"),
+        "{}",
+        tasks[0].title
+    );
+    assert_eq!(
+        wl_notify::StatutoryNotice::query()
+            .count(w.db())
+            .await
+            .unwrap(),
+        1,
+        "the notice is kept until its proof is recorded"
+    );
+    assert_eq!(tasks[0].assignee_user_id, Some(s.carla.id), "{tasks:?}");
+}

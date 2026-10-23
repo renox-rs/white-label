@@ -75,10 +75,16 @@ pub async fn boot() -> World {
 
 /// [`boot`] with `more` applied to the app first (an event recorder).
 pub async fn boot_with(more: impl FnOnce(App) -> App) -> World {
+    boot_tuned(host::Tuning::default(), more).await
+}
+
+/// [`boot_with`] with the shared modules changed by `tuning` (a scripted channel
+/// provider).
+pub async fn boot_tuned(tuning: host::Tuning, more: impl FnOnce(App) -> App) -> World {
     let who = Arc::new(Mutex::new(None));
     let config = wl_kernel::ClientConfig::load(CLIENT).expect("the auto client");
     let app = TestApp::new(more(
-        host::app_for(config)
+        host::app_for_tuned(config, tuning)
             .expect("the app")
             .module(Who(who.clone())),
     ))
