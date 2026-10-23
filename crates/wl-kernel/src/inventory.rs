@@ -635,6 +635,7 @@ mod tests {
             subject: Some(Subject::new("clinics.visit", 3)),
             party: Some(PartyId(11)),
             lot: Some(Subject::new(LOT_SUBJECT_TYPE, 9)),
+            item: None,
             location: None,
             quantity_milli: 2_000,
             on: None,
@@ -1385,6 +1386,10 @@ pub struct TracedHolder {
     pub party: Option<PartyId>,
     /// The lot, `inventory.lot:4`.
     pub lot: Option<Subject>,
+    /// The item, `inventory.item:3`, of a line that names no lot (an item not
+    /// tracked by lot, recalled by supplier and received dates).
+    #[serde(default)]
+    pub item: Option<Subject>,
     /// Where it was used: the location it left, `inventory.location:2`.
     pub location: Option<Subject>,
     /// The quantity, in thousandths of the base unit.

@@ -13,7 +13,8 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::inventory::{
-    LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE, RECALL_LINE_SUBJECT_TYPE, TraceMark, TracedHolder,
+    ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE, RECALL_LINE_SUBJECT_TYPE,
+    TraceMark, TracedHolder,
 };
 use wl_kernel::{PartyId, Subject};
 
@@ -145,6 +146,10 @@ impl RecallLine {
             subject: self.used_by(),
             party: self.party_id.map(PartyId),
             lot: self.lot_id.map(|id| Subject::new(LOT_SUBJECT_TYPE, id)),
+            item: match (self.lot_id, self.item_id) {
+                (None, Some(id)) => Some(Subject::new(ITEM_SUBJECT_TYPE, id)),
+                _ => None,
+            },
             location: self
                 .location_id
                 .map(|id| Subject::new(LOCATION_SUBJECT_TYPE, id)),
