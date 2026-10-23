@@ -1881,3 +1881,46 @@ fn debited(lines: &[(i64, i64)]) -> Vec<DebitedLine> {
         })
         .collect()
 }
+
+impl Booted {
+    /// `quantity_milli` of `item` (not tracked by lot) received at `location`
+    /// from `supplier` on `day`: a posted goods receipt that arrived that day
+    /// and its `receive` movement.
+    pub async fn received_on(
+        &self,
+        item: &Item,
+        location: &Location,
+        supplier: PartyId,
+        quantity_milli: i64,
+        day: renox::chrono::NaiveDate,
+    ) -> GoodsReceipt {
+        let at = day.and_hms_opt(8, 0, 0).unwrap().and_utc();
+        let mut receipt = GoodsReceipt {
+            supplier_party_id: supplier.0,
+            location_id: location.id,
+            arrived_at: Some(at),
+            posted_at: Some(at),
+            ..GoodsReceipt::default()
+        };
+        let mut tx = self.db().begin().await.unwrap();
+        receipt
+            .insert_in_state(&mut tx, wl_inventory::GoodsReceiptStatus::Posted, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        let source = Subject::new("inventory.goods_receipt", receipt.id);
+        let mut moved = StockMovement::receive(
+            item.id,
+            None,
+            location.id,
+            quantity_milli,
+            1_000,
+            value_of(quantity_milli, 1_000),
+            &source,
+            None,
+        );
+        moved.moved_at = at;
+        moved.save(self.db()).await.unwrap();
+        receipt
+    }
+}
