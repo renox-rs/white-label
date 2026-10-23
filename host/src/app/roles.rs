@@ -1519,6 +1519,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::ITEMS_VIEW,
             inventory::STOCK_VIEW,
             inventory::STOCK_APPROVE,
+            // A branch manager opens a recall of a part and tells the
+            // customers who got it (08 §7.1 settings *Recall*, BL-AUT-16).
+            inventory::RECALLS_MANAGE,
             invoices::VIEW,
             payments::VIEW,
             payments::REFUNDS_APPROVE,

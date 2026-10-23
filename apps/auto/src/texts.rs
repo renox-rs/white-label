@@ -30,6 +30,7 @@ fn entries() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
         .chain(crate::texts_police::TEXTS.iter())
         .chain(crate::texts_incidents::TEXTS.iter())
         .chain(crate::texts_storage::TEXTS.iter())
+        .chain(crate::texts_recalls::TEXTS.iter())
 }
 
 /// The text for `key`: the app's translation when it has one, else the

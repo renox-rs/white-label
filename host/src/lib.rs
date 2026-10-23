@@ -404,6 +404,8 @@ fn enable(
             Ok(
                 app.module(if client_app == app::construction_seed::CONSTRUCTION {
                     app::construction_seed::inventory(module)
+                } else if client_app == app::auto_seed::AUTO {
+                    app::auto_seed::inventory(module)
                 } else {
                     app::clinics_money::inventory(client_app, module)
                 }),

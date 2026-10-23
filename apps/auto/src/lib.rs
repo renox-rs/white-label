@@ -54,6 +54,7 @@ pub mod parts_wait;
 pub mod payer;
 pub mod permissions;
 pub mod reasons;
+pub mod recalls;
 pub mod release;
 pub mod seed;
 pub mod settings;
@@ -78,6 +79,7 @@ mod texts_fleet;
 mod texts_incidents;
 mod texts_jobs;
 mod texts_police;
+mod texts_recalls;
 mod texts_stops;
 mod texts_storage;
 mod texts_supplier;
@@ -177,6 +179,7 @@ const VIEWS: &[(&str, &str)] = &[
         "auto/supplier_claim.html",
         include_str!("../views/auto/supplier_claim.html"),
     ),
+    ("auto/recall.html", include_str!("../views/auto/recall.html")),
 ];
 
 /// A whole number with its thousands grouped: `52,000`.
@@ -234,7 +237,8 @@ impl Module for Auto {
             .view_data::<pages::fleet::ShowPage>()
             .view_data::<pages::export_sales::IndexPage>()
             .view_data::<pages::supplier_claims::IndexPage>()
-            .view_data::<pages::supplier_claims::ShowPage>();
+            .view_data::<pages::supplier_claims::ShowPage>()
+            .view_data::<pages::recalls::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -318,6 +322,9 @@ impl Module for Auto {
         // The task when a warranty ticket closes (`AUT.RUL.07`), the email of
         // the claim to the supplier and the notice at 60 days (`AUT.RUL.08`).
         supplier_rules::register(app);
+        // A recalled part traced to the vehicle owners, fleets and customers
+        // who got it, and the notice they are sent (BL-AUT-16).
+        recalls::register(app);
         // A bill or a document that names a vehicle or a job card shows its
         // plate or `JOB-00007`, not `auto.vehicle:7`.
         register_labels();

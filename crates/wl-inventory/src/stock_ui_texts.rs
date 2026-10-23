@@ -359,7 +359,7 @@ pub(crate) const STOCK_TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.stock.recall.proof", "Proof"),
     ("wl_inventory.stock.recall.party", "Party"),
     ("wl_inventory.stock.recall.notice", "Notice"),
-    ("wl_inventory.stock.recall.parties", "Patients and notices"),
+    ("wl_inventory.stock.recall.parties", "Parties and notices"),
     ("wl_inventory.stock.recall.send", "Send the notices"),
     (
         "wl_inventory.stock.recall.send_description",

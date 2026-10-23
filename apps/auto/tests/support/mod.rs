@@ -57,6 +57,9 @@ pub mod tickets;
 /// The stand-in of the Return to supplier drafts.
 pub mod returns;
 
+/// The stand-ins of the recall trace and of the customers of the sales.
+pub mod recall;
+
 /// The stand-in of the notifier.
 pub mod messages;
 
@@ -67,6 +70,7 @@ pub use documents::Documents;
 pub use messages::Messages;
 pub use money::{Books, People};
 pub use payer::{Cards, PayerBooks};
+pub use recall::{Customers, Trace};
 pub use returns::Returns;
 pub use stock::Stock;
 pub use tickets::Tickets;
@@ -146,6 +150,8 @@ struct Harness {
     messages: Messages,
     documents: Documents,
     returns: Returns,
+    trace: Trace,
+    customers: Customers,
 }
 
 impl Module for Harness {
@@ -163,6 +169,8 @@ impl Module for Harness {
         provide_notifier(app, self.messages.clone());
         provide_guard(app, self.documents.clone());
         provide_supplier_return_drafts(app, self.returns.clone());
+        wl_kernel::inventory::provide_lot_trace(app, self.trace.clone());
+        wl_kernel::sales::provide_sale_customers(app, self.customers.clone());
     }
 
     fn routes(&self) -> Routes {
@@ -199,6 +207,10 @@ pub struct Garage {
     pub documents: Documents,
     /// The returns to supplier drafted.
     pub returns: Returns,
+    /// The lines of the recall (wl-inventory's trace).
+    pub trace: Trace,
+    /// The customers of the sales (wl-sales).
+    pub customers: Customers,
     /// `JobCardCancelled`.
     pub cancelled: Recorded<JobCardCancelled>,
     /// `RecordVoided`.
@@ -223,6 +235,7 @@ pub async fn boot() -> Garage {
     let messages = Messages::default();
     let documents = Documents::default();
     let returns = Returns::default();
+    let (trace, customers) = (Trace::default(), Customers::default());
     let mut scheduling_module = WlScheduling::new();
     for (code, initiated_by) in auto::reasons::SCHEDULING_REASON_CODES {
         scheduling_module = scheduling_module.reason_code(code, *initiated_by);
@@ -247,6 +260,8 @@ pub async fn boot() -> Garage {
             messages: messages.clone(),
             documents: documents.clone(),
             returns: returns.clone(),
+            trace: trace.clone(),
+            customers: customers.clone(),
         });
     let app = record(app, &cancelled);
     let app = record(app, &voided);
@@ -270,6 +285,8 @@ pub async fn boot() -> Garage {
         messages,
         documents,
         returns,
+        trace,
+        customers,
         cancelled,
         voided,
         terminated,

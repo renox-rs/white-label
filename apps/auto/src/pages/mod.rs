@@ -11,6 +11,7 @@ pub mod incidents;
 pub mod insurers;
 pub mod job_cards;
 pub mod labour;
+pub mod recalls;
 pub mod stops;
 pub mod supplier_claims;
 pub mod vehicles;
@@ -42,6 +43,7 @@ pub fn routes() -> Routes {
         .merge(fleet::routes())
         .merge(export_sales::routes())
         .merge(supplier_claims::routes())
+        .merge(recalls::routes())
 }
 
 /// The app text `key` (without the `auto.` prefix).

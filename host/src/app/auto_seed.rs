@@ -188,6 +188,13 @@ pub fn scheduling_for() -> WlScheduling {
     module
 }
 
+/// The inventory module with the 08 client's values: the customers of a
+/// recall are named and told on the app's own page (`BL-AUT-16`), which
+/// wl-inventory's recall page links to.
+pub fn inventory(module: wl_inventory::WlInventory) -> wl_inventory::WlInventory {
+    module.recall_notices_route("auto.recall")
+}
+
 /// The HR module with the Auto client's values: the workshop manager is the
 /// line manager of a technician and the owner role of the client the second
 /// person for waiving and reopening a step; the branch manager is told of

@@ -51,6 +51,10 @@ pub const EXPORT_SALES_MANAGE: &str = "export_sales.manage";
 /// Issue the invoices of a claim or of a fleet contract: wl-invoicing's own
 /// permission (`invoices.issue`), which the accountant holds (`AUT.INS.04`).
 pub const INVOICES_ISSUE: &str = "invoices.issue";
+/// Open and run a recall of a part, and tell the customers who got it:
+/// wl-inventory's own permission (`recalls.manage`), which the Owner / GM and
+/// the branch managers hold (`BL-AUT-16`).
+pub const RECALLS_MANAGE: &str = "recalls.manage";
 /// Issue parts from stock to a job card: wl-inventory's own permission
 /// (`stock.issue`), which the storekeeper holds, is enough besides
 /// `job_cards.work` and `job_cards.advise`.
