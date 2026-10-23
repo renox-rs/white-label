@@ -442,3 +442,45 @@ async fn aut_11_a_write_off_needs_the_approval_of_a_branch_manager_who_did_not_a
         SupplierClaimStatus::Raised
     );
 }
+
+/// The supplier claim page asks for the write-off and says it waits for the
+/// branch manager.
+#[renox::test]
+async fn aut_11_the_claim_page_asks_for_a_write_off_that_waits_for_approval() {
+    let t = boot().await;
+    let about = delivered_with_alternator(&t).await;
+    t.tickets
+        .add(&about, "warranty", 1, "TKT-2026-0001", "closed");
+    let pia = pia(&t).await;
+    let claim = supplier_claims::raise(t.state(), &pia, alternator(1, &about, day(-100)))
+        .await
+        .unwrap();
+    let user = t
+        .user(
+            "Pia",
+            &[
+                auto::permissions::SUPPLIER_CLAIMS_MANAGE,
+                auto::permissions::JOB_CARDS_VIEW,
+            ],
+        )
+        .await;
+    t.app.acting_as(&user);
+    let path = format!("/auto/supplier-claims/{}", claim.id);
+    t.app.get(&path).await.assert_ok().assert_see("Write off");
+    let asked = t
+        .app
+        .htmx()
+        .post(
+            &format!("{path}/write-off"),
+            &[("reason", "Supplier refused")],
+        )
+        .await;
+    asked.assert_ok();
+    assert_eq!(
+        SupplierClaim::find_or_404(t.db(), claim.id)
+            .await
+            .unwrap()
+            .status,
+        SupplierClaimStatus::Raised
+    );
+}
