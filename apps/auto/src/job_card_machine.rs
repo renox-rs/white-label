@@ -1,0 +1,838 @@
+//! The job card machine (08 §7.1 *Job card*; `AUT.JOB.01`, `AUT.JOB.02`,
+//! `AUT.ACL.09`).
+//!
+//! | Transition | From | To | By | Guards |
+//! |---|---|---|---|---|
+//! | [`START_INSPECTION`] | checked_in | inspecting | `job_cards.work` | `technician_assigned`, `intake_recorded` |
+//! | [`SEND_ESTIMATE`] | inspecting, in_progress | awaiting_approval | `job_cards.advise` | `intake_recorded`, `estimate_priced` |
+//! | [`APPROVE`] / [`APPROVE_SYSTEM`] | awaiting_approval | in_progress | `job_cards.advise` (recorded approval) / system (the customer's link, a claim) | `estimate_pending`, `police_report` (slot) |
+//! | [`DECLINE`] / [`DECLINE_SYSTEM`] | checked_in, inspecting, awaiting_approval | declined | `job_cards.advise` / system (estimate expired) | `nothing_approved`, `nothing_recorded` (slot) |
+//! | [`DECLINE_ADDED`] / [`DECLINE_ADDED_SYSTEM`] | awaiting_approval | in_progress | `job_cards.advise` / system (the customer's link) | `work_approved` |
+//! | [`WAIT_PARTS`] | in_progress | awaiting_parts | `job_cards.work` | `parts_requested` (slot) |
+//! | [`PARTS_ARRIVED`] | awaiting_parts | in_progress | system (stock issued) | `stock_issued` (slot) |
+//! | [`FINISH_WORK`] | in_progress | quality_check | `job_cards.work` | `labour_done` |
+//! | [`PASS_QC`] | quality_check | ready | `job_cards.qc` | `qc_checklist_complete`, `qc_findings_closed` (slot) |
+//! | [`FAIL_QC`] | quality_check | in_progress | `job_cards.qc` | a reason (the findings) |
+//! | [`DELIVER`] | ready | delivered | `job_cards.advise` | `qc_checklist_complete`, `added_work_approved`, `substitute_closed` and `payment_cleared` (slots) |
+//! | [`CANCEL`] / [`CANCEL_SYSTEM`] | inspecting, awaiting_approval, in_progress, awaiting_parts, quality_check | cancelled | `job_cards.advise` / system | a reason; `work_done_recorded`, `acknowledged`, `approved_if_below_work_done` (slots) |
+//! | [`VOID`] | checked_in | voided | `job_cards.advise` | a reason; `nothing_recorded`, `no_claim_linked` (slots) |
+//!
+//! Decisions:
+//!
+//! - As for the batch of 10, the guards see only the record and the run's
+//!   input; [`crate::job_cards`] works out what a guard needs from the
+//!   database (the estimate is priced, the approval round that is pending, the
+//!   labour still open) and passes it in [`JobInput`].
+//! - A transition has one kind of access and one end state: the user and the
+//!   system variants are declared twice (`approve` and `approve_system`), and
+//!   `decline` (the job card ends) and `decline_added` (the added work only is
+//!   declined, the job goes on) are two transitions of the one `decline` of the
+//!   spec table.
+//! - The guards marked *slot* pass for now: they are the places where the
+//!   issues of the negative flows add their rules (BL-AUT-01 `cancel`,
+//!   BL-AUT-02 `void`, BL-AUT-03 `decline`, BL-AUT-04 `wait_parts` and
+//!   `parts_arrived`, BL-AUT-05 .. BL-AUT-07 `deliver`, `pass_qc` and
+//!   `approve`). A slot keeps its name so that a test names the guard that
+//!   refused.
+//! - Effects only touch the job card's own rows (the estimate rounds and
+//!   lines) and the vehicle's next service; the invoice, the booking and the
+//!   stock are the service's, after the commit ([`crate::job_cards`]).
+
+use renox::chrono::NaiveDate;
+use renox::db::{DateTime, Json, now};
+use renox::prelude::*;
+use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
+use serde::{Deserialize, Serialize};
+
+use crate::approval::{ApprovalStatus, EstimateApproval};
+use crate::db::set_job_card;
+use crate::job_card::{JobCard, JobCardStatus, QcCheck};
+use crate::labour_line::{LabourLine, LineStatus};
+use crate::part_line::PartLine;
+use crate::permissions;
+use crate::texts::english;
+use crate::vehicle::Vehicle;
+
+/// `checked_in → inspecting`: the technician starts diagnosing.
+pub const START_INSPECTION: &str = "start_inspection";
+/// `inspecting, in_progress → awaiting_approval`: the estimate (or added work)
+/// goes to the customer.
+pub const SEND_ESTIMATE: &str = "send_estimate";
+/// `awaiting_approval → in_progress`: the advisor records the customer's
+/// approval.
+pub const APPROVE: &str = "approve";
+/// `awaiting_approval → in_progress`: the customer approves on the link, or a
+/// claim is approved.
+pub const APPROVE_SYSTEM: &str = "approve_system";
+/// `checked_in, inspecting, awaiting_approval → declined`: the customer
+/// declines the estimate or leaves.
+pub const DECLINE: &str = "decline";
+/// `checked_in, inspecting, awaiting_approval → declined`: the estimate
+/// expired, or a claim was cancelled with no work started.
+pub const DECLINE_SYSTEM: &str = "decline_system";
+/// `awaiting_approval → in_progress`: the added work is declined and the job
+/// goes on without it.
+pub const DECLINE_ADDED: &str = "decline_added";
+/// `awaiting_approval → in_progress`: the customer declines the added work on
+/// the link.
+pub const DECLINE_ADDED_SYSTEM: &str = "decline_added_system";
+/// `in_progress → awaiting_parts`: the job waits for parts.
+pub const WAIT_PARTS: &str = "wait_parts";
+/// `awaiting_parts → in_progress`: the parts were issued.
+pub const PARTS_ARRIVED: &str = "parts_arrived";
+/// `in_progress → quality_check`: the work is done.
+pub const FINISH_WORK: &str = "finish_work";
+/// `quality_check → ready`: the QC checklist is complete.
+pub const PASS_QC: &str = "pass_qc";
+/// `quality_check → in_progress`: the QC found something to put right.
+pub const FAIL_QC: &str = "fail_qc";
+/// `ready → delivered`: the customer collected the vehicle.
+pub const DELIVER: &str = "deliver";
+/// `inspecting .. quality_check → cancelled`: the job is stopped after work
+/// started.
+pub const CANCEL: &str = "cancel";
+/// `inspecting .. quality_check → cancelled`: a claim was withdrawn or the
+/// vehicle declared a total loss, or a private estimate was not signed.
+pub const CANCEL_SYSTEM: &str = "cancel_system";
+/// `checked_in → voided`: the job card was opened in error.
+pub const VOID: &str = "void";
+
+/// What a run carries to the guards and effects.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JobInput {
+    /// The user who acted.
+    #[serde(default)]
+    pub by: Option<i64>,
+    /// The day of the run (Asia/Dubai).
+    #[serde(default)]
+    pub on: Option<NaiveDate>,
+    /// The estimate has lines to send and every one is priced
+    /// ([`SEND_ESTIMATE`]).
+    #[serde(default)]
+    pub priced: Option<bool>,
+    /// The day the vehicle is promised for ([`SEND_ESTIMATE`]).
+    #[serde(default)]
+    pub promised_for: Option<NaiveDate>,
+    /// The warranty on the repair and its parts in days ([`SEND_ESTIMATE`]).
+    #[serde(default)]
+    pub warranty_days: Option<i64>,
+    /// The estimate round the customer answers ([`APPROVE`], [`DECLINE`],
+    /// [`DECLINE_ADDED`] and their system twins).
+    #[serde(default)]
+    pub approval_id: Option<i64>,
+    /// The name the customer gave.
+    #[serde(default)]
+    pub decided_by_name: Option<String>,
+    /// How the customer answered: `link`, `signature` or `recorded`.
+    #[serde(default)]
+    pub method: Option<String>,
+    /// The customer's signature, as the form sent it.
+    #[serde(default)]
+    pub signature: Option<String>,
+    /// How many approved labour lines are not done ([`FINISH_WORK`]).
+    #[serde(default)]
+    pub labour_open: Option<i64>,
+    /// How many lines the customer has not answered ([`DELIVER`]).
+    #[serde(default)]
+    pub added_open: Option<i64>,
+    /// Who collected the vehicle ([`DELIVER`]).
+    #[serde(default)]
+    pub delivered_to: Option<String>,
+    /// The odometer reading at delivery ([`DELIVER`]).
+    #[serde(default)]
+    pub odometer_out: Option<i64>,
+    /// The date the next service falls due ([`DELIVER`]).
+    #[serde(default)]
+    pub next_service_date: Option<NaiveDate>,
+    /// The odometer reading the next service falls due at ([`DELIVER`]).
+    #[serde(default)]
+    pub next_service_odometer: Option<i64>,
+}
+
+fn input_of(ctx: &TransitionCtx) -> JobInput {
+    ctx.input_as::<JobInput>().unwrap_or_default()
+}
+
+/// `Ok` when `ok`, else the English text `key`.
+fn check(ok: bool, key: &str) -> std::result::Result<(), String> {
+    if ok { Ok(()) } else { Err(english(key, &[])) }
+}
+
+/// A guard slot: it names a rule an issue adds and passes for now.
+fn slot(transition: Transition<JobCard>, name: &'static str) -> Transition<JobCard> {
+    transition.guard(name, |_c: &JobCard, _ctx| {
+        Box::pin(async { Ok::<(), String>(()) })
+    })
+}
+
+impl StateMachine for JobCard {
+    type State = JobCardStatus;
+    const COLUMN: renox::db::Col<JobCard, JobCardStatus> = JobCard::STATUS;
+
+    fn machine() -> Machine<Self> {
+        use JobCardStatus::{
+            AwaitingApproval, AwaitingParts, Cancelled, CheckedIn, Declined, Delivered, InProgress,
+            Inspecting, QualityCheck, Ready, Voided,
+        };
+        Machine::new()
+            .initial([CheckedIn])
+            .state(CheckedIn)
+            .tone("neutral")
+            .state(Inspecting)
+            .tone("info")
+            .state(AwaitingApproval)
+            .tone("warning")
+            .state(InProgress)
+            .tone("info")
+            .state(AwaitingParts)
+            .tone("warning")
+            .state(QualityCheck)
+            .tone("info")
+            .state(Ready)
+            .tone("success")
+            .state(Delivered)
+            .tone("success")
+            .terminal()
+            .state(Declined)
+            .tone("neutral")
+            .terminal()
+            .state(Cancelled)
+            .tone("neutral")
+            .terminal()
+            .state(Voided)
+            .tone("neutral")
+            .terminal()
+            .transition(start_inspection())
+            .transition(send_estimate())
+            .transition(approve(APPROVE, false))
+            .transition(approve(APPROVE_SYSTEM, true))
+            .transition(decline(DECLINE, false))
+            .transition(decline(DECLINE_SYSTEM, true))
+            .transition(decline_added(DECLINE_ADDED, false))
+            .transition(decline_added(DECLINE_ADDED_SYSTEM, true))
+            .transition(wait_parts())
+            .transition(parts_arrived())
+            .transition(finish_work())
+            .transition(pass_qc())
+            .transition(fail_qc())
+            .transition(deliver())
+            .transition(cancel(CANCEL, false))
+            .transition(cancel(CANCEL_SYSTEM, true))
+            .transition(void())
+    }
+}
+
+/// Ends the estimate round the run names, with `status`: the customer's
+/// answer, who gave it and how.
+async fn answer(
+    tx: &mut renox::db::Transaction,
+    input: &JobInput,
+    status: ApprovalStatus,
+    reason: Option<String>,
+) -> Result {
+    let Some(id) = input.approval_id else {
+        return Ok(());
+    };
+    let stamp = now();
+    EstimateApproval::query()
+        .where_(EstimateApproval::ID.eq(id))
+        .update(
+            &mut *tx,
+            &[
+                ("status", &status),
+                ("decided_at", &Some(stamp)),
+                ("decided_by_name", &input.decided_by_name),
+                ("decided_by_user", &input.by),
+                ("method", &input.method),
+                ("signature", &input.signature),
+                ("note", &reason),
+                ("updated_at", &stamp),
+            ],
+        )
+        .await?;
+    Ok(())
+}
+
+/// Moves the lines the round sent to `status`.
+async fn move_lines(
+    tx: &mut renox::db::Transaction,
+    approval_id: i64,
+    from: LineStatus,
+    to: LineStatus,
+) -> Result {
+    let stamp = now();
+    LabourLine::query()
+        .where_(LabourLine::APPROVAL_ID.eq(Some(approval_id)))
+        .where_(LabourLine::APPROVAL.eq(from))
+        .update(&mut *tx, &[("approval", &to), ("updated_at", &stamp)])
+        .await?;
+    PartLine::query()
+        .where_(PartLine::APPROVAL_ID.eq(Some(approval_id)))
+        .where_(PartLine::APPROVAL.eq(from))
+        .update(&mut *tx, &[("approval", &to), ("updated_at", &stamp)])
+        .await?;
+    Ok(())
+}
+
+/// `start_inspection`: the technician starts diagnosing.
+fn start_inspection() -> Transition<JobCard> {
+    Transition::new(START_INSPECTION)
+        .label("Start inspection")
+        .tone("primary")
+        .permission(permissions::JOB_CARDS_WORK)
+        .from([JobCardStatus::CheckedIn])
+        .to(JobCardStatus::Inspecting)
+        .guard("technician_assigned", |c: &JobCard, _ctx| {
+            let ok = c.technician_user_id.is_some();
+            Box::pin(async move { check(ok, "auto.jobs.problem.no_technician") })
+        })
+        .guard("intake_recorded", |c: &JobCard, _ctx| {
+            let ok = c.intake_done();
+            Box::pin(async move { check(ok, "auto.jobs.problem.no_intake") })
+        })
+}
+
+/// `send_estimate`: the draft lines go to the customer as a round to approve.
+fn send_estimate() -> Transition<JobCard> {
+    Transition::new(SEND_ESTIMATE)
+        .label("Send the estimate")
+        .tone("primary")
+        .permission(permissions::JOB_CARDS_ADVISE)
+        .from([JobCardStatus::Inspecting, JobCardStatus::InProgress])
+        .to(JobCardStatus::AwaitingApproval)
+        .guard("intake_recorded", |c: &JobCard, _ctx| {
+            let ok = c.intake_done();
+            Box::pin(async move { check(ok, "auto.jobs.problem.no_intake") })
+        })
+        .guard("estimate_priced", |_c: &JobCard, ctx| {
+            let ok = input_of(ctx).priced == Some(true);
+            Box::pin(async move { check(ok, "auto.jobs.problem.not_priced") })
+        })
+        .effect(|c: &JobCard, ctx, tx| {
+            let card = c.clone();
+            let input = input_of(ctx);
+            Box::pin(async move {
+                let revision = card.estimate_revision + 1;
+                crate::approval_rounds::open(tx, &card, revision, &input).await?;
+                set_job_card(
+                    tx,
+                    card.id,
+                    &[
+                        ("estimate_revision", &revision),
+                        ("awaiting_since", &Some(now())),
+                    ],
+                )
+                .await
+            })
+        })
+}
+
+/// `approve`: the customer's approval is recorded (by the advisor, or by the
+/// customer on the link). The lines of the round are approved, the first
+/// approval is stamped, and a special order the customer approved is agreed.
+fn approve(name: &'static str, system: bool) -> Transition<JobCard> {
+    let transition = Transition::new(name)
+        .label("Approve")
+        .tone("primary")
+        .from([JobCardStatus::AwaitingApproval])
+        .to(JobCardStatus::InProgress);
+    let transition = if system {
+        transition.system()
+    } else {
+        transition.permission(permissions::JOB_CARDS_ADVISE)
+    };
+    let transition = transition.guard("estimate_pending", |_c: &JobCard, ctx| {
+        let ok = input_of(ctx).approval_id.is_some();
+        Box::pin(async move { check(ok, "auto.jobs.problem.nothing_to_approve") })
+    });
+    slot(transition, "police_report").effect(|c: &JobCard, ctx, tx| {
+        let card = c.clone();
+        let input = input_of(ctx);
+        Box::pin(async move {
+            if let Some(id) = input.approval_id {
+                move_lines(tx, id, LineStatus::Sent, LineStatus::Approved).await?;
+                PartLine::query()
+                    .where_(PartLine::APPROVAL_ID.eq(Some(id)))
+                    .where_(PartLine::SPECIAL_ORDER.eq(true))
+                    .update(&mut *tx, &[("special_order_agreed", &true)])
+                    .await?;
+            }
+            answer(tx, &input, ApprovalStatus::Approved, None).await?;
+            let first = card.first_approved_at.unwrap_or_else(now);
+            let none: Option<DateTime> = None;
+            set_job_card(
+                tx,
+                card.id,
+                &[
+                    ("first_approved_at", &Some(first)),
+                    ("awaiting_since", &none),
+                ],
+            )
+            .await
+        })
+    })
+}
+
+/// `decline`: the customer declines the estimate or leaves; nothing was
+/// approved yet, so the job card ends (`declined`).
+fn decline(name: &'static str, system: bool) -> Transition<JobCard> {
+    let transition = Transition::new(name)
+        .label("Decline")
+        .from([
+            JobCardStatus::CheckedIn,
+            JobCardStatus::Inspecting,
+            JobCardStatus::AwaitingApproval,
+        ])
+        .to(JobCardStatus::Declined)
+        .reason_required();
+    let transition = if system {
+        transition.system()
+    } else {
+        transition.permission(permissions::JOB_CARDS_ADVISE)
+    };
+    let transition = transition.guard("nothing_approved", |c: &JobCard, _ctx| {
+        let ok = !c.work_approved();
+        Box::pin(async move { check(ok, "auto.jobs.problem.already_approved") })
+    });
+    slot(transition, "nothing_recorded").effect(|c: &JobCard, ctx, tx| {
+        let card = c.clone();
+        let input = input_of(ctx);
+        let reason = ctx.reason().map(str::to_owned);
+        Box::pin(async move {
+            if let Some(id) = input.approval_id {
+                move_lines(tx, id, LineStatus::Sent, LineStatus::Declined).await?;
+            }
+            answer(tx, &input, ApprovalStatus::Declined, reason.clone()).await?;
+            // A round nobody named (an estimate that expired) ends too.
+            crate::approval_rounds::supersede(tx, card.id).await?;
+            let none: Option<DateTime> = None;
+            set_job_card(
+                tx,
+                card.id,
+                &[
+                    ("closed_reason", &reason),
+                    ("closed_at", &Some(now())),
+                    ("awaiting_since", &none),
+                ],
+            )
+            .await
+        })
+    })
+}
+
+/// `decline_added`: the customer declines the added work; the job goes on
+/// without it.
+fn decline_added(name: &'static str, system: bool) -> Transition<JobCard> {
+    let transition = Transition::new(name)
+        .label("Decline the added work")
+        .from([JobCardStatus::AwaitingApproval])
+        .to(JobCardStatus::InProgress);
+    let transition = if system {
+        transition.system()
+    } else {
+        transition.permission(permissions::JOB_CARDS_ADVISE)
+    };
+    transition
+        .guard("work_approved", |c: &JobCard, _ctx| {
+            let ok = c.work_approved();
+            Box::pin(async move { check(ok, "auto.jobs.problem.nothing_approved_yet") })
+        })
+        .effect(|c: &JobCard, ctx, tx| {
+            let card = c.clone();
+            let input = input_of(ctx);
+            let reason = ctx.reason().map(str::to_owned);
+            Box::pin(async move {
+                if let Some(id) = input.approval_id {
+                    move_lines(tx, id, LineStatus::Sent, LineStatus::Declined).await?;
+                }
+                answer(tx, &input, ApprovalStatus::Declined, reason).await?;
+                let none: Option<DateTime> = None;
+                set_job_card(tx, card.id, &[("awaiting_since", &none)]).await
+            })
+        })
+}
+
+/// `wait_parts`: the job waits for parts; the wait starts now (`AUT.RUL.16`).
+fn wait_parts() -> Transition<JobCard> {
+    let transition = Transition::new(WAIT_PARTS)
+        .label("Wait for parts")
+        .permission(permissions::JOB_CARDS_WORK)
+        .from([JobCardStatus::InProgress])
+        .to(JobCardStatus::AwaitingParts);
+    slot(transition, "parts_requested").effect(|c: &JobCard, _ctx, tx| {
+        let id = c.id;
+        Box::pin(
+            async move { set_job_card(tx, id, &[("parts_wait_started_at", &Some(now()))]).await },
+        )
+    })
+}
+
+/// `parts_arrived`: the parts were issued; the job goes on.
+fn parts_arrived() -> Transition<JobCard> {
+    let transition = Transition::new(PARTS_ARRIVED)
+        .label("Parts arrived")
+        .system()
+        .from([JobCardStatus::AwaitingParts])
+        .to(JobCardStatus::InProgress);
+    slot(transition, "stock_issued")
+}
+
+/// `finish_work`: every approved labour line is done; the QC checklist starts.
+fn finish_work() -> Transition<JobCard> {
+    Transition::new(FINISH_WORK)
+        .label("Finish the work")
+        .tone("primary")
+        .permission(permissions::JOB_CARDS_WORK)
+        .from([JobCardStatus::InProgress])
+        .to(JobCardStatus::QualityCheck)
+        .guard("labour_done", |_c: &JobCard, ctx| {
+            let ok = input_of(ctx).labour_open == Some(0);
+            Box::pin(async move { check(ok, "auto.jobs.problem.labour_open") })
+        })
+        .effect(|c: &JobCard, _ctx, tx| {
+            let id = c.id;
+            let fresh = c.qc_checks.0.is_empty();
+            Box::pin(async move {
+                if fresh {
+                    set_job_card(tx, id, &[("qc_checks", &Json(QcCheck::standard()))]).await?;
+                }
+                Ok(())
+            })
+        })
+}
+
+/// `pass_qc`: the QC checklist is complete; the vehicle is ready.
+fn pass_qc() -> Transition<JobCard> {
+    let transition = Transition::new(PASS_QC)
+        .label("Pass the QC")
+        .tone("primary")
+        .permission(permissions::JOB_CARDS_QC)
+        .from([JobCardStatus::QualityCheck])
+        .to(JobCardStatus::Ready)
+        .guard("qc_checklist_complete", |c: &JobCard, _ctx| {
+            let ok = c.qc_complete();
+            Box::pin(async move { check(ok, "auto.jobs.problem.qc_incomplete") })
+        });
+    slot(transition, "qc_findings_closed").effect(|c: &JobCard, ctx, tx| {
+        let id = c.id;
+        let by = input_of(ctx).by;
+        Box::pin(async move {
+            set_job_card(tx, id, &[("ready_at", &Some(now())), ("qc_by", &by)]).await
+        })
+    })
+}
+
+/// `fail_qc`: the QC found something to put right; the findings are the
+/// reason, and the checklist starts again.
+fn fail_qc() -> Transition<JobCard> {
+    Transition::new(FAIL_QC)
+        .label("Fail the QC")
+        .permission(permissions::JOB_CARDS_QC)
+        .from([JobCardStatus::QualityCheck])
+        .to(JobCardStatus::InProgress)
+        .reason_required()
+        .effect(|c: &JobCard, ctx, tx| {
+            let id = c.id;
+            let findings = ctx.reason().map(str::to_owned);
+            Box::pin(async move {
+                set_job_card(
+                    tx,
+                    id,
+                    &[
+                        ("qc_findings", &findings),
+                        ("qc_checks", &Json(QcCheck::standard())),
+                    ],
+                )
+                .await
+            })
+        })
+}
+
+/// `deliver`: the customer collects the vehicle. The next service is
+/// recorded on the vehicle; the invoice and the booking follow the commit.
+fn deliver() -> Transition<JobCard> {
+    let transition = Transition::new(DELIVER)
+        .label("Deliver")
+        .tone("primary")
+        .permission(permissions::JOB_CARDS_ADVISE)
+        .from([JobCardStatus::Ready])
+        .to(JobCardStatus::Delivered)
+        .guard("qc_checklist_complete", |c: &JobCard, _ctx| {
+            let ok = c.qc_complete();
+            Box::pin(async move { check(ok, "auto.jobs.problem.qc_incomplete") })
+        })
+        .guard("added_work_approved", |_c: &JobCard, ctx| {
+            let ok = input_of(ctx).added_open == Some(0);
+            Box::pin(async move { check(ok, "auto.jobs.problem.added_work_open") })
+        });
+    let transition = slot(transition, "substitute_closed");
+    slot(transition, "payment_cleared").effect(|c: &JobCard, ctx, tx| {
+        let card = c.clone();
+        let input = input_of(ctx);
+        Box::pin(async move {
+            set_job_card(
+                tx,
+                card.id,
+                &[
+                    ("delivered_at", &Some(now())),
+                    ("delivered_to", &input.delivered_to),
+                    ("odometer_out", &input.odometer_out),
+                    ("next_service_date", &input.next_service_date),
+                    ("next_service_odometer", &input.next_service_odometer),
+                ],
+            )
+            .await?;
+            // The next service and the odometer go to the vehicle (`AUT.JOB.04`).
+            let stamp = now();
+            if input.next_service_date.is_some() || input.next_service_odometer.is_some() {
+                Vehicle::query()
+                    .where_(Vehicle::ID.eq(card.vehicle_id))
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("next_service_date", &input.next_service_date),
+                            ("next_service_odometer", &input.next_service_odometer),
+                            ("updated_at", &stamp),
+                        ],
+                    )
+                    .await?;
+            }
+            if let Some(km) = input.odometer_out {
+                Vehicle::query()
+                    .where_(Vehicle::ID.eq(card.vehicle_id))
+                    .where_(Vehicle::ODOMETER_KM.lt(km))
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("odometer_km", &km),
+                            ("odometer_at", &Some(stamp)),
+                            ("updated_at", &stamp),
+                        ],
+                    )
+                    .await?;
+            }
+            Ok(())
+        })
+    })
+}
+
+/// `cancel`: the job is stopped after work started; the reason is recorded.
+fn cancel(name: &'static str, system: bool) -> Transition<JobCard> {
+    let transition = Transition::new(name)
+        .label("Cancel")
+        .from([
+            JobCardStatus::Inspecting,
+            JobCardStatus::AwaitingApproval,
+            JobCardStatus::InProgress,
+            JobCardStatus::AwaitingParts,
+            JobCardStatus::QualityCheck,
+        ])
+        .to(JobCardStatus::Cancelled)
+        .reason_required();
+    let transition = if system {
+        transition.system()
+    } else {
+        transition.permission(permissions::JOB_CARDS_ADVISE)
+    };
+    let transition = slot(transition, "work_done_recorded");
+    let transition = slot(transition, "acknowledged");
+    slot(transition, "approved_if_below_work_done").effect(|c: &JobCard, ctx, tx| {
+        let id = c.id;
+        let reason = ctx.reason().map(str::to_owned);
+        Box::pin(async move {
+            // The round the customer never answered ends with the job card.
+            crate::approval_rounds::supersede(tx, id).await?;
+            let none: Option<DateTime> = None;
+            set_job_card(
+                tx,
+                id,
+                &[
+                    ("closed_reason", &reason),
+                    ("closed_at", &Some(now())),
+                    ("awaiting_since", &none),
+                ],
+            )
+            .await
+        })
+    })
+}
+
+/// `void`: the job card was opened in error.
+fn void() -> Transition<JobCard> {
+    let transition = Transition::new(VOID)
+        .label("Void")
+        .permission(permissions::JOB_CARDS_ADVISE)
+        .from([JobCardStatus::CheckedIn])
+        .to(JobCardStatus::Voided)
+        .reason_required();
+    let transition = slot(transition, "nothing_recorded");
+    slot(transition, "no_claim_linked").effect(|c: &JobCard, ctx, tx| {
+        let id = c.id;
+        let reason = ctx.reason().map(str::to_owned);
+        Box::pin(async move {
+            set_job_card(
+                tx,
+                id,
+                &[("closed_reason", &reason), ("closed_at", &Some(now()))],
+            )
+            .await
+        })
+    })
+}
+
+/// Registers the machine for `rnx state:diagram`.
+pub(crate) fn register() {
+    renox::state_machine::register::<JobCard>();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_machine_has_every_state_and_transition_of_the_spec() {
+        let machine = JobCard::machine();
+        let states: Vec<(&str, Option<&str>, bool)> = machine
+            .states()
+            .iter()
+            .map(|s| (s.name.as_str(), s.tone.as_deref(), s.terminal))
+            .collect();
+        assert_eq!(
+            states,
+            [
+                ("checked_in", Some("neutral"), false),
+                ("inspecting", Some("info"), false),
+                ("awaiting_approval", Some("warning"), false),
+                ("in_progress", Some("info"), false),
+                ("awaiting_parts", Some("warning"), false),
+                ("quality_check", Some("info"), false),
+                ("ready", Some("success"), false),
+                ("delivered", Some("success"), true),
+                ("declined", Some("neutral"), true),
+                ("cancelled", Some("neutral"), true),
+                ("voided", Some("neutral"), true),
+            ]
+        );
+        let open = vec![
+            "inspecting",
+            "awaiting_approval",
+            "in_progress",
+            "awaiting_parts",
+            "quality_check",
+        ];
+        let expected: Vec<(&str, Vec<&str>, &str)> = vec![
+            (START_INSPECTION, vec!["checked_in"], "inspecting"),
+            (
+                SEND_ESTIMATE,
+                vec!["inspecting", "in_progress"],
+                "awaiting_approval",
+            ),
+            (APPROVE, vec!["awaiting_approval"], "in_progress"),
+            (APPROVE_SYSTEM, vec!["awaiting_approval"], "in_progress"),
+            (
+                DECLINE,
+                vec!["checked_in", "inspecting", "awaiting_approval"],
+                "declined",
+            ),
+            (
+                DECLINE_SYSTEM,
+                vec!["checked_in", "inspecting", "awaiting_approval"],
+                "declined",
+            ),
+            (DECLINE_ADDED, vec!["awaiting_approval"], "in_progress"),
+            (
+                DECLINE_ADDED_SYSTEM,
+                vec!["awaiting_approval"],
+                "in_progress",
+            ),
+            (WAIT_PARTS, vec!["in_progress"], "awaiting_parts"),
+            (PARTS_ARRIVED, vec!["awaiting_parts"], "in_progress"),
+            (FINISH_WORK, vec!["in_progress"], "quality_check"),
+            (PASS_QC, vec!["quality_check"], "ready"),
+            (FAIL_QC, vec!["quality_check"], "in_progress"),
+            (DELIVER, vec!["ready"], "delivered"),
+            (CANCEL, open.clone(), "cancelled"),
+            (CANCEL_SYSTEM, open, "cancelled"),
+            (VOID, vec!["checked_in"], "voided"),
+        ];
+        assert_eq!(machine.transitions().len(), expected.len());
+        let system = [
+            APPROVE_SYSTEM,
+            DECLINE_SYSTEM,
+            DECLINE_ADDED_SYSTEM,
+            PARTS_ARRIVED,
+            CANCEL_SYSTEM,
+        ];
+        for (name, from, to) in expected {
+            let transition = machine.find(name).unwrap();
+            assert_eq!(transition.from_states(), from, "{name}");
+            assert_eq!(transition.to_state(), Some(to), "{name}");
+            assert_eq!(transition.is_system(), system.contains(&name), "{name}");
+        }
+    }
+
+    #[test]
+    fn the_guards_and_the_guard_slots_are_declared() {
+        let machine = JobCard::machine();
+        let guards = |name: &str| {
+            machine
+                .find(name)
+                .unwrap()
+                .guard_names()
+                .into_iter()
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            guards(START_INSPECTION),
+            ["technician_assigned", "intake_recorded"]
+        );
+        assert_eq!(
+            guards(SEND_ESTIMATE),
+            ["intake_recorded", "estimate_priced"]
+        );
+        assert_eq!(guards(APPROVE), ["estimate_pending", "police_report"]);
+        assert_eq!(
+            guards(APPROVE_SYSTEM),
+            ["estimate_pending", "police_report"]
+        );
+        assert_eq!(guards(DECLINE), ["nothing_approved", "nothing_recorded"]);
+        assert_eq!(guards(DECLINE_ADDED), ["work_approved"]);
+        assert_eq!(guards(WAIT_PARTS), ["parts_requested"]);
+        assert_eq!(guards(PARTS_ARRIVED), ["stock_issued"]);
+        assert_eq!(guards(FINISH_WORK), ["labour_done"]);
+        assert_eq!(
+            guards(PASS_QC),
+            ["qc_checklist_complete", "qc_findings_closed"]
+        );
+        assert!(guards(FAIL_QC).is_empty());
+        assert_eq!(
+            guards(DELIVER),
+            [
+                "qc_checklist_complete",
+                "added_work_approved",
+                "substitute_closed",
+                "payment_cleared"
+            ]
+        );
+        assert_eq!(
+            guards(CANCEL),
+            [
+                "work_done_recorded",
+                "acknowledged",
+                "approved_if_below_work_done"
+            ]
+        );
+        assert_eq!(guards(VOID), ["nothing_recorded", "no_claim_linked"]);
+        for name in [
+            DECLINE,
+            DECLINE_SYSTEM,
+            FAIL_QC,
+            CANCEL,
+            CANCEL_SYSTEM,
+            VOID,
+        ] {
+            assert!(machine.find(name).unwrap().needs_reason(), "{name}");
+        }
+    }
+}

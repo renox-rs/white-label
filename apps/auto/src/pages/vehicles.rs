@@ -388,7 +388,7 @@ async fn show(
                 .join(" · ")
         }
     };
-    let history: Vec<HistoryRow> = Vec::new();
+    let history = super::job_cards::history_rows(&state, &lang, vehicle.id).await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         id: vehicle.id,

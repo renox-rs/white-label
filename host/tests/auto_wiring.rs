@@ -45,6 +45,10 @@ async fn aut_base_the_service_types_and_categories_are_installed_once() {
     );
     for service in &types {
         assert!(service.check_in_required, "check-in opens the job card");
+        assert_eq!(
+            service.required_types, "bay",
+            "a workshop service takes a bay"
+        );
         assert_eq!(service.deposit_amount, 0);
     }
     for spec in auto::seed::CATEGORIES {

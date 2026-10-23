@@ -234,8 +234,10 @@ async fn install_service_types(state: &AppState) -> Result<usize> {
         let mut service = ServiceType::new_in(state, spec.code, spec.name_en, spec.minutes);
         service.name_ar = Some(spec.name_ar.to_owned());
         service.self_bookable = false;
-        // Check-in opens the job card (08 §7.1 *Booking*).
+        // Check-in opens the job card (08 §7.1 *Booking*); a workshop service
+        // takes a bay (`SCH.RES.01`).
         service.check_in_required = true;
+        service.required_types = "bay".to_owned();
         service.save(&state.db).await?;
         created += 1;
     }

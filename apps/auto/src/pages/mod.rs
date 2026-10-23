@@ -3,6 +3,8 @@
 //! page where a customer approves an estimate. Every back-office route needs
 //! a signed-in user; each handler checks the permission of its action.
 
+pub mod job_cards;
+pub mod labour;
 pub mod vehicles;
 
 use std::collections::BTreeMap;
@@ -182,6 +184,29 @@ pub(crate) async fn party_of(state: &AppState, text: &str) -> std::result::Resul
     found.map(|party| party.id.0).ok_or_else(|| {
         invalid("Pick the person from the list, or give the party code, for example P-00023.")
     })
+}
+
+/// The name of the user `id`, else `#id`.
+pub(crate) async fn user_name(db: &Db, id: i64) -> String {
+    User::find(db, id)
+        .await
+        .ok()
+        .flatten()
+        .map_or_else(|| format!("#{id}"), |user| user.name)
+}
+
+/// The users holding `role` as options, `[id, name]`, with a leading empty
+/// option labelled `blank`.
+pub(crate) async fn role_options(db: &Db, role: &str, blank: String) -> Vec<[String; 2]> {
+    let mut options = vec![[String::new(), blank]];
+    if let Ok(users) = renox::auth::permissions::users_with_role(db, role).await {
+        options.extend(
+            users
+                .into_iter()
+                .map(|user| [user.id.to_string(), user.name]),
+        );
+    }
+    options
 }
 
 /// The name of party `id` in `lang`, else `#id`.

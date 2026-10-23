@@ -1,12 +1,26 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod approval;
+pub mod approval_rounds;
+pub mod billing;
+pub mod bookings;
 mod db;
+pub mod estimate;
+pub mod job_card;
+pub mod job_card_machine;
+pub mod job_cards;
+pub mod labour_line;
+pub mod labour_menu;
+pub mod labour_operation;
 pub mod pages;
+pub mod part_line;
+pub mod parts;
 pub mod permissions;
 pub mod reasons;
 pub mod seed;
 mod texts;
+mod texts_jobs;
 mod texts_vehicles;
 pub mod vehicle;
 pub mod vehicles;
@@ -15,6 +29,11 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
+pub use approval::{ApprovalStatus, EstimateApproval};
+pub use job_card::{JobCard, JobCardStatus};
+pub use labour_line::{LabourLine, LabourPricing, LineStatus, WorkStatus};
+pub use labour_operation::LabourOperation;
+pub use part_line::{PartCondition, PartLine};
 pub use vehicle::{Emirate, Vehicle};
 
 /// The templates of the pages, under the names the pages ask for. An app
@@ -27,6 +46,30 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "auto/vehicle.html",
         include_str!("../views/auto/vehicle.html"),
+    ),
+    (
+        "auto/job_cards.html",
+        include_str!("../views/auto/job_cards.html"),
+    ),
+    (
+        "auto/job_card.html",
+        include_str!("../views/auto/job_card.html"),
+    ),
+    (
+        "auto/technician.html",
+        include_str!("../views/auto/technician.html"),
+    ),
+    (
+        "auto/estimate.html",
+        include_str!("../views/auto/estimate.html"),
+    ),
+    (
+        "auto/approve.html",
+        include_str!("../views/auto/approve.html"),
+    ),
+    (
+        "auto/labour_menu.html",
+        include_str!("../views/auto/labour_menu.html"),
     ),
 ];
 
@@ -70,7 +113,13 @@ impl Module for Auto {
 
     fn register(&self, app: &mut Registry) {
         app.view_data::<pages::vehicles::IndexPage>()
-            .view_data::<pages::vehicles::ShowPage>();
+            .view_data::<pages::vehicles::ShowPage>()
+            .view_data::<pages::job_cards::IndexPage>()
+            .view_data::<pages::job_cards::TechnicianPage>()
+            .view_data::<pages::job_cards::ShowPage>()
+            .view_data::<pages::job_cards::EstimatePage>()
+            .view_data::<pages::job_cards::ApprovePage>()
+            .view_data::<pages::labour::IndexPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -80,19 +129,53 @@ impl Module for Auto {
                 }
             }
         });
-        app.model::<Vehicle>();
-        // A bill or a document that names a vehicle shows its plate, not
-        // `auto.vehicle:7`.
+        app.model::<Vehicle>()
+            .model::<JobCard>()
+            .model::<LabourLine>()
+            .model::<PartLine>()
+            .model::<EstimateApproval>()
+            .model::<LabourOperation>();
+        // The job card: the machine, and the job card that the check-in of a
+        // workshop booking opens.
+        job_card_machine::register();
+        bookings::register(app);
+        // A bill or a document that names a vehicle or a job card shows its
+        // plate or `JOB-00007`, not `auto.vehicle:7`.
         register_labels();
-        // In the app group of the staff sidebar; the label is the host's
-        // `nav.vehicles` text.
+        // In the app group of the staff sidebar; the labels are the host's
+        // `nav.job_cards`, `nav.vehicles` and `nav.labour_menu` texts.
+        app.nav(
+            "app",
+            NavLink::route("auto.job_cards", "nav.job_cards")
+                .icon("wrench")
+                .group("nav.app")
+                .order(80)
+                .permission(permissions::JOB_CARDS_VIEW),
+        );
+        // The technician's own list, for the one who has no view of all.
+        app.nav(
+            "app",
+            NavLink::route("auto.technician", "nav.my_job_cards")
+                .icon("wrench")
+                .group("nav.app")
+                .order(81)
+                .permission(permissions::JOB_CARDS_WORK),
+        );
         app.nav(
             "app",
             NavLink::route("auto.vehicles", "nav.vehicles")
                 .icon("truck")
                 .group("nav.app")
-                .order(80)
+                .order(82)
                 .permission(permissions::VEHICLES_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("auto.labour_menu", "nav.labour_menu")
+                .icon("clipboard-list")
+                .group("nav.app")
+                .order(83)
+                .permission(permissions::LABOUR_MENU_MANAGE),
         );
     }
 }
@@ -103,6 +186,9 @@ fn register_labels() {
     use wl_kernel::documents::register_subject_label;
     register_subject_label(vehicle::VEHICLE_SUBJECT_TYPE, |db, id| {
         Box::pin(async move { Ok(Vehicle::find(db, id).await?.map(|vehicle| vehicle.plate())) })
+    });
+    register_subject_label(job_card::JOB_CARD_SUBJECT_TYPE, |db, id| {
+        Box::pin(async move { Ok(JobCard::find(db, id).await?.map(|card| card.number())) })
     });
 }
 

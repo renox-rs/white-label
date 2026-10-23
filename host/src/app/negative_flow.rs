@@ -89,6 +89,9 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
         "manpower" => super::manpower_seed::invoicing(module, entities),
         // The 10 money values (BL-EDU-18): see [`super::edtech_money::invoicing`].
         super::edtech_seed::EDTECH => super::edtech_money::invoicing(module, entities),
+        // The invoice of a delivered job card is issued at once: the customer
+        // collects the vehicle against it (08 §4.4 step 7, `FIN.INV.01`).
+        super::auto_seed::AUTO => module.auto_issue_source(auto::job_card::JOB_CARD_SUBJECT_TYPE),
         // 03 `FIN.ACL.15`, `FIN.RUL.14`, `FIN.RUL.15`, `FIN.RUL.23`,
         // `FIN.RUL.24`, `FIN.ACL.21` and the e-invoicing scope (BL-LOG-26,
         // BL-LOG-25): see [`super::logistics_seed::invoicing`].
