@@ -381,3 +381,28 @@ async fn the_staff_open_the_tickets_assigned_to_them() {
         app.get(&format!("/tickets/{ticket}")).await.assert_ok();
     }
 }
+
+/// The login page of a local server lists the people of the centre, one tap
+/// each, once the demo is made.
+#[renox::test]
+async fn the_login_page_lists_the_people_of_the_demo_centre() {
+    let config = ClientConfig::load(CLIENT).expect("the demo client of the EdTech vertical");
+    let app = TestApp::with_config(host::app_for(config).expect("the app"), |config| {
+        config.env = renox::Environment::Local;
+    })
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app.get("/login")
+        .await
+        .assert_ok()
+        .assert_dont_see("owner@gulfskills.example");
+    host::edtech_demo::seed(app.kernel()).await.unwrap();
+    let login = app.get("/login").await;
+    for person in LOGINS {
+        login.assert_see(&format!("data-demo-email=\"{}\"", person.email));
+    }
+}
