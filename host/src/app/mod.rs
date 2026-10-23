@@ -3,6 +3,7 @@ pub mod accounting_seed;
 pub mod activity;
 pub mod approvals_inbox;
 pub mod auto_seed;
+pub mod auto_settings;
 pub mod clinics_demo;
 pub mod clinics_money;
 pub mod clinics_seed;

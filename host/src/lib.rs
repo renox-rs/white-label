@@ -26,6 +26,7 @@ use renox::nav::NavLink;
 
 pub use app::accounting_seed::parties_for;
 pub use app::auto_seed;
+pub use app::auto_settings;
 pub use app::clinics_demo;
 pub use app::clinics_money;
 pub use app::clinics_seed;
