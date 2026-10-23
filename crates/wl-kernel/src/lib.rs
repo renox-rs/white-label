@@ -195,9 +195,10 @@ pub use payments::{
     DepositId, Direction, NoPaymentLinks, NoPayments, NoPrepaidSubjects, PAYMENT_LINK_SUBJECT_TYPE,
     PaymentFailed, PaymentFailureKind, PaymentId, PaymentLinkExpired, PaymentLinkRef,
     PaymentLinkRequest, PaymentLinks, PaymentMethod, PaymentReceived, PaymentRecorder,
-    PaymentReversed, PaymentSource, PaymentStatus, PaymentSummary, PrepaidSubjects, RecordPayment,
-    RefundApproved, RefundAttemptRef, RefundFailed, RefundFailedFrom, RefundFailureKind, RefundId,
-    RefundPaid, RefundRequest, RefundSource, ReversalReason, UnpaidRefund,
+    PaymentReversed, PaymentSource, PaymentStatus, PaymentSummary, PrepaidCheck, PrepaidSubjects,
+    RecordPayment, RefundApproved, RefundAttemptRef, RefundFailed, RefundFailedFrom,
+    RefundFailureKind, RefundId, RefundPaid, RefundRequest, RefundSource, ReversalReason,
+    UnpaidRefund, register_prepaid_subject_type,
 };
 pub use qualifications::{NoQualifications, QualificationStatus, Qualifications};
 pub use rate_cards::{NoRateCards, RateCardVersion, RateCards};
@@ -213,6 +214,7 @@ pub use sales::{
     PackageConsumption, PackageExpired, PackageExtended, PackageId, PackageLedger, package_ledger,
     provide_package_ledger,
 };
+pub use sales::{NoPackageSales, PackageSales, SellPackage, package_sales, provide_package_sales};
 pub use sales::{NoSelfPayPrices, SelfPayPrices, provide_self_pay_prices, self_pay_prices};
 pub use scopes::COMPANY_ADMIN_ROLE;
 pub use segments::{NoSegments, SegmentId, Segments};
@@ -220,8 +222,8 @@ pub use subject::Subject;
 pub use subscriptions::{
     BillingCycle, CancelSubscription, NoSubscriptions, PauseCause, PauseSubscription, PaymentMode,
     SUBSCRIPTION_SUBJECT_TYPE, StartSubscription, SubscriptionCancelled, SubscriptionId,
-    SubscriptionPastDue, SubscriptionSettled, SubscriptionStatus, SubscriptionSummary,
-    SubscriptionSuspended, Subscriptions,
+    SubscriptionPastDue, SubscriptionPaused, SubscriptionResumed, SubscriptionSettled,
+    SubscriptionStatus, SubscriptionSummary, SubscriptionSuspended, Subscriptions,
 };
 pub use tickets::{
     Assignee, CONFIDENTIAL_TASK_CATEGORY, ChecklistCompleted, ChecklistOutcome, ChecklistRunId,

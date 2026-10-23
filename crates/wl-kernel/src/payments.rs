@@ -21,10 +21,11 @@
 //! currency. A reversal never changes a target: the listener of
 //! [`PaymentReversed`] in the target's module reopens it.
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError, RwLock};
 
 use renox::chrono::NaiveDate;
 use renox::db::DateTime;
@@ -1207,13 +1208,56 @@ pub fn provide_prepaid_subjects(app: &mut Registry, subjects: impl PrepaidSubjec
     app.provide(subjects);
 }
 
-/// The app's [`PrepaidSubjects`], or [`NoPrepaidSubjects`] when none is
-/// provided.
+/// How the owner of one type of prepaid record says whether a record still
+/// waits for the money paid for it: a plain function, registered with
+/// [`register_prepaid_subject_type`].
+pub type PrepaidCheck = for<'a> fn(&'a AppState, &'a Subject) -> PaymentFuture<'a, bool>;
+
+static PREPAID_CHECKS: RwLock<BTreeMap<String, PrepaidCheck>> = RwLock::new(BTreeMap::new());
+
+/// Registers the check of the records of `subject_type` (an enrolment, say),
+/// next to the app's one [`PrepaidSubjects`] provider: a module that owns a
+/// prepaid record in an app where another module provides the contract (the
+/// bookings of wl-scheduling) still gets asked about its own type. A second
+/// registration of the same type replaces the first.
+pub fn register_prepaid_subject_type(subject_type: &str, check: PrepaidCheck) {
+    PREPAID_CHECKS
+        .write()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(subject_type.to_owned(), check);
+}
+
+/// The [`PrepaidSubjects`] the app answers with: the check registered for the
+/// subject's type, else the provided contract.
+struct RoutedPrepaid(Arc<dyn PrepaidSubjects>);
+
+impl PrepaidSubjects for RoutedPrepaid {
+    fn is_active<'a>(
+        &'a self,
+        state: &'a AppState,
+        subject: &'a Subject,
+    ) -> PaymentFuture<'a, bool> {
+        let check = PREPAID_CHECKS
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&subject.subject_type)
+            .copied();
+        match check {
+            Some(check) => check(state, subject),
+            None => self.0.is_active(state, subject),
+        }
+    }
+}
+
+/// The app's [`PrepaidSubjects`]: the check a module registered for the
+/// subject's type ([`register_prepaid_subject_type`]), else the provided
+/// contract, or [`NoPrepaidSubjects`] when none is provided.
 pub fn prepaid_subjects(state: &AppState) -> Arc<dyn PrepaidSubjects> {
-    match state.provided::<Arc<dyn PrepaidSubjects>>() {
+    let inner: Arc<dyn PrepaidSubjects> = match state.provided::<Arc<dyn PrepaidSubjects>>() {
         Some(subjects) => Arc::clone(&subjects),
         None => Arc::new(NoPrepaidSubjects),
-    }
+    };
+    Arc::new(RoutedPrepaid(inner))
 }
 
 #[cfg(test)]

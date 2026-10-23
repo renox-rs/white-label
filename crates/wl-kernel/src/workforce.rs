@@ -606,6 +606,18 @@ pub trait Workforce: Send + Sync + 'static {
         Box::pin(async { Ok(Vec::new()) })
     }
 
+    /// Whether `employee` is a freelancer (employment type `freelance`): a
+    /// vertical asks it to know which documents the work needs, such as the
+    /// private tutor permit or freelance visa of a freelance tutor (10
+    /// `EDU.ACL.14`). The default says no, also for an unknown employee.
+    fn is_freelance<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _employee: EmployeeId,
+    ) -> WorkforceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
     /// The pages of the payroll runs (off-cycle or regular) that pay the lines
     /// held for an absence case of `employee` once the case closed
     /// (`HRM.RUL.12`), oldest first. The absence case page links them. The

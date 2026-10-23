@@ -40,7 +40,7 @@ What is here so far:
 | `dispute` (source worker, MoHRE complaint or court; reference; undisputed amount) opens a labour-case ticket, tells HR, the accountant and the MD and emits `SettlementDisputed`; `resolve` `upheld` (closed when the net is paid in full, else back to `approved`) or `revised` (amounts entered while disputed, resolved by another user with the document attached); `SettlementPaid` after `pay` | §3, §4, §5.4 | `settlement_dispute`, `settlement_events` |
 | `close` 30 days after `pay` (daily job `hr:settlements-close`) or when the acknowledgement is signed (`settlement_close::acknowledge`; not for the estate); `cancel` for draft or approved with nothing paid, by HR or by the system (`settlement_close::cancel_open`, for `withdraw_notice` and `reinstate`) | §4, §7 | `settlement_close` |
 | `HRM.RUL.09`: daily at 08:00 Asia/Dubai (`hr:settlement-deadline`), HR and the accountant are told 10 days after the last working day, the MD on the 14th day (once each); a disputed settlement reminds to pay the undisputed amount; `paid`, `closed` and `cancelled` are skipped | §6, §7 | `settlement_alerts` |
-| `Workforce`: `employees_in(role, scope)`, `all_staff`, `staff` (role, scopes, account, manager, leave of one employee), `employee_of_user` | §6 | `workforce` |
+| `Workforce`: `employees_in(role, scope)`, `all_staff`, `staff` (role, scopes, account, manager, leave of one employee), `employee_of_user`, `is_freelance` | §6 | `workforce` |
 | The employees, the employee page with its onboarding and settlements, the settlement page and the templates page | §3, §4 | `pages` |
 
 The module owns `src/texts.rs`, the English texts (`wl_hr.*`). The app changes or translates them

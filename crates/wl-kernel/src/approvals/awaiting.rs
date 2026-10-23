@@ -107,6 +107,11 @@ const ACTION_LABELS: &[(&str, &str)] = &[
         "Approve reversing a delivered order",
     ),
     ("documents.block_override", "Override a document block"),
+    ("edtech.terminate", "Terminate a running batch"),
+    (
+        "edtech.withdraw",
+        "Withdraw an enrolment and refund the student",
+    ),
     ("fnb.batch_discard", "Approve discarding a production batch"),
     ("fnb.payout_void", "Void a payout statement"),
     ("hr.cancel_onboarding", "Cancel an onboarding"),

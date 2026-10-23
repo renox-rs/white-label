@@ -417,6 +417,75 @@ pub fn service_names(state: &AppState) -> Arc<dyn ServiceNames> {
     }
 }
 
+/// The names of the resources a module books (a tutor, a room), by id: what a
+/// vertical shows where it holds only a resource's id. The default knows none,
+/// so the page falls back to the number.
+pub trait ResourceNames: Send + Sync + 'static {
+    /// The name of each of `ids` that exists.
+    fn names<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _ids: &'a [i64],
+    ) -> SchedulingFuture<'a, std::collections::BTreeMap<i64, String>> {
+        Box::pin(async { Ok(std::collections::BTreeMap::new()) })
+    }
+
+    /// The active resources of `kind`, by name: what a form offers where a
+    /// person picks a tutor or a room, instead of typing a resource number.
+    /// The default knows none.
+    fn choices<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _kind: ResourceChoiceKind,
+    ) -> SchedulingFuture<'a, Vec<ResourceChoice>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// Which resources a form offers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResourceChoiceKind {
+    /// People: tutors, practitioners.
+    Person,
+    /// Rooms.
+    Room,
+}
+
+/// A resource a form offers ([`ResourceNames::choices`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResourceChoice {
+    /// The resource's id.
+    pub id: i64,
+    /// Its name.
+    pub name: String,
+    /// The employee behind a person, if any.
+    pub employee_id: Option<i64>,
+    /// How many it holds: bookings that may overlap, or the persons a room
+    /// holds.
+    pub capacity: i64,
+}
+
+/// The strategy when no module provides one: no names.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoResourceNames;
+
+impl ResourceNames for NoResourceNames {}
+
+/// Makes `names` the app's [`ResourceNames`]; the scheduling module calls it
+/// in `register`.
+pub fn provide_resource_names(app: &mut Registry, names: impl ResourceNames) {
+    let names: Arc<dyn ResourceNames> = Arc::new(names);
+    app.provide(names);
+}
+
+/// The app's [`ResourceNames`], or [`NoResourceNames`].
+pub fn resource_names(state: &AppState) -> Arc<dyn ResourceNames> {
+    match state.provided::<Arc<dyn ResourceNames>>() {
+        Some(found) => Arc::clone(&found),
+        None => Arc::new(NoResourceNames),
+    }
+}
+
 /// What a [`ResourceEligibility`] asks about.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EligibilityQuery {
@@ -602,6 +671,31 @@ pub struct BookingConflict {
 }
 
 impl Event for BookingConflict {}
+
+/// A new availability block was added to a resource (a manual *sick* or
+/// *away* block, a leave, a roster, a holiday), whether or not it overlaps a
+/// booking. A vertical that has its own work on the resource, such as the
+/// class sessions of a tutor (10 `EDU.RUL.12`), reads it to find that work.
+/// [`BookingConflict`] says only which bookings the block overlaps.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AvailabilityBlockAdded {
+    /// The resource that is not available.
+    pub resource: i64,
+    /// The employee behind the resource, if it is a person.
+    pub employee: Option<i64>,
+    /// The block.
+    pub block: i64,
+    /// `manual`, `leave`, `roster` or `holiday`.
+    pub source: String,
+    /// Why, e.g. `sick`.
+    pub reason: String,
+    /// The start.
+    pub starts_at: DateTime,
+    /// The end.
+    pub ends_at: DateTime,
+}
+
+impl Event for AvailabilityBlockAdded {}
 
 /// A stretch of time a source says a resource is not bookable.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

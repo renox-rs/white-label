@@ -1,0 +1,35 @@
+{#- edtech: the public page that verifies a certificate: no login. It shows
+    whether the certificate is valid, superseded or revoked, with the number,
+    the name, the course and the dates. Replace it with
+    resources/views/edtech/verify.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['verify.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['verify.title']" :subtitle="tx['verify.subtitle']"/>
+    <rx-card>
+      <form method="get" action="{{ route('edtech.verify_lookup') }}">
+        <rx-input name="code" :label="tx['verify.code']" :hint="tx['verify.code_hint']" id="verify-code" required/>
+        <rx-button type="submit" :label="tx['verify.check']"/>
+      </form>
+    </rx-card>
+    <template rx-if="show_result">
+    <rx-card>
+      <rx-badge :kind="state_kind" :text="state_text"/>
+      <template rx-if="found">
+        <rx-infolist columns="2">
+          <rx-entry :label="tx['certificates.number']" :value="number"/>
+          <rx-entry :label="tx['certificates.student']" :value="student"/>
+          <rx-entry :label="tx['certificates.course']" :value="course"/>
+          <rx-entry :label="tx['certificates.completed']" :value="completed"/>
+          <rx-entry :label="tx['certificates.issued']" :value="issued"/>
+        </rx-infolist>
+      </template>
+      <template rx-if="has_replacement">
+        <p>{{ tx['verify.replaced_by'] }} <a href="{{ replacement_path }}">{{ replacement_number }}</a></p>
+      </template>
+      <template rx-if="replacement_pending">
+        <p>{{ tx['verify.replacement_pending'] }}</p>
+      </template>
+    </rx-card>
+    </template>
+  </rx-stack>
+</rx-page>

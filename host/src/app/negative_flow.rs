@@ -90,6 +90,8 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
         // 06 `FIN.RUL.23`, `FIN.RUL.24`, `FIN.ACL.21` (BL-FNB-16): see
         // [`super::fnb_seed::invoicing`].
         super::fnb_seed::FNB => super::fnb_seed::invoicing(module, entities),
+        // The 10 money values (BL-EDU-18): see [`super::edtech_money::invoicing`].
+        super::edtech_seed::EDTECH => super::edtech_money::invoicing(module, entities),
         // 03 `FIN.ACL.15`, `FIN.RUL.14`, `FIN.RUL.15`, `FIN.RUL.23`,
         // `FIN.RUL.24`, `FIN.ACL.21` and the e-invoicing scope (BL-LOG-26,
         // BL-LOG-25): see [`super::logistics_seed::invoicing`].
@@ -170,6 +172,9 @@ pub fn payments_for(client_app: &str) -> WlPayments {
         // 05: pending payments, late confirmation, refund retry and
         // chargebacks (BL-CLN-16).
         super::clinics_seed::CLINICS => super::clinics_money::payments(module),
+        // 10: pending payments, late confirmation, refund retry and the desk
+        // cash shortage (BL-EDU-18).
+        super::edtech_seed::EDTECH => super::edtech_money::payments(module),
         _ => module,
     }
 }
@@ -217,6 +222,10 @@ pub fn rows(client_app: &str, entities: &[String]) -> Vec<Row> {
     // deposits) are not its settings.
     if client_app == super::clinics_seed::CLINICS {
         return super::clinics_money::rows(entities);
+    }
+    // The 10 client has its own table too (BL-EDU-18).
+    if client_app == super::edtech_seed::EDTECH {
+        return super::edtech_money::rows(entities);
     }
     let invoicing = invoicing_for(client_app, entities);
     let invoicing = invoicing.config();

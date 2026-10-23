@@ -236,6 +236,30 @@ pub async fn clinics_booted() -> TestApp {
     app
 }
 
+/// The demo EdTech client (10 EdTech).
+const EDTECH_CLIENT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../clients/demo-edtech/client.toml"
+);
+
+/// The EdTech host, with `wl:install` and the seeds run as the demo does.
+pub async fn edtech_booted() -> TestApp {
+    let config = wl_kernel::ClientConfig::load(EDTECH_CLIENT).expect("the edtech client");
+    let app = TestApp::new(
+        host::app_for(config)
+            .expect("the app")
+            .provide(noon_clock())
+            .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
 /// The demo logistics client (03 Logistics).
 const LOGISTICS_CLIENT: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -992,6 +1016,49 @@ pub async fn clinics_booted_with_mail(mail: BouncingMail) -> TestApp {
 /// real gateway is not built; online payments are off without one).
 pub async fn clinics_booted_with_gateway(gateway: wl_payments::gateway::FakeGateway) -> TestApp {
     let config = wl_kernel::ClientConfig::load(CLINICS_CLIENT).expect("the clinics client");
+    let app = TestApp::new(
+        host::app_for_tuned(
+            config,
+            host::Tuning::default().payments(move |p| p.gateway(gateway)),
+        )
+        .expect("the app")
+        .provide(noon_clock())
+        .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
+/// The EdTech host with [`BouncingMail`] as the e-mail provider.
+pub async fn edtech_booted_with_mail(mail: BouncingMail) -> TestApp {
+    let config = wl_kernel::ClientConfig::load(EDTECH_CLIENT).expect("the edtech client");
+    let app = TestApp::new(
+        host::app_for_tuned(
+            config,
+            host::Tuning::default().notify(move |n| n.provider(mail)),
+        )
+        .expect("the app")
+        .provide(noon_clock())
+        .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
+/// The EdTech host with `gateway` as the payment gateway (the adapter of a
+/// real gateway is not built; online payments are off without one).
+pub async fn edtech_booted_with_gateway(gateway: wl_payments::gateway::FakeGateway) -> TestApp {
+    let config = wl_kernel::ClientConfig::load(EDTECH_CLIENT).expect("the edtech client");
     let app = TestApp::new(
         host::app_for_tuned(
             config,

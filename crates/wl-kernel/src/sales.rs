@@ -622,6 +622,21 @@ pub trait PackageLedger: Send + Sync + 'static {
     fn balance<'a>(&'a self, _db: &'a Db, _party: PartyId, _item: &'a str) -> SalesFuture<'a, i64> {
         Box::pin(async { Ok(0) })
     }
+
+    /// Moves the last day of the `active` package `package` on by `days` as
+    /// the system, with `why` as the reason: the days the agreement it was
+    /// sold for stood frozen are given back (10 `freeze`). It does not count
+    /// against the extension limit of a user's `extend`. Answers the new last
+    /// day, or `None` when nothing moved. The default moves nothing.
+    fn extend_days<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _package: PackageId,
+        _days: i64,
+        _why: &'a str,
+    ) -> SalesFuture<'a, Option<NaiveDate>> {
+        Box::pin(async { Ok(None) })
+    }
 }
 
 /// The package ledger when the `sales` module is off.
@@ -642,6 +657,114 @@ pub fn package_ledger(state: &AppState) -> Arc<dyn PackageLedger> {
     match state.provided::<Arc<dyn PackageLedger>>() {
         Some(ledger) => Arc::clone(&ledger),
         None => Arc::new(NoPackageLedger),
+    }
+}
+
+/// A package of sessions to sell (`PackageSales::sell`): what a vertical asks
+/// when an enrolment is for a package (10 `EDU.ENR.01`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct SellPackage {
+    /// Who uses the credits.
+    pub holder: PartyId,
+    /// Who pays, when not the holder.
+    pub payer: Option<PartyId>,
+    /// The code of the catalogue item.
+    pub item: String,
+    /// The name of the item as sold.
+    pub item_name: String,
+    /// The credits (sessions) it holds.
+    pub credits: i64,
+    /// The price paid, in fils.
+    pub price: i64,
+    /// The months it is valid after activation; `None` for the module's setting.
+    pub validity_months: Option<i64>,
+    /// The invoice it is paid with (`invoicing.invoice`), when drafted.
+    pub invoice: Option<i64>,
+    /// The staff user who sells it.
+    pub sold_by: Option<i64>,
+}
+
+impl SellPackage {
+    /// `credits` sessions of `item` for `holder`, priced `price` fils.
+    pub fn new(holder: PartyId, item: &str, credits: i64, price: i64) -> Self {
+        SellPackage {
+            holder,
+            payer: None,
+            item: item.to_owned(),
+            item_name: item.to_owned(),
+            credits,
+            price,
+            validity_months: None,
+            invoice: None,
+            sold_by: None,
+        }
+    }
+
+    /// Paid by `payer`.
+    pub fn payer(mut self, payer: PartyId) -> Self {
+        self.payer = Some(payer);
+        self
+    }
+
+    /// With the item's name as sold.
+    pub fn item_name(mut self, name: &str) -> Self {
+        self.item_name = name.to_owned();
+        self
+    }
+
+    /// Valid for `months` after activation.
+    pub fn validity_months(mut self, months: i64) -> Self {
+        self.validity_months = Some(months);
+        self
+    }
+
+    /// Paid with invoice `invoice`.
+    pub fn invoice(mut self, invoice: i64) -> Self {
+        self.invoice = Some(invoice);
+        self
+    }
+
+    /// Sold by the staff user `user`.
+    pub fn sold_by(mut self, user: i64) -> Self {
+        self.sold_by = Some(user);
+        self
+    }
+}
+
+/// What verticals ask to sell a prepaid package (wl-sales §4.4, §5.5):
+/// the package starts `pending_payment` and activates when its invoice is
+/// paid in full. `wl-sales` provides it; the credits are then used and given
+/// back through [`PackageLedger`].
+pub trait PackageSales: Send + Sync + 'static {
+    /// Records a package as `pending_payment` and returns its id; `None`
+    /// when `sales` is off. The default sells nothing.
+    fn sell<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _sale: SellPackage,
+    ) -> SalesFuture<'a, Option<PackageId>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The package sales when the `sales` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoPackageSales;
+
+impl PackageSales for NoPackageSales {}
+
+/// Makes `sales` the app's [`PackageSales`]; `wl-sales` calls it in `register`.
+pub fn provide_package_sales(app: &mut Registry, sales: impl PackageSales) {
+    let sales: Arc<dyn PackageSales> = Arc::new(sales);
+    app.provide(sales);
+}
+
+/// The app's [`PackageSales`], or [`NoPackageSales`] when none is provided.
+pub fn package_sales(state: &AppState) -> Arc<dyn PackageSales> {
+    match state.provided::<Arc<dyn PackageSales>>() {
+        Some(sales) => Arc::clone(&sales),
+        None => Arc::new(NoPackageSales),
     }
 }
 

@@ -1144,6 +1144,31 @@ async fn without_payments_the_recorder_finds_nothing_and_refuses_to_record() {
     }
 }
 
+/// A module that owns a type of prepaid record registers its own check
+/// (`register_prepaid_subject_type`): it is asked for its type, while every
+/// other subject still goes to the provided contract (none here: all active).
+#[renox::test]
+async fn a_registered_prepaid_type_is_asked_before_the_provided_contract() {
+    use wl_kernel::Subject;
+    use wl_kernel::payments::{PaymentFuture, prepaid_subjects, register_prepaid_subject_type};
+
+    fn only_even<'a>(_state: &'a AppState, subject: &'a Subject) -> PaymentFuture<'a, bool> {
+        Box::pin(async move { Ok(subject.subject_id % 2 == 0) })
+    }
+
+    register_prepaid_subject_type("pkg_prepaid.thing", only_even);
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let subjects = prepaid_subjects(app.state());
+
+    let even = Subject::new("pkg_prepaid.thing", 2);
+    let odd = Subject::new("pkg_prepaid.thing", 3);
+    let other = Subject::new("pkg_prepaid.other", 3);
+    assert!(subjects.is_active(app.state(), &even).await.unwrap());
+    assert!(!subjects.is_active(app.state(), &odd).await.unwrap());
+    assert!(subjects.is_active(app.state(), &other).await.unwrap());
+}
+
 /// #58 AC7: without the parties module the directory marks no contact point
 /// invalid (`None`, for the kernel's directory as for `NoParties`), so a
 /// give-up run still succeeds.
@@ -2150,6 +2175,86 @@ async fn without_sales_attribution_and_lead_conversion_do_nothing() {
         merged: PartyId(2),
     };
     assert_eq!(renox::serde_json::to_value(merged).unwrap()["merged"], 2);
+}
+
+/// 10 EdTech (base for #450): without the `sales` module no package is sold
+/// and none has credits, so an enrolment for a package has no package.
+#[renox::test]
+async fn without_sales_no_package_is_sold_and_none_has_credits() {
+    use wl_kernel::sales::{ConsumePackage, PackageConsumption, SellPackage};
+    use wl_kernel::{Subject, package_ledger, package_sales};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let sale = SellPackage::new(PartyId(3), "ielts_10", 10, 150_000)
+        .payer(PartyId(4))
+        .invoice(9)
+        .sold_by(2);
+    assert!(
+        package_sales(app.state())
+            .sell(app.state(), sale)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let request = ConsumePackage::new(PartyId(3), "ielts_10", 1, Subject::new("edtech.session", 1));
+    assert_eq!(
+        package_ledger(app.state())
+            .consume(app.state(), request)
+            .await
+            .unwrap(),
+        PackageConsumption::NoCredit
+    );
+}
+
+/// 10 EdTech (#439, #440): without the `sales` module the days an enrolment
+/// stood frozen move no package.
+#[renox::test]
+async fn without_sales_the_frozen_days_move_no_package() {
+    use wl_kernel::package_ledger;
+    use wl_kernel::sales::PackageId;
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let moved = package_ledger(app.state())
+        .extend_days(app.state(), PackageId(4), 10, "Enrolment frozen")
+        .await
+        .unwrap();
+    assert!(moved.is_none());
+}
+
+/// 10 EdTech (#440): the events of a pause cause added and removed name the
+/// cause and the agreement, so the vertical can tell its own pause from a
+/// user's.
+#[test]
+fn the_pause_events_name_their_cause_and_agreement() {
+    use wl_kernel::Subject;
+    use wl_kernel::subscriptions::{
+        PauseCause, SubscriptionId, SubscriptionPaused, SubscriptionResumed,
+    };
+
+    let paused = SubscriptionPaused {
+        subscription: SubscriptionId(4),
+        party: PartyId(9),
+        source: Subject::new("edtech.enrolment", 12),
+        cause: PauseCause::User,
+        until: None,
+        first: true,
+    };
+    let json = renox::serde_json::to_value(&paused).unwrap();
+    assert_eq!(json["cause"], "user");
+    assert_eq!(json["source"]["subject_type"], "edtech.enrolment");
+    let resumed = SubscriptionResumed {
+        subscription: SubscriptionId(4),
+        party: PartyId(9),
+        source: Subject::new("edtech.enrolment", 12),
+        cause: PauseCause::Agreement,
+        resumed: true,
+        to_past_due: false,
+    };
+    let back: SubscriptionResumed =
+        renox::serde_json::from_value(renox::serde_json::to_value(&resumed).unwrap()).unwrap();
+    assert_eq!(back, resumed);
 }
 
 /// #216, #217: without the `hr`, `ticketing` and `documents` modules nobody
