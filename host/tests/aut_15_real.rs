@@ -121,6 +121,28 @@ impl World {
         (order, line)
     }
 
+    /// Posts a goods receipt of `units` of P on a new purchase order.
+    async fn receive(&self, units: i64, note: &str) {
+        let (po, line) = self.purchase(units).await;
+        let receipt = wl_inventory::goods_receipt::create_draft(
+            self.app.db(),
+            None,
+            wl_inventory::DraftReceipt {
+                purchase_order_id: po.id,
+                location_id: self.store.id,
+                delivery_note: Some(note.into()),
+                lines: vec![DraftLine::on(line.id, units * 1000, units * 1000)],
+            },
+        )
+        .await
+        .unwrap();
+        self.app
+            .htmx()
+            .post(&format!("/goods-receipts/{}/post", receipt.id), &[])
+            .await
+            .assert_ok();
+    }
+
     async fn suggestion(&self) -> Option<ReorderSuggestion> {
         ReorderSuggestion::query()
             .where_(ReorderSuggestion::ITEM_ID.eq(self.part.id))
@@ -289,4 +311,102 @@ async fn aut_15_real_credit_hold_is_skipped_and_the_same_second_goes_by_order_nu
         .unwrap();
     assert_eq!(reserved, 3_000);
     assert_eq!(w.split(&held, 1).await, (3, 0));
+
+    // The line SO-4 still lacks is served by the next receipt, and the released
+    // order keeps what it got.
+    assert_eq!(w.split(&four, 1).await, (0, 1), "SO-4 still lacks its P");
+    w.receive(1, "DN-3").await;
+    assert_eq!(w.split(&four, 1).await, (1, 0));
+    assert_eq!(w.split(&held, 1).await, (3, 0));
+}
+
+/// BL-SAL-17 point 5: SO-4 with lines 1 and 2 and SO-5 with line 1, all of P and
+/// confirmed in the same second; a receipt of 2 P serves SO-4 line 1 and line
+/// 2 and not SO-5.
+#[renox::test]
+async fn aut_15_real_the_same_second_is_served_by_order_then_line_number() {
+    let w = world().await;
+    let four = w.order("counter", &[("P", 1), ("P", 1)]).await;
+    let five = w.order("counter", &[("P", 1)]).await;
+    SalesOrder::query()
+        .where_(SalesOrder::ID.eq(five.id))
+        .update(w.app.db(), &[("confirmed_at", &four.confirmed_at)])
+        .await
+        .unwrap();
+    assert_eq!(w.split(&four, 1).await, (0, 1));
+    assert_eq!(w.split(&five, 1).await, (0, 1));
+
+    w.receive(2, "DN-4").await;
+
+    assert_eq!(w.split(&four, 1).await, (1, 0), "SO-4 line 1");
+    assert_eq!(w.split(&four, 2).await, (1, 0), "SO-4 line 2");
+    assert_eq!(w.split(&five, 1).await, (0, 1), "SO-5 waits");
+}
+
+/// BL-SAL-17 point 2: an item with a reorder point (min 5, max 20) and a
+/// preferred supplier. Above the point (10 on hand, SO of 12: 2 back-ordered and
+/// not on a purchase order) the suggestion is the 2; at or below it (4 on hand,
+/// SO of 6: 2 back-ordered) it is up to the maximum plus the 2.
+#[renox::test]
+async fn aut_15_real_a_reorder_point_adds_the_back_order_on_top_of_the_policy() {
+    let w = world().await;
+    let mut above = Item::new("R", "Wiper blade", "pcs");
+    above.reorder_point_milli = 5_000;
+    above.reorder_max_milli = 20_000;
+    above.save(w.app.db()).await.unwrap();
+    let mut below = Item::new("S", "Spark plug", "pcs");
+    below.reorder_point_milli = 5_000;
+    below.reorder_max_milli = 20_000;
+    below.save(w.app.db()).await.unwrap();
+    for item in [&above, &below] {
+        let mut row = wl_inventory::ItemSupplier {
+            item_id: item.id,
+            supplier_party_id: w.supplier.0,
+            role: wl_inventory::SupplierRole::Preferred,
+            ..wl_inventory::ItemSupplier::default()
+        };
+        row.save(w.app.db()).await.unwrap();
+    }
+    for (item, units) in [(&above, 10), (&below, 4)] {
+        let mut moved = StockMovement::receive(
+            item.id,
+            None,
+            w.store.id,
+            units * 1000,
+            800,
+            units * 800,
+            &Subject::new("inventory.goods_receipt", 900),
+            None,
+        );
+        moved.save(w.app.db()).await.unwrap();
+    }
+    let a = w.order("counter", &[("R", 12)]).await;
+    let b = w.order("counter", &[("S", 6)]).await;
+    assert_eq!(w.split(&a, 1).await, (10, 2));
+    assert_eq!(w.split(&b, 1).await, (4, 2));
+
+    w.app.run_scheduled(reorder::TASK).await.unwrap();
+
+    let quantity = |item: &Item| {
+        let id = item.id;
+        let db = w.app.db().clone();
+        async move {
+            ReorderSuggestion::query()
+                .where_(ReorderSuggestion::ITEM_ID.eq(id))
+                .first(&db)
+                .await
+                .unwrap()
+                .map(|s| s.suggested_qty_milli)
+        }
+    };
+    assert_eq!(
+        quantity(&above).await,
+        Some(2_000),
+        "above the point: the 2"
+    );
+    assert_eq!(
+        quantity(&below).await,
+        Some(18_000),
+        "at the point: up to 20 less the 4 on hand, plus the 2"
+    );
 }
