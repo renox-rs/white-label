@@ -6,7 +6,7 @@
 //! | [`START_INSPECTION`] | checked_in | inspecting | `job_cards.work` | `technician_assigned`, `intake_recorded` |
 //! | [`SEND_ESTIMATE`] | inspecting, in_progress | awaiting_approval | `job_cards.advise` | `intake_recorded`, `estimate_priced` |
 //! | [`APPROVE`] / [`APPROVE_SYSTEM`] | awaiting_approval | in_progress | `job_cards.advise` (recorded approval) / system (the customer's link, a claim) | `estimate_pending`, `police_report` (slot) |
-//! | [`DECLINE`] / [`DECLINE_SYSTEM`] | checked_in, inspecting, awaiting_approval | declined | `job_cards.advise` / system (estimate expired) | `nothing_approved`, `nothing_recorded` (slot) |
+//! | [`DECLINE`] / [`DECLINE_SYSTEM`] | checked_in, inspecting, awaiting_approval | declined | `job_cards.advise` / system (estimate expired) | `nothing_approved`, `nothing_recorded` |
 //! | [`DECLINE_ADDED`] / [`DECLINE_ADDED_SYSTEM`] | awaiting_approval | in_progress | `job_cards.advise` / system (the customer's link) | `work_approved` |
 //! | [`WAIT_PARTS`] | in_progress | awaiting_parts | `job_cards.work` | `parts_requested` (slot) |
 //! | [`PARTS_ARRIVED`] | awaiting_parts | in_progress | system (stock issued) | `stock_issued` (slot) |
@@ -161,6 +161,14 @@ pub struct JobInput {
     /// the approved run.
     #[serde(default)]
     pub reason: Option<String>,
+    /// How many labour and part lines are recorded, removed ones not counted
+    /// ([`DECLINE`]).
+    #[serde(default)]
+    pub lines_recorded: Option<i64>,
+    /// Why the job card ends, as a code ([`DECLINE`]): `customer_left`,
+    /// `estimate_declined` or `no_response`.
+    #[serde(default)]
+    pub code: Option<String>,
     /// What the advisor recorded for a stopped job ([`CANCEL`]).
     #[serde(default)]
     pub stop: Option<StopRecord>,
@@ -436,30 +444,47 @@ fn decline(name: &'static str, system: bool) -> Transition<JobCard> {
         let ok = !c.work_approved();
         Box::pin(async move { check(ok, "auto.jobs.problem.already_approved") })
     });
-    slot(transition, "nothing_recorded").effect(|c: &JobCard, ctx, tx| {
-        let card = c.clone();
-        let input = input_of(ctx);
-        let reason = ctx.reason().map(str::to_owned);
-        Box::pin(async move {
-            if let Some(id) = input.approval_id {
-                move_lines(tx, id, LineStatus::Sent, LineStatus::Declined).await?;
-            }
-            answer(tx, &input, ApprovalStatus::Declined, reason.clone()).await?;
-            // A round nobody named (an estimate that expired) ends too.
-            crate::approval_rounds::supersede(tx, card.id).await?;
-            let none: Option<DateTime> = None;
-            set_job_card(
-                tx,
-                card.id,
-                &[
-                    ("closed_reason", &reason),
-                    ("closed_at", &Some(now())),
-                    ("awaiting_since", &none),
-                ],
-            )
-            .await
+    transition
+        .guard("nothing_recorded", |c: &JobCard, ctx| {
+            // From `checked_in` or `inspecting` nothing may be recorded; the
+            // lines of `awaiting_approval` were sent with the estimate.
+            let ok = c.status == JobCardStatus::AwaitingApproval
+                || input_of(ctx).lines_recorded == Some(0);
+            Box::pin(async move { check(ok, "auto.decline.problem.recorded") })
         })
-    })
+        .effect(|c: &JobCard, ctx, tx| {
+            let card = c.clone();
+            let input = input_of(ctx);
+            let reason = ctx.reason().map(str::to_owned);
+            Box::pin(async move {
+                if let Some(id) = input.approval_id {
+                    move_lines(tx, id, LineStatus::Sent, LineStatus::Declined).await?;
+                }
+                answer(tx, &input, ApprovalStatus::Declined, reason.clone()).await?;
+                // A round nobody named (an estimate that expired) ends too.
+                crate::approval_rounds::supersede(tx, card.id).await?;
+                let none: Option<DateTime> = None;
+                let code = input
+                    .code
+                    .clone()
+                    .unwrap_or_else(|| crate::stop::CUSTOMER_LEFT.to_owned());
+                // The inspection fee agreed at check-in is what is billed.
+                let fee = card.inspection_fee.max(0);
+                set_job_card(
+                    tx,
+                    card.id,
+                    &[
+                        ("closed_reason", &reason),
+                        ("closed_code", &Some(code)),
+                        ("closed_at", &Some(now())),
+                        ("awaiting_since", &none),
+                        ("stopped_by", &input.by),
+                        ("billed_net", &fee),
+                    ],
+                )
+                .await
+            })
+        })
 }
 
 /// `decline_added`: the customer declines the added work; the job goes on

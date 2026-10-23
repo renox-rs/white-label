@@ -105,6 +105,19 @@ impl Estimate {
             || self.parts.iter().any(|l| l.approval.is_live())
     }
 
+    /// How many lines are recorded: removed ones are not counted.
+    pub fn recorded(&self) -> usize {
+        self.labour
+            .iter()
+            .filter(|l| l.approval != LineStatus::Removed)
+            .count()
+            + self
+                .parts
+                .iter()
+                .filter(|l| l.approval != LineStatus::Removed)
+                .count()
+    }
+
     /// Whether any line was recorded at all, removed ones too.
     pub fn has_lines(&self) -> bool {
         !self.labour.is_empty() || !self.parts.is_empty()

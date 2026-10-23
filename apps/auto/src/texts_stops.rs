@@ -191,6 +191,29 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "auto.jobs.transition.cancel_approved",
         "Cancelled (approved by the branch manager)",
     ),
+    // Declining a job card (`AUT.RUL.17`).
+    (
+        "auto.decline.problem.recorded",
+        "A labour or part line is recorded on this job card. Work that was recorded is cancelled, not declined: use cancel.",
+    ),
+    (
+        "auto.decline.sms_en",
+        "{{ workshop }}: please collect your vehicle {{ plate }} (job {{ job }}). Reason: {{ reason }}.{{ fee }} {{ address }} {{ phone }}",
+    ),
+    (
+        "auto.decline.sms_ar",
+        "{{ workshop }}: يرجى استلام مركبتك {{ plate }} (بطاقة العمل {{ job }}). السبب: {{ reason }}.{{ fee }} {{ address }} {{ phone }}",
+    ),
+    ("auto.decline.reason_expired", "estimate expired"),
+    ("auto.decline.reason_declined", "estimate declined"),
+    (
+        "auto.decline.fee",
+        " An inspection fee of :amount is invoiced.",
+    ),
+    (
+        "auto.decline.message_failed",
+        "The message asking the customer to collect the vehicle was not delivered. Call the customer.",
+    ),
     // Voiding a job card opened in error.
     (
         "auto.void.problem.recorded",

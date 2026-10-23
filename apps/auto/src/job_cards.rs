@@ -1006,6 +1006,7 @@ pub async fn decline_by_link(
         approval_id: Some(round.id),
         decided_by_name: Some(name.to_owned()),
         method: Some("link".to_owned()),
+        code: Some(crate::stop::ESTIMATE_DECLINED.to_owned()),
         ..JobInput::default()
     };
     let transition = if card.work_approved() {
@@ -1029,6 +1030,9 @@ pub async fn decline(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> 
     let mut input = input_for(by);
     let round = pending_round(&state.db, card.id).await?;
     input.approval_id = round.map(|r| r.id);
+    let estimate = Estimate::load(&state.db, card.id).await?;
+    input.lines_recorded = Some(i64::try_from(estimate.recorded()).unwrap_or(i64::MAX));
+    input.code = Some(crate::stop::CUSTOMER_LEFT.to_owned());
     let transition = if card.status == JobCardStatus::AwaitingApproval && card.work_approved() {
         DECLINE_ADDED
     } else {

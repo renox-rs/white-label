@@ -10,6 +10,7 @@ pub mod claim_approval;
 pub mod claim_machine;
 pub mod claim_split;
 pub mod claims;
+pub mod declines;
 mod db;
 pub mod estimate;
 pub mod fleet_billing;
@@ -227,6 +228,9 @@ impl Module for Auto {
         // booking asks the job card what was done.
         job_stops::register(app);
         job_void::listen(app);
+        // A job card declined: the inspection fee, the booking and the
+        // message asking the customer to collect; the hourly expiry check.
+        declines::register(app);
         // The insurance claim: the machine, and the listeners that settle it
         // when its invoices are paid.
         claim_machine::register();

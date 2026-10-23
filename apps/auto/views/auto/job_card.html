@@ -101,6 +101,7 @@
         </rx-action-sheet>
       </template>
     </rx-page-header>
+    <rx-alert rx-if="stop.collect_failed" kind="warning" :message="tx['decline.message_failed']"/>
     <rx-alert rx-if="cancel_waits" kind="warning" :message="tx['stop.pending_banner']"/>
     <rx-include template="wl-kernel/approval_card.html"/>
     <rx-alert rx-if="closed_reason" kind="info" :message="tx['jobs.closed_because'] ~ ' ' ~ closed_reason"/>

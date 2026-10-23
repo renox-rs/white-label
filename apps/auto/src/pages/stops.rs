@@ -113,6 +113,8 @@ pub(crate) struct StopView {
     pub can_on_account: bool,
     /// Whether the customer is on account.
     pub on_account: bool,
+    /// Whether the message asking the customer to collect the vehicle gave up.
+    pub collect_failed: bool,
 }
 
 /// What the job card page shows of the stops of `card` for `user`.
@@ -267,6 +269,7 @@ pub(crate) fn view_of(
         can_on_account: user.has_permission(permissions::JOB_CARDS_APPROVE)
             && card.released_at.is_none(),
         on_account: card.on_account,
+        collect_failed: card.collect_message_failed_at.is_some(),
     }
 }
 

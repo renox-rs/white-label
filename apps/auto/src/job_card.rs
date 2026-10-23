@@ -228,6 +228,9 @@ pub struct JobCard {
     pub on_account: bool,
     /// When everything that follows the end of the job card was done.
     pub closing_done_at: Option<DateTime>,
+    /// When the message asking the customer to collect the vehicle gave up
+    /// (`AUT.RUL.17`): the advisor sees "message not delivered".
+    pub collect_message_failed_at: Option<DateTime>,
     /// When the booking was cancelled with the job card.
     pub booking_cancelled_at: Option<DateTime>,
     /// When the vehicle was released.
