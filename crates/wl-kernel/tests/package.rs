@@ -2207,6 +2207,29 @@ async fn without_sales_no_package_is_sold_and_none_has_credits() {
     );
 }
 
+/// 08 Auto (#412): without the `sales` module nobody is the customer of a
+/// sale, so a recall trace lists the sale with the party unknown.
+#[renox::test]
+async fn without_sales_nobody_is_the_customer_of_a_sale() {
+    use wl_kernel::sales::SaleCustomer;
+    use wl_kernel::{Subject, sale_customers};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let sale = Subject::new("sales.counter_sale", 4);
+    assert_eq!(
+        sale_customers(app.state())
+            .customer(app.state(), &sale)
+            .await
+            .unwrap(),
+        SaleCustomer::Unknown
+    );
+    assert_eq!(
+        renox::serde_json::to_value(SaleCustomer::Party(PartyId(3))).unwrap(),
+        renox::serde_json::json!({ "party": 3 })
+    );
+}
+
 /// 10 EdTech (#439, #440): without the `sales` module the days an enrolment
 /// stood frozen move no package.
 #[renox::test]

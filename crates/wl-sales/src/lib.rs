@@ -48,6 +48,7 @@ pub mod redemption;
 pub mod redemption_machine;
 pub mod report;
 pub mod retention;
+pub mod sale_customers;
 pub mod sale_line;
 pub mod sales_order;
 pub mod sales_order_machine;
@@ -579,6 +580,7 @@ impl Module for WlSales {
         sales_orders::register(app);
         // The sales return: its machine and the `ReturnResolved` event.
         sales_returns::register(app);
+        sale_customers::register(app);
         // Loyalty points: `SAL.RUL.07` earning and `SAL.RUL.09` reversals.
         loyalty_rules::register(app);
         // Redeeming points on a sale: the code, the hold, the spending and the

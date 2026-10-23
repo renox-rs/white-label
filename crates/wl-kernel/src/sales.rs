@@ -1327,6 +1327,54 @@ pub fn order_fulfilment(state: &AppState) -> Arc<dyn OrderFulfilment> {
     }
 }
 
+/// Who bought, behind a sale record (wl-sales §6 `SaleCustomers`): a recall
+/// trace, a statement or any report of a vertical asks it for the customer of
+/// a counter sale or a sales order it knows only as a [`Subject`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SaleCustomer {
+    /// The customer (a party) of the sale.
+    Party(PartyId),
+    /// A counter sale that names no customer.
+    WalkIn,
+    /// Not a sale record `wl-sales` knows, or the module is off.
+    Unknown,
+}
+
+/// The customer of a sale record. `wl-sales` provides it.
+pub trait SaleCustomers: Send + Sync + 'static {
+    /// The customer of `sale` (`sales.counter_sale:N` or `sales.sales_order:N`).
+    /// The default knows nobody.
+    fn customer<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _sale: &'a Subject,
+    ) -> SalesFuture<'a, SaleCustomer> {
+        Box::pin(async { Ok(SaleCustomer::Unknown) })
+    }
+}
+
+/// The sale customers when the `sales` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoSaleCustomers;
+
+impl SaleCustomers for NoSaleCustomers {}
+
+/// Makes `customers` the app's [`SaleCustomers`]; `wl-sales` calls it in
+/// `register`.
+pub fn provide_sale_customers(app: &mut Registry, customers: impl SaleCustomers) {
+    let customers: Arc<dyn SaleCustomers> = Arc::new(customers);
+    app.provide(customers);
+}
+
+/// The app's [`SaleCustomers`], or [`NoSaleCustomers`] when none is provided.
+pub fn sale_customers(state: &AppState) -> Arc<dyn SaleCustomers> {
+    match state.provided::<Arc<dyn SaleCustomers>>() {
+        Some(customers) => Arc::clone(&customers),
+        None => Arc::new(NoSaleCustomers),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
