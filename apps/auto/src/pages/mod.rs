@@ -5,6 +5,7 @@
 
 pub mod accident;
 pub mod claims;
+pub mod export_sales;
 pub mod fleet;
 pub mod incidents;
 pub mod insurers;
@@ -39,6 +40,7 @@ pub fn routes() -> Routes {
         .merge(claims::routes())
         .merge(insurers::routes())
         .merge(fleet::routes())
+        .merge(export_sales::routes())
         .merge(supplier_claims::routes())
 }
 

@@ -19,6 +19,9 @@ mod db;
 pub mod declines;
 pub mod documents;
 pub mod estimate;
+pub mod export_rule;
+pub mod export_sale;
+pub mod export_sales;
 pub mod fleet_billing;
 pub mod fleet_contract;
 pub mod fleet_contract_machine;
@@ -70,6 +73,7 @@ mod texts;
 mod texts_claim_stops;
 mod texts_blocked;
 mod texts_claims;
+mod texts_export;
 mod texts_fleet;
 mod texts_incidents;
 mod texts_jobs;
@@ -88,6 +92,7 @@ use renox::prelude::*;
 pub use approval::{ApprovalStatus, EstimateApproval};
 pub use claim::{ClaimStatus, InsuranceClaim, RepairType};
 pub use claim_approval::{ApprovalKind, ApprovalOutcome, ApprovedLine, ClaimApproval};
+pub use export_sale::{ExportEvidence, ExportSale};
 pub use fleet_contract::{FleetContract, FleetStatus};
 pub use fleet_invoice::FleetInvoice;
 pub use fleet_job::FleetJob;
@@ -161,6 +166,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/auto/fleet_contract.html"),
     ),
     (
+        "auto/export_sales.html",
+        include_str!("../views/auto/export_sales.html"),
+    ),
+    (
         "auto/supplier_claims.html",
         include_str!("../views/auto/supplier_claims.html"),
     ),
@@ -223,6 +232,7 @@ impl Module for Auto {
             .view_data::<pages::insurers::ShowPage>()
             .view_data::<pages::fleet::IndexPage>()
             .view_data::<pages::fleet::ShowPage>()
+            .view_data::<pages::export_sales::IndexPage>()
             .view_data::<pages::supplier_claims::IndexPage>()
             .view_data::<pages::supplier_claims::ShowPage>();
         app.templates(|env| {
@@ -247,6 +257,8 @@ impl Module for Auto {
             .model::<FleetService>()
             .model::<FleetJob>()
             .model::<FleetInvoice>()
+            .model::<ExportSale>()
+            .model::<ExportEvidence>()
             .model::<SupplierClaim>()
             .model::<parts_wait::PartsWait>()
             .model::<substitute::Substitute>()
@@ -293,6 +305,9 @@ impl Module for Auto {
         // for a suspended contract.
         fleet_end::register(app);
         fleet_gate::register(app);
+        // Export sales: the exit evidence is watched by `AUT.RUL.15` (the
+        // accountant is told at 60 days, the sale is flagged at 90).
+        export_rule::register(app);
         // What a blocked party does to a fleet contract, a job card and an
         // insurance claim (BL-AUT-17).
         blocked::register();
@@ -364,6 +379,14 @@ impl Module for Auto {
                 .group("nav.app")
                 .order(87)
                 .permission(permissions::SUPPLIER_CLAIMS_MANAGE),
+        );
+        app.nav(
+            "app",
+            NavLink::route("auto.export_sales", "nav.export_sales")
+                .icon("percent")
+                .group("nav.app")
+                .order(88)
+                .permission(permissions::EXPORT_SALES_VIEW),
         );
         app.nav(
             "app",

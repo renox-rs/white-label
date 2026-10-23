@@ -119,7 +119,8 @@
     "app": "App",
     "log_in": "Log in",
     "log_out": "Log out",
-    "sections": "Sections"
+    "sections": "Sections",
+    "export_sales": "Export sales"
   },
   "patterns": {
     "art": {

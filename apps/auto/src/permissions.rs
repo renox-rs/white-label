@@ -43,6 +43,11 @@ pub const SUPPLIER_CLAIMS_MANAGE: &str = "supplier_claims.manage";
 /// Approve the write-off of a supplier warranty claim: the branch manager,
 /// never the purchaser who asked (`AUT.WAR.02`, `PLT.APR.01`).
 pub const SUPPLIER_CLAIMS_APPROVE: &str = "supplier_claims.approve";
+/// See the export sales and their exit evidence (`AUT.EXP.01`).
+pub const EXPORT_SALES_VIEW: &str = "export_sales.view";
+/// Register an export sale and attach its exit evidence: the accountant
+/// (`AUT.EXP.01`, `AUT.RUL.15`).
+pub const EXPORT_SALES_MANAGE: &str = "export_sales.manage";
 /// Issue the invoices of a claim or of a fleet contract: wl-invoicing's own
 /// permission (`invoices.issue`), which the accountant holds (`AUT.INS.04`).
 pub const INVOICES_ISSUE: &str = "invoices.issue";

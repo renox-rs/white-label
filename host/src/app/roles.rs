@@ -472,6 +472,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             aut::INSURANCE_MANAGE,
             aut::FLEET_CONTRACTS_MANAGE,
             aut::FLEET_CONTRACTS_APPROVE,
+            aut::EXPORT_SALES_VIEW,
+            aut::EXPORT_SALES_MANAGE,
             aut::SUPPLIER_CLAIMS_MANAGE,
             edu::ENROLMENTS_VIEW,
             edu::ENROLMENTS_MANAGE,
@@ -778,6 +780,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             aut::VEHICLES_VIEW,
             aut::JOB_CARDS_VIEW,
             aut::JOB_CARDS_LIABILITY,
+            // Registers the export sales and attaches their exit evidence
+            // (`AUT.EXP.01`, `AUT.RUL.15`).
+            aut::EXPORT_SALES_VIEW,
+            aut::EXPORT_SALES_MANAGE,
             edu::ENROLMENTS_VIEW,
             // Decides the refund of a withdrawal, never the one who asked
             // (`FIN.ACL.04`).
@@ -907,6 +913,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // Approves the early termination of a fleet contract and a waiver
             // of its fee (`PLT.APR.01`, BL-AUT-12).
             aut::FLEET_CONTRACTS_APPROVE,
+            aut::EXPORT_SALES_VIEW,
             edu::ENROLMENTS_VIEW,
             edu::CERTIFICATES_VIEW,
             invoices::VIEW,
