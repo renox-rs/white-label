@@ -4,9 +4,11 @@
 use std::collections::BTreeMap;
 
 use renox::prelude::*;
-use wl_kernel::scheduling::{ResourceNames, SchedulingFuture, ServiceNames};
+use wl_kernel::scheduling::{
+    ResourceChoice, ResourceChoiceKind, ResourceNames, SchedulingFuture, ServiceNames,
+};
 
-use crate::resource::{Resource, ServiceType};
+use crate::resource::{Resource, ResourceType, ServiceType};
 
 /// The name of `service` in `locale`: the Arabic one when the page is Arabic
 /// and the type has it, else the English one.
@@ -57,6 +59,33 @@ impl ResourceNames for ResourceTypeNames {
                 .await?
                 .into_iter()
                 .map(|resource| (resource.id, resource.name))
+                .collect())
+        })
+    }
+
+    fn choices<'a>(
+        &'a self,
+        state: &'a AppState,
+        kind: ResourceChoiceKind,
+    ) -> SchedulingFuture<'a, Vec<ResourceChoice>> {
+        Box::pin(async move {
+            let wanted = match kind {
+                ResourceChoiceKind::Person => ResourceType::Person,
+                ResourceChoiceKind::Room => ResourceType::Room,
+            };
+            Ok(Resource::query()
+                .where_(Resource::RESOURCE_TYPE.eq(wanted))
+                .where_(Resource::ACTIVE.eq(true))
+                .order_by(Resource::NAME)
+                .get(&state.db)
+                .await?
+                .into_iter()
+                .map(|resource| ResourceChoice {
+                    id: resource.id,
+                    name: resource.name,
+                    employee_id: resource.employee_id,
+                    capacity: resource.capacity,
+                })
                 .collect())
         })
     }

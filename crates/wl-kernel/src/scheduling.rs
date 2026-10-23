@@ -429,6 +429,40 @@ pub trait ResourceNames: Send + Sync + 'static {
     ) -> SchedulingFuture<'a, std::collections::BTreeMap<i64, String>> {
         Box::pin(async { Ok(std::collections::BTreeMap::new()) })
     }
+
+    /// The active resources of `kind`, by name: what a form offers where a
+    /// person picks a tutor or a room, instead of typing a resource number.
+    /// The default knows none.
+    fn choices<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _kind: ResourceChoiceKind,
+    ) -> SchedulingFuture<'a, Vec<ResourceChoice>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// Which resources a form offers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResourceChoiceKind {
+    /// People: tutors, practitioners.
+    Person,
+    /// Rooms.
+    Room,
+}
+
+/// A resource a form offers ([`ResourceNames::choices`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResourceChoice {
+    /// The resource's id.
+    pub id: i64,
+    /// Its name.
+    pub name: String,
+    /// The employee behind a person, if any.
+    pub employee_id: Option<i64>,
+    /// How many it holds: bookings that may overlap, or the persons a room
+    /// holds.
+    pub capacity: i64,
 }
 
 /// The strategy when no module provides one: no names.
