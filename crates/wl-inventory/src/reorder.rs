@@ -533,10 +533,12 @@ pub async fn run(state: &AppState) -> Result<usize> {
     Ok(written)
 }
 
-/// An item without a reorder point is suggested only for its back-orders: a
-/// suggestion of today that this run did not touch lost its back-order (it
-/// was cancelled, served or covered by a purchase order since the earlier run
-/// today) and is dropped, unless a purchaser already switched its supplier.
+/// A suggestion of today that this run did not touch wants nothing any more:
+/// its back-order was cancelled, served or covered by a purchase order since
+/// the earlier run today, or the stock rose above the reorder point of an item
+/// that has one. It is dropped, unless a purchaser already switched its
+/// supplier. (Before, only items without a reorder point were dropped, so a
+/// stale suggestion of an item with a reorder point stayed open on a rerun.)
 async fn drop_cancelled_back_orders(
     state: &AppState,
     day: NaiveDate,
@@ -552,15 +554,10 @@ async fn drop_cancelled_back_orders(
         if touched.contains(&(suggestion.item_id, suggestion.location_id)) {
             continue;
         }
-        let Some(item) = Item::find(&state.db, suggestion.item_id).await? else {
-            continue;
-        };
-        if item.reorder_point_milli == 0 {
-            ReorderSuggestion::query()
-                .where_(ReorderSuggestion::ID.eq(suggestion.id))
-                .delete(&state.db)
-                .await?;
-        }
+        ReorderSuggestion::query()
+            .where_(ReorderSuggestion::ID.eq(suggestion.id))
+            .delete(&state.db)
+            .await?;
     }
     Ok(())
 }

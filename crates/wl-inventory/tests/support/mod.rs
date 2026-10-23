@@ -569,8 +569,39 @@ impl SupplierBills for BillDesk {
     }
 }
 
+/// The back-ordered demand of the sales module, set by the test.
+#[derive(Clone, Default)]
+pub struct BackOrderDesk(Arc<Mutex<Vec<wl_kernel::backorders::BackOrdered>>>);
+
+impl BackOrderDesk {
+    /// Replaces the open back-orders with `quantity_milli` of `code` at
+    /// `location` (none when 0).
+    pub fn set(&self, code: &str, location: &Location, quantity_milli: i64) {
+        let mut all = self.0.lock().unwrap();
+        all.clear();
+        if quantity_milli > 0 {
+            all.push(wl_kernel::backorders::BackOrdered {
+                item_code: code.to_owned(),
+                location: Some(Subject::new("inventory.location", location.id)),
+                quantity_milli,
+            });
+        }
+    }
+}
+
+impl wl_kernel::backorders::BackOrderDemand for BackOrderDesk {
+    fn open<'a>(
+        &'a self,
+        _state: &'a AppState,
+    ) -> wl_kernel::backorders::BackOrderFuture<'a, Vec<wl_kernel::backorders::BackOrdered>> {
+        let all = self.0.lock().unwrap().clone();
+        Box::pin(async move { Ok(all) })
+    }
+}
+
 /// Records the events and stands in for ticketing and cost entries.
 struct Fakes {
+    back_orders: BackOrderDesk,
     revised: Arc<Mutex<Vec<PurchaseOrderRevised>>>,
     allocated: Arc<Mutex<Vec<LandedCostAllocated>>>,
     adjusted: Arc<Mutex<Vec<LandedCostAdjusted>>>,
@@ -638,6 +669,7 @@ impl Module for Fakes {
         wl_kernel::tickets::provide_task_creator(app, self.tickets.clone());
         wl_kernel::invoicing::provide_cost_poster(app, self.costs.clone());
         wl_kernel::notify::provide_notifier(app, self.notices.clone());
+        wl_kernel::backorders::provide_back_orders(app, self.back_orders.clone());
     }
 }
 
@@ -697,6 +729,8 @@ pub struct Booted {
     pub recall_closed: Recorded<RecallClosed>,
     /// The parties behind the subjects of a trace.
     pub trace_parties: TraceParties,
+    /// The back-ordered demand the sales module would report.
+    pub back_orders: BackOrderDesk,
     /// The days the clock was moved forward.
     clock_days: std::sync::atomic::AtomicI64,
     /// Keeps the views directory alive.
@@ -1711,7 +1745,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     } else {
         app
     };
+    let back_orders = BackOrderDesk::default();
     let app = app.module(Fakes {
+        back_orders: back_orders.clone(),
         with_parties,
         revised: revised.clone(),
         allocated: allocated.clone(),
@@ -1866,6 +1902,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         traced: Recorded(traced),
         recall_closed: Recorded(recall_closed),
         trace_parties,
+        back_orders,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         _views: views,
     }
