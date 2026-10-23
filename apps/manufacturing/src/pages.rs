@@ -294,8 +294,8 @@ async fn abort_order(
     ))
 }
 
-/// `POST /manufacturing/work-orders/{id}/issue`: `item_id`, `quantity`,
-/// `lot_id`.
+/// `POST /manufacturing/work-orders/{id}/issue`: `item_id`, `quantity`, `lot`
+/// (the number printed on the pack) or `lot_id`.
 async fn issue_material(
     State(state): State<AppState>,
     user: AuthUser,
@@ -314,6 +314,7 @@ async fn issue_material(
             item_id,
             quantity_milli,
             lot_id: number(&lang, &form, "lot_id")?,
+            lot_number: Some(field(&form, "lot")),
         },
     )
     .await?;

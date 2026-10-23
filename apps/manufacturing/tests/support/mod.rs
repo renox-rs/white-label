@@ -22,8 +22,8 @@ use renox::state_machine::StateMachine;
 use renox::testing::{TestApp, TestResponse};
 use wl_kernel::inventory::{
     ConsumeRequest, Consumed, ConsumedLot, ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE,
-    LOT_SUBJECT_TYPE, PENDING_ISSUE_SUBJECT_TYPE, StockFuture, StockNegative, StockService,
-    provide_stock_service,
+    LOT_SUBJECT_TYPE, PENDING_ISSUE_SUBJECT_TYPE, StockChoice, StockFuture, StockLot,
+    StockNegative, StockService, provide_stock_service,
 };
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
@@ -213,9 +213,46 @@ impl StockService for Stock {
             Ok(consumed)
         })
     }
+
+    fn choices_of_item<'a>(
+        &'a self,
+        _state: &'a AppState,
+        item: &'a Subject,
+        _location: &'a Subject,
+    ) -> StockFuture<'a, Option<StockChoice>> {
+        Box::pin(async move { Ok(self.choice(item)) })
+    }
 }
 
 impl Stock {
+    /// The lots of `item` that can be taken from, as `choices` would give.
+    fn choice(&self, item: &Subject) -> Option<StockChoice> {
+        let tracked = self.tracked.lock().unwrap().contains(&item.subject_id);
+        let lots = if tracked {
+            self.shelves
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|shelf| shelf.item == item.subject_id && shelf.quantity_milli > 0)
+                .filter_map(|shelf| {
+                    Some(StockLot {
+                        lot: Subject::new(LOT_SUBJECT_TYPE, shelf.lot?),
+                        number: format!("R{}", shelf.lot?),
+                        expiry_date: None,
+                        available_milli: shelf.quantity_milli,
+                    })
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        Some(StockChoice {
+            item: item.clone(),
+            lot_tracked: tracked,
+            lots,
+        })
+    }
+
     /// Takes `request` from the shelves: the lot asked for first.
     fn take(&self, request: &ConsumeRequest) -> Consumed {
         {

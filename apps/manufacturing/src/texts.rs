@@ -88,6 +88,14 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("manufacturing.issue.item", "Give the material to issue."),
     (
+        "manufacturing.issue.lot_needed",
+        "Name the lot to take it from: this material is tracked by lot and stock of it is at the store. Lots available: {{ lots }}.",
+    ),
+    (
+        "manufacturing.issue.lot_unavailable",
+        "Lot {{ lot }} cannot be taken from at this store. Lots available: {{ lots }}.",
+    ),
+    (
         "manufacturing.issue.no_store",
         "The line of the work order has no store to issue from.",
     ),
@@ -470,7 +478,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("manufacturing.screen.form.lot", "Lot"),
     (
         "manufacturing.screen.form.lot_hint",
-        "The number of the lot to take from first.",
+        "The lot number printed on the pack. A lot-tracked material needs one while stock of it is at the store; one issue for each lot.",
     ),
     ("manufacturing.screen.form.good", "Good quantity"),
     ("manufacturing.screen.form.scrap", "Scrap"),

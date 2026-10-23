@@ -68,7 +68,7 @@
                            :title="tx['action.issue']" :description="tx['action.issue_hint']" :submit-label="tx['action.issue']" variant="secondary" icon="package">
             <rx-input name="item_id" type="number" :label="tx['form.material']" id="issue-order-item" required/>
             <rx-input name="quantity" type="text" :label="tx['form.quantity']" :hint="tx['form.quantity_hint']" id="issue-order-quantity" required/>
-            <rx-input name="lot_id" type="number" :label="tx['form.lot']" :hint="tx['form.lot_hint']" id="issue-order-lot"/>
+            <rx-input name="lot" type="text" :label="tx['form.lot']" :hint="tx['form.lot_hint']" id="issue-order-lot"/>
           </rx-action-sheet>
         </template>
       </template>

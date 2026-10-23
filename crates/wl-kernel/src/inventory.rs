@@ -1038,6 +1038,19 @@ pub trait StockService: Send + Sync + 'static {
         Box::pin(async { Ok(None) })
     }
 
+    /// What can be taken of `item` (`inventory.item:9`) at `location`, as
+    /// [`StockService::choices`] tells it by item code: for a caller that
+    /// holds the item's id (a work order). `None` when no such item exists
+    /// or the module is off.
+    fn choices_of_item<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _item: &'a Subject,
+        _location: &'a Subject,
+    ) -> StockFuture<'a, Option<StockChoice>> {
+        Box::pin(async { Ok(None) })
+    }
+
     /// The `source` that consumed (a visit, a sale) was cancelled before its
     /// pending issues posted: each one still open is cleared with the reason
     /// *source cancelled*, without a movement. Returns how many were cleared.

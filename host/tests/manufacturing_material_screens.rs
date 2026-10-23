@@ -147,3 +147,89 @@ async fn a_short_issue_holds_and_the_arrival_resumes_through_the_real_stock() {
             .is_none()
     );
 }
+
+/// BL-MFG-09: 10 kg of the lot-tracked resin (lot R3, released) are at the
+/// store. An issue of 10 kg without a lot is refused naming the lot; an issue
+/// of 25 kg with lot R3 posts 10 kg from R3 and keeps a pending issue of 15 kg
+/// with no lot; a lot number that is not at the store is refused.
+#[renox::test]
+async fn a_tracked_material_needs_its_lot_and_only_the_short_part_has_none() {
+    let app = boot().await;
+    let f = floor(&app).await;
+    let keeper = person(&app, "Karim", STOREKEEPER, None).await;
+    let path = format!("/manufacturing/work-orders/{}/issue", f.order.id);
+    let mut lot = wl_inventory::Lot {
+        item_id: f.resin.id,
+        number: "R3".into(),
+        status: LotStatus::Released,
+        ..wl_inventory::Lot::default()
+    };
+    let mut tx = app.db().begin().await.unwrap();
+    lot.insert_in_state(&mut tx, LotStatus::Released, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    StockMovement::receive(
+        f.resin.id,
+        Some(lot.id),
+        f.store.id,
+        10_000,
+        800,
+        8_000,
+        &wl_kernel::Subject::new("inventory.goods_receipt", 1),
+        None,
+    )
+    .save(app.db())
+    .await
+    .unwrap();
+    let resin = f.resin.id.to_string();
+
+    let refused = post(
+        &app,
+        &keeper,
+        &path,
+        &[("item_id", &resin), ("quantity", "10")],
+    )
+    .await;
+    refused.assert_status(422);
+    assert!(
+        refused.text().contains("Name the lot"),
+        "{}",
+        refused.text()
+    );
+    assert!(refused.text().contains("R3"), "{}", refused.text());
+    let other = post(
+        &app,
+        &keeper,
+        &path,
+        &[("item_id", &resin), ("quantity", "10"), ("lot", "R9")],
+    )
+    .await;
+    other.assert_status(422);
+    assert!(
+        MaterialIssue::of_order(app.db(), f.order.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    post(
+        &app,
+        &keeper,
+        &path,
+        &[("item_id", &resin), ("quantity", "25"), ("lot", "R3")],
+    )
+    .await
+    .assert_status(303);
+
+    let rows = MaterialIssue::of_order(app.db(), f.order.id).await.unwrap();
+    let seen: Vec<(Option<i64>, i64, bool)> = rows
+        .iter()
+        .map(|r| (r.lot_id, r.quantity_milli, r.pending_issue_id.is_some()))
+        .collect();
+    assert_eq!(
+        seen,
+        vec![(Some(lot.id), 10_000, false), (None, 15_000, true)]
+    );
+    assert_eq!(rows[0].unit_cost, 800);
+}
