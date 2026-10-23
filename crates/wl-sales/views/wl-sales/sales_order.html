@@ -43,6 +43,17 @@
         <rx-transition-actions :actions="actions" action="/sales-orders/{{ order.id }}/transitions"/>
       </template>
     </rx-page-header>
+    <rx-card rx-if="hold" :title="tx['credit.hold_title']">
+      <p>{{ tx['credit.hold_goods_reserved'] }}</p>
+      <rx-infolist rx-if="hold.detail" columns="2">
+        <rx-entry :label="tx['credit.hold_reason']" :value="hold.reason"/>
+        <rx-entry :label="tx['credit.returns_to']" :value="hold.returns_to"/>
+        <rx-entry :label="tx['credit.owes']" :value="hold.owes"/>
+        <rx-entry :label="tx['credit.overdue']" :value="hold.overdue"/>
+        <rx-entry :label="tx['credit.limit']" :value="hold.limit"/>
+        <rx-entry :label="tx['credit.held_on']" :value="hold.held_on"/>
+      </rx-infolist>
+    </rx-card>
     <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['counter.lines']" card>
       <rx-column :label="tx['orders.line_no']" hide-narrow>{{ line.line_no }}</rx-column>
       <rx-column :label="tx['counter.description']">{{ line.description }}</rx-column>

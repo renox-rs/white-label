@@ -6,6 +6,7 @@
 pub mod credit;
 pub mod floor;
 pub mod retention;
+pub mod sell;
 pub mod shop;
 
 use std::sync::{Arc, Mutex};

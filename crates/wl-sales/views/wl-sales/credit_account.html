@@ -1,0 +1,44 @@
+{#- wl-sales: one customer's credit account: its terms, what it owes against
+    its limit, and its orders on credit hold. Replace it with
+    resources/views/wl-sales/credit_account.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="tx['credit.account_subtitle']" :back="route('wl_sales.credit_accounts')" :back-label="tx['credit.title']"
+                    :badge="flag">
+      <rx-action-sheet rx-if="can_edit" id="edit-credit-account" :label="tx['credit.edit']" :action="route('wl_sales.credit_account_save')"
+                       :title="tx['credit.edit']" :submit-label="tx['credit.save']" icon="pencil">
+        <input type="hidden" name="party_id" value="{{ party }}"/>
+        <rx-input name="credit_limit" :label="tx['credit.limit']" id="edit-credit-account-limit" :value="limit_input"/>
+        <rx-input name="payment_terms_days" :label="tx['credit.terms']" id="edit-credit-account-terms" :value="terms_input"/>
+        <rx-input name="grace_days" :label="tx['credit.grace']" id="edit-credit-account-grace" :value="grace_input"/>
+        <rx-input name="sales_rep" :label="tx['credit.sales_rep']" id="edit-credit-account-rep" :value="rep_input"/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-form-errors/>
+    <rx-card :title="tx['credit.terms_title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['credit.limit']" :value="limit"/>
+        <rx-entry :label="tx['credit.terms']" :value="terms"/>
+        <rx-entry :label="tx['credit.grace']" :value="grace"/>
+        <rx-entry :label="tx['credit.group']" :value="group"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['credit.exposure_title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['credit.invoices']" :value="invoices"/>
+        <rx-entry :label="tx['credit.cheques']" :value="cheques"/>
+        <rx-entry :label="tx['credit.orders']" :value="orders"/>
+        <rx-entry :label="tx['credit.owes']" :value="owes"/>
+        <rx-entry :label="tx['credit.overdue']" :value="overdue"/>
+        <rx-entry :label="tx['credit.available']" :value="available"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="held" as="order" :key="order.id" :caption="tx['credit.held_title']" card>
+      <rx-column :label="tx['orders.number']"><a href="{{ route('wl_sales.sales_order', order.id) }}">{{ order.number }}</a></rx-column>
+      <rx-column :label="tx['credit.value']">{{ order.value }}</rx-column>
+      <rx-column :label="tx['credit.hold_reason']" hide-narrow>{{ order.reason }}</rx-column>
+      <rx-column :label="tx['credit.returns_to']" hide-narrow>{{ order.returns_to }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['credit.no_held']" icon="check"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

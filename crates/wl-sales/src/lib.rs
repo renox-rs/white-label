@@ -155,6 +155,14 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-sales/sales_order.html"),
     ),
     (
+        "wl-sales/credit_accounts.html",
+        include_str!("../views/wl-sales/credit_accounts.html"),
+    ),
+    (
+        "wl-sales/credit_account.html",
+        include_str!("../views/wl-sales/credit_account.html"),
+    ),
+    (
         "wl-sales/sales_returns.html",
         include_str!("../views/wl-sales/sales_returns.html"),
     ),
@@ -578,6 +586,8 @@ impl Module for WlSales {
             .view_data::<pages::campaigns::ShowPage>()
             .view_data::<pages::counter_sales::IndexPage>()
             .view_data::<pages::counter_sales::ShowPage>()
+            .view_data::<pages::credit::IndexPage>()
+            .view_data::<pages::credit::ShowPage>()
             .view_data::<pages::sales_orders::IndexPage>()
             .view_data::<pages::sales_orders::ShowPage>()
             .view_data::<pages::sales_returns::IndexPage>()
@@ -714,6 +724,14 @@ impl Module for WlSales {
                 .group("nav.app")
                 .order(52)
                 .permission(permissions::SALES_ORDERS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_sales.credit_accounts", "nav.credit_accounts")
+                .icon("landmark")
+                .group("nav.app")
+                .order(52)
+                .permission(permissions::CREDIT_VIEW),
         );
         app.nav(
             "app",

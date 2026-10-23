@@ -10,12 +10,17 @@
         <rx-input name="payment_mode" :label="tx['orders.payment_mode']" id="create-sales-order-payment"/>
       </rx-action-sheet>
     </rx-page-header>
+    <rx-row>
+      <rx-link-button rx-if="held_only" :href="route('wl_sales.sales_orders')" :label="tx['orders.all']"/>
+      <rx-link-button rx-else :href="route('wl_sales.sales_orders') ~ '?view=credit_hold'" :label="tx['orders.on_credit_hold'] ~ ' (' ~ held_count ~ ')'"/>
+    </rx-row>
     <rx-table :rows="orders" as="order" :key="order.id" :caption="tx['orders.title']" card>
       <rx-column :label="tx['orders.number']"><a href="{{ route('wl_sales.sales_order', order.id) }}">{{ order.number }}</a></rx-column>
-      <rx-column :label="tx['orders.customer']" hide-narrow>{{ order.customer }}</rx-column>
+      <rx-column :label="tx['orders.customer']" hide-narrow>{{ order.customer_name }}</rx-column>
       <rx-column :label="tx['orders.channel']" hide-narrow>{{ order.channel }}</rx-column>
       <rx-column :label="tx['orders.total']">{{ order.total }}</rx-column>
       <rx-column :label="tx['fields.status']"><rx-badge :kind="order.status_kind" :text="order.status_label"/></rx-column>
+      <rx-column :label="tx['credit.hold_reason']" hide-narrow>{{ order.hold_reason }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['orders.empty']" icon="inbox"/></rx-slot>
     </rx-table>
   </rx-stack>

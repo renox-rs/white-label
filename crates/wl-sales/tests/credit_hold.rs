@@ -4,139 +4,19 @@
 
 mod support;
 
-use renox::prelude::*;
 use wl_kernel::PartyId;
-use wl_kernel::invoicing::VatCategory;
-use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::sales::{
     CreditFailure, CreditVerdict, FulfilOrder, FulfilledLine, SalesOrderId, credit_checker,
     order_fulfilment,
 };
 use wl_sales::customer_account::{self, Terms};
-use wl_sales::permissions as perm;
-use wl_sales::sale_line::NewLine;
-use wl_sales::sales_orders::{self, NewSalesOrder};
-use wl_sales::{SaleLine, SalesOrder, SalesOrderStatus, WlSales};
+use wl_sales::sales_orders;
+use wl_sales::{SaleLine, SalesOrderStatus, WlSales};
 
-use support::credit::Credit;
-use support::{Booted, boot_configured};
-
-/// The customer all orders are for.
-const CUSTOMER: i64 = 7;
-
-async fn boot() -> (Booted, Credit) {
-    boot_with(WlSales::new()).await
-}
-
-async fn boot_with(sales: WlSales) -> (Booted, Credit) {
-    let credit = Credit::default();
-    let t = boot_configured(sales, credit.clone()).await;
-    (t, credit)
-}
-
-/// A user who enters, submits and accepts orders.
-async fn seller(t: &Booted) -> User {
-    t.user(
-        "Sam",
-        &[
-            perm::SALES_ORDERS_VIEW,
-            perm::SALES_ORDERS_CREATE,
-            perm::SALES_ORDERS_ACCEPT,
-            perm::SALES_ORDERS_CANCEL,
-        ],
-    )
-    .await
-}
-
-/// The customer's sales rep and an accountant (the holder of the
-/// `accountant` role).
-async fn rep_and_accountant(t: &Booted) -> (User, User) {
-    let rep = t.user("Rita", &[perm::SALES_ORDERS_VIEW]).await;
-    let accountant = t.user("Ayesha", &[]).await;
-    renox::auth::permissions::define_role(t.db(), "accountant", &[])
-        .await
-        .unwrap();
-    accountant.assign_role(t.db(), "accountant").await.unwrap();
-    (rep, accountant)
-}
-
-/// The customer's account with a limit of AED 50,000 and `rep` as its rep.
-async fn account(t: &Booted, rep: &User) {
-    customer_account::save(
-        t.state(),
-        PartyId(CUSTOMER),
-        Terms::default().limit(5_000_000).rep(rep.id),
-    )
-    .await
-    .unwrap();
-}
-
-/// A draft order for the customer with one zero-rated line of `price` fils
-/// (so the value with VAT is the price).
-async fn draft(t: &Booted, by: &User, channel: &str, mode: &str, price: i64) -> SalesOrder {
-    let order = sales_orders::create(
-        t.state(),
-        Some(by.id),
-        NewSalesOrder::new(PartyId(CUSTOMER))
-            .channel(channel)
-            .payment_mode(mode),
-    )
-    .await
-    .unwrap();
-    add_line(t, order.id, "pump", price).await;
-    reload(t, order.id).await
-}
-
-async fn add_line(t: &Booted, id: i64, code: &str, price: i64) {
-    sales_orders::add_line(
-        t.state(),
-        id,
-        NewLine::new(code, price).vat_category(VatCategory::ZeroRated),
-    )
-    .await
-    .unwrap();
-}
-
-async fn reload(t: &Booted, id: i64) -> SalesOrder {
-    SalesOrder::find_or_404(t.db(), id).await.unwrap()
-}
-
-/// Submits the draft `id` through the page, as the seller.
-async fn submit(t: &Booted, id: i64) {
-    t.app
-        .post(&format!("/sales-orders/{id}/submit"), &[("x", "")])
-        .await
-        .assert_status(303);
-}
-
-/// A phone order of AED 8,000 on account, submitted while the customer owes
-/// nothing, so it is `confirmed`.
-async fn confirmed(t: &Booted, by: &User) -> SalesOrder {
-    t.app.acting_as(by);
-    let order = draft(t, by, "phone", "on_account", 800_000).await;
-    submit(t, order.id).await;
-    let order = reload(t, order.id).await;
-    assert_eq!(order.status, SalesOrderStatus::Confirmed);
-    order
-}
-
-async fn recheck(t: &Booted, order: &SalesOrder) -> CreditVerdict {
-    credit_checker(t.state())
-        .credit_recheck(t.state(), SalesOrderId(order.id))
-        .await
-        .unwrap()
-}
-
-fn users_told(request: &wl_kernel::notify::NotifyRequest) -> Vec<i64> {
-    request
-        .recipients
-        .iter()
-        .filter_map(|r| match r {
-            NotifyRecipient::User { id } => Some(*id),
-            _ => None,
-        })
-        .collect()
-}
+use support::sell::{
+    CUSTOMER, account, add_line, boot, boot_with, confirmed, draft, recheck, reload,
+    rep_and_accountant, seller, submit, users_told,
+};
 
 /// AC1: AED 46,000 owed (invoices 38,000 + an uncleared cheque 8,000) and an
 /// undelivered order of 8,000 against a limit of 50,000: the dispatch check

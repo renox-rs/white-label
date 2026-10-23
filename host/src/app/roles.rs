@@ -327,6 +327,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::LOYALTY_MANAGE,
             sales::SEGMENTS_MANAGE,
             sales::SEGMENTS_EXPORT,
+            sales::CREDIT_VIEW,
+            sales::CREDIT_RELEASE,
+            sales::CREDIT_LIMITS_APPROVE,
             hr::EMPLOYEES_VIEW,
             hr::EMPLOYEES_MANAGE,
             hr::EMPLOYEES_SENSITIVE_VIEW,
@@ -736,6 +739,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         ACCOUNTANT,
         &[
+            // Sees why an order is held for credit and releases it, never
+            // the one who entered it (`SAL.ACL.03`).
+            sales::SALES_ORDERS_VIEW,
+            sales::CREDIT_VIEW,
+            sales::CREDIT_RELEASE,
             hr::LEAVE_REQUEST,
             edu::COURSES_VIEW,
             edu::BATCHES_VIEW,
@@ -841,6 +849,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         FINANCE_MANAGER,
         &[
+            // Sets the credit limits and releases a held order (`SAL.ACL.03`).
+            sales::SALES_ORDERS_VIEW,
+            sales::CREDIT_VIEW,
+            sales::CREDIT_RELEASE,
+            sales::CREDIT_LIMITS_APPROVE,
             invoices::VIEW,
             invoices::RECEIVABLES_VIEW,
             invoices::BUDGETS_VIEW,

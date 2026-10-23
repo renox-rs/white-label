@@ -123,6 +123,10 @@ pub struct OrderRow {
     pub number: String,
     /// The customer's party id.
     pub customer: i64,
+    /// The customer's name.
+    pub customer_name: String,
+    /// Why the order is on credit hold, for a viewer of the credit figures.
+    pub hold_reason: String,
     /// The channel.
     pub channel: String,
     /// The total, `AED 105.00`.
@@ -140,30 +144,61 @@ pub(crate) struct IndexPage {
     tx: Texts,
     orders: Vec<OrderRow>,
     can_create: bool,
+    /// Only the orders on credit hold are listed.
+    held_only: bool,
+    /// How many orders are on credit hold.
+    held_count: i64,
+    /// The viewer sees why an order is held.
+    can_see_credit: bool,
 }
 
-/// `GET /sales-orders`: the latest orders, newest first.
-async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View> {
-    let orders = SalesOrder::query()
-        .order_by_desc(SalesOrder::ID)
-        .get(&db)
-        .await?
-        .into_iter()
-        .take(50)
-        .map(|order| OrderRow {
+/// `GET /sales-orders`: the latest orders, newest first; `?view=credit_hold`
+/// lists the orders on credit hold, oldest hold first, for the accountant and
+/// the sales rep.
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Query(query): Query<BTreeMap<String, String>>,
+) -> Result<View> {
+    let held_only = query.get("view").is_some_and(|v| v == "credit_hold");
+    let can_see_credit = user.has_permission(permissions::CREDIT_VIEW);
+    let mut find = SalesOrder::query();
+    find = if held_only {
+        find.where_(SalesOrder::STATUS.eq(SalesOrderStatus::CreditHold))
+            .order_by(SalesOrder::ID)
+    } else {
+        find.order_by_desc(SalesOrder::ID)
+    };
+    let mut rows = Vec::new();
+    for order in find.get(&state.db).await?.into_iter().take(50) {
+        rows.push(OrderRow {
             id: order.id,
             number: order.number.clone(),
             customer: order.party_id,
+            customer_name: crate::pages::party_name(&state, &lang, order.party_id).await,
+            hold_reason: if can_see_credit && order.status == SalesOrderStatus::CreditHold {
+                crate::pages::credit::hold_reason_text(&lang, order.hold_reason.as_deref())
+            } else {
+                String::new()
+            },
             channel: order.channel.clone(),
             total: money(order.gross_total),
             status_label: text(&lang, &format!("orders.status.{}", order.status.as_str())),
             status_kind: status_kind(order.status),
-        })
-        .collect();
+        });
+    }
+    let held_count = SalesOrder::query()
+        .where_(SalesOrder::STATUS.eq(SalesOrderStatus::CreditHold))
+        .count(&state.db)
+        .await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        orders,
+        orders: rows,
         can_create: user.has_permission(permissions::SALES_ORDERS_CREATE),
+        held_only,
+        held_count: i64::try_from(held_count).unwrap_or(i64::MAX),
+        can_see_credit,
     }))
 }
 
@@ -184,6 +219,27 @@ pub struct LineRow {
     pub gross: String,
 }
 
+/// The credit hold of an order as its page shows it. The reason and the
+/// figures are for a holder of `credit.view`; everyone else sees only that
+/// the order is on hold.
+#[derive(Serialize, Debug, Clone)]
+pub struct HoldView {
+    /// The viewer may see the reason and the figures.
+    pub detail: bool,
+    /// Why, in words.
+    pub reason: String,
+    /// The state the order returns to, in words.
+    pub returns_to: String,
+    /// What the customer owes with this order counted.
+    pub owes: String,
+    /// The overdue balance.
+    pub overdue: String,
+    /// The limit checked against.
+    pub limit: String,
+    /// When it was put on hold, `18 Oct 2026`.
+    pub held_on: String,
+}
+
 /// What the order page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-sales/sales_order.html")]
@@ -199,6 +255,7 @@ pub(crate) struct ShowPage {
     lines: Vec<LineRow>,
     actions: Vec<Available>,
     member: Option<String>,
+    hold: Option<HoldView>,
     can_edit: bool,
     can_accept: bool,
     can_attach: bool,
@@ -275,8 +332,10 @@ async fn show(
             | SalesOrderStatus::Cancelled
             | SalesOrderStatus::Rejected
     );
+    let hold = hold_view(&user, &lang, &order);
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
+        hold,
         title: order.number.clone(),
         status_label: text(&lang, &format!("orders.status.{}", order.status.as_str())),
         status_kind: status_kind(order.status),
@@ -297,6 +356,33 @@ async fn show(
             && user.has_permission(permissions::SALES_ORDERS_ACCEPT),
         order,
     }))
+}
+
+/// The credit hold card of `order`, if it is on credit hold.
+fn hold_view(user: &AuthUser, lang: &Lang, order: &SalesOrder) -> Option<HoldView> {
+    if order.status != SalesOrderStatus::CreditHold {
+        return None;
+    }
+    Some(HoldView {
+        detail: user.has_permission(permissions::CREDIT_VIEW),
+        reason: crate::pages::credit::hold_reason_text(lang, order.hold_reason.as_deref()),
+        returns_to: text(
+            lang,
+            &format!(
+                "orders.status.{}",
+                order.state_before_hold.as_deref().unwrap_or("confirmed")
+            ),
+        ),
+        owes: money(order.hold_open_balance.unwrap_or_default()),
+        overdue: money(order.hold_overdue.unwrap_or_default()),
+        limit: order
+            .hold_limit
+            .map_or_else(|| text(lang, "credit.no_limit"), money),
+        held_on: order
+            .held_at
+            .map(|at| at.format("%-d %b %Y").to_string())
+            .unwrap_or_default(),
+    })
 }
 
 /// `POST /sales-orders`: enters a draft order for the customer `party_id`.
