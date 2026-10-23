@@ -250,6 +250,9 @@ pub struct JobCard {
     /// When the message asking the customer to collect the vehicle gave up
     /// (`AUT.RUL.17`): the advisor sees "message not delivered".
     pub collect_message_failed_at: Option<DateTime>,
+    /// When the vehicle-ready SMS gave up (`AUT.RUL.02`); the advisor sees
+    /// *message not delivered*.
+    pub ready_message_failed_at: Option<DateTime>,
     /// The day the first reminder to collect the vehicle fell due; the storage
     /// fee runs from it (`AUT.RUL.18`).
     pub collect_first_on: Option<NaiveDate>,

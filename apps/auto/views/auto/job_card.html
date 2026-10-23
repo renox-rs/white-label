@@ -105,6 +105,7 @@
       </template>
     </rx-page-header>
     <rx-alert rx-if="stop.collect_failed" kind="warning" :message="tx['decline.message_failed']"/>
+    <rx-alert rx-if="stop.ready_failed" kind="warning" :message="tx['notice.ready_failed']"/>
     <rx-alert rx-if="cancel_waits" kind="warning" :message="tx['stop.pending_banner']"/>
     <rx-alert rx-if="customer_on_hold" kind="warning" :message="tx['blocked.banner']"/>
     <rx-include template="wl-kernel/approval_card.html"/>

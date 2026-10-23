@@ -150,7 +150,7 @@ async fn mark_failed(state: &AppState, job_card_id: i64, at: DateTime) -> Result
         .update(
             &state.db,
             &[
-                ("collect_message_failed_at", &Some(at)),
+                ("ready_message_failed_at", &Some(at)),
                 ("updated_at", &now()),
             ],
         )

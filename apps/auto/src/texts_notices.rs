@@ -3,6 +3,10 @@
 
 /// Every key of this part, with its English text.
 pub(crate) const TEXTS: &[(&str, &str)] = &[
+    (
+        "auto.notice.ready_failed",
+        "The message that the vehicle is ready was not delivered; call the customer.",
+    ),
     ("auto.late.problem.no_time", "Give the time the vehicle left."),
     (
         "auto.late.problem.future",
