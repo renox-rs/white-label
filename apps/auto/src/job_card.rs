@@ -162,6 +162,11 @@ pub struct JobCard {
     pub accident_clear_by: Option<i64>,
     /// When the request was made.
     pub accident_clear_at: Option<DateTime>,
+    /// An internal job card: the repair of damage the workshop caused, paid by
+    /// the workshop; nothing on it is invoiced (`AUT.ACL.22`).
+    pub internal: bool,
+    /// The vehicle incident an internal job card repairs.
+    pub incident_id: Option<i64>,
     /// The inspection fee agreed at check-in, in fils; 0 for none.
     pub inspection_fee: i64,
     /// The daily storage fee agreed at check-in, in fils; 0 for none

@@ -264,6 +264,59 @@
         </rx-action-sheet>
       </rx-toolbar>
     </rx-card>
+    <rx-alert rx-if="care.is_internal" kind="info" :message="tx['incidents.is_internal']"/>
+    <rx-card rx-if="care.drives or care.can_work" :title="tx['drives.title']">
+      <rx-table :rows="care.drives" as="drive" :key="drive.id" :caption="tx['drives.title']">
+        <rx-column :label="tx['drives.driver']">{{ drive.driver }}</rx-column>
+        <rx-column :label="tx['drives.out']" hide-narrow>{{ drive.out }}</rx-column>
+        <rx-column :label="tx['drives.back']" hide-narrow>{{ drive.back }}</rx-column>
+        <rx-column :label="tx['drives.km_out']" align="num">{{ drive.km_out }}</rx-column>
+        <rx-column :label="tx['drives.km_in']" align="num">{{ drive.km_in }}</rx-column>
+        <rx-column :label="tx['drives.distance']" align="num" hide-narrow>{{ drive.distance }}</rx-column>
+        <rx-row-actions>
+          <rx-action-sheet rx-if="drive.open and care.can_back" :id="'drive-finish-' ~ drive.id" :label="tx['drives.finish']" :action="route('auto.test_drive_finish', drive.id)"
+                           :title="tx['drives.finish']" :description="tx['drives.finish_description']" :submit-label="tx['drives.finish']" icon="check">
+            <rx-input name="odometer" :label="tx['drives.km_in']" :id="'drive-finish-km-' ~ drive.id" required/>
+          </rx-action-sheet>
+        </rx-row-actions>
+        <rx-slot name="empty"><rx-empty :title="tx['drives.empty']" icon="truck"/></rx-slot>
+      </rx-table>
+      <rx-toolbar>
+        <rx-action-sheet rx-if="care.can_work" :id="'drive-record-' ~ id" :label="tx['drives.record']" :action="route('auto.job_card_test_drive', id)"
+                         :title="tx['drives.record']" :description="tx['drives.record_description']" :submit-label="tx['drives.record']" icon="truck">
+          <rx-input name="odometer" :label="tx['drives.km_out']" :id="'drive-record-km-' ~ id" required/>
+        </rx-action-sheet>
+      </rx-toolbar>
+    </rx-card>
+    <rx-card rx-if="care.incidents or care.can_work" :title="tx['incidents.title']">
+      <rx-table :rows="care.incidents" as="incident" :key="incident.id" :caption="tx['incidents.title']">
+        <rx-column :label="tx['incidents.number']">{{ incident.number }}</rx-column>
+        <rx-column :label="tx['incidents.description']">{{ incident.description }}</rx-column>
+        <rx-column :label="tx['incidents.road_accident']" hide-narrow>{{ incident.road_accident }}</rx-column>
+        <rx-column :label="tx['incidents.ticket']" hide-narrow>{{ incident.ticket }}</rx-column>
+        <rx-column :label="tx['incidents.liability']">{{ incident.liability }}</rx-column>
+        <rx-column :label="tx['incidents.reason']" hide-narrow>{{ incident.reason }}</rx-column>
+        <rx-column :label="tx['incidents.internal']" hide-narrow>
+          <template rx-if="incident.internal_id"><a href="{{ route('auto.job_card', incident.internal_id) }}">{{ incident.internal }}</a></template>
+          <template rx-else>{{ incident.internal }}</template>
+        </rx-column>
+        <rx-row-actions>
+          <rx-action-sheet rx-if="incident.can_decide" :id="'incident-decide-' ~ incident.id" :label="tx['incidents.decide']" :action="route('auto.incident_decide', incident.id)"
+                           :title="tx['incidents.decide']" :description="tx['incidents.decide_description']" :submit-label="tx['incidents.decide']" icon="check">
+            <rx-select name="liability" :label="tx['incidents.liability']" :options="care.liability_options" :selected="'not_workshop'" :id="'incident-liability-' ~ incident.id"/>
+            <rx-textarea name="reason" :label="tx['incidents.reason']" :id="'incident-reason-' ~ incident.id" required/>
+          </rx-action-sheet>
+        </rx-row-actions>
+        <rx-slot name="empty"><rx-empty :title="tx['incidents.empty']" icon="triangle-alert"/></rx-slot>
+      </rx-table>
+      <rx-toolbar>
+        <rx-action-sheet rx-if="care.can_work" :id="'incident-report-' ~ id" :label="tx['incidents.report']" :action="route('auto.job_card_incident', id)"
+                         :title="tx['incidents.report']" :description="tx['incidents.report_description']" :submit-label="tx['incidents.report']" icon="triangle-alert">
+          <rx-textarea name="description" :label="tx['incidents.description']" :id="'incident-description-' ~ id" required/>
+          <rx-checkbox name="road_accident" :label="tx['incidents.road_accident']" :hint="tx['incidents.road_hint']" :id="'incident-road-' ~ id"/>
+        </rx-action-sheet>
+      </rx-toolbar>
+    </rx-card>
     <rx-card rx-if="stop.summary" :title="tx['stop.summary']">
       <rx-table :rows="stop.summary" as="row" :key="row[0]" :caption="tx['stop.summary']">
         <rx-column :label="tx['jobs.what']">{{ row[0] }}</rx-column>

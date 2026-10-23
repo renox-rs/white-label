@@ -6,6 +6,7 @@
 pub mod accident;
 pub mod claims;
 pub mod fleet;
+pub mod incidents;
 pub mod insurers;
 pub mod job_cards;
 pub mod labour;
@@ -34,6 +35,7 @@ pub fn routes() -> Routes {
         .merge(labour::routes())
         .merge(stops::routes())
         .merge(accident::routes())
+        .merge(incidents::routes())
         .merge(claims::routes())
         .merge(insurers::routes())
         .merge(fleet::routes())

@@ -26,6 +26,7 @@ use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::documents::dubai_text;
 
 use super::accident::{self, AccidentView};
+use super::incidents::{self as incident_pages, IncidentView};
 use super::stops::{self, StopView, SubstituteView};
 use super::vehicles::{HistoryRow, km_text, vehicle_text};
 use super::{
@@ -720,6 +721,8 @@ pub(crate) struct ShowPage {
     substitute: SubstituteView,
     // The police report and the accident flag (BL-AUT-07).
     accident_flag: AccidentView,
+    // The test drives and the vehicle incidents (BL-AUT-06).
+    care: IncidentView,
 }
 
 /// Whether a user sees the customer's name on a job card.
@@ -1100,6 +1103,7 @@ async fn show(
             .collect(),
         substitute: stops::substitute_view(&state, &lang, &user, &card).await?,
         accident_flag: accident::view_of(&state, &lang, &user, &card).await?,
+        care: incident_pages::view_of(&state, &lang, &user, &card).await?,
     }))
 }
 

@@ -26,12 +26,14 @@ pub struct Opened {
     pub completed: Option<String>,
     /// The reason it was cancelled with, once cancelled.
     pub cancelled: Option<String>,
+    /// The resolution it was resolved with by its source.
+    pub resolved: Option<String>,
 }
 
 impl Opened {
     /// Whether it is still open.
     pub fn is_open(&self) -> bool {
-        self.completed.is_none() && self.cancelled.is_none()
+        self.completed.is_none() && self.cancelled.is_none() && self.resolved.is_none()
     }
 
     /// The user it is assigned to, if it is assigned to a user.
@@ -120,6 +122,7 @@ impl TaskCreator for Tickets {
             comments: Vec::new(),
             completed: None,
             cancelled: None,
+            resolved: None,
         });
         Box::pin(async move { Ok(Some(reference(id))) })
     }
@@ -176,6 +179,26 @@ impl TaskCreator for Tickets {
             None => false,
         };
         Box::pin(async move { Ok(closed) })
+    }
+
+    fn resolve_from_source<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        let mut all = self.opened.lock().unwrap();
+        let done = match all
+            .iter_mut()
+            .find(|opened| opened.id == ticket.0 && opened.is_open())
+        {
+            Some(opened) => {
+                opened.resolved = Some(note.to_owned());
+                true
+            }
+            None => false,
+        };
+        Box::pin(async move { Ok(done) })
     }
 
     fn cancel_from_source<'a>(

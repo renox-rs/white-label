@@ -24,6 +24,8 @@ pub mod fleet_invoice;
 pub mod fleet_job;
 pub mod fleet_service;
 pub mod fleet_services;
+pub mod incident;
+pub mod incidents;
 pub mod insurer;
 pub mod insurers;
 pub mod job_card;
@@ -51,9 +53,12 @@ pub mod supplier_claim;
 pub mod supplier_claim_machine;
 pub mod supplier_claims;
 pub mod supplier_terms;
+pub mod test_drive;
+pub mod test_drives;
 mod texts;
 mod texts_claims;
 mod texts_fleet;
+mod texts_incidents;
 mod texts_jobs;
 mod texts_police;
 mod texts_stops;
@@ -73,12 +78,14 @@ pub use fleet_contract::{FleetContract, FleetStatus};
 pub use fleet_invoice::FleetInvoice;
 pub use fleet_job::FleetJob;
 pub use fleet_service::FleetService;
+pub use incident::Incident;
 pub use insurer::Insurer;
 pub use job_card::{JobCard, JobCardStatus};
 pub use job_stops::JobCardCancelled;
 pub use labour_line::{LabourLine, LabourPricing, LineStatus, WorkStatus};
 pub use labour_operation::LabourOperation;
 pub use part_line::{PartCondition, PartLine};
+pub use test_drive::TestDrive;
 pub use supplier_claim::{SupplierAnswer, SupplierClaim, SupplierClaimStatus};
 pub use vehicle::{Emirate, Vehicle};
 
@@ -228,7 +235,9 @@ impl Module for Auto {
             .model::<SupplierClaim>()
             .model::<parts_wait::PartsWait>()
             .model::<substitute::Substitute>()
-            .model::<supply::SupplyPeriod>();
+            .model::<supply::SupplyPeriod>()
+            .model::<TestDrive>()
+            .model::<Incident>();
         // The job card: the machine, and the job card that the check-in of a
         // workshop booking opens.
         job_card_machine::register();
@@ -239,6 +248,8 @@ impl Module for Auto {
         job_stops::register(app);
         // The police report guard of the accident repair (`AUT.ACL.20`).
         documents::register();
+        // The liability of a vehicle incident is decided on the job card.
+        incidents::register();
         job_void::listen(app);
         // A job card declined: the inspection fee, the booking and the
         // message asking the customer to collect; the hourly expiry check.

@@ -11,7 +11,7 @@
 //! | [`WAIT_PARTS`] | in_progress | awaiting_parts | `job_cards.work` | `parts_requested` |
 //! | [`PARTS_ARRIVED`] | awaiting_parts | in_progress | system (stock issued) | `stock_issued` (slot) |
 //! | [`FINISH_WORK`] | in_progress | quality_check | `job_cards.work` | `labour_done` |
-//! | [`PASS_QC`] | quality_check | ready | `job_cards.qc` | `qc_checklist_complete`, `qc_findings_closed` (slot) |
+//! | [`PASS_QC`] | quality_check | ready | `job_cards.qc` | `qc_checklist_complete`, `test_drives_closed` (BL-AUT-06), `qc_findings_closed` (slot) |
 //! | [`FAIL_QC`] | quality_check | in_progress | `job_cards.qc` | a reason (the findings) |
 //! | [`DELIVER`] | ready | delivered | `job_cards.advise` | `qc_checklist_complete`, `added_work_approved`, `substitute_closed` and `payment_cleared` (slot) |
 //! | [`CANCEL`] / [`CANCEL_APPROVED`] / [`CANCEL_SYSTEM`] | inspecting, awaiting_approval, in_progress, awaiting_parts, quality_check | cancelled | `job_cards.advise`, approved by the branch manager (`AUT.ACL.21`) / the kernel after the approval / system (a claim) | a reason; `work_done_recorded`, `acknowledged`, `approved_if_below_work_done` |
@@ -211,6 +211,9 @@ pub struct JobInput {
     /// [`APPROVE_SYSTEM`], `AUT.ACL.20`).
     #[serde(default)]
     pub police: Option<PoliceVerdict>,
+    /// How many test drives have not come back ([`PASS_QC`], `AUT.ACL.22`).
+    #[serde(default)]
+    pub test_drives_open: Option<i64>,
 }
 
 fn input_of(ctx: &TransitionCtx) -> JobInput {
@@ -647,6 +650,11 @@ fn pass_qc() -> Transition<JobCard> {
         .guard("qc_checklist_complete", |c: &JobCard, _ctx| {
             let ok = c.qc_complete();
             Box::pin(async move { check(ok, "auto.jobs.problem.qc_incomplete") })
+        })
+        .guard("test_drives_closed", |_c: &JobCard, ctx| {
+            // A test drive without its mileage in is still out (BL-AUT-06).
+            let ok = input_of(ctx).test_drives_open.unwrap_or(0) == 0;
+            Box::pin(async move { check(ok, "auto.drives.problem.open") })
         });
     slot(transition, "qc_findings_closed").effect(|c: &JobCard, ctx, tx| {
         let id = c.id;
@@ -993,7 +1001,11 @@ mod tests {
         assert_eq!(guards(FINISH_WORK), ["labour_done"]);
         assert_eq!(
             guards(PASS_QC),
-            ["qc_checklist_complete", "qc_findings_closed"]
+            [
+                "qc_checklist_complete",
+                "test_drives_closed",
+                "qc_findings_closed"
+            ]
         );
         assert!(guards(FAIL_QC).is_empty());
         assert_eq!(
