@@ -131,7 +131,10 @@ async fn a_refused_line_of_a_prepaid_order_is_refunded_at_once() {
         .await
         .assert_status(303);
 
-    assert_eq!(w.delivery(&delivery).await.status, DeliveryStatus::Delivered);
+    assert_eq!(
+        w.delivery(&delivery).await.status,
+        DeliveryStatus::Delivered
+    );
     let after = w.reload(&order).await;
     assert_eq!(after.status, FnbOrderStatus::Completed);
     let returns = returns_of(&w, &after).await;
@@ -209,12 +212,20 @@ async fn a_refused_line_above_fifty_dirhams_is_left_to_the_kitchen_manager() {
     let told = w.notices.of_type(STAFF_NOTICE);
     let waiting = told
         .iter()
-        .find(|r| r.data["title"].as_str().is_some_and(|t| t.contains("refus")))
+        .find(|r| {
+            r.data["title"]
+                .as_str()
+                .is_some_and(|t| t.contains("refus"))
+        })
         .unwrap_or_else(|| panic!("the managers were not told: {told:?}"));
     assert!(
         waiting.data["body"].as_str().unwrap().contains("60.00"),
         "{:?}",
         waiting.data
     );
-    assert!(w.notices.users_of_type(STAFF_NOTICE).contains(&w.manager.id));
+    assert!(
+        w.notices
+            .users_of_type(STAFF_NOTICE)
+            .contains(&w.manager.id)
+    );
 }
