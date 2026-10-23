@@ -32,31 +32,31 @@
       </template>
       <template rx-if="actions.start.shown">
         <template rx-if="actions.start.blocked">
-          <rx-button :label="tx['action.start']" variant="primary" icon="play" :disabled-reason="actions.start.blocked"/>
+          <rx-button :label="tx['action.start']" variant="primary" icon="zap" :disabled-reason="actions.start.blocked"/>
         </template>
         <template rx-else>
           <rx-action-sheet id="start-order" :label="tx['action.start']" :action="route('manufacturing.start', id)"
-                           :title="tx['action.start']" :description="tx['action.start_hint']" :submit-label="tx['action.start']" variant="primary" icon="play"/>
+                           :title="tx['action.start']" :description="tx['action.start_hint']" :submit-label="tx['action.start']" variant="primary" icon="zap"/>
         </template>
       </template>
       <template rx-if="actions.hold.shown">
         <template rx-if="actions.hold.blocked">
-          <rx-button :label="tx['action.hold']" variant="secondary" icon="pause" :disabled-reason="actions.hold.blocked"/>
+          <rx-button :label="tx['action.hold']" variant="secondary" icon="clock" :disabled-reason="actions.hold.blocked"/>
         </template>
         <template rx-else>
           <rx-action-sheet id="hold-order" :label="tx['action.hold']" :action="route('manufacturing.hold', id)"
-                           :title="tx['action.hold']" :description="tx['action.hold_hint']" :submit-label="tx['action.hold']" variant="secondary" icon="pause">
+                           :title="tx['action.hold']" :description="tx['action.hold_hint']" :submit-label="tx['action.hold']" variant="secondary" icon="clock">
             <rx-select name="reason" :label="tx['form.hold_reason']" :options="hold_reasons" :selected="hold_selected"/>
           </rx-action-sheet>
         </template>
       </template>
       <template rx-if="actions.resume.shown">
         <template rx-if="actions.resume.blocked">
-          <rx-button :label="tx['action.resume']" variant="primary" icon="play" :disabled-reason="actions.resume.blocked"/>
+          <rx-button :label="tx['action.resume']" variant="primary" icon="zap" :disabled-reason="actions.resume.blocked"/>
         </template>
         <template rx-else>
           <rx-action-sheet id="resume-order" :label="tx['action.resume']" :action="route('manufacturing.resume', id)"
-                           :title="tx['action.resume']" :description="tx['action.resume_hint']" :submit-label="tx['action.resume']" variant="primary" icon="play"/>
+                           :title="tx['action.resume']" :description="tx['action.resume_hint']" :submit-label="tx['action.resume']" variant="primary" icon="zap"/>
         </template>
       </template>
       <template rx-if="actions.issue.shown">
@@ -74,11 +74,11 @@
       </template>
       <template rx-if="actions.report.shown">
         <template rx-if="actions.report.blocked">
-          <rx-button :label="tx['action.report']" variant="secondary" icon="clipboard-check" :disabled-reason="actions.report.blocked"/>
+          <rx-button :label="tx['action.report']" variant="secondary" icon="clipboard-list" :disabled-reason="actions.report.blocked"/>
         </template>
         <template rx-else>
           <rx-action-sheet id="report-order" :label="tx['action.report']" :action="route('manufacturing.report', id)"
-                           :title="tx['action.report']" :description="tx['action.report_hint']" :submit-label="tx['action.report']" variant="secondary" icon="clipboard-check">
+                           :title="tx['action.report']" :description="tx['action.report_hint']" :submit-label="tx['action.report']" variant="secondary" icon="clipboard-list">
             <rx-input name="good" type="text" :label="tx['form.good']" :hint="tx['form.quantity_hint']" id="report-order-good" required/>
             <rx-input name="scrap" type="text" :label="tx['form.scrap']" :hint="tx['form.quantity_hint']" id="report-order-scrap"/>
             <rx-textarea name="note" :label="tx['form.note']" id="report-order-note"/>
@@ -108,11 +108,11 @@
       </template>
       <template rx-if="actions.unlink.shown">
         <template rx-if="actions.unlink.blocked">
-          <rx-button :label="tx['action.unlink']" variant="secondary" icon="unlink" :disabled-reason="actions.unlink.blocked"/>
+          <rx-button :label="tx['action.unlink']" variant="secondary" icon="link" :disabled-reason="actions.unlink.blocked"/>
         </template>
         <template rx-else>
           <rx-action-sheet id="unlink-order" :label="tx['action.unlink']" :action="route('manufacturing.unlink', id)"
-                           :title="tx['action.unlink']" :description="tx['action.unlink_hint']" :submit-label="tx['action.unlink']" variant="secondary" icon="unlink">
+                           :title="tx['action.unlink']" :description="tx['action.unlink_hint']" :submit-label="tx['action.unlink']" variant="secondary" icon="link">
             <rx-textarea name="reason" :label="tx['form.unlink_reason']" id="unlink-order-reason" required/>
           </rx-action-sheet>
         </template>
@@ -130,11 +130,11 @@
       </template>
       <template rx-if="actions.abort.shown">
         <template rx-if="actions.abort.blocked">
-          <rx-button :label="tx['action.abort']" variant="plain-danger" icon="octagon-x" :disabled-reason="actions.abort.blocked"/>
+          <rx-button :label="tx['action.abort']" variant="plain-danger" icon="circle-x" :disabled-reason="actions.abort.blocked"/>
         </template>
         <template rx-else>
           <rx-action-sheet id="abort-order" :label="tx['action.abort']" :action="route('manufacturing.abort', id)"
-                           :title="tx['action.abort']" :description="tx['action.abort_hint']" :submit-label="tx['action.abort']" variant="plain-danger" icon="octagon-x" danger>
+                           :title="tx['action.abort']" :description="tx['action.abort_hint']" :submit-label="tx['action.abort']" variant="plain-danger" icon="circle-x" danger>
             <rx-textarea name="reason" :label="tx['form.abort_reason']" id="abort-order-reason" :value="abort_prefill" required/>
             <rx-input rx-for="row in returns" :name="row.name" type="text" :label="row.label" :hint="row.hint" :id="row.name"/>
           </rx-action-sheet>
@@ -221,7 +221,7 @@
               </rx-action-sheet>
             </template>
           </rx-row-actions>
-          <rx-slot name="empty"><rx-empty :title="tx['output.empty']" :message="tx['output.empty_text']" icon="clipboard-check"/></rx-slot>
+          <rx-slot name="empty"><rx-empty :title="tx['output.empty']" :message="tx['output.empty_text']" icon="clipboard-list"/></rx-slot>
         </rx-table>
       </rx-tab>
       <rx-tab key="approvals" :label="tx['tab.approvals']">

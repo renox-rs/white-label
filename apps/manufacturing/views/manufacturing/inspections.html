@@ -30,12 +30,12 @@
             <rx-textarea name="note" :label="tx['inspections.note']" :id="'pass-inspection-note-' ~ row.id"/>
           </rx-action-sheet>
           <rx-action-sheet :id="'fail-inspection-' ~ row.id" :label="tx['inspections.fail']" :action="route('manufacturing.inspection_fail', row.id)"
-                           :title="tx['inspections.fail']" :description="tx['inspections.fail_hint']" :submit-label="tx['inspections.fail']" variant="plain-danger" icon="octagon-x" danger>
+                           :title="tx['inspections.fail']" :description="tx['inspections.fail_hint']" :submit-label="tx['inspections.fail']" variant="plain-danger" icon="circle-x" danger>
             <rx-textarea name="defect" :label="tx['inspections.defect']" :value="row.reason" :id="'fail-inspection-defect-' ~ row.id"/>
           </rx-action-sheet>
         </template>
       </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['inspections.empty']" :message="tx['inspections.empty_text']" icon="clipboard-check"/></rx-slot>
+      <rx-slot name="empty"><rx-empty :title="tx['inspections.empty']" :message="tx['inspections.empty_text']" icon="clipboard-list"/></rx-slot>
     </rx-table>
   </rx-stack>
 </rx-page>

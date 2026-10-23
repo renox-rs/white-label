@@ -23,7 +23,7 @@
       </rx-column>
       <rx-column :label="tx['po.note']" hide-narrow>{{ row.note }}</rx-column>
       <rx-column :label="tx['po.day']" hide-narrow>{{ row.day }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['po.empty']" :message="tx['po.empty_text']" icon="file-up"/></rx-slot>
+      <rx-slot name="empty"><rx-empty :title="tx['po.empty']" :message="tx['po.empty_text']" icon="upload"/></rx-slot>
     </rx-table>
   </rx-stack>
 </rx-page>

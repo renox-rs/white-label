@@ -34,7 +34,7 @@
         </template>
         <rx-link-button rx-if="row.cancel_line.shown" :href="row.order_url" :label="tx['returns.cancel_line']" icon="circle-x"/>
       </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['returns.empty']" :message="tx['returns.empty_text']" icon="undo-2"/></rx-slot>
+      <rx-slot name="empty"><rx-empty :title="tx['returns.empty']" :message="tx['returns.empty_text']" icon="refresh-cw"/></rx-slot>
     </rx-table>
   </rx-stack>
 </rx-page>

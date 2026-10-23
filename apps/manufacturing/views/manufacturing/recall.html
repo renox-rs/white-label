@@ -51,7 +51,7 @@
           </rx-column>
           <rx-column :label="tx['recall.quantity']" align="num">{{ line.quantity }}</rx-column>
           <rx-column :label="tx['recall.note']" hide-narrow>{{ line.note }}</rx-column>
-          <rx-slot name="empty"><rx-empty :title="tx['recall.repick_empty']" :message="tx['recall.repick_empty_text']" icon="package-check"/></rx-slot>
+          <rx-slot name="empty"><rx-empty :title="tx['recall.repick_empty']" :message="tx['recall.repick_empty_text']" icon="package"/></rx-slot>
         </rx-table>
       </rx-tab>
     </rx-tabs>

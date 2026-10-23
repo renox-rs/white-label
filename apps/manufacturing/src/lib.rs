@@ -106,7 +106,7 @@ impl Module for Manufacturing {
         app.nav(
             "app",
             NavLink::route("manufacturing.work_orders", "nav.work_orders")
-                .icon("factory")
+                .icon("boxes")
                 .group("nav.app")
                 .order(9)
                 .permission(permissions::WORK_ORDERS_VIEW),
@@ -114,14 +114,14 @@ impl Module for Manufacturing {
         app.nav(
             "app",
             NavLink::route("manufacturing.ncrs", "nav.ncrs")
-                .icon("clipboard-check")
+                .icon("clipboard-list")
                 .group("nav.app")
                 .order(10)
                 .permission(permissions::NCRS_VIEW),
         );
         app.nav(
             "app",
-            NavLink::route("manufacturing.recalls", "nav.recalls")
+            NavLink::route("manufacturing.recalls", "nav.recall_followup")
                 .icon("triangle-alert")
                 .group("nav.app")
                 .order(11)
@@ -138,7 +138,7 @@ impl Module for Manufacturing {
         app.nav(
             "app",
             NavLink::route("manufacturing.aborted", "nav.aborted_orders")
-                .icon("octagon-x")
+                .icon("circle-x")
                 .group("nav.app")
                 .order(16)
                 .permission(permissions::WORK_ORDERS_VIEW),
@@ -146,7 +146,7 @@ impl Module for Manufacturing {
         app.nav(
             "app",
             NavLink::route("manufacturing.exports", "nav.exports")
-                .icon("ship")
+                .icon("truck")
                 .group("nav.app")
                 .order(13)
                 .permission(permissions::EXPORTS_MANAGE),
@@ -154,7 +154,7 @@ impl Module for Manufacturing {
         app.nav(
             "app",
             NavLink::route("manufacturing.returns", "nav.returned_goods")
-                .icon("undo-2")
+                .icon("refresh-cw")
                 .group("nav.app")
                 .order(14)
                 .permission(permissions::RETURNED_GOODS_VIEW),
@@ -162,7 +162,7 @@ impl Module for Manufacturing {
         app.nav(
             "app",
             NavLink::route("manufacturing.inspections", "nav.inspections")
-                .icon("clipboard-check")
+                .icon("clipboard-list")
                 .group("nav.app")
                 .order(15)
                 .permission(permissions::INSPECTIONS_VIEW),

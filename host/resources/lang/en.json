@@ -49,6 +49,7 @@
     "stock_holds": "Stock holds",
     "pending_issues": "Pending issues",
     "recalls": "Recalls",
+    "recall_followup": "Recall follow-up",
     "dispatches": "Dispatches",
     "boms": "Bills of materials",
     "my_leave": "My leave",

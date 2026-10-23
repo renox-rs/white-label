@@ -228,3 +228,35 @@ async fn the_accountant_opens_the_documents_of_an_export_dispatch() {
     let response = browse(&app, accountant, &link).await;
     assert_eq!(response.status.as_u16(), 200, "{link} as the accountant");
 }
+
+/// The sidebar of the production manager: every link has its icon and no two
+/// links share a label (Recalls was listed twice).
+#[renox::test]
+async fn the_sidebar_has_an_icon_and_a_single_label_per_link() {
+    let app = demo().await;
+    let page = browse(&app, host::manufacturing_demo::MANAGER_EMAIL, "/dashboard").await;
+    assert_eq!(page.status.as_u16(), 200);
+    let html = page.text();
+    let start = html.find("<nav").expect("a sidebar");
+    let nav = &html[start
+        ..html[start..]
+            .find("</nav>")
+            .map_or(html.len(), |end| start + end)];
+    let mut labels = Vec::new();
+    for link in nav.split("<a ").skip(1) {
+        let link = link.split("</a>").next().unwrap_or_default();
+        if link.contains("rx-sidebar__brand") {
+            continue;
+        }
+        assert!(
+            link.contains("<svg"),
+            "a sidebar link without an icon: {link}"
+        );
+        let label = visible(link.split_once('>').map_or("", |(_, rest)| rest))
+            .trim()
+            .to_owned();
+        assert!(!labels.contains(&label), "`{label}` is listed twice");
+        labels.push(label);
+    }
+    assert!(labels.iter().any(|label| label == "Work orders"));
+}

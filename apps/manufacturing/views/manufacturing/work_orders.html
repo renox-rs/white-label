@@ -28,7 +28,7 @@
       <rx-column :label="tx['orders.line']" hide-narrow>{{ order.line }}</rx-column>
       <rx-column :label="tx['orders.made']" align="num">{{ order.produced }} / {{ order.quantity }}</rx-column>
       <rx-column :label="tx['orders.period']" hide-narrow>{{ order.period }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['orders.empty']" :message="tx['orders.empty_text']" icon="factory"/></rx-slot>
+      <rx-slot name="empty"><rx-empty :title="tx['orders.empty']" :message="tx['orders.empty_text']" icon="boxes"/></rx-slot>
     </rx-table>
   </rx-stack>
 </rx-page>

@@ -55,11 +55,11 @@
       </template>
       <template rx-if="actions.return_to_supplier.shown">
         <template rx-if="actions.return_to_supplier.blocked">
-          <rx-button :label="tx['ncr.action.return']" variant="secondary" icon="undo-2" :disabled-reason="actions.return_to_supplier.blocked"/>
+          <rx-button :label="tx['ncr.action.return']" variant="secondary" icon="refresh-cw" :disabled-reason="actions.return_to_supplier.blocked"/>
         </template>
         <template rx-else>
           <rx-action-sheet id="return-ncr" :label="tx['ncr.action.return']" :action="route('manufacturing.ncr_disposition', id)"
-                           :title="tx['ncr.action.return']" :description="tx['ncr.action.return_hint']" :submit-label="tx['ncr.action.return']" variant="secondary" icon="undo-2">
+                           :title="tx['ncr.action.return']" :description="tx['ncr.action.return_hint']" :submit-label="tx['ncr.action.return']" variant="secondary" icon="refresh-cw">
             <input type="hidden" name="disposition" value="return_to_supplier"/>
             <rx-select name="outcome" :label="tx['ncr.form.outcome']" :options="outcomes" :selected="outcome_selected"/>
             <rx-textarea name="note" :label="tx['ncr.form.note']" id="return-ncr-note"/>
@@ -77,11 +77,11 @@
       </template>
       <template rx-if="actions.reopen.shown">
         <template rx-if="actions.reopen.blocked">
-          <rx-button :label="tx['ncr.action.reopen']" variant="secondary" icon="rotate-ccw" :disabled-reason="actions.reopen.blocked"/>
+          <rx-button :label="tx['ncr.action.reopen']" variant="secondary" icon="refresh-cw" :disabled-reason="actions.reopen.blocked"/>
         </template>
         <template rx-else>
           <rx-action-sheet id="reopen-ncr" :label="tx['ncr.action.reopen']" :action="route('manufacturing.ncr_reopen', id)"
-                           :title="tx['ncr.action.reopen']" :description="tx['ncr.action.reopen_hint']" :submit-label="tx['ncr.action.reopen']" variant="secondary" icon="rotate-ccw">
+                           :title="tx['ncr.action.reopen']" :description="tx['ncr.action.reopen_hint']" :submit-label="tx['ncr.action.reopen']" variant="secondary" icon="refresh-cw">
             <rx-textarea name="reason" :label="tx['ncr.form.reason']" id="reopen-ncr-reason" required/>
           </rx-action-sheet>
         </template>
@@ -134,7 +134,7 @@
             <rx-badge rx-if="decision.in_force" kind="warning" :text="tx['ncr.decision.in_force']"/>
             <span rx-else>{{ tx['ncr.decision.ended'] }}: {{ decision.ended }}</span>
           </rx-column>
-          <rx-slot name="empty"><rx-empty :title="tx['ncr.decision.empty']" :message="tx['ncr.decision.empty_text']" icon="clipboard-check"/></rx-slot>
+          <rx-slot name="empty"><rx-empty :title="tx['ncr.decision.empty']" :message="tx['ncr.decision.empty_text']" icon="clipboard-list"/></rx-slot>
         </rx-table>
       </rx-tab>
       <rx-tab key="approvals" :label="tx['tab.approvals']">

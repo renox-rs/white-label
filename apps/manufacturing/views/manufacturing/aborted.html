@@ -15,7 +15,7 @@
       <rx-column :label="tx['aborted.stopped']" hide-narrow>{{ row.stopped }}</rx-column>
       <rx-column :label="tx['aborted.requested_by']" hide-narrow>{{ row.requested_by }}</rx-column>
       <rx-column :label="tx['aborted.approved_by']" hide-narrow>{{ row.approved_by }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['aborted.empty']" :message="tx['aborted.empty_text']" icon="factory"/></rx-slot>
+      <rx-slot name="empty"><rx-empty :title="tx['aborted.empty']" :message="tx['aborted.empty_text']" icon="boxes"/></rx-slot>
     </rx-table>
   </rx-stack>
 </rx-page>

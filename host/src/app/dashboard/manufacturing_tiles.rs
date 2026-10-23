@@ -95,7 +95,7 @@ pub(super) async fn figures(state: &AppState, user: &AuthUser) -> Result<Figures
             "dashboard.tiles.work_orders_running_one",
             "dashboard.tiles.work_orders_running_many",
             "/manufacturing/work-orders?status=in_progress",
-            "factory",
+            "boxes",
             None,
         );
         add(
@@ -103,7 +103,7 @@ pub(super) async fn figures(state: &AppState, user: &AuthUser) -> Result<Figures
             "dashboard.tiles.work_orders_held_one",
             "dashboard.tiles.work_orders_held_many",
             "/manufacturing/work-orders?status=on_hold",
-            "pause",
+            "clock",
             Some("clay"),
         );
         add(
@@ -149,7 +149,7 @@ pub(super) async fn figures(state: &AppState, user: &AuthUser) -> Result<Figures
             "dashboard.tiles.returns_waiting_one",
             "dashboard.tiles.returns_waiting_many",
             "/manufacturing/returns",
-            "undo-2",
+            "refresh-cw",
             Some("clay"),
         );
     }
@@ -169,7 +169,7 @@ pub(super) async fn figures(state: &AppState, user: &AuthUser) -> Result<Figures
             "dashboard.tiles.inspections_waiting_one",
             "dashboard.tiles.inspections_waiting_many",
             "/manufacturing/inspections",
-            "clipboard-check",
+            "clipboard-list",
             Some("sand"),
         );
     }
@@ -221,7 +221,7 @@ pub(super) async fn figures(state: &AppState, user: &AuthUser) -> Result<Figures
             "dashboard.tiles.exports_missing_one",
             "dashboard.tiles.exports_missing_many",
             "/manufacturing/exports",
-            "plane",
+            "truck",
             Some("clay"),
         );
     }
@@ -244,7 +244,7 @@ pub(super) async fn figures(state: &AppState, user: &AuthUser) -> Result<Figures
             "dashboard.tiles.recalls_open_one",
             "dashboard.tiles.recalls_open_many",
             "/recalls",
-            "octagon-alert",
+            "triangle-alert",
             Some("clay"),
         );
     }
