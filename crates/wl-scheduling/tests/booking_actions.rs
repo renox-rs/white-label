@@ -47,6 +47,36 @@ async fn a_service_is_booked_for_the_first_free_slot_from_a_day() {
     assert!(two.starts_at > one.starts_at, "the bay is taken then");
 }
 
+/// The booking says when it starts (08 `BL-AUT-12`: the bookings after the last
+/// day of a contract); one that does not exist has no start.
+#[renox::test]
+async fn a_booking_says_when_it_starts() {
+    let t = boot().await;
+    let bay = t.doctor("Bay 1").await;
+    t.service_with("periodic_service", &[&bay], |_| {}).await;
+    let from = in_hours(30);
+    let booking = SchedulingActions
+        .book_service(
+            t.state(),
+            ServiceBooking::new(PATIENT, "periodic_service", from),
+        )
+        .await
+        .unwrap();
+    let start = SchedulingActions
+        .starts_at(t.state(), booking)
+        .await
+        .unwrap()
+        .expect("a start");
+    assert!((start - from).num_seconds().abs() < 2);
+    assert!(
+        SchedulingActions
+            .starts_at(t.state(), wl_kernel::scheduling::BookingId(9_999))
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
 /// A service that does not exist is refused.
 #[renox::test]
 async fn an_unknown_service_is_refused() {

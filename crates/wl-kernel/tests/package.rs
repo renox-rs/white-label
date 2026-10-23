@@ -2553,6 +2553,27 @@ async fn without_scheduling_a_service_booking_is_refused_and_a_cancel_does_nothi
             .await
             .unwrap()
     );
+    assert!(actions.starts_at(state, BookingId(4)).await.unwrap().is_none());
+}
+
+/// #409: without a vertical's gate every new booking is allowed.
+#[renox::test]
+async fn without_a_booking_gate_every_new_booking_is_allowed() {
+    use wl_kernel::Subject;
+    use wl_kernel::scheduling::{BookingGateQuery, CheckInAnswer, booking_gate};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+
+    let query = BookingGateQuery {
+        party: PartyId(7),
+        subject: Some(Subject::new("auto.vehicle", 3)),
+        service_code: "periodic_service".to_owned(),
+        at: renox::db::now(),
+    };
+    let answer = booking_gate(state).check(state, query).await.unwrap();
+    assert_eq!(answer, CheckInAnswer::Allowed);
 }
 
 /// #407: without a ticketing module a closed ticket is unknown, and without an

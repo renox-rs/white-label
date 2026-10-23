@@ -21,6 +21,9 @@
 //! [`BookingConflict`] is emitted when a new block or a lapsing licence puts
 //! bookings in conflict; [`AvailabilitySource`] supplies other modules' blocks.
 //!
+//! [`BookingGate`] lets a vertical refuse a **new** booking for a subject whose
+//! agreement is on hold (08: a suspended fleet contract).
+//!
 //! [`ResourceEligibility`] answers "may this resource deliver this service at
 //! this time?" (`SCH.ACL.04`). The default says yes; a vertical provides its
 //! own with [`provide_resource_eligibility`] (05 adds the practitioner's
@@ -439,6 +442,18 @@ pub trait BookingActions: Send + Sync + 'static {
         Box::pin(async { Ok(false) })
     }
 
+    /// When `booking` starts: the day of a fleet service a booking was made
+    /// for, so that a contract that ends can tell the bookings after its last
+    /// day (08 `BL-AUT-12`). `None` for a booking that does not exist; the
+    /// default knows none.
+    fn starts_at<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _booking: BookingId,
+    ) -> SchedulingFuture<'a, Option<DateTime>> {
+        Box::pin(async { Ok(None) })
+    }
+
     /// Cancels `booking` for the staff user `user_id` with the reason code
     /// `reason_code`, also after the check-in (`SCH.ACL.06`: a booking in
     /// `checked_in` or `in_progress` is cancelled by staff only, once the
@@ -765,6 +780,58 @@ pub fn complete_guard(state: &AppState) -> Arc<dyn CompleteGuard> {
     match state.provided::<Arc<dyn CompleteGuard>>() {
         Some(found) => Arc::clone(&found),
         None => Arc::new(NoCompleteGuard),
+    }
+}
+
+/// What a [`BookingGate`] is asked: a new booking for `party`, about
+/// `subject`, of the service `service_code`, starting at `at`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BookingGateQuery {
+    /// Who the booking is for.
+    pub party: PartyId,
+    /// The vehicle, patient or student the booking is about, if any.
+    pub subject: Option<Subject>,
+    /// The code of the service type.
+    pub service_code: String,
+    /// The start asked for.
+    pub at: DateTime,
+}
+
+/// May a new booking be made for this subject (wl-scheduling §4.1 `book`,
+/// `request`)? The vertical answers from the agreement it holds: 08 refuses a
+/// new booking for a vehicle under a fleet contract that is suspended
+/// (`BL-AUT-13`). The answer is a [`CheckInAnswer`]: allowed, or refused with
+/// a text safe to show to whoever books. Only a **new** booking is asked; the
+/// bookings already made, and what follows them, are not. The default allows
+/// every booking.
+pub trait BookingGate: Send + Sync + 'static {
+    /// Whether the booking of `query` may be made.
+    fn check<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _query: BookingGateQuery,
+    ) -> SchedulingFuture<'a, CheckInAnswer> {
+        Box::pin(async { Ok(CheckInAnswer::Allowed) })
+    }
+}
+
+/// The gate when no vertical provides one: every booking is allowed.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoBookingGate;
+
+impl BookingGate for NoBookingGate {}
+
+/// Makes `gate` the app's [`BookingGate`]; a vertical calls it in `register`.
+pub fn provide_booking_gate(app: &mut Registry, gate: impl BookingGate) {
+    let gate: Arc<dyn BookingGate> = Arc::new(gate);
+    app.provide(gate);
+}
+
+/// The app's [`BookingGate`], or [`NoBookingGate`].
+pub fn booking_gate(state: &AppState) -> Arc<dyn BookingGate> {
+    match state.provided::<Arc<dyn BookingGate>>() {
+        Some(found) => Arc::clone(&found),
+        None => Arc::new(NoBookingGate),
     }
 }
 

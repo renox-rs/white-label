@@ -19,8 +19,9 @@ use renox::serde_json::json;
 use renox::state_machine::{StateMachine, TransitionError, TransitionRecord};
 use wl_kernel::documents::dubai_date;
 use wl_kernel::scheduling::{
-    CancelStage, CancelledBy, CheckInAnswer, Eligibility, EligibilityQuery, Initiator, WorkDone,
-    check_in_guard, complete_guard, resource_eligibility, work_done_status,
+    BookingGateQuery, CancelStage, CancelledBy, CheckInAnswer, Eligibility, EligibilityQuery,
+    Initiator, WorkDone, booking_gate, check_in_guard, complete_guard, resource_eligibility,
+    work_done_status,
 };
 use wl_kernel::{PartyId, Subject};
 
@@ -423,6 +424,16 @@ async fn create(
     check_eligible(state, &service, &resources, start)
         .await
         .map_err(|refusal| neutral_for(actor, refusal))?;
+    // The vertical's agreement may be on hold (08: a suspended fleet contract).
+    let query = BookingGateQuery {
+        party: new.party,
+        subject: new.subject.clone(),
+        service_code: service.code.clone(),
+        at: start,
+    };
+    if let CheckInAnswer::Refused(text) = booking_gate(state).check(state, query).await? {
+        return Err(Refusal::Invalid(text));
+    }
     let number = BOOKING_SERIES
         .next_allowing_gaps(&state.db, None, None, dubai_date(at))
         .await?;

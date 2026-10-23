@@ -10,6 +10,7 @@ use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::scheduling::{BookingActions, BookingId, SchedulingFuture, ServiceBooking};
 
+use crate::booking::Booking;
 use crate::refusal::Refusal;
 use crate::resource::ServiceType;
 use crate::service::{self, Actor, CancelRequest, NewBooking};
@@ -118,6 +119,18 @@ impl BookingActions for SchedulingActions {
                 Err(Refusal::Transition(_)) => Ok(false),
                 Err(other) => Err(unprocessable(&other)),
             }
+        })
+    }
+
+    fn starts_at<'a>(
+        &'a self,
+        state: &'a AppState,
+        booking: BookingId,
+    ) -> SchedulingFuture<'a, Option<renox::db::DateTime>> {
+        Box::pin(async move {
+            Ok(Booking::find(&state.db, booking.0)
+                .await?
+                .map(|found| found.starts_at))
         })
     }
 
