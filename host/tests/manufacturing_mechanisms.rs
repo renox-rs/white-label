@@ -3,10 +3,15 @@
 //! test them with their own defaults; here the values are the 07 ones):
 //! *Credit and cheques* (an invoice 31 days overdue holds the next order, a
 //! bounced cheque holds the account and its orders, a cheque is presented
-//! twice at most), *Stock* (a wastage of AED 2,100 and a return to a supplier
-//! of AED 5,100 need approval, a transfer below zero is refused),
-//! *Supplier scorecard*, *Budget and drawings*, *Notifications* (a recall
-//! notice that gives up) and *Cancellation* (fee 0%).
+//! twice at most), *Budget and drawings* (the warning at 100%, the drawing
+//! without self-approval), *Supplier scorecard* (69 is reviewed, 70 is not)
+//! and *Cancellation* (fee 0%, the plan the cancel routes run). The rest of
+//! the issue runs elsewhere: the customer block holds the orders while the
+//! work orders continue (`manufacturing_orders.rs`), the wastage of AED 2,100
+//! and the return of AED 5,100 (`manufacturing_ncr.rs`), the transfer below
+//! zero (`manufacturing_material_screens.rs`), the recall notice that gives
+//! up (`manufacturing_recall.rs`), the button wording
+//! (`manufacturing_dispute.rs`).
 
 mod support;
 
@@ -537,4 +542,70 @@ async fn a_supplier_scoring_69_is_reviewed_and_one_scoring_70_is_not() {
             .unwrap()
             .is_none()
     );
+}
+
+// ------------------------------------------------------------- cancellation
+
+/// *Cancellation outcome* with the 07 values: the three outcomes are offered
+/// for a started line, and the default cancellation fee on a prepaid share of
+/// AED 1,000 is nothing (`SAL.ACL.05`: 0%). The plan is the one the cancel
+/// routes run, fed with the settings of the 07 sales module.
+#[renox::test]
+async fn cancelling_a_started_prepaid_line_in_07_charges_no_fee() {
+    use wl_sales::cancel_lines::{CancelAsk, CancelKind, PlanFacts, WantedLine, plan};
+    use wl_sales::sale_line::{KIND_ITEM, SaleLine};
+
+    let sales = host::sales_for("manufacturing");
+    let config = sales.config();
+    assert_eq!(
+        config.cancel_outcomes,
+        ["finish_to_stock", "scrap", "return_to_stock"]
+    );
+    let facts = PlanFacts {
+        started_lines: vec![1],
+        offered: config.cancel_outcomes.clone(),
+        fee_bps: config.cancellation_fee_bps,
+        fee_amount: config.cancellation_fee_amount,
+        ..PlanFacts::default()
+    };
+    let order = SalesOrder {
+        status: SalesOrderStatus::PartiallyFulfilled,
+        ..SalesOrder::default()
+    };
+    let lines = [
+        SaleLine {
+            id: 1,
+            line_no: 1,
+            kind: KIND_ITEM.to_owned(),
+            quantity_milli: 10_000,
+            unit_price: 10_000,
+            vat_category: VatCategory::ZeroRated,
+            ..SaleLine::default()
+        },
+        SaleLine {
+            id: 2,
+            line_no: 2,
+            kind: KIND_ITEM.to_owned(),
+            quantity_milli: 1_000,
+            unit_price: 500,
+            vat_category: VatCategory::ZeroRated,
+            ..SaleLine::default()
+        },
+    ];
+    for outcome in ["finish_to_stock", "scrap", "return_to_stock"] {
+        let ask =
+            CancelAsk {
+                kind: CancelKind::Line,
+                reason: "The customer withdrew".into(),
+                lines: vec![WantedLine::new(1, 10_000).outcome(
+                    wl_kernel::sales::LineOutcomeKind::parse(outcome).expect("an outcome"),
+                )],
+                keep_payment: false,
+            };
+        let found = plan(&order, &lines, &ask, &facts);
+        assert_eq!(found.problem, None, "{outcome}");
+        assert_eq!(found.lines[0].share, 100_000, "AED 1,000 prepaid");
+        assert_eq!(found.fee_total(), 0, "{outcome}: no fee");
+        assert!(found.approval, "a started line needs the manager");
+    }
 }
