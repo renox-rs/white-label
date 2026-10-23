@@ -1383,6 +1383,14 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("manufacturing.screen.conformity.regulated", "Regulated"),
     ("manufacturing.screen.conformity.export_only", "Export only"),
+    (
+        "manufacturing.screen.conformity.customer_specific",
+        "Made for one customer",
+    ),
+    (
+        "manufacturing.screen.conformity.customer_specific_hint",
+        "A cancelled order's started goods of this item are proposed for scrap, not for stock.",
+    ),
     ("manufacturing.screen.conformity.item", "Item"),
     (
         "manufacturing.screen.conformity.certificates",

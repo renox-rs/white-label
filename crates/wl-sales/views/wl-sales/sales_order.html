@@ -54,7 +54,7 @@
                        :title="tx['cancelling.order']" :description="tx['cancelling.order_description'] ~ ' ' ~ tx['cancelling.order_approval_hint']" :submit-label="tx['cancelling.order']" icon="x" danger>
         <rx-textarea name="reason" :label="tx['orders.reason']" id="cancel-order-reason" required/>
         <rx-stack rx-for="line in lines">
-          <rx-select rx-if="line.started" :name="'line_' ~ line.id ~ '_outcome'" :label="tx['amend.line'] ~ ' ' ~ line.line_no ~ ' ' ~ line.description ~ ' (' ~ tx['cancelling.started'] ~ '): ' ~ tx['cancelling.outcome_label']" :options="outcome_options" :selected="outcome_default" :placeholder="tx['cancelling.outcome_none']" :id="'cancel-order-outcome-' ~ line.id"/>
+          <rx-select rx-if="line.started" :name="'line_' ~ line.id ~ '_outcome'" :label="tx['amend.line'] ~ ' ' ~ line.line_no ~ ' ' ~ line.description ~ ' (' ~ tx['cancelling.started'] ~ '): ' ~ tx['cancelling.outcome_label']" :options="outcome_options" :selected="line.proposed or outcome_default" :placeholder="tx['cancelling.outcome_none']" :id="'cancel-order-outcome-' ~ line.id"/>
           <rx-input rx-if="line.started" :name="'line_' ~ line.id ~ '_fee'" :label="tx['cancelling.fee']" :hint="tx['cancelling.fee_hint']" :id="'cancel-order-fee-' ~ line.id"/>
           <rx-checkbox rx-if="line.started" :name="'line_' ~ line.id ~ '_waive'" :label="tx['cancelling.waive_fee']" :id="'cancel-order-waive-' ~ line.id"/>
         </rx-stack>
@@ -88,7 +88,7 @@
                        :title="tx['cancelling.remaining']" :description="tx['cancelling.remaining_description'] ~ ' ' ~ tx['cancelling.approval_hint']" :submit-label="tx['cancelling.remaining']" icon="x" danger>
         <rx-textarea name="reason" :label="tx['orders.reason']" id="cancel-order-remaining-reason" required/>
         <rx-stack rx-for="line in lines">
-          <rx-select :name="'line_' ~ line.id ~ '_outcome'" :label="tx['amend.line'] ~ ' ' ~ line.line_no ~ ' ' ~ line.description ~ ' (' ~ tx['cancelling.open'] ~ ' ' ~ line.open ~ '): ' ~ tx['cancelling.outcome_label']" :options="outcome_options" :selected="outcome_default" :placeholder="tx['cancelling.outcome_none']" :id="'cancel-order-remaining-outcome-' ~ line.id"/>
+          <rx-select :name="'line_' ~ line.id ~ '_outcome'" :label="tx['amend.line'] ~ ' ' ~ line.line_no ~ ' ' ~ line.description ~ ' (' ~ tx['cancelling.open'] ~ ' ' ~ line.open ~ '): ' ~ tx['cancelling.outcome_label']" :options="outcome_options" :selected="line.proposed or outcome_default" :placeholder="tx['cancelling.outcome_none']" :id="'cancel-order-remaining-outcome-' ~ line.id"/>
           <rx-input :name="'line_' ~ line.id ~ '_fee'" :label="tx['cancelling.fee']" :id="'cancel-order-remaining-fee-' ~ line.id"/>
           <rx-checkbox :name="'line_' ~ line.id ~ '_waive'" :label="tx['cancelling.waive_fee']" :id="'cancel-order-remaining-waive-' ~ line.id"/>
         </rx-stack>

@@ -90,6 +90,9 @@ pub struct ItemFlag {
     pub regulated: bool,
     /// The item is not sold for domestic delivery.
     pub export_only: bool,
+    /// The item is made for one customer (printed labels, packaging): a
+    /// cancelled order's started goods are proposed for scrap (BL-MFG-14).
+    pub customer_specific: bool,
     /// The certificate kinds that count, comma separated; empty: all three.
     pub accepted_kinds: String,
     /// The user who set the flags.
@@ -142,6 +145,8 @@ pub struct FlagAsk {
     pub regulated: bool,
     /// Export only.
     pub export_only: bool,
+    /// Made for one customer.
+    pub customer_specific: bool,
     /// The kinds that count; empty for all three.
     pub kinds: Vec<String>,
 }
@@ -187,6 +192,7 @@ pub async fn set_flags(
                     &[
                         ("regulated", &ask.regulated),
                         ("export_only", &ask.export_only),
+                        ("customer_specific", &ask.customer_specific),
                         ("accepted_kinds", &kinds),
                         ("set_by", &Some(by.id)),
                         ("updated_at", &now),
@@ -201,6 +207,7 @@ pub async fn set_flags(
                     item_id,
                     regulated: ask.regulated,
                     export_only: ask.export_only,
+                    customer_specific: ask.customer_specific,
                     accepted_kinds: kinds,
                     set_by: Some(by.id),
                     ..ItemFlag::default()

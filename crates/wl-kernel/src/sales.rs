@@ -1468,6 +1468,46 @@ pub struct SalesOrderLinesReleased {
 
 impl Event for SalesOrderLinesReleased {}
 
+/// The outcome a vertical proposes for the started goods of a line that is
+/// cancelled (wl-sales §4.2 *Cancelling after fulfilment started*, 07
+/// §7.1): *finish to stock* for a standard item, *scrap* for an item made for
+/// one customer (printed labels and packaging). wl-sales preselects it in the
+/// cancel sheets; the person may choose another. The default proposes none.
+pub trait OutcomeProposals: Send + Sync + 'static {
+    /// The outcome proposed for line `line` of `order`, whose item has the
+    /// code `item_code`; `None` when the vertical has no proposal.
+    fn proposed<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _order: SalesOrderId,
+        _line: i64,
+        _item_code: &'a str,
+    ) -> SalesFuture<'a, Option<LineOutcomeKind>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The proposals when no vertical provides any.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoOutcomeProposals;
+
+impl OutcomeProposals for NoOutcomeProposals {}
+
+/// Makes `proposals` the app's [`OutcomeProposals`].
+pub fn provide_outcome_proposals(app: &mut Registry, proposals: impl OutcomeProposals) {
+    let proposals: Arc<dyn OutcomeProposals> = Arc::new(proposals);
+    app.provide(proposals);
+}
+
+/// The app's [`OutcomeProposals`], or [`NoOutcomeProposals`] when none is
+/// provided.
+pub fn outcome_proposals(state: &AppState) -> Arc<dyn OutcomeProposals> {
+    match state.provided::<Arc<dyn OutcomeProposals>>() {
+        Some(proposals) => Arc::clone(&proposals),
+        None => Arc::new(NoOutcomeProposals),
+    }
+}
+
 /// What the vertical knows about the fulfilment of an order: which lines
 /// have started (goods picked, a work order or production batch started,
 /// the kitchen started the line). The module that does the work provides

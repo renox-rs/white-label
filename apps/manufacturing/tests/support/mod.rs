@@ -220,6 +220,19 @@ impl StockService for Stock {
         })
     }
 
+    fn choices<'a>(
+        &'a self,
+        _state: &'a AppState,
+        code: &'a str,
+        _location: &'a Subject,
+    ) -> StockFuture<'a, Option<StockChoice>> {
+        // The items of the fixture are named `I<id>`.
+        Box::pin(async move {
+            let id = code.strip_prefix('I').and_then(|id| id.parse().ok());
+            Ok(id.and_then(|id| self.choice(&Subject::new(ITEM_SUBJECT_TYPE, id))))
+        })
+    }
+
     fn choices_of_item<'a>(
         &'a self,
         _state: &'a AppState,

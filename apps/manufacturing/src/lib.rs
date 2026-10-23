@@ -15,6 +15,7 @@ pub mod ncr;
 pub mod ncrs;
 pub mod notices;
 pub mod order_changes;
+pub mod outcome_proposals;
 pub mod pages;
 pub mod permissions;
 pub mod pick_list;
@@ -207,6 +208,9 @@ impl Module for Manufacturing {
         returns::listen(app);
         // `SAL.ACL.05`: which lines of an order have started.
         wl_kernel::sales::provide_fulfilment_progress(app, progress::ProductionProgress);
+        // 07 §7.1: the cancel sheets preselect scrap for a customer-specific
+        // item and finish to stock for any other.
+        wl_kernel::sales::provide_outcome_proposals(app, outcome_proposals::ItemOutcomeProposals);
         material_hold::listen(app);
         ncrs::listen(app);
         // The supplier scorecard counts the NCRs caused by the supplier.

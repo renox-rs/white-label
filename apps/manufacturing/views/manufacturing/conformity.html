@@ -11,6 +11,7 @@
         <rx-input name="code" type="text" :label="tx['conformity.code']" :hint="tx['conformity.code_hint']" id="flag-item-code" required/>
         <rx-checkbox name="regulated" value="1" :label="tx['conformity.regulated']" id="flag-item-regulated"/>
         <rx-checkbox name="export_only" value="1" :label="tx['conformity.export_only']" id="flag-item-export"/>
+        <rx-checkbox name="customer_specific" value="1" :label="tx['conformity.customer_specific']" :hint="tx['conformity.customer_specific_hint']" id="flag-item-customer"/>
         <rx-checkbox rx-for="kind in kinds" name="kind" :value="kind[0]" :label="kind[1]" :id="'flag-item-kind-' ~ kind[0]"/>
       </rx-action-sheet>
     </rx-row>
@@ -23,6 +24,7 @@
       </rx-column>
       <rx-column :label="tx['conformity.regulated']">{{ row.regulated }}</rx-column>
       <rx-column :label="tx['conformity.export_only']">{{ row.export_only }}</rx-column>
+      <rx-column :label="tx['conformity.customer_specific']" hide-narrow>{{ row.customer_specific }}</rx-column>
       <rx-column :label="tx['conformity.certificates']" hide-narrow>
         <rx-stack>
           <span rx-for="certificate in row.certificates">

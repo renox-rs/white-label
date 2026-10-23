@@ -297,6 +297,10 @@ pub struct LineRow {
     /// Where its goods are: not dispatched, picked, out for delivery, partly
     /// delivered, delivered or lost (BL-SAL-13).
     pub progress: String,
+    /// The outcome the vertical proposes if this line is cancelled after its
+    /// goods started (07: *finish to stock*, *scrap* for a customer-specific
+    /// item); empty when it proposes none.
+    pub proposed: String,
 }
 
 /// The credit hold of an order as its page shows it. The reason and the
@@ -480,6 +484,19 @@ async fn show(
         .started_lines(&state, order.order_id(), &item_ids)
         .await?;
     let progress = crate::progress::of_lines(&state, &order, &lines).await?;
+    let proposals = wl_kernel::sales::outcome_proposals(&state);
+    let mut proposed: BTreeMap<i64, String> = BTreeMap::new();
+    for line in lines.iter().filter(|l| l.kind == KIND_ITEM) {
+        if !started.contains(&line.id) && line.open_milli() <= 0 {
+            continue;
+        }
+        if let Some(kind) = proposals
+            .proposed(&state, order.order_id(), line.id, &line.item_code)
+            .await?
+        {
+            proposed.insert(line.id, kind.as_str().to_owned());
+        }
+    }
     let rows = lines
         .iter()
         .map(|line| LineRow {
@@ -504,6 +521,7 @@ async fn show(
                 .get(&line.id)
                 .map(|key| text(&lang, &format!("progress.{key}")))
                 .unwrap_or_default(),
+            proposed: proposed.get(&line.id).cloned().unwrap_or_default(),
         })
         .collect();
     // Submitting takes the page's own button, which reads the lines; the

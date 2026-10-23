@@ -36,6 +36,7 @@ pub(crate) struct Row {
     item: String,
     regulated: String,
     export_only: String,
+    customer_specific: String,
     accepted: String,
     certificates: Vec<Certificate>,
 }
@@ -78,7 +79,7 @@ pub(crate) async fn show(
         .get(&state.db)
         .await?
         .into_iter()
-        .filter(|flag| flag.regulated || flag.export_only)
+        .filter(|flag| flag.regulated || flag.export_only || flag.customer_specific)
     {
         let subject = flag.subject();
         let mut certificates = Vec::new();
@@ -105,7 +106,12 @@ pub(crate) async fn show(
             } else {
                 no.clone()
             },
-            export_only: if flag.export_only { yes } else { no },
+            export_only: if flag.export_only {
+                yes.clone()
+            } else {
+                no.clone()
+            },
+            customer_specific: if flag.customer_specific { yes } else { no },
             accepted: if flag.regulated {
                 flag.accepted()
                     .iter()
@@ -175,6 +181,7 @@ pub(crate) async fn flag(
         FlagAsk {
             regulated: checked("regulated"),
             export_only: checked("export_only"),
+            customer_specific: checked("customer_specific"),
             kinds,
         },
     )
