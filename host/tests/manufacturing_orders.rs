@@ -267,3 +267,65 @@ async fn blocking_a_customer_holds_its_orders_and_leaves_its_work_orders_running
     let work = WorkOrder::find_or_404(app.db(), running.id).await.unwrap();
     assert_eq!(work.status, WorkOrderStatus::InProgress);
 }
+
+/// BL-MFG-03 Done-when "cancelled": the sales manager cancels the order from
+/// the page; the planned work order for its line is cancelled by the rule and
+/// the planner is told; a work order that started keeps running (for stock)
+/// when the outcome is *finish to stock*.
+#[renox::test]
+async fn cancelling_an_order_cancels_the_planned_work_order_and_unlinks_the_started_one() {
+    let app = manufacturing_booted().await;
+    let sales = person(&app, "Sara", SALES).await;
+    let manager = person(&app, "Sam", SALES_MANAGER).await;
+    let _planner = person(&app, "Amal", host::roles::PRODUCTION_PLANNER).await;
+    let panel = item(&app, "PANEL").await;
+    let customer = company(&app, "Al Noor Trading LLC").await;
+    let (planned_order, planned_line) = place(&app, &sales, customer, "PANEL", "10").await;
+    let (started_order, started_line) = place(&app, &sales, customer, "PANEL", "8").await;
+    let planned = work_order_for(&app, &planned_order, &planned_line, &panel, 10_000, WorkOrderStatus::Planned).await;
+    let started = work_order_for(&app, &started_order, &started_line, &panel, 8_000, WorkOrderStatus::InProgress).await;
+
+    app.acting_as(&sales);
+    app.htmx()
+        .post(
+            &format!("/sales-orders/{}/cancel", planned_order.id),
+            &[("reason", "The customer withdrew the order")],
+        )
+        .await
+        .assert_status(303);
+    // The started line waits for the sales manager's approval (`SAL.ACL.05`).
+    app.htmx()
+        .post(
+            &format!("/sales-orders/{}/cancel", started_order.id),
+            &[
+                ("reason", "The customer withdrew the order"),
+                (
+                    &format!("line_{}_outcome", started_line.id),
+                    "finish_to_stock",
+                ),
+            ],
+        )
+        .await
+        .assert_status(303);
+    let waiting = wl_kernel::approvals::ApprovalRequest::pending_about(
+        app.db(),
+        &started_order.subject(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(waiting.len(), 1, "the cancellation of a started line waits");
+    assert_eq!(
+        WorkOrder::find_or_404(app.db(), started.id).await.unwrap().source,
+        WorkOrderSource::SalesOrder,
+        "nothing changes before the approval"
+    );
+    wl_kernel::approvals::approve(app.state(), waiting[0].id, &manager, "agreed")
+        .await
+        .unwrap();
+
+    let after = WorkOrder::find_or_404(app.db(), planned.id).await.unwrap();
+    assert_eq!(after.status, WorkOrderStatus::Cancelled);
+    let kept = WorkOrder::find_or_404(app.db(), started.id).await.unwrap();
+    assert_eq!(kept.status, WorkOrderStatus::InProgress);
+    assert_eq!(kept.source, WorkOrderSource::Stock, "now for stock");
+}
