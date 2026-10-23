@@ -560,6 +560,28 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_payments.refunds.change.method_required",
         "Choose the new method.",
     ),
+    ("wl_payments.refunds.pay.action", "Pay the refund"),
+    ("wl_payments.refunds.pay.title", "Pay this refund"),
+    (
+        "wl_payments.refunds.pay.description",
+        "Record how the money was paid back. The payment goes out in the party's name and the refund becomes paid.",
+    ),
+    ("wl_payments.refunds.pay.method", "Paid by"),
+    ("wl_payments.refunds.pay.reference", "Reference"),
+    (
+        "wl_payments.refunds.pay.reference_hint",
+        "The bank reference of the transfer, the cheque number or the cash voucher.",
+    ),
+    ("wl_payments.refunds.pay.submit", "Pay the refund"),
+    ("wl_payments.refunds.pay.done", "The refund is paid."),
+    (
+        "wl_payments.refunds.pay.method_required",
+        "Choose how the refund is paid.",
+    ),
+    (
+        "wl_payments.refunds.pay.reference_required",
+        "Give the payment reference.",
+    ),
     ("wl_payments.refunds.cancel.action", "Cancel refund"),
     ("wl_payments.refunds.cancel.title", "Cancel this refund"),
     (

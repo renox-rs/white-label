@@ -4,13 +4,16 @@
 //! |---|---|---|
 //! | `GET /refunds` | `wl_payments.refunds.index` | `payments.view` |
 //! | `GET /refunds/{id}` | `wl_payments.refunds.show` | `payments.view` |
+//! | `POST /refunds/{id}/pay` | `wl_payments.refunds.pay` | `refunds.pay` (fields `method`, `reference`) |
 //! | `POST /refunds/{id}/fail` | `wl_payments.refunds.fail` | `refunds.pay` |
 //! | `POST /refunds/{id}/retry` | `wl_payments.refunds.retry` | `refunds.pay` |
 //! | `POST /refunds/{id}/change-method` | `wl_payments.refunds.change_method` | `refunds.pay` (fields `method`, `details`) |
 //! | `POST /refunds/{id}/cancel` | `wl_payments.refunds.cancel` | `refunds.approve` (field `reason`) |
 //! | `POST /refunds/{id}/transitions/{name}` | `wl_payments.refunds.transitions.*` | `payments.view` and the transition's permission |
 //!
-//! `fail` has its own route because it takes a kind and a reason, and so do
+//! `pay` has its own route because it takes the method and the payment
+//! reference, which the kernel's transition route cannot send; `fail` has its
+//! own route because it takes a kind and a reason, and so do
 //! `retry`, `change_method` and `cancel` of a failed refund (they do more
 //! than move the status: a gateway call, the party's notice, the accountant's
 //! task); the kernel's transition route serves `<rx-transition-actions>` for
@@ -69,6 +72,8 @@ pub fn routes() -> Routes {
         )
         .merge(
             Routes::new()
+                .post("/refunds/{id}/pay", store_pay)
+                .name("wl_payments.refunds.pay")
                 .post("/refunds/{id}/fail", store_fail)
                 .name("wl_payments.refunds.fail")
                 .post("/refunds/{id}/retry", store_retry)
@@ -279,6 +284,12 @@ pub(crate) struct ShowPage {
     timeline: Vec<Value>,
     actions: Vec<Available>,
     can_fail: bool,
+    /// Whether "Pay" is offered: approved, for a payer of refunds.
+    can_pay: bool,
+    /// The methods a refund is paid by here, `(code, label)`.
+    pay_methods: Vec<(String, String)>,
+    /// The method already chosen for the refund, if any.
+    pay_selected: String,
     /// The kinds a user may give, `(code, label)`.
     kinds: Vec<(String, String)>,
     /// Whether "Retry" is offered: failed, and retries are left.
@@ -361,6 +372,18 @@ async fn show(
         timeline,
         actions,
         can_fail,
+        can_pay: refund.status == RefundStatus::Approved
+            && user.has_permission(permissions::REFUNDS_PAY),
+        pay_methods: options(
+            &t,
+            "method",
+            &PAY_METHODS.iter().map(|m| m.as_str()).collect::<Vec<_>>(),
+        ),
+        pay_selected: refund
+            .method
+            .filter(|m| PAY_METHODS.contains(m))
+            .map(|m| m.as_str().to_owned())
+            .unwrap_or_default(),
         kinds: options(&t, "refunds.kind", &manual_kind_codes()),
         can_retry: failed && retries < max && user.has_permission(permissions::REFUNDS_PAY),
         can_change: failed && user.has_permission(permissions::REFUNDS_PAY),
@@ -376,6 +399,61 @@ async fn show(
         retries: format!("{retries} / {max}"),
         refund,
     }))
+}
+
+/// The methods a refund is paid by from its page: a transfer, a cheque or
+/// cash. A card refund goes back through the gateway ([`crate::refund::send_to_gateway`]).
+const PAY_METHODS: [PaymentMethod; 3] = [
+    PaymentMethod::Transfer,
+    PaymentMethod::Cheque,
+    PaymentMethod::Cash,
+];
+
+/// The pay sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct PayForm {
+    /// The method code: `transfer`, `cheque` or `cash`.
+    #[validate(max = 32)]
+    pub method: Option<String>,
+    /// The payment reference: the transfer reference, the cheque number or the
+    /// voucher.
+    #[validate(max = 200)]
+    pub reference: Option<String>,
+}
+
+/// `POST /refunds/{id}/pay`: pays the approved refund by `method` with its
+/// reference, which records the outgoing payment and moves the refund to
+/// `paid`. A refusal (no method, no reference, the source no longer covers
+/// the amount, the party is on hold) answers 422 under its field.
+async fn store_pay(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(refund): Found<Refund>,
+    Valid(form): Valid<PayForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let Some(method) = filled(&form.method).and_then(|code| {
+        PAY_METHODS
+            .iter()
+            .copied()
+            .find(|method| method.as_str() == code.trim())
+    }) else {
+        return Err(invalid("method", t("refunds.pay.method_required"), &form));
+    };
+    let reference = form.reference.clone().unwrap_or_default();
+    if reference.trim().is_empty() {
+        return Err(invalid(
+            "reference",
+            t("refunds.pay.reference_required"),
+            &form,
+        ));
+    }
+    match crate::refund::pay(&state, &user, &refund, method, &reference).await {
+        Ok(_) => Ok((Toast::success(t("refunds.pay.done")), renox::HxRefresh).into_response()),
+        Err(TransitionError::Guard(message)) => Err(invalid("reference", message, &form)),
+        Err(other) => Err(other.into_error()),
+    }
 }
 
 /// The fail sheet's form.
