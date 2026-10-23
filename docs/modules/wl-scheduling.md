@@ -313,7 +313,7 @@ before the start. No fee is invoiced after the event, and it is never billed to 
 |---|---|---|
 | `Availability::free_slots(service_type, resources?, period, location?)` | Free slots, honouring rules, blocks, bookings, capacity and eligibility | portal self-booking; `apps/edtech` batch planning (`EDU.BAT.01`) |
 | `Availability::is_free(resources, start, end)` | Check a time without booking | `apps/edtech` sessions, verticals |
-| `Bookings::book / cancel / complete` | Create or end bookings from code | verticals (auto job card completes the booking). In `wl-kernel` the part a vertical needs so far is `BookingActions`: `link_work_done` (the record opened at check-in, which `WorkDoneStatus` is asked about) and `complete` (as the system) |
+| `Bookings::book / cancel / complete` | Create or end bookings from code | verticals (auto job card completes the booking). In `wl-kernel` the part a vertical needs so far is `BookingActions`: `link_work_done` (the record opened at check-in, which `WorkDoneStatus` is asked about), `complete` (as the system), `book_service` (the first free slot from a day for a party, as the system: a fleet service that falls due) and `cancel_booking` (as the system, with a reason code) |
 | `Bookings::conflicts(resource?, period?) / bulk_resolve(bookings, action)` | List conflicted bookings; reassign or cancel them in one action, or send their parties a reschedule offer in one action (§5.5 step 2) | front desk, verticals |
 | `AvailabilitySource` (trait implemented by others) | Supply blocks | `wl-hr` (leave), `wl-attendance` (rosters), `apps/edtech` (sessions) |
 

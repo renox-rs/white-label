@@ -408,10 +408,93 @@ pub trait BookingActions: Send + Sync + 'static {
     ) -> SchedulingFuture<'a, ()> {
         Box::pin(async { Ok(()) })
     }
+
+    /// Books `request` as the system: the first free slot of the service from
+    /// the day asked for (08 `AUT.RUL.04`, a fleet service that falls due).
+    /// Refused with a 422 when the service is unknown or no slot is free in
+    /// the days looked at; the default books nothing and refuses.
+    fn book_service<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: ServiceBooking,
+    ) -> SchedulingFuture<'a, BookingId> {
+        Box::pin(async {
+            Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "bookings are not available, scheduling is not enabled".to_owned(),
+            ))
+        })
+    }
+
+    /// Cancels `booking` as the system with the reason code `reason_code`
+    /// (08: a fleet contract that ended). Answers whether it was cancelled;
+    /// `false` for a booking that cannot be cancelled any more (it started,
+    /// was cancelled or is complete). The default does nothing.
+    fn cancel_booking<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _booking: BookingId,
+        _reason_code: &'a str,
+    ) -> SchedulingFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
 }
 
-/// The actions when no scheduling module is provided: nothing is linked and
-/// nothing is completed.
+/// A booking a vertical makes for a party from a schedule, for the first free
+/// slot on or after `from` (08 `AUT.RUL.04`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceBooking {
+    /// Who the booking is for.
+    pub party: PartyId,
+    /// The vehicle, patient or student, if any.
+    pub subject: Option<Subject>,
+    /// The code of the service type.
+    pub service_code: String,
+    /// The earliest start asked for.
+    pub from: DateTime,
+    /// The workshop, branch or campus, if any.
+    pub location: Option<Subject>,
+    /// A note for the desk.
+    pub notes: Option<String>,
+}
+
+impl ServiceBooking {
+    /// A booking of `service_code` for `party` from `from`.
+    pub fn new(party: PartyId, service_code: &str, from: DateTime) -> Self {
+        ServiceBooking {
+            party,
+            subject: None,
+            service_code: service_code.to_owned(),
+            from,
+            location: None,
+            notes: None,
+        }
+    }
+
+    /// For this vehicle, patient or student.
+    #[must_use]
+    pub fn for_subject(mut self, subject: Subject) -> Self {
+        self.subject = Some(subject);
+        self
+    }
+
+    /// At this workshop, branch or campus.
+    #[must_use]
+    pub fn at(mut self, location: Subject) -> Self {
+        self.location = Some(location);
+        self
+    }
+
+    /// With this note.
+    #[must_use]
+    pub fn note(mut self, note: &str) -> Self {
+        self.notes = Some(note.to_owned());
+        self
+    }
+}
+
+/// The actions when no scheduling module is provided: nothing is linked,
+/// nothing is completed or cancelled, and nothing can be booked.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NoBookingActions;
 

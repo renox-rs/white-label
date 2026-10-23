@@ -2520,3 +2520,31 @@ async fn without_scheduling_and_inventory_the_workshop_contracts_do_nothing() {
         .unwrap();
     assert_eq!(returned.posted_milli, 0);
 }
+
+/// 08 Auto: without a scheduling module a fleet service books nothing and
+/// refuses, and a booking cancels nothing.
+#[renox::test]
+async fn without_scheduling_a_service_booking_is_refused_and_a_cancel_does_nothing() {
+    use wl_kernel::Subject;
+    use wl_kernel::scheduling::{BookingId, ServiceBooking, booking_actions};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+
+    let request = ServiceBooking::new(PartyId(7), "periodic_service", renox::db::now())
+        .for_subject(Subject::new("auto.vehicle", 3))
+        .at(Subject::new("scheduling.location", 1))
+        .note("Due at 60,000 km");
+    assert_eq!(request.service_code, "periodic_service");
+    assert_eq!(request.notes.as_deref(), Some("Due at 60,000 km"));
+    let actions = booking_actions(state);
+    let refused = actions.book_service(state, request).await.unwrap_err();
+    assert!(refused.to_string().contains("not available"), "{refused}");
+    assert!(
+        !actions
+            .cancel_booking(state, BookingId(4), "fleet_contract_ended")
+            .await
+            .unwrap()
+    );
+}
