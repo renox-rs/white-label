@@ -1,0 +1,86 @@
+{#- wl-inventory: one version of a bill of materials: its header, the
+    components and the actions that change, release and retire it. A button
+    that cannot run now is shown disabled and says why; a refusal of the
+    service shows in the sheet. Replace it with
+    resources/views/wl-inventory/bom.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="item" :back="route('wl_inventory.boms')" :back-label="tx['title']"
+                    :badge="status" :badge-kind="status_kind"/>
+    <rx-form-errors/>
+    <rx-alert rx-for="note in alerts" kind="warning" :message="note"/>
+    <rx-alert rx-if="status_code != 'draft'" kind="info" :message="tx['locked_note']"/>
+    <rx-row>
+      <template rx-if="actions.edit.shown">
+        <template rx-if="actions.edit.blocked">
+          <rx-button :label="tx['edit']" icon="pencil" :disabled-reason="actions.edit.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="edit-bom" :label="tx['edit']" :action="route('wl_inventory.bom_edit', id)"
+                           :title="tx['edit']" :description="tx['edit_description']" :submit-label="tx['save']" icon="pencil">
+            <rx-input name="output" :label="tx['output']" :hint="tx['output_hint']" :value="makes_input" :suffix="unit" id="edit-bom-output" inputmode="decimal" required/>
+            <rx-input name="yield_percent" :label="tx['yield']" :hint="tx['yield_hint']" :value="yield_input" id="edit-bom-yield" inputmode="decimal" required/>
+            <rx-input name="hours" :label="tx['hours']" :hint="tx['hours_hint']" :value="hours_input" id="edit-bom-hours" inputmode="decimal" required/>
+          </rx-action-sheet>
+        </template>
+      </template>
+      <template rx-if="actions.add_line.shown">
+        <rx-action-sheet id="add-bom-line" :label="tx['add_line']" :action="route('wl_inventory.bom_line_add', id)"
+                         :title="tx['add_line']" :description="tx['add_line_description']" :submit-label="tx['add_line']" icon="plus">
+          <rx-select name="item" :label="tx['component']" :options="components" :selected="''" id="add-bom-line-item" required/>
+          <rx-input name="quantity" :label="tx['quantity']" id="add-bom-line-quantity" inputmode="decimal" required/>
+          <rx-input name="scrap" :label="tx['scrap']" :hint="tx['scrap_hint']" id="add-bom-line-scrap" inputmode="decimal"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="actions.release.shown">
+        <rx-action-sheet id="release-bom" :label="tx['release']" :action="route('wl_inventory.bom_release', id)"
+                         :title="tx['release']" :description="tx['release_description']" :submit-label="tx['release']" variant="primary" icon="check"/>
+      </template>
+      <template rx-if="actions.new_version.shown">
+        <template rx-if="actions.new_version.blocked">
+          <rx-button :label="tx['new_version']" icon="copy" :disabled-reason="actions.new_version.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="new-version-bom" :label="tx['new_version']" :action="route('wl_inventory.bom_new_version', id)"
+                           :title="tx['new_version']" :description="tx['new_version_description']" :submit-label="tx['new_version']" icon="copy"/>
+        </template>
+      </template>
+      <template rx-if="actions.obsolete.shown">
+        <rx-action-sheet id="obsolete-bom" :label="tx['obsolete']" :action="route('wl_inventory.bom_obsolete', id)"
+                         :title="tx['obsolete']" :description="tx['obsolete_description']" :submit-label="tx['obsolete']" icon="archive" danger/>
+      </template>
+    </rx-row>
+    <rx-alert rx-if="actions.new_version.shown and actions.new_version.blocked" kind="info" :message="actions.new_version.blocked"/>
+    <rx-card :title="tx['details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['item']" :value="item"/>
+        <rx-entry :label="tx['number']" :value="'#' ~ id"/>
+        <rx-entry :label="tx['output']" :value="makes"/>
+        <rx-entry :label="tx['yield']" :value="yield_text"/>
+        <rx-entry :label="tx['hours']" :value="hours"/>
+        <template rx-if="show_cost">
+          <rx-entry :label="tx['cost']" :value="cost"/>
+        </template>
+        <rx-entry :label="tx['released']" :value="released_at" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['obsoleted']" :value="obsoleted_at" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['lines']" card>
+      <rx-column :label="tx['component']">{{ line.item }}</rx-column>
+      <rx-column :label="tx['quantity']">{{ line.quantity }}</rx-column>
+      <rx-column :label="tx['scrap']" hide-narrow>{{ line.scrap }}</rx-column>
+      <rx-column :label="tx['per_unit']" hide-narrow>{{ line.per_unit }}</rx-column>
+      <rx-row-actions>
+        <template rx-if="actions.remove_line.shown">
+          <rx-action-sheet :id="'remove-line-' ~ line.id" :label="tx['remove']" :action="route('wl_inventory.bom_line_remove', id, line.id)"
+                           :title="tx['remove']" :description="tx['remove_description']" :submit-label="tx['remove']" icon="trash" danger/>
+        </template>
+      </rx-row-actions>
+      <rx-slot name="empty"><rx-empty :title="tx['no_lines']" icon="clipboard-list"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="versions" as="other" :key="other.id" :caption="tx['versions']" card>
+      <rx-column :label="tx['version']"><a href="{{ other.url }}">{{ other.version }}</a></rx-column>
+      <rx-column :label="tx['status']"><rx-badge :kind="other.status_kind" :text="other.status"/></rx-column>
+    </rx-table>
+  </rx-stack>
+</rx-page>

@@ -419,6 +419,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::STOCK_ADJUST,
             inventory::STOCK_HOLD,
             inventory::LOTS_RELEASE,
+            inventory::BOMS_VIEW,
+            inventory::BOMS_MANAGE,
+            inventory::BOMS_RELEASE,
             scheduling::VIEW,
             scheduling::VIEW_DETAILS,
             scheduling::MANAGE,
@@ -1027,6 +1030,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             mfg::WORK_ORDERS_RELEASE,
             inventory::ITEMS_VIEW,
             inventory::STOCK_VIEW,
+            // 07 §3.1: the planner reads the BOMs the work orders are made
+            // from.
+            inventory::BOMS_VIEW,
         ],
     ),
     (
@@ -1043,6 +1049,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::ITEMS_VIEW,
             inventory::STOCK_VIEW,
             inventory::STOCK_COST_VIEW,
+            // 07 §3.1: the production manager keeps and releases the BOMs
+            // (`MFG.ACL.06`).
+            inventory::BOMS_VIEW,
+            inventory::BOMS_MANAGE,
+            inventory::BOMS_RELEASE,
         ],
     ),
     (

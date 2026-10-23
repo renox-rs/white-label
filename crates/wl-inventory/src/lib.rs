@@ -3,6 +3,9 @@
 
 mod arrival;
 pub mod balance;
+pub mod bom;
+mod bom_screens;
+mod bom_texts;
 pub mod chase;
 pub mod config;
 pub mod dispatch;
@@ -77,6 +80,7 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
+pub use bom::{Bom, BomLine, BomStatus, InventoryBoms};
 pub use config::{InventoryConfig, RejectionReason, ScoreSettings};
 pub use dispatch::{
     Dispatch, DispatchLine, DispatchStatus, Handover, NewDispatch, NewDispatchLine,
@@ -174,6 +178,13 @@ pub mod permissions {
     /// See the recalls and how far each is (the lots, where they are, the
     /// hold, how many were told), without naming anyone.
     pub const RECALLS_VIEW: &str = "recalls.view";
+    /// See the bills of materials (`STK.BOM.01`).
+    pub const BOMS_VIEW: &str = "boms.view";
+    /// Start, change and copy a draft bill of materials.
+    pub const BOMS_MANAGE: &str = "boms.manage";
+    /// Release a version of a bill of materials and make one obsolete
+    /// (`MFG.ACL.06`).
+    pub const BOMS_RELEASE: &str = "boms.release";
 }
 
 /// The inventory module. The host adds it with
@@ -392,6 +403,7 @@ impl Module for WlInventory {
             .merge(dispatch_pages::routes())
             .merge(dispatch_deliver_pages::routes())
             .merge(dispatch_screens::routes())
+            .merge(bom_screens::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -415,13 +427,16 @@ impl Module for WlInventory {
             .view_data::<receipt_screens::ReceiptsPage>()
             .view_data::<receipt_screens::ReceiptPage>()
             .view_data::<dispatch_screens::DispatchesPage>()
-            .view_data::<dispatch_screens::DispatchPage>();
+            .view_data::<dispatch_screens::DispatchPage>()
+            .view_data::<bom_screens::BomsPage>()
+            .view_data::<bom_screens::BomPage>();
         app.templates(|env| {
             for (name, source) in screens::VIEWS
                 .iter()
                 .chain(stock_screens::VIEWS)
                 .chain(recall_screens::VIEWS)
                 .chain(dispatch_screens::VIEWS)
+                .chain(bom_screens::VIEWS)
             {
                 // The app's own file of that name wins.
                 if env.get_template(name).is_err() {
@@ -503,6 +518,17 @@ impl Module for WlInventory {
                 70,
                 &[permissions::DISPATCH_MANAGE][..],
             ),
+            (
+                "wl_inventory.boms",
+                "nav.boms",
+                "clipboard-list",
+                71,
+                &[
+                    permissions::BOMS_VIEW,
+                    permissions::BOMS_MANAGE,
+                    permissions::BOMS_RELEASE,
+                ][..],
+            ),
         ] {
             app.nav(
                 "app",
@@ -554,6 +580,8 @@ impl Module for WlInventory {
         app.model::<RecallLine>();
         app.model::<PendingIssue>();
         app.model::<ShortageAlert>();
+        app.model::<Bom>();
+        app.model::<BomLine>();
         app.model::<Dispatch>();
         app.model::<DispatchLine>();
         app.model::<GoodsReceipt>();
@@ -566,6 +594,7 @@ impl Module for WlInventory {
         renox::state_machine::register::<StockCount>();
         renox::state_machine::register::<GoodsReceipt>();
         renox::state_machine::register::<Dispatch>();
+        renox::state_machine::register::<Bom>();
         renox::state_machine::register::<Lot>();
         renox::state_machine::register::<Transfer>();
         renox::state_machine::register::<StockHold>();
@@ -678,6 +707,8 @@ impl Module for WlInventory {
         // 07 Manufacturing: the movements of a work order (return, wastage,
         // output) post inside the transaction of its transition.
         wl_kernel::production::provide_production_stock(app, production_stock::InventoryProduction);
+        // The BOM version a work order is made from (`STK.BOM.01`).
+        wl_kernel::production::provide_boms(app, bom::InventoryBoms);
         wl_kernel::SubjectMachine::of::<PendingIssue>(
             wl_kernel::inventory::PENDING_ISSUE_SUBJECT_TYPE,
         )

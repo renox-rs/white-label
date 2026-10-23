@@ -4,7 +4,7 @@ The vertical app for light manufacturers ([spec](../../docs/verticals/07-manufac
 order and its lifecycle, the material issued to it, the output a line reports, and the negative flows
 of a work order that is stopped. It reaches the other modules only through the contracts of
 `wl-kernel` (stock, bills of materials, sales order lines, tickets, notifications), never through
-their crates.
+their crates. The bill of materials is wl-inventory's (`/boms`, `bom`): the real host releases a work order from a released version.
 
 The host mounts it when `client.toml` names `app = "manufacturing"`:
 

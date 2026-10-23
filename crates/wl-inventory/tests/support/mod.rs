@@ -952,6 +952,21 @@ impl Booted {
         self.user_with(name, "lot_releaser").await
     }
 
+    /// A user who keeps BOMs (`boms.view`, `boms.manage`) everywhere.
+    pub async fn bom_keeper(&self, name: &str) -> User {
+        self.user_with(name, "bom_keeper").await
+    }
+
+    /// A user who releases BOMs (`boms.release`) everywhere.
+    pub async fn bom_releaser(&self, name: &str) -> User {
+        self.user_with(name, "bom_releaser").await
+    }
+
+    /// A user who only sees BOMs (`boms.view`).
+    pub async fn bom_viewer(&self, name: &str) -> User {
+        self.user_with(name, "bom_viewer").await
+    }
+
     /// A user who opens recalls (`recalls.manage`) everywhere.
     pub async fn recaller(&self, name: &str) -> User {
         self.user_with(name, "recall_manager").await
@@ -2000,6 +2015,19 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         .await
         .unwrap();
     permissions::define_role(app.db(), "dispatcher", &[perm::DISPATCH_MANAGE])
+        .await
+        .unwrap();
+    permissions::define_role(app.db(), "bom_viewer", &[perm::BOMS_VIEW])
+        .await
+        .unwrap();
+    permissions::define_role(
+        app.db(),
+        "bom_keeper",
+        &[perm::BOMS_VIEW, perm::BOMS_MANAGE],
+    )
+    .await
+    .unwrap();
+    permissions::define_role(app.db(), "bom_releaser", &[perm::BOMS_RELEASE])
         .await
         .unwrap();
     Booted {
