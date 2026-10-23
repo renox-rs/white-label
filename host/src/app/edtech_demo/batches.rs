@@ -74,9 +74,9 @@ pub(crate) const BATCHES: &[BatchPlan] = &[
     plan("gmat_run", "GMAT-P", 8, (-14, 12), "2,4", "17:00", 120, RAVI, "Seminar room", -28, true),
     plan("fr_run", "FR-A1", 8, (-20, 15), "1,3", "12:00", 90, HIND, "Room A", -30, true),
     // Open: one is full, with a waiting list.
-    plan("fr_open", "FR-A1", 3, (12, 40), "1,3", "16:00", 90, HIND, "Room A", -6, true),
-    plan("code_open", "CODE-KIDS", 8, (10, 40), "5", "17:30", 60, SARA, "Kids studio", -3, true),
-    plan("ielts_open", "IELTS-B2", 12, (20, 44), "6", "10:00", 120, SARA, "Room B", -2, true),
+    plan("fr_open", "FR-A1", 3, (12, 40), "1,3", "16:00", 90, HIND, "Room A", -45, true),
+    plan("code_open", "CODE-KIDS", 8, (10, 40), "5", "17:30", 60, SARA, "Kids studio", -40, true),
+    plan("ielts_open", "IELTS-B2", 12, (20, 44), "6", "10:00", 120, SARA, "Room B", -10, true),
     // Planned: the permit of the centre and of the tutor end before them.
     plan("gmat_plan", "GMAT-P", 8, (30, 60), "2,4", "17:00", 120, RAVI, "Seminar room", -1, false),
     plan("xl_plan", "XL-BIZ", 8, (50, 64), "3", "14:00", 120, OMAR, "Computer lab", -1, false),

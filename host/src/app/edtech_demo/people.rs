@@ -67,6 +67,8 @@ pub(crate) const AARAV: usize = 16;
 /// Sixteen: a teenager in an adult course, with her father as guardian.
 pub(crate) const LAYAN: usize = 17;
 pub(crate) const KOFI: usize = 18;
+/// Fourteen: the younger sister of Layan, in a French class.
+pub(crate) const NOOR: usize = 19;
 
 /// The students, in the order of the constants above.
 pub(crate) const STUDENTS: &[Person] = &[
@@ -89,6 +91,7 @@ pub(crate) const STUDENTS: &[Person] = &[
     person("Aarav Menon", "آراف مينون", (2016, 9, 27), "IN", Language::En),
     person("Layan Haddad", "لين حداد", (2010, 4, 11), "JO", Language::Ar),
     person("Kofi Mensah", "كوفي منساه", (2015, 1, 5), "GH", Language::En),
+    person("Noor Haddad", "نور حداد", (2012, 10, 21), "JO", Language::Ar),
 ];
 
 pub(crate) const AHMED: usize = 0;
@@ -111,6 +114,7 @@ pub(crate) const GUARDIAN_OF: &[(usize, usize)] = &[
     (AARAV, SUNITA),
     (LAYAN, OMAR_H),
     (KOFI, GRACE),
+    (NOOR, OMAR_H),
 ];
 
 /// A tutor with an employee record.
@@ -289,6 +293,8 @@ impl Seed {
                     to: self.students[*child].0,
                     relation_type: RelationshipType::GuardianOf,
                     primary: true,
+                    // From before the first enrolment of the seed.
+                    valid_from: Some(day(-800)),
                     ..NewRelationship::default()
                 },
             )
