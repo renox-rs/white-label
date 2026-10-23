@@ -21,10 +21,10 @@ Map of IDs to numbers: `docs/backlog/github-issues.md`. Issue text: `docs/backlo
 | Build of all 25 issues (code, tests, screens, demo client) | done |
 | Merge of `origin/main` (F6, F10) and unification of wl-sales credit hold with F6 `hold`/`held_from` | done |
 | Audit of all 140 points against code and tests (three groups) | done; Class A gaps closed |
-| Full verification on the audited head: fmt, `clippy --workspace --all-targets -D warnings`, tests of 23 packages (7,632 passed) and host in 11 chunks (782 passed), 0 failed | done (before the polish commits) |
+| Full verification on the final head (after the polish commits): fmt clean, `clippy --workspace --all-targets -D warnings` clean, 23 packages 7,632 passed 0 failed, host in 11 chunks 778 passed, 6 failed | done; the 6 failures are `host/tests/edtech_demo.rs` (see below) |
 | Browser check with Playwright of 46 pages at 1280 and 390 px, main flows | done; no errors, no overflow at 390 px |
-| Polish round after the browser check (names instead of "Item 6", "None", icons, dates, duplicate ids) | in progress or done: see `git log` for `fix:` commits after `924a83b3` |
-| Re-run of the host tests that render the changed pages | TO DO after the polish round |
+| Polish round after the browser check (names instead of "Item 6", "None", icons, dates, duplicate ids) | done (`fix:` commits after `924a83b3`) |
+| Re-run of all tests after the polish round | done (see above) |
 | GitHub issues: tick Done-when, `**Deferred:**` lines, exactly one `**Verification summary**` comment per issue, then a sweep | TO DO (25 issues) |
 | Pull request | not opened; open one only when asked |
 
@@ -73,6 +73,13 @@ Map of IDs to numbers: `docs/backlog/github-issues.md`. Issue text: `docs/backlo
 Not proven end to end (say so in the issues): notice to a customer's main contact is proved as a queued message, not a delivered email; 09:00/09:15 timing of
 MFG.RUL.08 and the 01:00 expiry look-ahead schedule are not asserted; supplier score, cancellation fee and drawing approval are proved at mechanism level;
 390 px is a browser crawl, not an automated width test; Postgres migrations and `rnx db:check`/`view:check` were not run.
+
+## Known failure that is not ours
+
+`host/tests/edtech_demo.rs` (6 tests) panics at `host/src/app/edtech_demo/stories.rs:67` ("index out of bounds: the len is 2 but the index is 2") when the
+Dubai date falls on a Saturday (it passed earlier the same day, before 20:00 UTC on a Friday). It fails identically on a clean `origin/main`, so it is a
+date-dependent seed in the F10 edtech demo, not an F7 regression. CI running on a Friday after 20:00 UTC or on a Saturday will show it red. Fixing it belongs to F10
+(make the batch start day independent of the weekday); until then say so on the PR.
 
 ## Rules of this project (do not break)
 
