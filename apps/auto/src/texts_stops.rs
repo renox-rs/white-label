@@ -7,7 +7,10 @@
 pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("auto.jobs.yes", "Yes"),
     // The reasons a job ends.
-    ("auto.stop.code.customer_stopped", "The customer stopped the job"),
+    (
+        "auto.stop.code.customer_stopped",
+        "The customer stopped the job",
+    ),
     ("auto.stop.code.claim_withdrawn", "The claim was withdrawn"),
     ("auto.stop.code.total_loss", "The vehicle is a total loss"),
     ("auto.stop.code.no_response", "No response to the estimate"),
@@ -25,7 +28,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "The customer's written withdrawal",
     ),
     // The invoice lines of the work done.
-    ("auto.stop.labour_part", ":description (:done h of :hours h)"),
+    (
+        "auto.stop.labour_part",
+        ":description (:done h of :hours h)",
+    ),
     (
         "auto.stop.labour_part_flat",
         ":description (:done h of :hours flat hours)",
@@ -133,14 +139,20 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ),
     ("auto.stop.reason", "Why the job stops"),
     ("auto.stop.note", "More about the reason"),
-    ("auto.stop.ack", "How the customer acknowledged the work done"),
+    (
+        "auto.stop.ack",
+        "How the customer acknowledged the work done",
+    ),
     ("auto.stop.ack_name", "Customer who signed"),
     ("auto.stop.ack_signature", "Signature"),
     (
         "auto.stop.ack_signature_hint",
         "The customer's typed name, as on the signed summary.",
     ),
-    ("auto.stop.ack_witness", "Member of staff who witnessed the refusal"),
+    (
+        "auto.stop.ack_witness",
+        "Member of staff who witnessed the refusal",
+    ),
     (
         "auto.stop.ack_document",
         "Insurer's notice or written withdrawal (reference)",
@@ -176,10 +188,7 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("auto.stop.entry.released", "Vehicle released"),
     ("auto.stop.entry.on_account", "Customer account"),
     ("auto.stop.entry.handed_over", "Special orders handed over"),
-    (
-        "auto.stop.acknowledged_by",
-        ":method: :who",
-    ),
+    ("auto.stop.acknowledged_by", ":method: :who"),
     ("auto.stop.order", "Purchase order"),
     (
         "auto.stop.order_description",
@@ -293,7 +302,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "The day the substitute vehicle was returned. The job card cannot be delivered before.",
     ),
     ("auto.substitute.saved", "Saved."),
-    ("auto.substitute.status.requested", "Waiting for the advisor"),
+    (
+        "auto.substitute.status.requested",
+        "Waiting for the advisor",
+    ),
     ("auto.substitute.status.lent", "Lent to the customer"),
     ("auto.substitute.status.returned", "Returned"),
     ("auto.substitute.status.refused", "Refused by the customer"),

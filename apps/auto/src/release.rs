@@ -107,10 +107,7 @@ pub async fn payment_problem(state: &AppState, card: &JobCard) -> Result<Option<
             if invoice_cleared(state, invoice).await? {
                 return Ok(None);
             }
-            let balance = match invoicer(state)
-                .find(&state.db, InvoiceId(invoice))
-                .await?
-            {
+            let balance = match invoicer(state).find(&state.db, InvoiceId(invoice)).await? {
                 Some(summary) => summary.balance,
                 None => card.billed_net,
             };
@@ -129,7 +126,10 @@ pub async fn payment_problem(state: &AppState, card: &JobCard) -> Result<Option<
 async fn invoice_cleared(state: &AppState, id: i64) -> Result<bool> {
     let found = invoicer(state).find(&state.db, InvoiceId(id)).await?;
     Ok(found.is_some_and(|summary| {
-        matches!(summary.status, InvoiceStatus::Paid | InvoiceStatus::Credited)
+        matches!(
+            summary.status,
+            InvoiceStatus::Paid | InvoiceStatus::Credited
+        )
     }))
 }
 

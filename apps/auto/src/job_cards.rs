@@ -41,9 +41,8 @@ use crate::documents::{GUARDED_JOB_CARD_APPROVE, police_verdict};
 use crate::estimate::Estimate;
 use crate::job_card::{FUEL_LEVELS, JobCard, JobCardStatus, QC_KEYS, QcCheck};
 use crate::job_card_machine::{
-    APPROVE, APPROVE_SYSTEM, DECLINE, DECLINE_ADDED, DECLINE_ADDED_SYSTEM, DECLINE_SYSTEM,
-    DELIVER, FAIL_QC, FINISH_WORK, JobInput, PASS_QC, SEND_ESTIMATE, START_INSPECTION,
-    WAIT_PARTS,
+    APPROVE, APPROVE_SYSTEM, DECLINE, DECLINE_ADDED, DECLINE_ADDED_SYSTEM, DECLINE_SYSTEM, DELIVER,
+    FAIL_QC, FINISH_WORK, JobInput, PASS_QC, SEND_ESTIMATE, START_INSPECTION, WAIT_PARTS,
 };
 use crate::labour_line::{LabourLine, LabourPricing, LineStatus, WorkStatus};
 use crate::labour_operation::LabourOperation;
@@ -373,7 +372,10 @@ pub async fn record_intake(
     if card.accident_damage && !intake.accident_damage {
         // The flag is cleared with a reason and the workshop manager's
         // approval (`AUT.ACL.20`), not by correcting the intake.
-        return Err(refused(english("auto.police.problem.clear_by_approval", &[])));
+        return Err(refused(english(
+            "auto.police.problem.clear_by_approval",
+            &[],
+        )));
     }
     let vehicle = Vehicle::find_or_404(&state.db, card.vehicle_id).await?;
     let complaint = intake.complaint.trim().to_owned();

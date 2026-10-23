@@ -4,7 +4,7 @@
 mod support;
 
 use auto::job_cards::{self, NewPart};
-use auto::{InsuranceClaim, JobCard, JobCardStatus, ClaimStatus};
+use auto::{ClaimStatus, InsuranceClaim, JobCard, JobCardStatus};
 use renox::chrono::TimeDelta;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
@@ -48,10 +48,18 @@ async fn checked_in(t: &Garage, name: &str) -> (JobCard, Booking) {
     )
     .await
     .expect("the booking is made");
-    service::check_in(t.state(), booking.id, Actor::staff(sami.id), renox::db::now())
+    service::check_in(
+        t.state(),
+        booking.id,
+        Actor::staff(sami.id),
+        renox::db::now(),
+    )
+    .await
+    .expect("checked in");
+    let card = JobCard::of_booking(t.db(), booking.id)
         .await
-        .expect("checked in");
-    let card = JobCard::of_booking(t.db(), booking.id).await.unwrap().unwrap();
+        .unwrap()
+        .unwrap();
     (card, booking)
 }
 
@@ -70,7 +78,10 @@ async fn aut_02_a_duplicate_check_in_is_voided_and_its_booking_cancelled_with_no
 
     assert_eq!(voided.status, JobCardStatus::Voided);
     assert_eq!(voided.number(), card.number(), "the number is kept");
-    assert_eq!(voided.closed_reason.as_deref(), Some("duplicate of JOB-00019"));
+    assert_eq!(
+        voided.closed_reason.as_deref(),
+        Some("duplicate of JOB-00019")
+    );
     let booking = Booking::find_or_404(t.db(), booking.id).await.unwrap();
     assert_eq!(booking.status, BookingStatus::Cancelled);
     assert_eq!(booking.cancel_code.as_deref(), Some("duplicate_check_in"));
@@ -101,9 +112,14 @@ async fn aut_02_a_job_card_with_a_part_line_is_not_voided() {
     let card = t.card_in(&vehicle, JobCardStatus::CheckedIn).await;
     let sami = t.advisor().await;
     let tareq = t.technician("Tareq").await;
-    let part = job_cards::add_part(t.state(), &tareq, card.id, NewPart::new("Wiper", 1_000, 2_000))
-        .await
-        .unwrap();
+    let part = job_cards::add_part(
+        t.state(),
+        &tareq,
+        card.id,
+        NewPart::new("Wiper", 1_000, 2_000),
+    )
+    .await
+    .unwrap();
 
     let refused = job_cards::void(t.state(), &sami, card.id, "duplicate")
         .await
@@ -112,7 +128,9 @@ async fn aut_02_a_job_card_with_a_part_line_is_not_voided() {
     assert_eq!(t.reload(card.id).await.status, JobCardStatus::CheckedIn);
     assert!(t.voided.all().is_empty());
 
-    job_cards::remove_part(t.state(), &tareq, part.id).await.unwrap();
+    job_cards::remove_part(t.state(), &tareq, part.id)
+        .await
+        .unwrap();
     let voided = job_cards::void(t.state(), &sami, card.id, "duplicate")
         .await
         .unwrap();

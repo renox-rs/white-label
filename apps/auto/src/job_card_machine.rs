@@ -418,38 +418,39 @@ fn approve(name: &'static str, system: bool) -> Transition<JobCard> {
         let ok = input_of(ctx).approval_id.is_some();
         Box::pin(async move { check(ok, "auto.jobs.problem.nothing_to_approve") })
     });
-    transition.guard("police_report", |c: &JobCard, ctx| {
-        // Accident damage is repaired only with the police report attached
-        // and accepted (`AUT.ACL.20`, a legal block with no override).
-        let result = police_result(c.accident_damage, &input_of(ctx).police);
-        Box::pin(async move { result })
-    })
-    .effect(|c: &JobCard, ctx, tx| {
-        let card = c.clone();
-        let input = input_of(ctx);
-        Box::pin(async move {
-            if let Some(id) = input.approval_id {
-                move_lines(tx, id, LineStatus::Sent, LineStatus::Approved).await?;
-                PartLine::query()
-                    .where_(PartLine::APPROVAL_ID.eq(Some(id)))
-                    .where_(PartLine::SPECIAL_ORDER.eq(true))
-                    .update(&mut *tx, &[("special_order_agreed", &true)])
-                    .await?;
-            }
-            answer(tx, &input, ApprovalStatus::Approved, None).await?;
-            let first = card.first_approved_at.unwrap_or_else(now);
-            let none: Option<DateTime> = None;
-            set_job_card(
-                tx,
-                card.id,
-                &[
-                    ("first_approved_at", &Some(first)),
-                    ("awaiting_since", &none),
-                ],
-            )
-            .await
+    transition
+        .guard("police_report", |c: &JobCard, ctx| {
+            // Accident damage is repaired only with the police report attached
+            // and accepted (`AUT.ACL.20`, a legal block with no override).
+            let result = police_result(c.accident_damage, &input_of(ctx).police);
+            Box::pin(async move { result })
         })
-    })
+        .effect(|c: &JobCard, ctx, tx| {
+            let card = c.clone();
+            let input = input_of(ctx);
+            Box::pin(async move {
+                if let Some(id) = input.approval_id {
+                    move_lines(tx, id, LineStatus::Sent, LineStatus::Approved).await?;
+                    PartLine::query()
+                        .where_(PartLine::APPROVAL_ID.eq(Some(id)))
+                        .where_(PartLine::SPECIAL_ORDER.eq(true))
+                        .update(&mut *tx, &[("special_order_agreed", &true)])
+                        .await?;
+                }
+                answer(tx, &input, ApprovalStatus::Approved, None).await?;
+                let first = card.first_approved_at.unwrap_or_else(now);
+                let none: Option<DateTime> = None;
+                set_job_card(
+                    tx,
+                    card.id,
+                    &[
+                        ("first_approved_at", &Some(first)),
+                        ("awaiting_since", &none),
+                    ],
+                )
+                .await
+            })
+        })
 }
 
 /// `decline`: the customer declines the estimate or leaves; nothing was

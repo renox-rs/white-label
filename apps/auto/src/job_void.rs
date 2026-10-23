@@ -89,10 +89,7 @@ pub(crate) fn register() {
     Voidable::of::<JobCard>(JOB_CARD_SUBJECT_TYPE)
         .permission(permissions::JOB_CARDS_ADVISE)
         .number("job_card", |card: &JobCard| Some(card.number()))
-        .reverse(
-            EffectKind::Task,
-            Reverse::new(nothing, refuse_if_recorded),
-        )
+        .reverse(EffectKind::Task, Reverse::new(nothing, refuse_if_recorded))
         .register();
 }
 

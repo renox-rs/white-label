@@ -925,8 +925,7 @@ async fn show(
     };
     let none = || text(&lang, "none");
     let stop = stops::view_of(&lang, &user, &card, &estimate);
-    let approval_cards =
-        approvals::cards_for(&state.db, &card.subject(), &user, &lang).await?;
+    let approval_cards = approvals::cards_for(&state.db, &card.subject(), &user, &lang).await?;
     let cancel_waits = job_stops::cancel_pending(&state.db, card.id).await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
@@ -1099,7 +1098,12 @@ async fn show(
         wait: stops::wait_rows(&state, &lang, &card).await?,
         source_options: crate::supply::SOURCES
             .iter()
-            .map(|source| [(*source).to_owned(), text(&lang, &format!("supply.source.{source}"))])
+            .map(|source| {
+                [
+                    (*source).to_owned(),
+                    text(&lang, &format!("supply.source.{source}")),
+                ]
+            })
             .collect(),
         substitute: stops::substitute_view(&state, &lang, &user, &card).await?,
         accident_flag: accident::view_of(&state, &lang, &user, &card).await?,

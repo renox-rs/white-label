@@ -307,7 +307,11 @@ async fn aut_base_the_advisor_actions_run_the_machine() {
         .post(&format!("{base}/cancel"), &[("code", "customer_stopped")])
         .await;
     unsigned.assert_status(422);
-    assert!(unsigned.text().contains("acknowledged"), "{}", unsigned.text());
+    assert!(
+        unsigned.text().contains("acknowledged"),
+        "{}",
+        unsigned.text()
+    );
     t.app
         .htmx()
         .post(

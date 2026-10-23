@@ -154,7 +154,13 @@ async fn aut_06_real_the_incident_ticket_is_resolved_by_the_branch_managers_deci
     let ticket_id = incident.ticket_id.expect("a real ticket");
     let ticket = Ticket::find_or_404(w.db(), ticket_id).await.unwrap();
     assert_eq!(ticket.subject(), card.subject());
-    assert!(incident.ticket_number.as_deref().unwrap().starts_with("TKT-"));
+    assert!(
+        incident
+            .ticket_number
+            .as_deref()
+            .unwrap()
+            .starts_with("TKT-")
+    );
 
     // From the ticketing side nobody resolves it.
     let refusal = wl_ticketing::work::resolve(w.state(), &basma, &ticket, renox::db::now())
@@ -206,14 +212,9 @@ async fn aut_06_real_an_involved_branch_manager_cannot_decide_but_the_owner_can(
     let (_, basma) = w.staff("Basma", BRANCH_MANAGER).await;
     let (_, owner) = w.staff("Omar", OWNER).await;
     let (card, tareq) = jc60(&w, &sami).await;
-    test_drives::record(
-        w.state(),
-        &basma,
-        card.id,
-        NewDrive::out(52_110),
-    )
-    .await
-    .unwrap();
+    test_drives::record(w.state(), &basma, card.id, NewDrive::out(52_110))
+        .await
+        .unwrap();
     let incident = incidents::report(w.state(), &tareq, card.id, NewIncident::new("Dent"))
         .await
         .unwrap();

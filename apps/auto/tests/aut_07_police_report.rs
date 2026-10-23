@@ -86,7 +86,10 @@ async fn aut_07_an_accident_job_card_is_not_approved_without_the_police_report()
         words(&refusal).contains("Police report required"),
         "{refusal}"
     );
-    assert_eq!(t.reload(card.id).await.status, JobCardStatus::AwaitingApproval);
+    assert_eq!(
+        t.reload(card.id).await.status,
+        JobCardStatus::AwaitingApproval
+    );
 
     let round = job_cards::pending_round(t.db(), card.id)
         .await
@@ -99,7 +102,10 @@ async fn aut_07_an_accident_job_card_is_not_approved_without_the_police_report()
         words(&by_link).contains("Police report required"),
         "{by_link}"
     );
-    assert_eq!(t.reload(card.id).await.status, JobCardStatus::AwaitingApproval);
+    assert_eq!(
+        t.reload(card.id).await.status,
+        JobCardStatus::AwaitingApproval
+    );
 
     t.documents.set(&card.subject(), KIND, None);
     let approved = job_cards::approve_recorded(t.state(), &sami, card.id, "Mona", "recorded", None)
@@ -135,11 +141,17 @@ async fn aut_07_book_survey_and_submit_estimate_need_the_report() {
     let survey = claims::book_survey(t.state(), &carla, claim_id)
         .await
         .unwrap_err();
-    assert!(words(&survey).contains("Police report required"), "{survey}");
+    assert!(
+        words(&survey).contains("Police report required"),
+        "{survey}"
+    );
     let submit = claims::submit_estimate(t.state(), &carla, claim_id)
         .await
         .unwrap_err();
-    assert!(words(&submit).contains("Police report required"), "{submit}");
+    assert!(
+        words(&submit).contains("Police report required"),
+        "{submit}"
+    );
     let claim = auto::InsuranceClaim::find_or_404(t.db(), claim_id)
         .await
         .unwrap();
@@ -185,7 +197,10 @@ async fn aut_07_a_removed_report_refuses_the_claim_approval_again() {
         .await
         .unwrap();
     assert_eq!(still.status, ClaimStatus::EstimateSubmitted);
-    assert_eq!(t.reload(e.card.id).await.status, JobCardStatus::AwaitingApproval);
+    assert_eq!(
+        t.reload(e.card.id).await.status,
+        JobCardStatus::AwaitingApproval
+    );
 
     t.documents.set(&claim.subject(), KIND, None);
     let approved = claims::approve(t.state(), &carla, claim_id, answer())
@@ -224,9 +239,10 @@ async fn aut_07_a_report_on_the_claim_counts_for_the_job_card_and_the_other_way_
         .await
         .unwrap();
     t.documents.remove(&claim.subject(), KIND);
-    let refusal = job_cards::approve_recorded(t.state(), &sami, e.card.id, "Mona", "recorded", None)
-        .await
-        .unwrap_err();
+    let refusal =
+        job_cards::approve_recorded(t.state(), &sami, e.card.id, "Mona", "recorded", None)
+            .await
+            .unwrap_err();
     assert!(
         words(&refusal).contains("Police report required"),
         "{refusal}"
@@ -234,9 +250,10 @@ async fn aut_07_a_report_on_the_claim_counts_for_the_job_card_and_the_other_way_
 
     // A report accepted on the claim lets the job card start.
     t.documents.set(&claim.subject(), KIND, None);
-    let approved = job_cards::approve_recorded(t.state(), &sami, e.card.id, "Mona", "recorded", None)
-        .await
-        .unwrap();
+    let approved =
+        job_cards::approve_recorded(t.state(), &sami, e.card.id, "Mona", "recorded", None)
+            .await
+            .unwrap();
     assert_eq!(approved.status, JobCardStatus::InProgress);
 }
 
@@ -261,7 +278,13 @@ async fn aut_07_no_override_is_offered_for_the_police_report() {
     // A refusal never offers an override link.
     let card = accident_card(&t, true).await;
     let refusal = wl_kernel::documents::guard(t.state())
-        .check_as(t.state(), "job_card.approve", card.id, wl_kernel::documents::today(), None)
+        .check_as(
+            t.state(),
+            "job_card.approve",
+            card.id,
+            wl_kernel::documents::today(),
+            None,
+        )
         .await
         .unwrap()
         .unwrap_err();
@@ -308,7 +331,10 @@ async fn aut_07_clearing_the_accident_flag_needs_the_workshop_manager_and_no_cla
     let on_intake = job_cards::record_intake(t.state(), &sami, jc72.id, intake)
         .await
         .unwrap_err();
-    assert!(words(&on_intake).contains("workshop manager"), "{on_intake}");
+    assert!(
+        words(&on_intake).contains("workshop manager"),
+        "{on_intake}"
+    );
 
     let asked = accident_flag::request_clear(t.state(), &sami, jc72.id, "Old damage, no accident")
         .await

@@ -92,7 +92,9 @@ pub(crate) async fn view_of(
             id: drive.id,
             driver: super::user_name(&state.db, drive.driver_user_id).await,
             out: dubai_text(drive.out_at),
-            back: drive.in_at.map_or_else(|| text(lang, "drives.still_out"), dubai_text),
+            back: drive
+                .in_at
+                .map_or_else(|| text(lang, "drives.still_out"), dubai_text),
             km_out: crate::number_text(drive.odometer_out),
             km_in: drive.odometer_in.map_or_else(none, crate::number_text),
             distance: drive
@@ -105,7 +107,11 @@ pub(crate) async fn view_of(
     let mut rows = Vec::new();
     for incident in Incident::of_job_card(&state.db, card.id).await? {
         let involved = incidents::involved(&state.db, &incident).await?;
-        rows.push(row_of(lang, &incident, can_decide_any && !involved.contains(&user.id)));
+        rows.push(row_of(
+            lang,
+            &incident,
+            can_decide_any && !involved.contains(&user.id),
+        ));
     }
     let open = card.status.is_open();
     Ok(IncidentView {
@@ -116,7 +122,12 @@ pub(crate) async fn view_of(
         is_internal: card.internal,
         liability_options: [WORKSHOP, NOT_WORKSHOP]
             .into_iter()
-            .map(|l| [l.to_owned(), text(lang, &format!("incidents.liability.{l}"))])
+            .map(|l| {
+                [
+                    l.to_owned(),
+                    text(lang, &format!("incidents.liability.{l}")),
+                ]
+            })
             .collect(),
     })
 }
@@ -166,7 +177,11 @@ async fn record_drive(
 ) -> Result<Response> {
     let km = parse_km(&field(&form, "odometer").unwrap_or_default())?;
     test_drives::record(&state, &user, id, NewDrive::out(km)).await?;
-    Ok((Toast::success(text(&lang, "drives.saved")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "drives.saved")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// `POST /auto/test-drives/{id}/finish`: `odometer`.
@@ -180,7 +195,11 @@ async fn finish_drive(
     let km = parse_km(&field(&form, "odometer").unwrap_or_default())?;
     let at: Option<DateTime> = None;
     test_drives::finish(&state, &user, id, km, at).await?;
-    Ok((Toast::success(text(&lang, "drives.closed")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "drives.closed")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// `POST /auto/job-cards/{id}/incidents`: `description`, `road_accident`.

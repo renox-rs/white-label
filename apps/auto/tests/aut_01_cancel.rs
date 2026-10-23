@@ -238,7 +238,11 @@ async fn aut_01_a_cancel_bills_the_work_done_and_closes_the_stock_and_the_bookin
     );
 
     assert_eq!(t.stock.balance("OIL-F"), 3_000, "the filter is back");
-    assert_eq!(t.stock.balance("BRK-PAD"), 4_000, "the fitted pads stay out");
+    assert_eq!(
+        t.stock.balance("BRK-PAD"),
+        4_000,
+        "the fitted pads stay out"
+    );
     let returned = t.stock.returned();
     assert_eq!(returned.len(), 1);
     assert_eq!(returned[0].quantity_milli, 1_000);
@@ -339,9 +343,14 @@ async fn aut_01_a_lowered_bill_waits_for_the_branch_manager_who_is_not_the_advis
     let sami = t.auth(&sami_user).await;
     let basma = branch_manager(&t).await;
 
-    let asked = job_stops::cancel(t.state(), &sami, jc.card.id, customer_stopped().bill(30_000))
-        .await
-        .expect("the cancel is asked for");
+    let asked = job_stops::cancel(
+        t.state(),
+        &sami,
+        jc.card.id,
+        customer_stopped().bill(30_000),
+    )
+    .await
+    .expect("the cancel is asked for");
 
     let request = asked.approval_request.expect("an approval request waits");
     assert_eq!(asked.card.status, JobCardStatus::InProgress);
@@ -357,7 +366,10 @@ async fn aut_01_a_lowered_bill_waits_for_the_branch_manager_who_is_not_the_advis
 
     // A cannot approve it, and neither can a user without the right.
     let own = approvals::approve(t.state(), request, &sami_user, "").await;
-    assert!(matches!(own, Err(Error::Forbidden)), "the advisor never approves");
+    assert!(
+        matches!(own, Err(Error::Forbidden)),
+        "the advisor never approves"
+    );
     let tareq_user = t.technician_user("Tareq").await;
     let other = approvals::approve(t.state(), request, &tareq_user, "").await;
     assert!(matches!(other, Err(Error::Forbidden)));
@@ -392,18 +404,28 @@ async fn aut_01_billing_even_a_fil_less_needs_approval_and_more_is_refused() {
     let sami = t.advisor().await;
     let basma = branch_manager(&t).await;
 
-    let over = job_stops::cancel(t.state(), &sami, jc.card.id, customer_stopped().bill(50_001))
-        .await
-        .unwrap_err();
+    let over = job_stops::cancel(
+        t.state(),
+        &sami,
+        jc.card.id,
+        customer_stopped().bill(50_001),
+    )
+    .await
+    .unwrap_err();
     assert!(over.to_string().contains("work done"), "{over}");
     let negative = job_stops::cancel(t.state(), &sami, jc.card.id, customer_stopped().bill(-1))
         .await
         .unwrap_err();
     assert!(negative.to_string().contains("below 0"), "{negative}");
 
-    let waits = job_stops::cancel(t.state(), &sami, jc.card.id, customer_stopped().bill(49_999))
-        .await
-        .unwrap();
+    let waits = job_stops::cancel(
+        t.state(),
+        &sami,
+        jc.card.id,
+        customer_stopped().bill(49_999),
+    )
+    .await
+    .unwrap();
     assert!(waits.approval_request.is_some(), "a fil less is lowered");
     let again = job_stops::cancel(t.state(), &sami, jc.card.id, customer_stopped().bill(0))
         .await
@@ -459,9 +481,14 @@ async fn aut_01_a_waiting_cancel_stops_new_labour_and_parts_until_it_is_decided(
     let tareq = t.technician("Tareq").await;
     let basma = branch_manager(&t).await;
 
-    let asked = job_stops::cancel(t.state(), &sami, jc.card.id, customer_stopped().bill(10_000))
-        .await
-        .unwrap();
+    let asked = job_stops::cancel(
+        t.state(),
+        &sami,
+        jc.card.id,
+        customer_stopped().bill(10_000),
+    )
+    .await
+    .unwrap();
     assert!(job_stops::cancel_pending(t.db(), jc.card.id).await.unwrap());
 
     let labour = job_cards::add_labour(
@@ -472,7 +499,10 @@ async fn aut_01_a_waiting_cancel_stops_new_labour_and_parts_until_it_is_decided(
     )
     .await
     .unwrap_err();
-    assert!(labour.to_string().contains("waits for the branch manager"), "{labour}");
+    assert!(
+        labour.to_string().contains("waits for the branch manager"),
+        "{labour}"
+    );
     let part = job_cards::add_part(
         t.state(),
         &tareq,
@@ -481,13 +511,30 @@ async fn aut_01_a_waiting_cancel_stops_new_labour_and_parts_until_it_is_decided(
     )
     .await
     .unwrap_err();
-    assert!(part.to_string().contains("waits for the branch manager"), "{part}");
-    let work = job_cards::record_work(t.state(), &tareq, jc.discs_labour.id, WorkStatus::Done, None)
+    assert!(
+        part.to_string().contains("waits for the branch manager"),
+        "{part}"
+    );
+    let work = job_cards::record_work(
+        t.state(),
+        &tareq,
+        jc.discs_labour.id,
+        WorkStatus::Done,
+        None,
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        work.to_string().contains("waits for the branch manager"),
+        "{work}"
+    );
+    let issue = auto::parts::issue(t.state(), &tareq, jc.pads.id, Some(0))
         .await
         .unwrap_err();
-    assert!(work.to_string().contains("waits for the branch manager"), "{work}");
-    let issue = auto::parts::issue(t.state(), &tareq, jc.pads.id, Some(0)).await.unwrap_err();
-    assert!(issue.to_string().contains("waits for the branch manager"), "{issue}");
+    assert!(
+        issue.to_string().contains("waits for the branch manager"),
+        "{issue}"
+    );
 
     // The page tells the technician and offers no second cancel.
     let sami_user = t.advisor_user().await;
@@ -499,9 +546,14 @@ async fn aut_01_a_waiting_cancel_stops_new_labour_and_parts_until_it_is_decided(
         .assert_see("waits for the branch manager")
         .assert_dont_see("Cancel the job");
 
-    approvals::reject(t.state(), asked.approval_request.unwrap(), &basma, "Bill the work done")
-        .await
-        .unwrap();
+    approvals::reject(
+        t.state(),
+        asked.approval_request.unwrap(),
+        &basma,
+        "Bill the work done",
+    )
+    .await
+    .unwrap();
     assert!(!job_stops::cancel_pending(t.db(), jc.card.id).await.unwrap());
     let card = t.reload(jc.card.id).await;
     assert_eq!(card.status, JobCardStatus::InProgress, "it stays as it was");
@@ -617,7 +669,10 @@ async fn aut_01_only_a_declined_or_cancelled_job_card_is_released() {
     let refused = release::release(t.state(), &sami, open.id, Release::safe("Mona Hassan"))
         .await
         .unwrap_err();
-    assert!(refused.to_string().contains("declined or cancelled"), "{refused}");
+    assert!(
+        refused.to_string().contains("declined or cancelled"),
+        "{refused}"
+    );
 }
 
 /// JC-11 `checked_in`: `cancel` is refused in words and the page does not
@@ -650,7 +705,10 @@ async fn aut_01_a_job_card_that_was_just_checked_in_ready_or_closed_is_not_cance
         .await
         .unwrap_err();
     assert!(refused.to_string().contains("over"), "{refused}");
-    assert_eq!(t.reload(checked_in.id).await.status, JobCardStatus::CheckedIn);
+    assert_eq!(
+        t.reload(checked_in.id).await.status,
+        JobCardStatus::CheckedIn
+    );
 }
 
 /// A customer who refuses to sign: A records "refused to sign" with witness W;
@@ -688,12 +746,18 @@ async fn aut_01_a_customer_who_refuses_to_sign_needs_a_witness_and_the_branch_ma
     assert_eq!(asked.card.status, JobCardStatus::InProgress);
     assert!(t.books.all().is_empty());
 
-    approvals::approve(t.state(), request, &basma, "").await.unwrap();
+    approvals::approve(t.state(), request, &basma, "")
+        .await
+        .unwrap();
     let card = t.reload(jc.card.id).await;
     assert_eq!(card.status, JobCardStatus::Cancelled);
     assert_eq!(card.ack_method.as_deref(), Some("refused_to_sign"));
     assert_eq!(card.ack_witness.as_deref(), Some("Waleed"));
-    assert_eq!(t.books.about(&card.subject())[0].net(), 50_000, "billed in full");
+    assert_eq!(
+        t.books.about(&card.subject())[0].net(),
+        50_000,
+        "billed in full"
+    );
 }
 
 /// The insurer's notice or the customer's written withdrawal replaces the
@@ -716,9 +780,14 @@ async fn aut_01_a_written_withdrawal_replaces_the_signature() {
     .await
     .unwrap_err();
     assert!(none.to_string().contains("reference"), "{none}");
-    let nothing = job_stops::cancel(t.state(), &sami, card.id, StopRequest::new("customer_stopped"))
-        .await
-        .unwrap_err();
+    let nothing = job_stops::cancel(
+        t.state(),
+        &sami,
+        card.id,
+        StopRequest::new("customer_stopped"),
+    )
+    .await
+    .unwrap_err();
     assert!(nothing.to_string().contains("acknowledged"), "{nothing}");
     let stopped = job_stops::cancel(
         t.state(),
@@ -728,7 +797,10 @@ async fn aut_01_a_written_withdrawal_replaces_the_signature() {
     )
     .await
     .unwrap();
-    assert_eq!(stopped.card.ack_document.as_deref(), Some("E-mail of 12 November"));
+    assert_eq!(
+        stopped.card.ack_document.as_deref(),
+        Some("E-mail of 12 November")
+    );
 }
 
 /// Only the service advisor cancels, with a reason from the list; a job funded
@@ -761,7 +833,10 @@ async fn aut_01_only_the_advisor_cancels_with_a_reason_from_the_list() {
     )
     .await
     .unwrap_err();
-    assert!(total_loss.to_string().contains("Pick why"), "the claim ends a total loss");
+    assert!(
+        total_loss.to_string().contains("Pick why"),
+        "the claim ends a total loss"
+    );
     assert_eq!(t.reload(card.id).await.status, JobCardStatus::InProgress);
 }
 
@@ -777,9 +852,14 @@ async fn aut_01_a_policy_taken_away_cannot_let_a_lowered_bill_through() {
         .await
         .unwrap();
 
-    let refused = job_stops::cancel(t.state(), &sami, jc.card.id, customer_stopped().bill(30_000))
-        .await
-        .unwrap_err();
+    let refused = job_stops::cancel(
+        t.state(),
+        &sami,
+        jc.card.id,
+        customer_stopped().bill(30_000),
+    )
+    .await
+    .unwrap_err();
     assert!(refused.to_string().contains("approval"), "{refused}");
     assert_eq!(t.reload(jc.card.id).await.status, JobCardStatus::InProgress);
     // Billing the work done in full needs none.
@@ -815,7 +895,10 @@ async fn aut_01_nothing_done_yet_bills_the_inspection_fee_only_when_it_was_agree
     job_stops::cancel(t.state(), &sami, free.id, customer_stopped())
         .await
         .unwrap();
-    assert!(t.books.about(&free.subject()).is_empty(), "no fee, no invoice");
+    assert!(
+        t.books.about(&free.subject()).is_empty(),
+        "no fee, no invoice"
+    );
     assert_eq!(t.reload(free.id).await.status, JobCardStatus::Cancelled);
 }
 
@@ -845,21 +928,34 @@ async fn aut_01_a_special_order_part_is_billed_handed_over_and_the_purchaser_get
     let not_special = job_stops::link_purchase_order(t.state(), &sami, jc.pads.id, Some(1))
         .await
         .unwrap_err();
-    assert!(not_special.to_string().contains("special-order"), "{not_special}");
+    assert!(
+        not_special.to_string().contains("special-order"),
+        "{not_special}"
+    );
 
     job_stops::cancel(t.state(), &sami, jc.card.id, customer_stopped())
         .await
         .unwrap();
 
     let card = t.reload(jc.card.id).await;
-    assert_eq!(card.work_done_value, 140_000, "AED 500 and the gearbox AED 900");
+    assert_eq!(
+        card.work_done_value, 140_000,
+        "AED 500 and the gearbox AED 900"
+    );
     assert_eq!(t.books.about(&card.subject())[0].net(), 140_000);
     let gearbox = t.part_now(gearbox.id).await;
-    assert!(gearbox.handed_over_at.is_some(), "handed over with the vehicle");
+    assert!(
+        gearbox.handed_over_at.is_some(),
+        "handed over with the vehicle"
+    );
     assert_eq!(gearbox.returned_milli, 0);
     let order = Subject::new("inventory.purchase_order", 900);
     let tasks = t.tickets.about(&order);
-    assert_eq!(tasks.len(), 1, "the purchaser has a task to revise the order");
+    assert_eq!(
+        tasks.len(),
+        1,
+        "the purchaser has a task to revise the order"
+    );
     assert_eq!(
         tasks[0].ticket.source_key.as_deref(),
         Some(format!("auto.po_revise:{}:{}", card.id, gearbox.id).as_str())
@@ -874,22 +970,27 @@ async fn aut_01_a_special_order_part_is_billed_handed_over_and_the_purchaser_get
 async fn aut_01_the_system_cancels_for_a_claim_without_a_signature() {
     let t = boot().await;
     let jc = jc10(&t).await;
-    let withdrawn = job_stops::cancel_by_system(t.state(), jc.card.id, "claim_withdrawn", "Letter of 3 Nov")
-        .await
-        .unwrap();
+    let withdrawn =
+        job_stops::cancel_by_system(t.state(), jc.card.id, "claim_withdrawn", "Letter of 3 Nov")
+            .await
+            .unwrap();
     assert_eq!(withdrawn.status, JobCardStatus::Cancelled);
     assert_eq!(withdrawn.ack_method.as_deref(), Some("written_withdrawal"));
     assert_eq!(t.books.about(&withdrawn.subject())[0].net(), 50_000);
 
     let vehicle = t.hilux().await;
     let total = t.card_in(&vehicle, JobCardStatus::InProgress).await;
-    t.approved_labour(&total, "Panel beating", 2_000, 20_000).await;
+    t.approved_labour(&total, "Panel beating", 2_000, 20_000)
+        .await;
     let lost = job_stops::cancel_by_system(t.state(), total.id, "total_loss", "Insurer notice 88")
         .await
         .unwrap();
     assert_eq!(lost.status, JobCardStatus::Cancelled);
     assert_eq!(lost.ack_method.as_deref(), Some("insurer_notice"));
-    assert!(t.books.about(&lost.subject()).is_empty(), "the claim invoices");
+    assert!(
+        t.books.about(&lost.subject()).is_empty(),
+        "the claim invoices"
+    );
     let bad = job_stops::cancel_by_system(t.state(), total.id, "customer_stopped", "x")
         .await
         .unwrap_err();
@@ -920,7 +1021,11 @@ async fn aut_01_the_page_offers_the_cancel_and_shows_how_the_job_stopped() {
         .post(&format!("{base}/cancel"), &[("code", "customer_stopped")])
         .await;
     refused.assert_status(422);
-    assert!(refused.text().contains("acknowledged"), "{}", refused.text());
+    assert!(
+        refused.text().contains("acknowledged"),
+        "{}",
+        refused.text()
+    );
 
     let pads_work = format!("work_{}", jc.pads_labour.id);
     let discs_work = format!("work_{}", jc.discs_labour.id);

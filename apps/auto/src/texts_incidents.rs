@@ -113,10 +113,7 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "auto.incidents.problem.closed",
         "The job card is closed: an incident cannot be reported on it.",
     ),
-    (
-        "auto.incidents.problem.description",
-        "Say what happened.",
-    ),
+    ("auto.incidents.problem.description", "Say what happened."),
     (
         "auto.incidents.problem.decided",
         "The liability of this incident is decided already.",

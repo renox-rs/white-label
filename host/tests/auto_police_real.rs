@@ -237,11 +237,17 @@ async fn aut_07_real_the_claim_steps_follow_the_report_and_an_archived_report_re
     let survey = claims::book_survey(w.state(), &carla, claim.id)
         .await
         .unwrap_err();
-    assert!(words(&survey).contains("Police report required"), "{survey}");
+    assert!(
+        words(&survey).contains("Police report required"),
+        "{survey}"
+    );
     let submit = claims::submit_estimate(w.state(), &carla, claim.id)
         .await
         .unwrap_err();
-    assert!(words(&submit).contains("Police report required"), "{submit}");
+    assert!(
+        words(&submit).contains("Police report required"),
+        "{submit}"
+    );
 
     let report = upload_report(&w, &carla, claim.subject()).await;
     Documents::accept(w.state(), &wanda, &report).await.unwrap();
@@ -303,7 +309,10 @@ async fn aut_07_real_no_override_can_be_requested_for_the_police_report() {
         .unwrap()
         .expect("the seed stored the police report kind");
     assert!(kind.legal_block);
-    assert_eq!(kind.override_mode, wl_kernel::documents::OverrideMode::Never);
+    assert_eq!(
+        kind.override_mode,
+        wl_kernel::documents::OverrideMode::Never
+    );
 
     let asked = Documents::request_override(
         w.state(),
@@ -315,10 +324,7 @@ async fn aut_07_real_no_override_can_be_requested_for_the_police_report() {
     )
     .await
     .unwrap_err();
-    assert!(
-        words(&asked).to_lowercase().contains("override"),
-        "{asked}"
-    );
+    assert!(words(&asked).to_lowercase().contains("override"), "{asked}");
 
     let refusal = wl_kernel::documents::guard(w.state())
         .check_as(

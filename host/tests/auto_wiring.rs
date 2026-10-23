@@ -146,5 +146,7 @@ async fn aut_01_the_cancel_approval_policy_is_installed_with_words() {
         policy.steps.0[0].permission.as_deref(),
         Some(aut::JOB_CARDS_APPROVE)
     );
-    assert!(wl_kernel::approvals::action_is_labelled("auto.job_card_cancel"));
+    assert!(wl_kernel::approvals::action_is_labelled(
+        "auto.job_card_cancel"
+    ));
 }

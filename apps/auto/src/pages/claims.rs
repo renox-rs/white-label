@@ -570,15 +570,22 @@ async fn show(
         (Some(no), None) => no.clone(),
         _ => text(&lang, "claims.police_missing"),
     };
-    let police_document =
-        match crate::documents::police_verdict(&state, crate::documents::GUARDED_CLAIM_APPROVE, claim.id, None)
-            .await?
-        {
-            crate::documents::PoliceVerdict::Valid => text(&lang, "police.attached"),
-            crate::documents::PoliceVerdict::Refused(words) => words,
-        };
+    let police_document = match crate::documents::police_verdict(
+        &state,
+        crate::documents::GUARDED_CLAIM_APPROVE,
+        claim.id,
+        None,
+    )
+    .await?
+    {
+        crate::documents::PoliceVerdict::Valid => text(&lang, "police.attached"),
+        crate::documents::PoliceVerdict::Refused(words) => words,
+    };
     let subject = claim.subject();
-    let documents_link = format!("/documents/of/{}/{}", subject.subject_type, subject.subject_id);
+    let documents_link = format!(
+        "/documents/of/{}/{}",
+        subject.subject_type, subject.subject_id
+    );
     let rate_card = match (claim.rate_card_id, claim.rate_card_version) {
         (Some(card), Some(version)) => format!("#{card} v{version}"),
         _ => none.clone(),

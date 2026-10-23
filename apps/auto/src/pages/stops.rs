@@ -24,18 +24,18 @@ use wl_kernel::documents::dubai_text;
 use super::{
     invalid, parse_milli, parse_money, parse_optional_date, parse_optional_id, text, ticked,
 };
-use crate::parts_wait::PartsWait;
-use crate::substitute::{self, Substitute};
 use crate::estimate::Estimate;
 use crate::job_card::{JobCard, JobCardStatus};
 use crate::job_stops::{self, StopRequest};
 use crate::labour_line::{LineStatus, WorkStatus, hours_text};
 use crate::money_text;
+use crate::parts_wait::PartsWait;
+use crate::permissions;
 use crate::release::{self, AS_IS, Release, SAFE};
 use crate::stop::{
     CLAIM_WITHDRAWN, CUSTOMER_STOPPED, INSURER_NOTICE, REFUSED_TO_SIGN, SIGNED, WRITTEN_WITHDRAWAL,
 };
-use crate::permissions;
+use crate::substitute::{self, Substitute};
 use crate::texts;
 
 /// The routes of the stops.
@@ -216,10 +216,7 @@ pub(crate) fn view_of(
                 money_text(card.work_done_value),
             ]);
         }
-        summary.push([
-            text(lang, "stop.entry.billed"),
-            money_text(card.billed_net),
-        ]);
+        summary.push([text(lang, "stop.entry.billed"), money_text(card.billed_net)]);
         if card.bill_lowered {
             summary.push([text(lang, "stop.entry.lowered"), text(lang, "jobs.yes")]);
         }
@@ -233,11 +230,7 @@ pub(crate) fn view_of(
             summary.push([text(lang, "stop.entry.handed_over"), handed.join(", ")]);
         }
         if let (Some(at), Some(to)) = (card.released_at, &card.released_to) {
-            let condition = card
-                .release_condition
-                .as_deref()
-                .unwrap_or(SAFE)
-                .to_owned();
+            let condition = card.release_condition.as_deref().unwrap_or(SAFE).to_owned();
             summary.push([
                 text(lang, "stop.entry.released"),
                 texts::t_with(

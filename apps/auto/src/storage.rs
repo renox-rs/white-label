@@ -200,10 +200,7 @@ async fn tell_manager(state: &AppState, card: &JobCard, days: i64) -> Result {
 async fn mark(state: &AppState, id: i64, column: &str, day: NaiveDate) -> Result {
     JobCard::query()
         .where_(JobCard::ID.eq(id))
-        .update(
-            &state.db,
-            &[(column, &Some(day)), ("updated_at", &now())],
-        )
+        .update(&state.db, &[(column, &Some(day)), ("updated_at", &now())])
         .await?;
     Ok(())
 }
@@ -435,7 +432,10 @@ mod tests {
         // 2026-11-04 to 2026-11-09 is six days when the vehicle leaves on the 10th.
         assert_eq!(days_charged(&card, "2026-11-10".parse().unwrap()), 6);
         assert_eq!(days_charged(&card, "2026-11-04".parse().unwrap()), 0);
-        assert_eq!(days_charged(&JobCard::default(), "2026-11-10".parse().unwrap()), 0);
+        assert_eq!(
+            days_charged(&JobCard::default(), "2026-11-10".parse().unwrap()),
+            0
+        );
     }
 
     #[test]

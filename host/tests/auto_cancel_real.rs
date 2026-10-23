@@ -23,9 +23,7 @@ use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use support::{company, person, tenant};
 use wl_inventory::movement::StockMovement;
-use wl_inventory::{
-    Item, Location, MovementType, PurchaseOrder, PurchaseOrderStatus,
-};
+use wl_inventory::{Item, Location, MovementType, PurchaseOrder, PurchaseOrderStatus};
 use wl_kernel::approvals::approve;
 use wl_kernel::invoicing::{InvoiceId, InvoiceStatus, invoicer};
 use wl_kernel::tickets::task_creator;
@@ -118,7 +116,8 @@ async fn stocked(w: &World) -> (Item, Item, Location) {
     filter.save(w.db()).await.unwrap();
     let mut store = Location::new("WORKSHOP-1", "Workshop 1").in_scope(&workshop());
     store.save(w.db()).await.unwrap();
-    for (item, quantity, cost, source) in [(&pads, 5_000, 40_000, 900), (&filter, 3_000, 9_000, 901)]
+    for (item, quantity, cost, source) in
+        [(&pads, 5_000, 40_000, 900), (&filter, 3_000, 9_000, 901)]
     {
         let mut received = StockMovement::receive(
             item.id,
@@ -478,7 +477,10 @@ async fn aut_01_real_the_purchase_order_of_a_special_part_is_unchanged_and_the_p
         .find_open(w.state(), &key)
         .await
         .unwrap();
-    assert!(task.is_some(), "the purchaser has a task to revise the order");
+    assert!(
+        task.is_some(),
+        "the purchaser has a task to revise the order"
+    );
     let invoice = invoicer(w.state())
         .find(w.db(), InvoiceId(card.invoice_id.unwrap()))
         .await

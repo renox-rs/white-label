@@ -4,10 +4,10 @@
 
 mod support;
 
+use auto::JobCardStatus;
 use auto::incident::Incident;
 use auto::permissions as aut;
 use auto::test_drive::TestDrive;
-use auto::JobCardStatus;
 use renox::prelude::*;
 use support::boot;
 
@@ -67,7 +67,10 @@ async fn aut_06_the_job_card_page_records_drives_and_decides_incidents() {
         )
         .await
         .assert_status(200);
-    let incident = Incident::of_job_card(t.db(), card.id).await.unwrap().remove(0);
+    let incident = Incident::of_job_card(t.db(), card.id)
+        .await
+        .unwrap()
+        .remove(0);
     assert!(incident.road_accident);
     t.app
         .get(&format!("/auto/job-cards/{}", card.id))

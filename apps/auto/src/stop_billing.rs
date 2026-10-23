@@ -160,6 +160,9 @@ mod tests {
         assert_eq!(full.party, PartyId(7));
         assert_eq!(full.lines.iter().map(DraftLine::net).sum::<i64>(), 20_000);
         let lowered = draft_of(&card(12_000), &estimate()).expect("a draft");
-        assert_eq!(lowered.lines.iter().map(DraftLine::net).sum::<i64>(), 12_000);
+        assert_eq!(
+            lowered.lines.iter().map(DraftLine::net).sum::<i64>(),
+            12_000
+        );
     }
 }

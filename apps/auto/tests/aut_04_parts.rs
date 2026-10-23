@@ -42,7 +42,9 @@ async fn holder(t: &Garage, name: &str, role: &str, grants: &[&str]) -> User {
     if let Some(found) = User::find_by_email(t.db(), &email).await.unwrap() {
         return found;
     }
-    permissions::define_role(t.db(), role, grants).await.unwrap();
+    permissions::define_role(t.db(), role, grants)
+        .await
+        .unwrap();
     let user = User::register(t.db(), name, &email, "password123")
         .await
         .unwrap();
@@ -87,7 +89,9 @@ async fn jc(t: &Garage, source: &str) -> (JobCard, PartLine) {
 async fn imports_take_14_days(t: &Garage) {
     let basma = manager(t).await;
     let auth = t.auth(&basma).await;
-    supply::set_period(t.state(), &auth, "import", 14).await.unwrap();
+    supply::set_period(t.state(), &auth, "import", 14)
+        .await
+        .unwrap();
 }
 
 /// Moves the clock to the Asia/Dubai instant `to`.
@@ -110,7 +114,9 @@ async fn aut_04_the_legal_date_is_the_start_plus_the_period_and_the_notices_fire
     let sami = t.advisor_user().await;
     let tareq = t.technician("Tareq").await;
 
-    let waiting = job_cards::wait_parts(t.state(), &tareq, card.id).await.unwrap();
+    let waiting = job_cards::wait_parts(t.state(), &tareq, card.id)
+        .await
+        .unwrap();
 
     let legal = today() + Days::days(14);
     assert_eq!(waiting.status, JobCardStatus::AwaitingParts);
@@ -120,11 +126,15 @@ async fn aut_04_the_legal_date_is_the_start_plus_the_period_and_the_notices_fire
     assert_eq!((wait.legal_date, wait.source.as_str()), (legal, "import"));
 
     // Before the N days: nothing.
-    parts_delays::run_daily(t.state(), legal - Days::days(3)).await.unwrap();
+    parts_delays::run_daily(t.state(), legal - Days::days(3))
+        .await
+        .unwrap();
     assert!(t.messages.sent().is_empty());
 
     // Two days before: the advisor and the customer.
-    parts_delays::run_daily(t.state(), legal - Days::days(2)).await.unwrap();
+    parts_delays::run_daily(t.state(), legal - Days::days(2))
+        .await
+        .unwrap();
     let notices = t.messages.of_type(NOTICE_TYPE);
     assert_eq!(notices.len(), 1);
     assert!(Messages::told_user(&notices[0], sami.id));
@@ -141,8 +151,12 @@ async fn aut_04_the_legal_date_is_the_start_plus_the_period_and_the_notices_fire
     );
 
     // Again, and the day after: nothing more; the manager is not told yet.
-    parts_delays::run_daily(t.state(), legal - Days::days(2)).await.unwrap();
-    parts_delays::run_daily(t.state(), legal - Days::days(1)).await.unwrap();
+    parts_delays::run_daily(t.state(), legal - Days::days(2))
+        .await
+        .unwrap();
+    parts_delays::run_daily(t.state(), legal - Days::days(1))
+        .await
+        .unwrap();
     assert_eq!(t.messages.sent().len(), 2);
     assert_eq!(t.tickets.with_key("auto.parts_date:").len(), 1);
 
@@ -151,7 +165,9 @@ async fn aut_04_the_legal_date_is_the_start_plus_the_period_and_the_notices_fire
     let notices = t.messages.of_type(NOTICE_TYPE);
     assert_eq!(notices.len(), 2);
     assert_eq!(users_of(&notices[1]), [basma.id]);
-    parts_delays::run_daily(t.state(), legal + Days::days(1)).await.unwrap();
+    parts_delays::run_daily(t.state(), legal + Days::days(1))
+        .await
+        .unwrap();
     assert_eq!(t.messages.sent().len(), 3, "each step fires once");
 }
 
@@ -163,13 +179,17 @@ async fn aut_04_the_customer_is_told_the_expected_date_of_the_part() {
     let (card, part) = jc(&t, "stock").await;
     let tareq = t.technician("Tareq").await;
     let sami = t.advisor().await;
-    job_cards::wait_parts(t.state(), &tareq, card.id).await.unwrap();
+    job_cards::wait_parts(t.state(), &tareq, card.id)
+        .await
+        .unwrap();
     let expected = day(9);
     auto::parts::set_expected(t.state(), &sami, part.id, Some(expected))
         .await
         .unwrap();
 
-    parts_delays::run_daily(t.state(), today() + Days::days(5)).await.unwrap();
+    parts_delays::run_daily(t.state(), today() + Days::days(5))
+        .await
+        .unwrap();
 
     let delays = t.messages.of_type(DELAY_TYPE);
     assert_eq!(delays.len(), 1);
@@ -186,15 +206,23 @@ async fn aut_04_a_customer_without_a_mobile_number_gets_a_call_from_the_advisor(
     let (card, _) = jc(&t, "stock").await;
     t.people.set_no_mobile(7, true);
     let tareq = t.technician("Tareq").await;
-    job_cards::wait_parts(t.state(), &tareq, card.id).await.unwrap();
+    job_cards::wait_parts(t.state(), &tareq, card.id)
+        .await
+        .unwrap();
 
-    parts_delays::run_daily(t.state(), today() + Days::days(5)).await.unwrap();
+    parts_delays::run_daily(t.state(), today() + Days::days(5))
+        .await
+        .unwrap();
 
     assert!(t.messages.of_type(DELAY_TYPE).is_empty());
     let calls = t.tickets.with_key("auto.call_customer:");
     assert_eq!(calls.len(), 1);
     assert!(calls[0].ticket.title.contains("Mona Hassan"));
-    assert_eq!(t.messages.of_type(NOTICE_TYPE).len(), 1, "the advisor is told");
+    assert_eq!(
+        t.messages.of_type(NOTICE_TYPE).len(),
+        1,
+        "the advisor is told"
+    );
 }
 
 /// Parts from a 7-day source and a 30-day source: the legal date uses 7 days.
@@ -220,9 +248,14 @@ async fn aut_04_the_strictest_source_gives_the_legal_date() {
     )
     .await
     .unwrap_err();
-    assert!(bad.to_string().contains("where the part comes from"), "{bad}");
+    assert!(
+        bad.to_string().contains("where the part comes from"),
+        "{bad}"
+    );
 
-    let waiting = job_cards::wait_parts(t.state(), &tareq, card.id).await.unwrap();
+    let waiting = job_cards::wait_parts(t.state(), &tareq, card.id)
+        .await
+        .unwrap();
 
     assert_eq!(waiting.legal_supply_date, Some(today() + Days::days(7)));
     let wait = PartsWait::open_of(t.db(), card.id).await.unwrap().unwrap();
@@ -250,18 +283,30 @@ async fn aut_04_each_wait_has_its_own_dates_and_an_ended_wait_fires_nothing() {
     let t = boot().await;
     let (card, _) = jc(&t, "stock").await;
     let tareq = t.technician("Tareq").await;
-    let parked = job_cards::wait_parts(t.state(), &tareq, card.id).await.unwrap();
+    let parked = job_cards::wait_parts(t.state(), &tareq, card.id)
+        .await
+        .unwrap();
     let resumed = run_as_system(&t, &parked, PARTS_ARRIVED, Default::default())
         .await
         .unwrap();
     assert_eq!(resumed.status, JobCardStatus::InProgress);
-    parts_delays::run_daily(t.state(), today() + Days::days(30)).await.unwrap();
-    assert!(t.messages.sent().is_empty(), "the wait ended: nothing fires");
+    parts_delays::run_daily(t.state(), today() + Days::days(30))
+        .await
+        .unwrap();
+    assert!(
+        t.messages.sent().is_empty(),
+        "the wait ended: nothing fires"
+    );
 
-    job_cards::wait_parts(t.state(), &tareq, card.id).await.unwrap();
+    job_cards::wait_parts(t.state(), &tareq, card.id)
+        .await
+        .unwrap();
     let waits = PartsWait::of_job_card(t.db(), card.id).await.unwrap();
     assert_eq!(waits.len(), 2);
-    assert!(waits[0].ended_at.is_some(), "the earlier wait stays in history");
+    assert!(
+        waits[0].ended_at.is_some(),
+        "the earlier wait stays in history"
+    );
     assert!(waits[1].ended_at.is_none());
 }
 
@@ -291,8 +336,13 @@ async fn aut_04_a_warranty_repair_gets_a_substitute_vehicle_task_after_seven_day
     }
     // 41, 42 and the ready one have a warranty ticket; the third has none.
     for index in [0, 1, 3] {
-        t.tickets
-            .add(&cards[index].subject(), "warranty", 50 + index as i64, "TKT-W", "open");
+        t.tickets.add(
+            &cards[index].subject(),
+            "warranty",
+            50 + index as i64,
+            "TKT-W",
+            "open",
+        );
     }
     let six_days_ago = at(day(-6), 9, 0);
     let young = t.card_in(&vehicle, JobCardStatus::InProgress).await;
@@ -301,7 +351,8 @@ async fn aut_04_a_warranty_repair_gets_a_substitute_vehicle_task_after_seven_day
         .update(t.db(), &[("created_at", &Some(six_days_ago))])
         .await
         .unwrap();
-    t.tickets.add(&young.subject(), "warranty", 60, "TKT-Y", "open");
+    t.tickets
+        .add(&young.subject(), "warranty", 60, "TKT-Y", "open");
 
     parts_delays::run_daily(t.state(), today()).await.unwrap();
 
@@ -314,12 +365,18 @@ async fn aut_04_a_warranty_repair_gets_a_substitute_vehicle_task_after_seven_day
         Some(substitute::task_key(cards[0].id).as_str())
     );
     // Once per job card.
-    parts_delays::run_daily(t.state(), today() + Days::days(1)).await.unwrap();
+    parts_delays::run_daily(t.state(), today() + Days::days(1))
+        .await
+        .unwrap();
     assert_eq!(t.tickets.with_key("auto.substitute:").len(), 2);
     // The sixth day: not yet; the seventh: yes.
-    parts_delays::run_daily(t.state(), today() + Days::days(1)).await.unwrap();
+    parts_delays::run_daily(t.state(), today() + Days::days(1))
+        .await
+        .unwrap();
     assert_eq!(t.tickets.with_key("auto.substitute:").len(), 2);
-    parts_delays::run_daily(t.state(), dubai_plus(six_days_ago, 7)).await.unwrap();
+    parts_delays::run_daily(t.state(), dubai_plus(six_days_ago, 7))
+        .await
+        .unwrap();
     assert_eq!(t.tickets.with_key("auto.substitute:").len(), 3);
 }
 
@@ -360,8 +417,11 @@ async fn aut_04_the_substitute_closes_the_task_and_blocks_the_delivery_until_it_
         .await
         .unwrap();
     // The warranty task is for a job card not yet ready: ask for it directly.
-    t.tickets.add(&card.subject(), "warranty", 70, "TKT-W", "open");
-    let row = substitute::request(t.state(), &t.reload(card.id).await).await.unwrap();
+    t.tickets
+        .add(&card.subject(), "warranty", 70, "TKT-W", "open");
+    let row = substitute::request(t.state(), &t.reload(card.id).await)
+        .await
+        .unwrap();
     assert!(row.is_open(), "asked for and not answered");
     let blocked = job_cards::deliver(
         t.state(),
@@ -374,7 +434,10 @@ async fn aut_04_the_substitute_closes_the_task_and_blocks_the_delivery_until_it_
     )
     .await
     .unwrap_err();
-    assert!(blocked.to_string().contains("substitute vehicle"), "{blocked}");
+    assert!(
+        blocked.to_string().contains("substitute vehicle"),
+        "{blocked}"
+    );
 
     let lent = substitute::record(t.state(), &sami, card.id, "Dubai A 12345", day(-1), None)
         .await
@@ -411,7 +474,14 @@ async fn aut_04_the_substitute_closes_the_task_and_blocks_the_delivery_until_it_
     .await
     .expect("the car is back: delivered");
     assert_eq!(delivered.status, JobCardStatus::Delivered);
-    assert!(Substitute::of_job_card(t.db(), card.id).await.unwrap().unwrap().to_date.is_some());
+    assert!(
+        Substitute::of_job_card(t.db(), card.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .to_date
+            .is_some()
+    );
 }
 
 /// The task is closed only by the record or the refusal with a reason.
@@ -426,7 +496,8 @@ async fn aut_04_only_a_record_or_a_refusal_with_a_reason_closes_the_task() {
         .update(t.db(), &[("created_at", &Some(at(day(-8), 9, 0)))])
         .await
         .unwrap();
-    t.tickets.add(&card.subject(), "warranty", 71, "TKT-W", "open");
+    t.tickets
+        .add(&card.subject(), "warranty", 71, "TKT-W", "open");
     parts_delays::run_daily(t.state(), today()).await.unwrap();
     let key = substitute::task_key(card.id);
     assert_eq!(t.tickets.with_key(&key).len(), 1);
@@ -436,15 +507,27 @@ async fn aut_04_only_a_record_or_a_refusal_with_a_reason_closes_the_task() {
         .await
         .unwrap_err();
     assert!(blank.to_string().contains("reason"), "{blank}");
-    assert!(t.tickets.with_key(&key)[0].is_open(), "an offer by word closes nothing");
+    assert!(
+        t.tickets.with_key(&key)[0].is_open(),
+        "an offer by word closes nothing"
+    );
 
     substitute::refuse(t.state(), &sami, card.id, "The customer has a second car")
         .await
         .unwrap();
     let task = &t.tickets.with_key(&key)[0];
     assert!(!task.is_open());
-    assert_eq!(task.completed.as_deref(), Some("The customer has a second car"));
-    assert!(!Substitute::of_job_card(t.db(), card.id).await.unwrap().unwrap().is_open());
+    assert_eq!(
+        task.completed.as_deref(),
+        Some("The customer has a second car")
+    );
+    assert!(
+        !Substitute::of_job_card(t.db(), card.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .is_open()
+    );
 }
 
 /// A run of `AUT.RUL.16` that ends `failed` (the notifier is down) alerts the
@@ -458,10 +541,13 @@ async fn aut_04_a_failed_run_alerts_the_owner_and_the_company_admin() {
     imports_take_14_days(&t).await;
     let (card, _) = jc(&t, "import").await;
     let tareq = t.technician("Tareq").await;
-    job_cards::wait_parts(t.state(), &tareq, card.id).await.unwrap();
+    job_cards::wait_parts(t.state(), &tareq, card.id)
+        .await
+        .unwrap();
     let legal = today() + Days::days(14);
     t.messages.fail(true);
-    t.messages.always_works(wl_kernel::compliance::service::NOTIFICATION_TYPE);
+    t.messages
+        .always_works(wl_kernel::compliance::service::NOTIFICATION_TYPE);
     assert!(wl_kernel::compliance::is_critical(RULE));
 
     for wait in [60_u64, 300, 900, 3600] {
@@ -508,7 +594,9 @@ async fn aut_04_a_failed_run_alerts_the_owner_and_the_company_admin() {
 
     // The notifier works again: the next day's run does the step, once.
     t.messages.fail(false);
-    parts_delays::run_daily(t.state(), legal - Days::days(1)).await.unwrap();
+    parts_delays::run_daily(t.state(), legal - Days::days(1))
+        .await
+        .unwrap();
     assert_eq!(t.messages.of_type(NOTICE_TYPE).len(), 1);
 }
 
@@ -521,25 +609,32 @@ async fn aut_04_a_missed_run_alerts_the_owner_from_the_09_00_check() {
     let tomorrow = day(1);
     let occurrence = occurrence_key(RULE, tomorrow);
     let missed = |alerts: &[ComplianceAlert]| {
-        alerts.iter().filter(|a| a.occurrence_key == occurrence).count()
+        alerts
+            .iter()
+            .filter(|a| a.occurrence_key == occurrence)
+            .count()
     };
 
     go_to(&t, at(tomorrow, 8, 30));
-    t.app.at_travelled_time(check_missed(t.state())).await.unwrap();
+    t.app
+        .at_travelled_time(check_missed(t.state()))
+        .await
+        .unwrap();
     assert_eq!(missed(&ComplianceAlert::open(t.db()).await.unwrap()), 0);
 
     go_to(&t, at(tomorrow, 9, 0));
-    t.app.at_travelled_time(check_missed(t.state())).await.unwrap();
+    t.app
+        .at_travelled_time(check_missed(t.state()))
+        .await
+        .unwrap();
     let alerts = ComplianceAlert::open(t.db()).await.unwrap();
     assert_eq!(missed(&alerts), 1, "{alerts:?}");
     assert!(alerts.iter().all(|a| a.kind == AlertKind::Missed));
     assert_eq!(alerts[0].owner_role, auto::permissions::OWNER_ROLE);
     assert!(
-        t.messages
-            .sent()
-            .iter()
-            .any(|r| r.type_key == wl_kernel::compliance::service::NOTIFICATION_TYPE
-                && users_of(r).contains(&owner.id)),
+        t.messages.sent().iter().any(|r| r.type_key
+            == wl_kernel::compliance::service::NOTIFICATION_TYPE
+            && users_of(r).contains(&owner.id)),
         "the owner is told"
     );
 }
@@ -553,7 +648,9 @@ async fn aut_04_a_late_run_fires_every_step_whose_day_has_passed_in_order() {
     let (card, _) = jc(&t, "import").await;
     let basma = manager(&t).await;
     let tareq = t.technician("Tareq").await;
-    job_cards::wait_parts(t.state(), &tareq, card.id).await.unwrap();
+    job_cards::wait_parts(t.state(), &tareq, card.id)
+        .await
+        .unwrap();
     let legal = today() + Days::days(14);
 
     parts_delays::run_daily(t.state(), legal).await.unwrap();
@@ -571,7 +668,9 @@ async fn aut_04_the_page_shows_the_start_and_the_legal_date_and_no_field_to_edit
     let t = boot().await;
     let (card, _) = jc(&t, "stock").await;
     let tareq = t.technician("Tareq").await;
-    let waiting = job_cards::wait_parts(t.state(), &tareq, card.id).await.unwrap();
+    let waiting = job_cards::wait_parts(t.state(), &tareq, card.id)
+        .await
+        .unwrap();
     t.app.acting_as(&t.advisor_user().await);
     let page = t.app.get(&format!("/auto/job-cards/{}", card.id)).await;
     page.assert_ok()

@@ -533,7 +533,6 @@ pub fn resolve_rule(category_key: &str) -> Option<Arc<dyn ResolveRule>> {
         .cloned()
 }
 
-
 /// Why a covered subject is not compliant (wl-ticketing §3 *Compliance
 /// flag*).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

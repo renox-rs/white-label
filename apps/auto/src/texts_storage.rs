@@ -3,7 +3,10 @@
 
 /// Every key of this part, with its English text.
 pub(crate) const TEXTS: &[(&str, &str)] = &[
-    ("auto.storage.reason_ready", "your vehicle has been ready for :days days"),
+    (
+        "auto.storage.reason_ready",
+        "your vehicle has been ready for :days days",
+    ),
     (
         "auto.storage.reason_declined",
         "the job was declined :days days ago",

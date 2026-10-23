@@ -89,7 +89,11 @@ pub async fn days_of(db: &Db, source: &str) -> Result<i64> {
 /// # Errors
 ///
 /// The database's errors.
-pub async fn legal_date(db: &Db, start: NaiveDate, sources: &[String]) -> Result<(NaiveDate, String)> {
+pub async fn legal_date(
+    db: &Db,
+    start: NaiveDate,
+    sources: &[String],
+) -> Result<(NaiveDate, String)> {
     let mut best: Option<(i64, String)> = None;
     for source in sources {
         let source = clean_source(source);
@@ -108,7 +112,12 @@ pub async fn legal_date(db: &Db, start: NaiveDate, sources: &[String]) -> Result
 ///
 /// A 403 without `job_cards.approve`; a 422 for a source that is not one of
 /// the four or days that are not 7, 14 or 30.
-pub async fn set_period(state: &AppState, by: &AuthUser, source: &str, days: i64) -> Result<SupplyPeriod> {
+pub async fn set_period(
+    state: &AppState,
+    by: &AuthUser,
+    source: &str,
+    days: i64,
+) -> Result<SupplyPeriod> {
     if !by.has_permission(permissions::JOB_CARDS_APPROVE) {
         return Err(Error::Forbidden);
     }

@@ -84,7 +84,10 @@ pub fn notification_types() -> Vec<NotificationTypeDef> {
             .category(Category::Transactional)
             .urgency(Urgency::Urgent)
             .channels(&[NotifyChannel::Sms])
-            .give_up(&[GiveUpReaction::MarkContactInvalid, GiveUpReaction::StaffTask])
+            .give_up(&[
+                GiveUpReaction::MarkContactInvalid,
+                GiveUpReaction::StaffTask,
+            ])
             .staff_role(permissions::SERVICE_ADVISOR_ROLE)
             .template(
                 NotifyChannel::Sms,
@@ -101,8 +104,18 @@ pub fn notification_types() -> Vec<NotificationTypeDef> {
         NotificationTypeDef::new(NOTICE_TYPE, "auto")
             .group(GROUP_BOOKINGS)
             .category(Category::Transactional)
-            .template(NotifyChannel::Email, "en", Some("{{ title }}"), "{{ body }}")
-            .template(NotifyChannel::Email, "ar", Some("{{ title }}"), "{{ body }}"),
+            .template(
+                NotifyChannel::Email,
+                "en",
+                Some("{{ title }}"),
+                "{{ body }}",
+            )
+            .template(
+                NotifyChannel::Email,
+                "ar",
+                Some("{{ title }}"),
+                "{{ body }}",
+            ),
     ]
 }
 
@@ -119,11 +132,13 @@ async fn advisors(state: &AppState, card: &JobCard) -> Result<Vec<i64>> {
     if let Some(advisor) = card.advisor_user_id {
         return Ok(vec![advisor]);
     }
-    Ok(users_with_role(&state.db, permissions::SERVICE_ADVISOR_ROLE)
-        .await?
-        .into_iter()
-        .map(|user| user.id)
-        .collect())
+    Ok(
+        users_with_role(&state.db, permissions::SERVICE_ADVISOR_ROLE)
+            .await?
+            .into_iter()
+            .map(|user| user.id)
+            .collect(),
+    )
 }
 
 /// The date the parts are expected, as the purchaser entered it: the latest of
@@ -264,8 +279,11 @@ async fn tell_customer(state: &AppState, card: &JobCard, wait: &PartsWait, plate
             .await?
             .unwrap_or_default();
         let title = {
-            let params: [(&str, &dyn std::fmt::Display); 3] =
-                [("customer", &customer), ("job", &number), ("date", &date_text)];
+            let params: [(&str, &dyn std::fmt::Display); 3] = [
+                ("customer", &customer),
+                ("job", &number),
+                ("date", &date_text),
+            ];
             english("auto.parts.task_call", &params)
         };
         let task = RoleTask::new(
@@ -422,10 +440,11 @@ pub(crate) fn register(app: &mut Registry) {
             run_daily(&state, today()).await
         })
         .timezone(TASK_ZONE);
-    app.schedule()
-        .every_minutes(RETRY_EVERY_MINUTES, RETRY_JOB, |state: AppState| async move {
-            retry(&state).await
-        });
+    app.schedule().every_minutes(
+        RETRY_EVERY_MINUTES,
+        RETRY_JOB,
+        |state: AppState| async move { retry(&state).await },
+    );
     app.command(
         TASK,
         "Tell the advisor, the customer and the branch manager about parts that are late, and ask for a substitute vehicle on warranty repairs",

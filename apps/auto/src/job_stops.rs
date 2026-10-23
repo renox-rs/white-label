@@ -42,6 +42,7 @@ use renox::db::{Transaction, now};
 use renox::prelude::*;
 use renox::state_machine::{Outcome, StateMachine, TransitionError, Transitioned};
 use serde::{Deserialize, Serialize};
+use wl_kernel::Subject;
 use wl_kernel::approvals::submit::{REQUEST_KEY, pending_for_action};
 use wl_kernel::approvals::{ApprovalPolicy, announce};
 use wl_kernel::documents::today;
@@ -51,15 +52,12 @@ use wl_kernel::scheduling::{
     BookingId, SchedulingFuture, WorkDone, WorkDoneStatus, booking_actions,
     provide_work_done_status,
 };
-use wl_kernel::Subject;
 
 use crate::claim::InsuranceClaim;
 use crate::db::{refused, set_job_card};
 use crate::estimate::Estimate;
 use crate::job_card::{JOB_CARD_SUBJECT_TYPE, JobCard, JobCardStatus};
-use crate::job_card_machine::{
-    CANCEL, CANCEL_ACTION, CANCEL_APPROVED, CANCEL_SYSTEM, JobInput,
-};
+use crate::job_card_machine::{CANCEL, CANCEL_ACTION, CANCEL_APPROVED, CANCEL_SYSTEM, JobInput};
 use crate::labour_line::{LabourLine, LineStatus, WorkStatus};
 use crate::part_line::PartLine;
 use crate::permissions;
@@ -403,9 +401,15 @@ pub async fn cancel(
         work_recorded: true,
         ack_method: request.ack_method.clone(),
         ack_name: request.ack_name.clone().filter(|t| !t.trim().is_empty()),
-        ack_signature: request.ack_signature.clone().filter(|t| !t.trim().is_empty()),
+        ack_signature: request
+            .ack_signature
+            .clone()
+            .filter(|t| !t.trim().is_empty()),
         ack_witness: request.ack_witness.clone().filter(|t| !t.trim().is_empty()),
-        ack_document: request.ack_document.clone().filter(|t| !t.trim().is_empty()),
+        ack_document: request
+            .ack_document
+            .clone()
+            .filter(|t| !t.trim().is_empty()),
         work_value: 0,
         billed: 0,
     };
@@ -557,10 +561,7 @@ pub(crate) async fn record_in(
             .where_(PartLine::JOB_CARD_ID.eq(card.id))
             .update(
                 &mut *tx,
-                &[
-                    ("fitted_milli", &part.fitted_milli),
-                    ("updated_at", &stamp),
-                ],
+                &[("fitted_milli", &part.fitted_milli), ("updated_at", &stamp)],
             )
             .await?;
     }

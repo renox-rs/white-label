@@ -17,7 +17,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "auto.police.clear_description",
         "The workshop manager decides: the flag is cleared only with a reason, and never while an insurance claim is linked.",
     ),
-    ("auto.police.clear_reason", "Why is this not accident damage?"),
+    (
+        "auto.police.clear_reason",
+        "Why is this not accident damage?",
+    ),
     ("auto.police.clear_waiting", "Clearing asked"),
     ("auto.police.clear_asked", "Sent to the workshop manager."),
     ("auto.police.decide", "Decide the request"),

@@ -61,7 +61,10 @@ pub(crate) async fn view_of(
     card: &JobCard,
 ) -> Result<AccidentView> {
     let subject = card.subject();
-    let documents_link = format!("/documents/of/{}/{}", subject.subject_type, subject.subject_id);
+    let documents_link = format!(
+        "/documents/of/{}/{}",
+        subject.subject_type, subject.subject_id
+    );
     if !card.accident_damage {
         return Ok(AccidentView {
             flagged: false,

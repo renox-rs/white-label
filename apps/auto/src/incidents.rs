@@ -28,10 +28,10 @@
 use renox::db::now;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
+use wl_kernel::Subject;
 use wl_kernel::tickets::{
     OpenTicket, ResolveRule, TicketFuture, TicketId, register_resolve_rule, task_creator,
 };
-use wl_kernel::Subject;
 
 use crate::db::refused;
 use crate::incident::{INCIDENT_CATEGORY, Incident, NOT_WORKSHOP, WORKSHOP};
@@ -264,12 +264,7 @@ impl ResolveRule for OnTheJobCard {
         _subject: &'a Subject,
         _user: i64,
     ) -> TicketFuture<'a, std::result::Result<(), String>> {
-        Box::pin(async {
-            Ok(Err(english(
-                "auto.incidents.problem.on_the_job_card",
-                &[],
-            )))
-        })
+        Box::pin(async { Ok(Err(english("auto.incidents.problem.on_the_job_card", &[]))) })
     }
 }
 

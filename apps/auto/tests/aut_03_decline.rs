@@ -54,10 +54,18 @@ async fn waiting(t: &Garage, fee: i64, estimate: bool) -> (JobCard, Booking) {
     )
     .await
     .unwrap();
-    service::check_in(t.state(), booking.id, Actor::staff(sami.id), renox::db::now())
+    service::check_in(
+        t.state(),
+        booking.id,
+        Actor::staff(sami.id),
+        renox::db::now(),
+    )
+    .await
+    .unwrap();
+    let card = JobCard::of_booking(t.db(), booking.id)
         .await
+        .unwrap()
         .unwrap();
-    let card = JobCard::of_booking(t.db(), booking.id).await.unwrap().unwrap();
     let tareq_user = t.technician_user("Tareq").await;
     let tareq = t.technician("Tareq").await;
     job_cards::record_intake(
@@ -122,11 +130,20 @@ async fn aut_03_an_unanswered_estimate_expires_after_seven_days() {
     let entered = at(day(-10), 10, 0);
     entered_at(&t, &card, entered).await;
 
-    let early = declines::expire_estimates(t.state(), entered + TimeDelta::days(7) - TimeDelta::hours(1))
-        .await
-        .unwrap();
-    assert!(early.declined.is_empty(), "six days and 23 hours is not enough");
-    assert_eq!(t.reload(card.id).await.status, JobCardStatus::AwaitingApproval);
+    let early = declines::expire_estimates(
+        t.state(),
+        entered + TimeDelta::days(7) - TimeDelta::hours(1),
+    )
+    .await
+    .unwrap();
+    assert!(
+        early.declined.is_empty(),
+        "six days and 23 hours is not enough"
+    );
+    assert_eq!(
+        t.reload(card.id).await.status,
+        JobCardStatus::AwaitingApproval
+    );
 
     let done = declines::expire_estimates(t.state(), entered + TimeDelta::days(7))
         .await
@@ -135,9 +152,15 @@ async fn aut_03_an_unanswered_estimate_expires_after_seven_days() {
     let declined = t.reload(card.id).await;
     assert_eq!(declined.status, JobCardStatus::Declined);
     assert_eq!(declined.closed_code.as_deref(), Some("no_response"));
-    assert_eq!(declined.closed_reason.as_deref(), Some("No response to the estimate"));
+    assert_eq!(
+        declined.closed_reason.as_deref(),
+        Some("No response to the estimate")
+    );
     assert_eq!(declined.billed_net, 0, "no fee was agreed");
-    assert!(t.books.about(&card.subject()).is_empty(), "no fee, no invoice");
+    assert!(
+        t.books.about(&card.subject()).is_empty(),
+        "no fee, no invoice"
+    );
 
     let sent = t.messages.of_type(COLLECT_TYPE);
     assert_eq!(sent.len(), 1, "the customer is asked to collect");
@@ -212,7 +235,10 @@ async fn aut_03_added_work_on_an_approved_job_does_not_expire() {
         .unwrap();
 
     assert!(done.declined.is_empty());
-    assert_eq!(t.reload(card.id).await.status, JobCardStatus::AwaitingApproval);
+    assert_eq!(
+        t.reload(card.id).await.status,
+        JobCardStatus::AwaitingApproval
+    );
     assert!(t.messages.of_type(COLLECT_TYPE).is_empty());
 }
 
@@ -248,7 +274,10 @@ async fn aut_03_a_job_card_linked_to_an_open_claim_does_not_expire() {
         .unwrap();
 
     assert!(done.declined.is_empty());
-    assert_eq!(t.reload(card.id).await.status, JobCardStatus::AwaitingApproval);
+    assert_eq!(
+        t.reload(card.id).await.status,
+        JobCardStatus::AwaitingApproval
+    );
 }
 
 /// JC-33 `inspecting` with no labour or parts: when the customer leaves and
@@ -261,9 +290,14 @@ async fn aut_03_the_advisor_declines_an_inspecting_job_card_with_nothing_recorde
     let sami = t.advisor().await;
     let tareq = t.technician("Tareq").await;
     assert_eq!(card.status, JobCardStatus::Inspecting);
-    let part = job_cards::add_part(t.state(), &tareq, card.id, NewPart::new("Wiper", 1_000, 2_000))
-        .await
-        .unwrap();
+    let part = job_cards::add_part(
+        t.state(),
+        &tareq,
+        card.id,
+        NewPart::new("Wiper", 1_000, 2_000),
+    )
+    .await
+    .unwrap();
 
     let refused = job_cards::decline(t.state(), &sami, card.id, "customer left")
         .await
@@ -271,7 +305,9 @@ async fn aut_03_the_advisor_declines_an_inspecting_job_card_with_nothing_recorde
     assert!(refused.to_string().contains("recorded"), "{refused}");
     assert_eq!(t.reload(card.id).await.status, JobCardStatus::Inspecting);
 
-    job_cards::remove_part(t.state(), &tareq, part.id).await.unwrap();
+    job_cards::remove_part(t.state(), &tareq, part.id)
+        .await
+        .unwrap();
     let declined = job_cards::decline(t.state(), &sami, card.id, "customer left")
         .await
         .unwrap();

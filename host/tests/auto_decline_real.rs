@@ -142,10 +142,18 @@ async fn aut_03_real_an_unanswered_estimate_is_declined_with_the_fee_invoiced_an
     )
     .await
     .unwrap();
-    service::check_in(w.state(), booking.id, Actor::staff(sami.id), renox::db::now())
+    service::check_in(
+        w.state(),
+        booking.id,
+        Actor::staff(sami.id),
+        renox::db::now(),
+    )
+    .await
+    .unwrap();
+    let card = JobCard::of_booking(w.db(), booking.id)
         .await
+        .unwrap()
         .unwrap();
-    let card = JobCard::of_booking(w.db(), booking.id).await.unwrap().unwrap();
     job_cards::record_intake(
         w.state(),
         &sami,
@@ -197,7 +205,10 @@ async fn aut_03_real_an_unanswered_estimate_is_declined_with_the_fee_invoiced_an
     let declined = JobCard::find_or_404(w.db(), card.id).await.unwrap();
     assert_eq!(declined.status, JobCardStatus::Declined);
     let invoice = invoicer(w.state())
-        .find(w.db(), InvoiceId(declined.invoice_id.expect("the fee invoice")))
+        .find(
+            w.db(),
+            InvoiceId(declined.invoice_id.expect("the fee invoice")),
+        )
         .await
         .unwrap()
         .expect("the invoice exists");

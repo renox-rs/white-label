@@ -15,10 +15,10 @@ use auto::{JobCard, JobCardStatus};
 use renox::chrono::{Duration, NaiveDate};
 use renox::prelude::*;
 use support::{Garage, Messages, at, boot, day};
+use wl_kernel::PartyId;
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{DraftLine, InvoiceDraft, VatCategory, invoicer};
 use wl_kernel::notify::NotifyChannel;
-use wl_kernel::PartyId;
 
 /// A job card of the Hilux in `status`, that entered the state `back` days ago,
 /// with a storage fee of AED 50 a day agreed at check-in.
@@ -67,7 +67,10 @@ async fn aut_05_the_customer_is_reminded_at_three_and_seven_days_and_the_manager
     assert_eq!(first.len(), 1, "once");
     assert!(Messages::told_party(&first[0], card.customer_party_id));
     let text = Messages::text(&first[0], NotifyChannel::Sms);
-    assert!(text.contains("Dubai A 12345") && text.contains(&card.number()), "{text}");
+    assert!(
+        text.contains("Dubai A 12345") && text.contains(&card.number()),
+        "{text}"
+    );
     assert!(text.contains("3 days"), "{text}");
 
     process(t.state(), after(&card, 6)).await.unwrap();
@@ -84,7 +87,12 @@ async fn aut_05_the_customer_is_reminded_at_three_and_seven_days_and_the_manager
     process(t.state(), after(&card, 31)).await.unwrap();
     let tasks = t.tickets.with_key("auto.uncollected:");
     assert_eq!(tasks.len(), 1);
-    assert!(tasks[0].ticket.title.contains("legal next steps open (L-36)"));
+    assert!(
+        tasks[0]
+            .ticket
+            .title
+            .contains("legal next steps open (L-36)")
+    );
     assert_eq!(t.messages.of_type("auto.collect_vehicle").len(), 2);
 }
 
@@ -208,8 +216,12 @@ async fn aut_05_a_released_vehicle_is_not_reminded() {
     release::release(t.state(), &sami, card.id, Release::safe("Mona Hassan"))
         .await
         .unwrap();
-    process(t.state(), today() + Duration::days(10)).await.unwrap();
-    process(t.state(), today() + Duration::days(40)).await.unwrap();
+    process(t.state(), today() + Duration::days(10))
+        .await
+        .unwrap();
+    process(t.state(), today() + Duration::days(40))
+        .await
+        .unwrap();
     assert!(t.messages.of_type("auto.collect_vehicle").is_empty());
     assert!(t.tickets.with_key("auto.").is_empty());
 }
@@ -230,7 +242,13 @@ async fn aut_05_release_is_refused_while_unpaid_and_as_is_needs_a_signature() {
         .expect("an invoice");
     JobCard::query()
         .where_(JobCard::ID.eq(card.id))
-        .update(t.db(), &[("invoice_id", &Some(invoice.0)), ("billed_net", &10_000_i64)])
+        .update(
+            t.db(),
+            &[
+                ("invoice_id", &Some(invoice.0)),
+                ("billed_net", &10_000_i64),
+            ],
+        )
         .await
         .unwrap();
     let sami = t.advisor().await;

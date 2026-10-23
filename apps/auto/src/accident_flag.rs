@@ -93,7 +93,9 @@ pub async fn decide_clear(
         return Err(Error::Forbidden);
     }
     let card = JobCard::find_or_404(&state.db, id).await?;
-    let Some(requester) = card.accident_clear_by.filter(|_| card.accident_clear_at.is_some())
+    let Some(requester) = card
+        .accident_clear_by
+        .filter(|_| card.accident_clear_at.is_some())
     else {
         return Err(refused(english("auto.police.problem.clear_none", &[])));
     };

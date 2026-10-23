@@ -112,10 +112,7 @@ async fn a_checked_in_booking_is_cancelled_for_a_staff_user_once_its_work_done_i
     )
     .await
     .expect("the party is checked in");
-    assert_eq!(
-        t.reload(booking.0).await.status,
-        BookingStatus::CheckedIn
-    );
+    assert_eq!(t.reload(booking.0).await.status, BookingStatus::CheckedIn);
 
     // The system alone is refused after the check-in.
     assert!(
@@ -132,10 +129,7 @@ async fn a_checked_in_booking_is_cancelled_for_a_staff_user_once_its_work_done_i
             .await
             .unwrap()
     );
-    assert_eq!(
-        t.reload(booking.0).await.status,
-        BookingStatus::CheckedIn
-    );
+    assert_eq!(t.reload(booking.0).await.status, BookingStatus::CheckedIn);
 
     t.work.set(booking.0, WorkDone::Nothing);
     assert!(

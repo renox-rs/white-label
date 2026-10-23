@@ -56,14 +56,14 @@ use crate::claim_machine::{
 };
 use crate::claim_split::insurer_share;
 use crate::db::refused;
-use crate::estimate::Estimate;
-use crate::insurer::Insurer;
-use crate::insurers;
-use crate::job_card::{JobCard, JobCardStatus};
 use crate::documents::{
     GUARDED_CLAIM_APPROVE, GUARDED_CLAIM_BOOK_SURVEY, GUARDED_CLAIM_SUBMIT_ESTIMATE,
     GUARDED_JOB_CARD_APPROVE, police_verdict,
 };
+use crate::estimate::Estimate;
+use crate::insurer::Insurer;
+use crate::insurers;
+use crate::job_card::{JobCard, JobCardStatus};
 use crate::job_card_machine::{APPROVE_SYSTEM, DECLINE_ADDED_SYSTEM, JobInput};
 use crate::job_cards::run_system as run_job_system;
 use crate::labour_line::{LabourLine, LineStatus};
@@ -491,9 +491,8 @@ pub async fn submit_estimate(state: &AppState, by: &AuthUser, id: i64) -> Result
     input.priced = Some(!(labour.is_empty() && parts.is_empty()) && round.net_total > 0);
     input.estimate_amount = Some(round.net_total);
     input.job_round_id = Some(round.id);
-    input.police = Some(
-        police_verdict(state, GUARDED_CLAIM_SUBMIT_ESTIMATE, claim.id, Some(by.id)).await?,
-    );
+    input.police =
+        Some(police_verdict(state, GUARDED_CLAIM_SUBMIT_ESTIMATE, claim.id, Some(by.id)).await?);
     run(state, by, &claim, SUBMIT_ESTIMATE, None, input).await
 }
 
@@ -717,8 +716,7 @@ pub async fn approve(
         answer_input(state, by, &claim, ApprovalKind::Estimate, &answer).await?;
     let lines = input.lines.clone();
     let mut input = input;
-    input.police =
-        Some(police_verdict(state, GUARDED_CLAIM_APPROVE, claim.id, Some(by.id)).await?);
+    input.police = Some(police_verdict(state, GUARDED_CLAIM_APPROVE, claim.id, Some(by.id)).await?);
     let approved = run(state, by, &claim, APPROVE, None, input).await?;
     approve_job(state, by, &approved, round_id, &lines).await?;
     InsuranceClaim::find_or_404(&state.db, id).await

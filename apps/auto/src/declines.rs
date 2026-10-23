@@ -223,8 +223,14 @@ pub async fn expire_estimates(state: &AppState, at: DateTime) -> Result<Expired>
             ..JobInput::default()
         };
         let reason = english("auto.stop.code.no_response", &[]);
-        match crate::job_cards::run_system(state, &card, DECLINE_SYSTEM, Some(reason.as_str()), input)
-            .await
+        match crate::job_cards::run_system(
+            state,
+            &card,
+            DECLINE_SYSTEM,
+            Some(reason.as_str()),
+            input,
+        )
+        .await
         {
             Ok(_) => done.declined.push(card.id),
             Err(error) => done.failed.push((card.id, error.to_string())),

@@ -154,7 +154,10 @@ async fn aut_05_real_release_invoices_six_days_of_storage() {
         .unwrap();
     assert_eq!(released.storage_days, 6);
     let invoice = invoicer(w.state())
-        .find(w.db(), InvoiceId(released.storage_invoice_id.expect("an invoice")))
+        .find(
+            w.db(),
+            InvoiceId(released.storage_invoice_id.expect("an invoice")),
+        )
         .await
         .unwrap()
         .expect("the invoice is in the books");
@@ -204,17 +207,21 @@ async fn aut_05_real_the_branch_manager_has_a_task_at_thirty_days() {
         .await
         .unwrap();
     let key = format!("auto.uncollected:{}", card.id);
-    assert!(task_creator(w.state())
-        .find_open(w.state(), &key)
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        task_creator(w.state())
+            .find_open(w.state(), &key)
+            .await
+            .unwrap()
+            .is_none()
+    );
     storage::process(w.state(), start + renox::chrono::Duration::days(30))
         .await
         .unwrap();
-    assert!(task_creator(w.state())
-        .find_open(w.state(), &key)
-        .await
-        .unwrap()
-        .is_some());
+    assert!(
+        task_creator(w.state())
+            .find_open(w.state(), &key)
+            .await
+            .unwrap()
+            .is_some()
+    );
 }

@@ -270,9 +270,15 @@ async fn aut_06_not_the_workshop_creates_no_internal_job_card() {
     assert_eq!(decided.internal_job_card_id, None);
     let cards = JobCard::of_vehicle(t.db(), card.vehicle_id).await.unwrap();
     assert!(cards.iter().all(|c| !c.internal));
-    let resolved = t.tickets.about(&card.subject())[0].resolved.clone().unwrap();
+    let resolved = t.tickets.about(&card.subject())[0]
+        .resolved
+        .clone()
+        .unwrap();
     assert!(resolved.contains("check-in photo 3"), "{resolved}");
-    assert_eq!(Incident::of_job_card(t.db(), card.id).await.unwrap().len(), 1);
+    assert_eq!(
+        Incident::of_job_card(t.db(), card.id).await.unwrap().len(),
+        1
+    );
 }
 
 /// Point 6: branch manager B drove the test drive, so B cannot decide the

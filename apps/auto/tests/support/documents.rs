@@ -13,9 +13,8 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::documents::{
-    BlockEntry, BlockFailure, BlockMode, BlockRefusal, CheckOutcome,
-    DocumentFuture, DocumentGuard, FlagFailure, FlagReason, InvalidReason, OverrideMode,
-    RecordFlag, Validity, block_subjects,
+    BlockEntry, BlockFailure, BlockMode, BlockRefusal, CheckOutcome, DocumentFuture, DocumentGuard,
+    FlagFailure, FlagReason, InvalidReason, OverrideMode, RecordFlag, Validity, block_subjects,
 };
 
 /// The expiry date of each `(subject, kind)` document.
