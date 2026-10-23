@@ -5,7 +5,7 @@
 //! | Route | Name | Needs |
 //! |---|---|---|
 //! | `POST /auto/job-cards/{id}/accident/clear` | `auto.job_card_accident_clear` | `job_cards.advise` |
-//! | `POST /auto/job-cards/{id}/accident/decide` | `auto.job_card_accident_decide` | `job_cards.approve` |
+//! | `POST /auto/job-cards/{id}/accident/decide` | `auto.job_card_accident_decide` | `job_cards.accident` |
 //!
 //! The police report itself is a document of the job card or its claim, added
 //! on the documents page of the record (`/documents/of/auto.job_card/{id}`) and
@@ -97,7 +97,7 @@ pub(crate) async fn view_of(
         waiting,
         waiting_text,
         can_decide: waiting
-            && user.has_permission(permissions::JOB_CARDS_APPROVE)
+            && user.has_permission(permissions::JOB_CARDS_ACCIDENT)
             && card.accident_clear_by != Some(user.id),
     })
 }

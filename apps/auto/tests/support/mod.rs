@@ -21,7 +21,7 @@ use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use wl_kernel::calendar::BusinessCalendar;
-use wl_kernel::documents::dubai_date;
+use wl_kernel::documents::{dubai_date, provide_guard};
 use wl_kernel::inventory::provide_stock_service;
 use wl_kernel::notify::provide_notifier;
 use wl_kernel::invoicing::provide_invoicer;
@@ -53,6 +53,10 @@ pub mod tickets;
 /// The stand-in of the notifier.
 pub mod messages;
 
+/// The stand-in of the document guard.
+pub mod documents;
+
+pub use documents::Documents;
 pub use messages::Messages;
 pub use money::{Books, People};
 pub use payer::{Cards, PayerBooks};
@@ -132,6 +136,7 @@ struct Harness {
     cards: Cards,
     tickets: Tickets,
     messages: Messages,
+    documents: Documents,
 }
 
 impl Module for Harness {
@@ -147,6 +152,7 @@ impl Module for Harness {
         provide_rate_cards(app, self.cards.clone());
         provide_task_creator(app, self.tickets.clone());
         provide_notifier(app, self.messages.clone());
+        provide_guard(app, self.documents.clone());
     }
 
     fn routes(&self) -> Routes {
@@ -179,6 +185,8 @@ pub struct Garage {
     pub tickets: Tickets,
     /// The notifications asked of the notifier.
     pub messages: Messages,
+    /// The documents the workshop holds (the document guard).
+    pub documents: Documents,
     /// `JobCardCancelled`.
     pub cancelled: Recorded<JobCardCancelled>,
     /// `RecordVoided`.
@@ -199,6 +207,7 @@ pub async fn boot() -> Garage {
     let (payer_books, cards) = (PayerBooks::default(), Cards::default());
     let tickets = Tickets::default();
     let messages = Messages::default();
+    let documents = Documents::default();
     let mut scheduling_module = WlScheduling::new();
     for (code, initiated_by) in auto::reasons::SCHEDULING_REASON_CODES {
         scheduling_module = scheduling_module.reason_code(code, *initiated_by);
@@ -220,6 +229,7 @@ pub async fn boot() -> Garage {
             cards: cards.clone(),
             tickets: tickets.clone(),
             messages: messages.clone(),
+            documents: documents.clone(),
         });
     let app = record(app, &cancelled);
     let app = record(app, &voided);
@@ -240,6 +250,7 @@ pub async fn boot() -> Garage {
         cards,
         tickets,
         messages,
+        documents,
         cancelled,
         voided,
         who,

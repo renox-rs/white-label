@@ -102,6 +102,12 @@ fn aut_base_the_roles_hold_the_permissions_of_the_spec() {
     assert!(!grants(roles::SERVICE_ADVISOR).contains(&aut::JOB_CARDS_APPROVE));
     assert!(grants(roles::BRANCH_MANAGER).contains(&aut::JOB_CARDS_APPROVE));
     assert!(grants(roles::WORKSHOP_MANAGER).contains(&aut::JOB_CARDS_QC));
+    // The police report (BL-AUT-07): the advisor attaches it, the workshop
+    // manager accepts it and decides on the accident flag.
+    assert!(grants(roles::SERVICE_ADVISOR).contains(&"documents.upload"));
+    assert!(grants(roles::WORKSHOP_MANAGER).contains(&"documents.review"));
+    assert!(grants(roles::WORKSHOP_MANAGER).contains(&aut::JOB_CARDS_ACCIDENT));
+    assert!(!grants(roles::SERVICE_ADVISOR).contains(&aut::JOB_CARDS_ACCIDENT));
     assert!(grants(roles::INSURANCE_COORDINATOR).contains(&aut::INSURANCE_MANAGE));
     assert!(grants(roles::FLEET_ACCOUNT_MANAGER).contains(&aut::FLEET_CONTRACTS_MANAGE));
     assert!(grants(roles::PROCUREMENT).contains(&aut::SUPPLIER_CLAIMS_MANAGE));

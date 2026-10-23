@@ -3,7 +3,7 @@
 //!
 //! The flag makes the police report a condition of `approve`. A flag set by
 //! mistake is cleared only with a reason and the approval of the workshop
-//! manager (a holder of `job_cards.approve`, never the one who asked), and
+//! manager (a holder of `job_cards.accident`, never the one who asked), and
 //! never while an insurance claim is linked to the job card. The request waits
 //! on the job card (`accident_clear_*`) until it is decided; deciding it
 //! either clears the flag or drops the request.
@@ -81,7 +81,7 @@ pub async fn request_clear(
 ///
 /// # Errors
 ///
-/// A 403 without `job_cards.approve`; a 422 in words for a job card with no
+/// A 403 without `job_cards.accident`; a 422 in words for a job card with no
 /// request waiting, the one who asked deciding it, or a claim linked since.
 pub async fn decide_clear(
     state: &AppState,
@@ -89,7 +89,7 @@ pub async fn decide_clear(
     id: i64,
     approve: bool,
 ) -> Result<JobCard> {
-    if !by.has_permission(permissions::JOB_CARDS_APPROVE) {
+    if !by.has_permission(permissions::JOB_CARDS_ACCIDENT) {
         return Err(Error::Forbidden);
     }
     let card = JobCard::find_or_404(&state.db, id).await?;

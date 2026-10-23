@@ -22,6 +22,9 @@ pub const JOB_CARDS_QC: &str = "job_cards.qc";
 /// Approve what a service advisor may not decide alone: billing less than the
 /// work done, a storage fee waived, a refused signature (`AUT.ACL.21`).
 pub const JOB_CARDS_APPROVE: &str = "job_cards.approve";
+/// Decide whether the accident damage flag of a job card is cleared: the
+/// workshop manager, never the one who asked (`AUT.ACL.20`).
+pub const JOB_CARDS_ACCIDENT: &str = "job_cards.accident";
 /// Keep the labour operations catalogue: the menu and the flat-rate prices
 /// (`AUT.JOB.03`).
 pub const LABOUR_MENU_MANAGE: &str = "labour_menu.manage";
