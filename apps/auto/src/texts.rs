@@ -16,7 +16,10 @@ const TEXTS: &[(&str, &str)] = &[
 
 /// Every text of the app: this file's and those of the later parts.
 fn entries() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
-    TEXTS.iter().chain(crate::texts_vehicles::TEXTS.iter())
+    TEXTS
+        .iter()
+        .chain(crate::texts_vehicles::TEXTS.iter())
+        .chain(crate::texts_jobs::TEXTS.iter())
 }
 
 /// The text for `key`: the app's translation when it has one, else the

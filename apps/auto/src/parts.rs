@@ -240,17 +240,17 @@ async fn give_back(state: &AppState, card: &JobCard, line: &PartLine) -> Result<
     }
     let in_stock = quantity.min((line.posted_milli - line.returned_milli).max(0));
     let place = (line.item_code.clone(), line.store_location_id);
-    if in_stock > 0 {
-        if let (Some(code), Some(store)) = place {
-            let location = Subject::new(LOCATION_SUBJECT_TYPE, store);
-            let service = stock_service(state);
-            let found = service.choices(state, &code, &location).await?;
-            if let Some(choice) = found {
-                let request = ReturnRequest::new(choice.item, location, in_stock, card.subject())
-                    .cost_object(card.subject())
-                    .reason("not fitted");
-                service.return_to_stock(state, request).await?;
-            }
+    if in_stock > 0
+        && let (Some(code), Some(store)) = place
+    {
+        let location = Subject::new(LOCATION_SUBJECT_TYPE, store);
+        let service = stock_service(state);
+        let found = service.choices(state, &code, &location).await?;
+        if let Some(choice) = found {
+            let request = ReturnRequest::new(choice.item, location, in_stock, card.subject())
+                .cost_object(card.subject())
+                .reason("not fitted");
+            service.return_to_stock(state, request).await?;
         }
     }
     PartLine::query()

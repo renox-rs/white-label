@@ -31,7 +31,7 @@ impl PartCondition {
     /// The condition written as `text`: its stored name, in any case.
     pub fn parse(text: &str) -> Option<PartCondition> {
         PartCondition::ALL
-            .into_iter()
+            .iter()
             .find(|condition| condition.as_str().eq_ignore_ascii_case(text.trim()))
             .copied()
     }

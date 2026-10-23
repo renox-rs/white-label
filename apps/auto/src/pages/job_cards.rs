@@ -876,8 +876,8 @@ async fn show(
     let latest = EstimateApproval::of_job_card(&state.db, card.id)
         .await?
         .into_iter()
-        .filter(|r| r.status == ApprovalStatus::Approved || r.status == ApprovalStatus::Pending)
-        .last();
+        .rev()
+        .find(|r| r.status == ApprovalStatus::Approved || r.status == ApprovalStatus::Pending);
     let advises = user.has_permission(permissions::JOB_CARDS_ADVISE);
     let works = may_work(&user, &card);
     let open = card.status.is_open();
@@ -1034,7 +1034,7 @@ async fn show(
         )
         .await,
         condition_options: PartCondition::ALL
-            .into_iter()
+            .iter()
             .map(|c| {
                 [
                     c.as_str().to_owned(),
