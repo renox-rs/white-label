@@ -211,9 +211,12 @@ async fn aut_13_a_contract_ends_on_the_first_run_after_its_end_date() {
 
     let on_the_last_day = run_daily_on(t.state(), day(-1)).await.unwrap();
     assert!(on_the_last_day.ended.is_empty());
-    assert_eq!(
-        contract_now(&t, contract.id).await.status,
-        FleetStatus::Active
+    // Valid through its end date: still in force (the run on the last day
+    // flags it for renewal, as its end date is within the window), not ended.
+    let on_the_day = contract_now(&t, contract.id).await.status;
+    assert!(
+        on_the_day == FleetStatus::Active || on_the_day == FleetStatus::RenewalDue,
+        "{on_the_day:?}"
     );
     assert!(t.books.about(&contract.subject()).is_empty());
 

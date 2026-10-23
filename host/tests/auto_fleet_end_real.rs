@@ -14,7 +14,7 @@ use std::time::Duration;
 use auto::fleet_billing;
 use auto::fleet_contracts;
 use auto::fleet_daily::run_daily_on;
-use auto::fleet_end::NOTICE_TYPE;
+use auto::fleet_end::{NOTICE_TYPE, TERMINATION_TYPE};
 use auto::fleet_invoice::{FleetInvoice, KIND_FINAL, KIND_MONTHLY};
 use auto::{FleetContract, FleetService, FleetStatus, JobCard, JobCardStatus};
 use renox::prelude::*;
@@ -267,7 +267,12 @@ async fn aut_12_real_a_terminated_contract_cancels_bookings_and_invoices_the_per
         .expect("the fee invoice exists");
     assert_eq!(fee.party, PartyId(shop.fleet.0));
     assert_eq!(fee.gross_total, 210_000, "AED 2,000 and 5% VAT");
-    assert_eq!(sent_of(&w, NOTICE_TYPE).await.len(), 1);
+    assert_eq!(
+        sent_of(&w, TERMINATION_TYPE).await.len(),
+        1,
+        "a terminated contract gets the statutory termination notice"
+    );
+    assert!(sent_of(&w, NOTICE_TYPE).await.is_empty());
 }
 
 /// JC-110 open when the contract ended finishes and is billed at the rates of

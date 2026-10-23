@@ -197,11 +197,18 @@ async fn aut_05_a_total_loss_gets_the_reminders_but_no_storage_fee() {
     process(t.state(), after(&card, 7)).await.unwrap();
     assert_eq!(t.messages.of_type("auto.collect_vehicle").len(), 2);
     let sami = t.advisor().await;
-    // After a total loss the insurer's notice, not payment, clears the release
-    // for an insurance job; this job card has no claim and nothing billed.
-    let released = release::release(t.state(), &sami, card.id, Release::safe("Mona Hassan"))
-        .await
-        .unwrap();
+    // After a total loss the vehicle leaves only on the insurer's written
+    // instruction, signed for by whoever takes it; this job card has no claim
+    // and nothing billed.
+    let released = release::release_with_instruction(
+        t.state(),
+        &sami,
+        card.id,
+        Release::as_is("Orient Insurance", "Samir"),
+        Some("orient-release-letter-1"),
+    )
+    .await
+    .unwrap();
     assert!(released.released_at.is_some());
     assert!(t.books.about(&card.subject()).is_empty());
 }

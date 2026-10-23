@@ -100,7 +100,7 @@ async fn aut_10_real_a_claim_with_a_message_to_the_insurer_cannot_be_voided() {
     claims::send_survey_request(w.state(), &s.carla, claim.id)
         .await
         .unwrap();
-    let mails = sent_of(&w, "auto.claim_survey").await;
+    let mails = sent_of(&w, "auto.insurer_request").await;
     assert_eq!(mails.len(), 1);
     assert_eq!(mails[0].address.as_deref(), Some("claims@orient.example"));
 

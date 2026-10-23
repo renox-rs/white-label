@@ -39,7 +39,7 @@ async fn aut_08_real_a_withdrawn_claim_bills_the_work_done_to_the_customer_only(
     .unwrap();
     assert_eq!(cancelled.status, ClaimStatus::Cancelled);
 
-    let letters = sent_of(&w, "auto.claim_withdrawal").await;
+    let letters = sent_of(&w, "auto.claim_withdrawal_letter").await;
     assert_eq!(letters.len(), 1, "the insurer is told in writing");
     assert_eq!(letters[0].address.as_deref(), Some("claims@orient.example"));
     assert!(letters[0].rendered_body.contains("OR-2026-118"));

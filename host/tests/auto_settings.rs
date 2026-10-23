@@ -195,7 +195,7 @@ async fn aut_18_the_sms_gateway_has_the_advisors_call_fallback() {
 /// Notifications: the withdrawal letter and the termination notice are
 /// statutory (a give-up marks the contact invalid and gives the coordinator or
 /// the Owner / GM the statutory task); the vehicle-ready SMS marks the contact
-/// invalid and makes no task; the parts delay is urgent and gives the advisor
+/// invalid, tries the customer's other contact and makes no task; the parts delay is urgent and gives the advisor
 /// a task; the insurer and supplier requests are signature-group messages.
 #[renox::test]
 async fn aut_18_the_notification_types_have_their_groups_and_reactions() {
@@ -216,7 +216,15 @@ async fn aut_18_the_notification_types_have_their_groups_and_reactions() {
 
     let ready = notification_type("auto.vehicle_ready").expect("vehicle ready");
     assert_eq!(ready.group, GROUP_BOOKINGS);
-    assert_eq!(ready.give_up, [GiveUpReaction::MarkContactInvalid]);
+    assert_eq!(
+        ready.give_up,
+        [
+            GiveUpReaction::MarkContactInvalid,
+            GiveUpReaction::AlternativeRecipient
+        ],
+        "the kernel refuses a lone mark_contact_invalid on a transactional type"
+    );
+    assert!(!ready.give_up.contains(&GiveUpReaction::StaffTask));
     assert!(ready.staff_role.is_none(), "no task");
 
     let delay = notification_type("auto.parts_delay").expect("parts delay");

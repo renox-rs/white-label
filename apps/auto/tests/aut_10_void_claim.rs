@@ -101,7 +101,7 @@ async fn aut_10_a_claim_with_something_sent_to_the_insurer_cannot_be_voided() {
         .unwrap();
     assert_eq!(sent.status, ClaimStatus::Registered);
     assert!(sent.sent_to_insurer_at.is_some());
-    assert_eq!(t.messages.of_type("auto.claim_survey").len(), 1);
+    assert_eq!(t.messages.of_type("auto.insurer_request").len(), 1);
 
     let refused = claims::void(t.state(), &carla, claim.id, "duplicate")
         .await

@@ -9,7 +9,7 @@
 //!   `DEFERRED.md`): the purchaser confirms it when raising, and the claim is
 //!   refused when the decision was not accepted.
 //! - **Raising** ([`after_raise`]): the claim document is emailed to the
-//!   supplier (`auto.supplier_claim`; the purchaser gets a task when it cannot
+//!   supplier (`auto.supplier_warranty_claim`; the purchaser gets a task when it cannot
 //!   be sent), and the failed part, when it was kept, goes on a draft Return to
 //!   supplier with outcome *credit* through the kernel's `SupplierReturnDrafts`
 //!   (wl-inventory), kept for collection at the store of the job card's
@@ -55,7 +55,7 @@ pub const RULE_CHASE: &str = "AUT.RUL.08";
 /// N: the days after which an unrecovered claim is chased.
 pub const CHASE_DAYS: i64 = 60;
 /// The email with the claim document to the supplier.
-pub const SUPPLIER_CLAIM_TYPE: &str = "auto.supplier_claim";
+pub const SUPPLIER_CLAIM_TYPE: &str = "auto.supplier_warranty_claim";
 /// The scheduled task and command of the daily chase.
 pub const TASK: &str = "auto:supplier-chase";
 /// The time of day it runs, Asia/Dubai.

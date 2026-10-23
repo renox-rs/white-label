@@ -252,6 +252,24 @@ async fn aut_base_the_claim_page_writes_off_a_refused_claim() {
         .post(&format!("{path}/write-off"), &[("reason", "Water damage")])
         .await
         .assert_ok();
+    // The write-off waits for a branch manager other than the purchaser
+    // (BL-AUT-11); on the manager's approval the page shows it written off.
+    let basma = t
+        .user(
+            "Basma",
+            &[
+                permissions::SUPPLIER_CLAIMS_APPROVE,
+                permissions::JOB_CARDS_VIEW,
+            ],
+        )
+        .await;
+    let waiting = wl_kernel::approvals::awaiting(t.db(), &basma)
+        .await
+        .unwrap();
+    assert_eq!(waiting.len(), 1);
+    wl_kernel::approvals::approve(t.state(), waiting[0].id, &basma, "")
+        .await
+        .expect("the branch manager approves");
     t.app
         .get(&path)
         .await

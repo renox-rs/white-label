@@ -245,6 +245,7 @@ async fn sal_15_real_an_item_not_tracked_by_lot_is_recalled_by_its_receipts_and_
         location_id: store.id,
         arrived_at: Some(arrived),
         posted_at: Some(arrived),
+        status: GoodsReceiptStatus::Posted,
         ..GoodsReceipt::default()
     };
     let mut tx = app.db().begin().await.unwrap();

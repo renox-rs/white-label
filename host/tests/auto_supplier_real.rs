@@ -135,7 +135,7 @@ async fn aut_11_real_the_claim_is_raised_from_a_closed_ticket_and_the_kept_part_
     .await
     .unwrap();
     assert_eq!(claim.status, SupplierClaimStatus::Raised);
-    let mails = sent_of(&w, "auto.supplier_claim").await;
+    let mails = sent_of(&w, "auto.supplier_warranty_claim").await;
     assert_eq!(mails.len(), 1, "the claim is emailed to the supplier");
     assert!(mails[0].rendered_body.contains("Alternator"));
     let rts_id = claim.supplier_return_id.expect("a draft return");

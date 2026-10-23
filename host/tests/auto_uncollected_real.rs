@@ -188,9 +188,17 @@ async fn aut_05_real_no_storage_invoice_when_off_or_after_a_total_loss() {
     storage::process(w.state(), start + renox::chrono::Duration::days(3))
         .await
         .unwrap();
-    let released = release::release(w.state(), &sami, lost.id, Release::safe("Mona Hassan"))
-        .await
-        .unwrap();
+    // After a total loss the vehicle leaves on the insurer's written instruction,
+    // signed for by whoever takes it.
+    let released = release::release_with_instruction(
+        w.state(),
+        &sami,
+        lost.id,
+        Release::as_is("Orient Insurance", "Samir"),
+        Some("orient-release-letter-1"),
+    )
+    .await
+    .unwrap();
     assert!(released.storage_invoice_id.is_none());
 }
 

@@ -135,6 +135,7 @@ async fn shelf(w: &World, received: &[NaiveDate]) -> Shelf {
             location_id: store.id,
             arrived_at: Some(arrived),
             posted_at: Some(arrived),
+            status: GoodsReceiptStatus::Posted,
             ..GoodsReceipt::default()
         };
         let mut tx = w.db().begin().await.unwrap();
@@ -212,6 +213,7 @@ async fn counter_sale(w: &World, n: i64, party: Option<PartyId>) -> Subject {
         party_id: party.map(|p| p.0),
         cashier_user_id: 1,
         currency: "AED".to_owned(),
+        status: CounterSaleStatus::Completed,
         ..CounterSale::default()
     };
     let mut tx = w.db().begin().await.unwrap();
@@ -231,6 +233,7 @@ async fn order_to(w: &World, n: i64, party: PartyId) -> Subject {
         payment_mode: "on_account".to_owned(),
         currency: "AED".to_owned(),
         revision: 1,
+        status: SalesOrderStatus::Confirmed,
         ..SalesOrder::default()
     };
     let mut tx = w.db().begin().await.unwrap();

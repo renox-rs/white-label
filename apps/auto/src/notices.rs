@@ -52,8 +52,8 @@ pub const INSURER_STATEMENT: &str = "auto.insurer_statement";
 pub const SERVICE_REMINDER: &str = "auto.service_reminder";
 
 /// An SMS to the customer in English and Arabic: the group *Booking
-/// confirmations and reminders*, the contact marked invalid on give-up and
-/// no task (the job card shows *message not delivered*).
+/// confirmations and reminders*, the contact marked invalid on give-up, the
+/// customer's other contact tried, and no staff task (the job card shows *message not delivered*).
 fn sms(key: &str, texts: &str) -> NotificationTypeDef {
     NotificationTypeDef::new(key, "auto")
         .group(GROUP_BOOKINGS)

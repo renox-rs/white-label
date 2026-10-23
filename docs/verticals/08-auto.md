@@ -862,7 +862,7 @@ before the request (`wl-kernel`). Settings for this vertical:
 
 | Type | Sent by | Group | Urgency | Give-up reaction |
 |---|---|---|---|---|
-| `auto.vehicle_ready`, `auto.claim_approved` | `AUT.RUL.02`, `AUT.RUL.12` (SMS) | Booking confirmations and reminders | normal | `mark_contact_invalid`; the job card shows "message not delivered" to the service advisor |
+| `auto.vehicle_ready`, `auto.claim_approved` | `AUT.RUL.02`, `AUT.RUL.12` (SMS) | Booking confirmations and reminders | normal | `mark_contact_invalid`, then `alternative_recipient` (the customer's other contact; the kernel refuses a lone `mark_contact_invalid` on a transactional type); no staff task, the job card shows "message not delivered" to the service advisor |
 | `auto.collect_vehicle` | job card `decline` and `AUT.RUL.17`, `AUT.RUL.18`, claim `declare_total_loss` | Booking confirmations and reminders | normal | as above |
 | `auto.parts_delay` | `AUT.RUL.16` (to the customer) | Booking confirmations and reminders | urgent | as above, then a task to the service advisor with an in-app alert |
 | `auto.service_reminder` | `AUT.RUL.01` (opted-in contacts only) | Marketing, delivery tracking | normal | `mark_contact_invalid` |

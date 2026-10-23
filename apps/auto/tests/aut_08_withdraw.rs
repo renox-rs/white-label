@@ -55,7 +55,7 @@ async fn aut_08_a_claim_withdrawn_after_approval_with_stop_bills_the_work_done_t
     );
 
     // The insurer is told in writing, at its claim email.
-    let letters = t.messages.of_type("auto.claim_withdrawal");
+    let letters = t.messages.of_type("auto.claim_withdrawal_letter");
     assert_eq!(letters.len(), 1, "one letter to the insurer");
     assert!(letters[0].recipients.iter().any(|r| matches!(
         r,
@@ -446,7 +446,11 @@ async fn aut_08_cancel_after_approval_needs_the_written_withdrawal_and_the_choic
         ClaimStatus::Approved
     );
     assert_eq!(t.reload(jc.card.id).await.status, JobCardStatus::InProgress);
-    assert!(t.messages.of_type("auto.claim_withdrawal").is_empty());
+    assert!(
+        t.messages
+            .of_type("auto.claim_withdrawal_letter")
+            .is_empty()
+    );
     assert!(t.books.about(&jc.card.subject()).is_empty());
 }
 

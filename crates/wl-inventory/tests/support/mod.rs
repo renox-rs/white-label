@@ -1900,6 +1900,7 @@ impl Booted {
             location_id: location.id,
             arrived_at: Some(at),
             posted_at: Some(at),
+            status: wl_inventory::GoodsReceiptStatus::Posted,
             ..GoodsReceipt::default()
         };
         let mut tx = self.db().begin().await.unwrap();

@@ -109,6 +109,7 @@ impl World {
     /// An issued purchase order for `units` of P at the store.
     async fn purchase(&self, units: i64) -> (PurchaseOrder, PurchaseOrderLine) {
         let mut order = PurchaseOrder::new(self.supplier, self.store.id);
+        order.status = PurchaseOrderStatus::Issued;
         let mut tx = self.app.db().begin().await.unwrap();
         order
             .insert_in_state(&mut tx, PurchaseOrderStatus::Issued, "fixture")
@@ -206,8 +207,13 @@ async fn aut_15_real_a_posted_receipt_serves_the_oldest_back_order_and_a_reverse
     assert_eq!(w.split(&one, 1).await, (0, 3));
     assert_eq!(w.split(&two, 1).await, (0, 3));
 
-    // SO-2's back-order is cancelled (its other line stays open) and leaves
-    // the suggestion.
+    // The reversal reopens the purchase order for its 4: of the 6 P back-ordered
+    // 2 are not covered by it.
+    w.app.run_scheduled(reorder::TASK).await.unwrap();
+    assert_eq!(w.suggestion().await.unwrap().suggested_qty_milli, 2_000);
+
+    // SO-2's back-order is cancelled (its other line stays open): the 3 P of
+    // SO-1 are covered by the reopened order, so the suggestion goes.
     w.app
         .post(
             &format!("/sales-orders/{}/cancel-line", two.id),
@@ -221,7 +227,10 @@ async fn aut_15_real_a_posted_receipt_serves_the_oldest_back_order_and_a_reverse
         .assert_status(303);
     assert_eq!(w.split(&two, 1).await, (0, 0));
     w.app.run_scheduled(reorder::TASK).await.unwrap();
-    assert_eq!(w.suggestion().await.unwrap().suggested_qty_milli, 3_000);
+    assert!(
+        w.suggestion().await.is_none(),
+        "SO-1's 3 P are on the reopened order"
+    );
 }
 
 /// BL-AUT-15 points 6 to 8 and BL-SAL-17 points 4 and 5: an order on

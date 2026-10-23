@@ -138,7 +138,7 @@ async fn aut_11_raising_the_claim_emails_the_supplier_and_drafts_the_return_of_t
         .await
         .unwrap();
     assert_eq!(claim.status, SupplierClaimStatus::Raised);
-    let mails = t.messages.of_type("auto.supplier_claim");
+    let mails = t.messages.of_type("auto.supplier_warranty_claim");
     assert_eq!(mails.len(), 1, "the claim document is emailed");
     assert!(Messages::told_party(&mails[0], 40));
     let text = Messages::text(&mails[0], wl_kernel::notify::NotifyChannel::Email);
@@ -315,7 +315,11 @@ async fn aut_11_the_mileage_of_the_terms_decides_whether_the_warranty_applies() 
         refused.to_string().contains("mileage out of terms"),
         "{refused}"
     );
-    assert!(t.messages.of_type("auto.supplier_claim").is_empty());
+    assert!(
+        t.messages
+            .of_type("auto.supplier_warranty_claim")
+            .is_empty()
+    );
     let allowed = supplier_claims::raise(
         t.state(),
         &pia,
