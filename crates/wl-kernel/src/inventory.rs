@@ -1881,6 +1881,17 @@ pub trait DispatchDirectory: Send + Sync + 'static {
         Box::pin(async { Ok(None) })
     }
 
+    /// The dispatches made for `source` (a sales order), oldest first, in
+    /// every state. A source reads how far its goods are (picked, out for
+    /// delivery, delivered, lost). The default knows none.
+    fn of_source<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _source: &'a Subject,
+    ) -> TraceFuture<'a, Vec<DispatchFacts>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
     /// The dispatches that left on or before `day` and have not been
     /// returned, cancelled or discarded, oldest first.
     fn left_by<'a>(

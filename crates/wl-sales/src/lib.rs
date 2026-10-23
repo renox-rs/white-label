@@ -28,6 +28,8 @@ pub mod credit;
 mod credit_texts;
 pub mod customer_account;
 pub mod daily;
+pub mod deliveries;
+pub mod delivery_invoice;
 mod events;
 pub mod expiry;
 pub mod lead;
@@ -55,6 +57,7 @@ pub mod packages;
 pub mod pages;
 pub mod po_number;
 pub mod policy;
+pub mod progress;
 pub mod promo_code;
 pub mod redeem;
 pub mod redemption;
@@ -75,6 +78,7 @@ pub mod settle;
 pub mod terms;
 mod texts;
 mod texts_changes;
+mod texts_deliveries;
 mod texts_till;
 pub mod till_session;
 pub mod till_sessions;
@@ -681,6 +685,13 @@ impl WlSales {
         self
     }
 
+    /// Whether the invoice is drafted on delivery for the accepted quantities
+    /// (§5.2 step 4, default off: drafted when the order is fulfilled; 07: on).
+    pub fn invoice_on_delivery(mut self, on: bool) -> Self {
+        self.config.invoice_on_delivery = on;
+        self
+    }
+
     /// Whether the same customer PO number, with its call-off number, may be
     /// used by one order of a customer only (§7, default off; 07: on).
     pub fn unique_customer_po(mut self, on: bool) -> Self {
@@ -830,6 +841,7 @@ impl Module for WlSales {
         // The sales order: its machine, its events and the kernel's
         // `OrderFulfilment`.
         sales_orders::register(app);
+        deliveries::register(app);
         // The 07 vertical's contracts the sales order answers.
         wl_kernel::production::provide_order_lines(app, order_directory::Lines);
         wl_kernel::sales::provide_customer_po_check(app, order_directory::PoCheck);

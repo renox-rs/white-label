@@ -1837,6 +1837,7 @@ pub(crate) fn all(lang: &Lang) -> BTreeMap<&'static str, String> {
         .iter()
         .chain(crate::credit_texts::TEXTS)
         .chain(crate::texts_changes::CHANGE_TEXTS.iter())
+        .chain(crate::texts_deliveries::DELIVERY_TEXTS.iter())
         .chain(crate::texts_till::TILL_TEXTS.iter())
         .map(|(key, _)| (key.trim_start_matches("wl_sales."), t(lang, key)))
         .collect()
@@ -1849,6 +1850,7 @@ pub(crate) fn english(key: &str, params: &[(&str, &dyn Display)]) -> String {
         .iter()
         .chain(crate::credit_texts::TEXTS)
         .chain(crate::texts_changes::CHANGE_TEXTS.iter())
+        .chain(crate::texts_deliveries::DELIVERY_TEXTS.iter())
         .chain(crate::texts_till::TILL_TEXTS.iter())
         .find(|(k, _)| *k == key)
         .map_or(key, |(_, text)| *text);
@@ -1866,6 +1868,7 @@ mod tests {
             .iter()
             .chain(crate::credit_texts::TEXTS)
             .chain(crate::texts_changes::CHANGE_TEXTS.iter())
+            .chain(crate::texts_deliveries::DELIVERY_TEXTS.iter())
             .chain(crate::texts_till::TILL_TEXTS.iter())
             .map(|(key, _)| *key)
             .collect();

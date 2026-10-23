@@ -123,6 +123,10 @@ pub(crate) fn register_types() {
     notify::register_type(english_type(ORDER_LATE_PAYMENT, "order_late_payment"));
     notify::register_type(english_type(ORDER_CREDIT_HOLD, "order_credit_hold"));
     notify::register_type(english_type(ACCOUNT_ON_HOLD, "account_on_hold"));
+    notify::register_type(english_type(
+        crate::deliveries::DELIVERY_RETURNED,
+        "delivery_returned",
+    ));
 }
 
 /// The users told of a credit hold of `party`'s order: the sales rep of its

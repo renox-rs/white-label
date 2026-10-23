@@ -471,7 +471,10 @@ async fn show(
             notes.push(said(
                 "wl_inventory.dispatch.ui.discarded_note",
                 &[
-                    ("value", &crate::po_revise::money_text(dispatch.discard_fils)),
+                    (
+                        "value",
+                        &crate::po_revise::money_text(dispatch.discard_fils),
+                    ),
                     (
                         "reason",
                         dispatch.discard_reason.as_deref().unwrap_or_default(),

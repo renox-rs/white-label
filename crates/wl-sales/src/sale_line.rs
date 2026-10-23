@@ -275,6 +275,20 @@ impl SaleLine {
         ratio_half_up(self.gross(), quantity_milli, self.quantity_milli)
     }
 
+    /// The line as an invoice on delivery carries it: the quantity handed
+    /// over, with the discount in proportion; `None` when nothing was.
+    pub fn delivered_draft_line(&self) -> Option<DraftLine> {
+        if self.kind != KIND_ITEM || self.fulfilled_milli <= 0 {
+            return None;
+        }
+        let discount = ratio_half_up(self.discount, self.fulfilled_milli, self.quantity_milli);
+        Some(
+            DraftLine::new(&self.description, self.unit_price, self.vat_category)
+                .quantity_milli(self.fulfilled_milli)
+                .discount(discount),
+        )
+    }
+
     /// The line as the invoice carries it once the order is complete: the
     /// quantity not cancelled, with the discount in proportion; `None` when
     /// nothing is left.

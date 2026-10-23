@@ -149,17 +149,8 @@ async fn failed(
 
 /// The invoice draft of the order's lines as they stand: what is not
 /// cancelled, in order.
-fn invoice_draft(order: &SalesOrder, lines: &[SaleLine]) -> InvoiceDraft {
-    let mut draft = InvoiceDraft::new(order.party(), order.subject()).currency(&order.currency);
-    if let Some(entity) = order.legal_entity_id {
-        draft = draft.legal_entity(entity);
-    }
-    for line in lines {
-        if let Some(billed) = line.billable_draft_line() {
-            draft = draft.line(billed.origin(order.subject()));
-        }
-    }
-    draft
+fn invoice_draft(state: &AppState, order: &SalesOrder, lines: &[SaleLine]) -> InvoiceDraft {
+    crate::delivery_invoice::invoice_draft(order, lines, config_of(state).invoice_on_delivery)
 }
 
 /// The net of `quantity_milli` of an item at `unit_price` less `discount`.
@@ -227,7 +218,7 @@ async fn amendment_invoice(
     };
     if summary.status == InvoiceStatus::Draft {
         let done = invoices
-            .update_draft(&state.db, id, invoice_draft(order, lines))
+            .update_draft(&state.db, id, invoice_draft(state, order, lines))
             .await?;
         let status = if done { STATUS_DONE } else { STATUS_FAILED };
         let row = store(
@@ -789,7 +780,7 @@ async fn cancellation_invoice(
     };
     if summary.status == InvoiceStatus::Draft {
         let done = invoices
-            .update_draft(&state.db, id, invoice_draft(order, lines))
+            .update_draft(&state.db, id, invoice_draft(state, order, lines))
             .await?;
         let status = if done { STATUS_DONE } else { STATUS_FAILED };
         let row = store(

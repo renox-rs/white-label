@@ -294,6 +294,9 @@ pub struct LineRow {
     pub outcome: String,
     /// The line with VAT, `AED 105.00`.
     pub gross: String,
+    /// Where its goods are: not dispatched, picked, out for delivery, partly
+    /// delivered, delivered or lost (BL-SAL-13).
+    pub progress: String,
 }
 
 /// The credit hold of an order as its page shows it. The reason and the
@@ -476,6 +479,7 @@ async fn show(
     let started = fulfilment_progress(&state)
         .started_lines(&state, order.order_id(), &item_ids)
         .await?;
+    let progress = crate::progress::of_lines(&state, &order, &lines).await?;
     let rows = lines
         .iter()
         .map(|line| LineRow {
@@ -496,6 +500,10 @@ async fn show(
                 .map(|o| text(&lang, &format!("cancelling.outcome.{o}")))
                 .unwrap_or_default(),
             gross: money(line.gross()),
+            progress: progress
+                .get(&line.id)
+                .map(|key| text(&lang, &format!("progress.{key}")))
+                .unwrap_or_default(),
         })
         .collect();
     // Submitting takes the page's own button, which reads the lines; the

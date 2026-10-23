@@ -48,6 +48,20 @@ impl DispatchDirectory for InventoryDispatches {
         })
     }
 
+    fn of_source<'a>(
+        &'a self,
+        state: &'a AppState,
+        source: &'a Subject,
+    ) -> TraceFuture<'a, Vec<DispatchFacts>> {
+        Box::pin(async move {
+            let mut found = Vec::new();
+            for dispatch in crate::dispatch::of_source(&state.db, source).await? {
+                found.push(facts_of(&state.db, &dispatch).await?);
+            }
+            Ok(found)
+        })
+    }
+
     fn left_by<'a>(
         &'a self,
         state: &'a AppState,

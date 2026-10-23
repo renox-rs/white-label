@@ -225,6 +225,11 @@ pub struct SalesConfig {
     /// Whether the same customer PO number (with its call-off number) may
     /// not be used twice for a customer (§7: off; 07: on).
     pub unique_customer_po: bool,
+    /// Whether the invoice is drafted on delivery for the quantities the
+    /// customer accepted and kept up to date as deliveries come and go
+    /// (§5.2 step 4; default off: drafted when the order is fulfilled; 07
+    /// turns it on).
+    pub invoice_on_delivery: bool,
     /// The role told (mail and task) when an order goes on credit hold,
     /// with the sales rep (`SAL.RUL.01`); the company admin when empty.
     pub accountant_role: String,
@@ -315,6 +320,7 @@ impl Default for SalesConfig {
             credit_recheck_at_dispatch: true,
             bounced_cheque_hold_group: true,
             unique_customer_po: false,
+            invoice_on_delivery: false,
             accountant_role: DEFAULT_ACCOUNTANT_ROLE.to_owned(),
             unique_external_order_number: true,
             online_payment_window_minutes: DEFAULT_ONLINE_PAYMENT_WINDOW_MINUTES,

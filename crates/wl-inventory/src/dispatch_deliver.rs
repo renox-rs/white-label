@@ -47,10 +47,11 @@ use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
-use wl_kernel::delivery::DeliveryDelivered;
 use wl_kernel::Subject;
+use wl_kernel::delivery::DeliveryDelivered;
 use wl_kernel::inventory::{
-    DispatchDelivered, DispatchGoodsQuarantined, ITEM_SUBJECT_TYPE, LOT_SUBJECT_TYPE, QuarantinedLine,
+    DispatchDelivered, DispatchGoodsQuarantined, ITEM_SUBJECT_TYPE, LOT_SUBJECT_TYPE,
+    QuarantinedLine,
 };
 use wl_kernel::invoicing::{PostCost, post_cost};
 use wl_kernel::tickets::{Assignee, OpenTicket, TASK_CATEGORY, task_creator};

@@ -262,7 +262,10 @@ pub(crate) const DISPATCH_TEXTS: &[(&str, &str)] = &[
         "The goods came back to the store. They go into quarantine and a complaint is opened.",
     ),
     ("wl_inventory.dispatch.ui.return_reason", "Why it came back"),
-    ("wl_inventory.dispatch.ui.returned_done", "The dispatch is returned."),
+    (
+        "wl_inventory.dispatch.ui.returned_done",
+        "The dispatch is returned.",
+    ),
     (
         "wl_inventory.dispatch.ui.discarded_note",
         "Destroyed after a failed delivery: {{ value }} written off as wastage. {{ reason }}",

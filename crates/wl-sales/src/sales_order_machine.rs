@@ -104,6 +104,11 @@ pub const REVERSE_FULFILMENT: &str = "reverse_fulfilment";
 /// `partially_fulfilled | fulfilled → confirmed`: a hand-over is reversed and
 /// nothing stays fulfilled.
 pub const REVERSE_FULFILMENT_ALL: &str = "reverse_fulfilment_all";
+
+/// `reverse_fulfilment_held`: a delivery is reversed or lost while the order
+/// is on credit hold (BL-SAL-13): the quantities come off and the state the
+/// hold returns to follows (`confirmed` when nothing stays fulfilled).
+pub const REVERSE_FULFILMENT_HELD: &str = "reverse_fulfilment_held";
 /// `fulfilled → closed`: everything fulfilled is invoiced.
 pub const CLOSE: &str = "close";
 /// `draft → credit_hold`: the credit check at `submit` failed.
@@ -356,6 +361,7 @@ impl StateMachine for SalesOrder {
             .transition(fulfil(FULFIL_LAST, Fulfilled))
             .transition(reverse(REVERSE_FULFILMENT, PartiallyFulfilled))
             .transition(reverse(REVERSE_FULFILMENT_ALL, Confirmed))
+            .transition(reverse_held())
             .transition(close())
             .transition(submit(SUBMIT_HOLD, "Submit", CreditHold))
             .transition(accept_hold())
@@ -840,15 +846,33 @@ fn fulfil(name: &str, to: SalesOrderStatus) -> Transition<SalesOrder> {
                 for line in &input.lines {
                     move_fulfilled(tx, id, line.line, line.quantity_milli).await?;
                 }
-                FulfilmentRecord {
-                    order_id: id,
-                    source_type: input.source.subject_type.clone(),
-                    source_id: input.source.subject_id,
-                    lines: renox::serde_json::to_string(&input.lines).unwrap_or_default(),
-                    ..FulfilmentRecord::default()
+                let lines_json = renox::serde_json::to_string(&input.lines).unwrap_or_default();
+                // A source whose quantities were all reversed fulfils again
+                // on the row it has.
+                let existing = FulfilmentRecord::query()
+                    .where_(FulfilmentRecord::ORDER_ID.eq(id))
+                    .where_(FulfilmentRecord::SOURCE_TYPE.eq(input.source.subject_type.clone()))
+                    .where_(FulfilmentRecord::SOURCE_ID.eq(input.source.subject_id))
+                    .first(&mut *tx)
+                    .await?;
+                if existing.is_some() {
+                    FulfilmentRecord::query()
+                        .where_(FulfilmentRecord::ORDER_ID.eq(id))
+                        .where_(FulfilmentRecord::SOURCE_TYPE.eq(input.source.subject_type.clone()))
+                        .where_(FulfilmentRecord::SOURCE_ID.eq(input.source.subject_id))
+                        .update(&mut *tx, &[("lines", &lines_json)])
+                        .await?;
+                } else {
+                    FulfilmentRecord {
+                        order_id: id,
+                        source_type: input.source.subject_type.clone(),
+                        source_id: input.source.subject_id,
+                        lines: lines_json,
+                        ..FulfilmentRecord::default()
+                    }
+                    .insert(&mut *tx)
+                    .await?;
                 }
-                .insert(&mut *tx)
-                .await?;
                 if last {
                     let stamp = Some(now());
                     SalesOrder::query()
@@ -861,62 +885,113 @@ fn fulfil(name: &str, to: SalesOrderStatus) -> Transition<SalesOrder> {
         })
 }
 
+/// Takes the quantities of the hand-over in `input` off the order and its
+/// record.
+async fn take_back(tx: &mut renox::db::Transaction, id: i64, input: &ReverseInput) -> Result {
+    for line in &input.lines {
+        move_fulfilled(tx, id, line.line, -line.quantity_milli).await?;
+    }
+    FulfilmentRecord::query()
+        .where_(FulfilmentRecord::ORDER_ID.eq(id))
+        .where_(FulfilmentRecord::SOURCE_TYPE.eq(input.source.subject_type.clone()))
+        .where_(FulfilmentRecord::SOURCE_ID.eq(input.source.subject_id))
+        .update(&mut *tx, &[("lines", &input.held_after)])
+        .await?;
+    let cleared: Option<renox::db::DateTime> = None;
+    SalesOrder::query()
+        .where_(SalesOrder::ID.eq(id))
+        .update(&mut *tx, &[("fulfilled_at", &cleared)])
+        .await?;
+    Ok(())
+}
+
+/// The guard both reversals share: the quantities are held by the source.
+fn quantities_held(transition: Transition<SalesOrder>) -> Transition<SalesOrder> {
+    transition.guard("quantities_held", |_o: &SalesOrder, ctx| {
+        let problem = match ctx.input_as::<ReverseInput>() {
+            Ok(input) => input.problem,
+            Err(_) => Some(english("wl_sales.orders.problem.input", &[])),
+        };
+        Box::pin(async move { problem.map_or(Ok(()), Err) })
+    })
+}
+
 /// `reverse_fulfilment` and `reverse_fulfilment_all`: quantities of a
 /// hand-over are taken off again.
 fn reverse(name: &str, to: SalesOrderStatus) -> Transition<SalesOrder> {
     let none_left = to == SalesOrderStatus::Confirmed;
-    Transition::new(name)
-        .label("Reverse fulfilment")
-        .tone("warning")
-        .system()
-        .from([
-            SalesOrderStatus::PartiallyFulfilled,
-            SalesOrderStatus::Fulfilled,
-        ])
-        .to(to)
-        .guard("quantities_held", |_o: &SalesOrder, ctx| {
-            let problem = match ctx.input_as::<ReverseInput>() {
-                Ok(input) => input.problem,
-                Err(_) => Some(english("wl_sales.orders.problem.input", &[])),
-            };
-            Box::pin(async move { problem.map_or(Ok(()), Err) })
-        })
-        .guard(
-            "confirmed_only_when_nothing_stays",
-            move |_o: &SalesOrder, ctx| {
-                let left = ctx.input_as::<ReverseInput>().map(|i| i.none_left);
-                Box::pin(async move {
-                    check(
-                        left.is_ok_and(|l| l == none_left),
-                        "wl_sales.orders.problem.completeness",
-                    )
-                })
-            },
-        )
-        .effect(|order: &SalesOrder, ctx, tx| {
-            let id = order.id;
-            let input = ctx.input_as::<ReverseInput>().ok();
+    quantities_held(
+        Transition::new(name)
+            .label("Reverse fulfilment")
+            .tone("warning")
+            .system()
+            .from([
+                SalesOrderStatus::PartiallyFulfilled,
+                SalesOrderStatus::Fulfilled,
+            ])
+            .to(to),
+    )
+    .guard(
+        "confirmed_only_when_nothing_stays",
+        move |_o: &SalesOrder, ctx| {
+            let left = ctx.input_as::<ReverseInput>().map(|i| i.none_left);
             Box::pin(async move {
-                let Some(input) = input else {
-                    return Ok(());
-                };
-                for line in &input.lines {
-                    move_fulfilled(tx, id, line.line, -line.quantity_milli).await?;
-                }
-                FulfilmentRecord::query()
-                    .where_(FulfilmentRecord::ORDER_ID.eq(id))
-                    .where_(FulfilmentRecord::SOURCE_TYPE.eq(input.source.subject_type.clone()))
-                    .where_(FulfilmentRecord::SOURCE_ID.eq(input.source.subject_id))
-                    .update(&mut *tx, &[("lines", &input.held_after)])
-                    .await?;
-                let cleared: Option<renox::db::DateTime> = None;
+                check(
+                    left.is_ok_and(|l| l == none_left),
+                    "wl_sales.orders.problem.completeness",
+                )
+            })
+        },
+    )
+    .effect(|order: &SalesOrder, ctx, tx| {
+        let id = order.id;
+        let input = ctx.input_as::<ReverseInput>().ok();
+        Box::pin(async move {
+            let Some(input) = input else {
+                return Ok(());
+            };
+            take_back(tx, id, &input).await
+        })
+    })
+}
+
+/// `reverse_fulfilment_held`: the same while the order is on credit hold; the
+/// state the release returns to follows what stays fulfilled.
+fn reverse_held() -> Transition<SalesOrder> {
+    quantities_held(
+        Transition::new(REVERSE_FULFILMENT_HELD)
+            .label("Reverse fulfilment")
+            .tone("warning")
+            .system()
+            .from([SalesOrderStatus::CreditHold])
+            .to(SalesOrderStatus::CreditHold),
+    )
+    .effect(|order: &SalesOrder, ctx, tx| {
+        let id = order.id;
+        let held_from = order.held_from.clone();
+        let input = ctx.input_as::<ReverseInput>().ok();
+        Box::pin(async move {
+            let Some(input) = input else {
+                return Ok(());
+            };
+            take_back(tx, id, &input).await?;
+            if input.none_left
+                && held_from.as_deref() == Some(SalesOrderStatus::PartiallyFulfilled.as_str())
+            {
                 SalesOrder::query()
                     .where_(SalesOrder::ID.eq(id))
-                    .update(&mut *tx, &[("fulfilled_at", &cleared)])
+                    .update(
+                        &mut *tx,
+                        &[(
+                            "held_from",
+                            &Some(SalesOrderStatus::Confirmed.as_str().to_owned()),
+                        )],
+                    )
                     .await?;
-                Ok(())
-            })
+            }
+            Ok(())
         })
+    })
 }
 
 /// `close`: fulfilled → closed once everything fulfilled is invoiced.
@@ -987,6 +1062,12 @@ mod tests {
                 REVERSE_FULFILMENT_ALL,
                 vec!["partially_fulfilled", "fulfilled"],
                 "confirmed",
+                true,
+            ),
+            (
+                REVERSE_FULFILMENT_HELD,
+                vec!["credit_hold"],
+                "credit_hold",
                 true,
             ),
             (CLOSE, vec!["fulfilled"], "closed", true),

@@ -33,7 +33,10 @@ async fn a_returned_delivery_brings_the_goods_to_quarantine_and_opens_a_complain
 
     let returned = t.dispatch_now(&sent).await;
     assert_eq!(returned.status, DispatchStatus::Returned);
-    assert_eq!(returned.return_reason.as_deref(), Some("customer_unavailable"));
+    assert_eq!(
+        returned.return_reason.as_deref(),
+        Some("customer_unavailable")
+    );
     let moved = t.dispatch_movements(&sent).await;
     let back: Vec<_> = moved
         .iter()
@@ -58,7 +61,10 @@ async fn a_returned_delivery_brings_the_goods_to_quarantine_and_opens_a_complain
     assert_eq!(booked[0].lines.len(), 1);
     assert_eq!(booked[0].lines[0].quantity_milli, 10_000);
     assert_eq!(
-        booked[0].lines[0].source_line.as_ref().map(ToString::to_string),
+        booked[0].lines[0]
+            .source_line
+            .as_ref()
+            .map(ToString::to_string),
         Some("sales.sale_line:7".to_owned())
     );
 

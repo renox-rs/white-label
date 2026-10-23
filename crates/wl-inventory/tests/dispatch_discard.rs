@@ -86,10 +86,7 @@ async fn only_a_dispatched_dispatch_can_be_discarded() {
 
     t.emit_discarded(&picked, "Spoiled", None).await;
 
-    assert_eq!(
-        t.dispatch_now(&picked).await.status,
-        DispatchStatus::Picked
-    );
+    assert_eq!(t.dispatch_now(&picked).await.status, DispatchStatus::Picked);
     assert!(t.costs.posted().is_empty());
     assert!(t.discarded_dispatches.all().is_empty());
 }

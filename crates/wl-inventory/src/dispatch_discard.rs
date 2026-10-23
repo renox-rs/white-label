@@ -20,8 +20,8 @@
 
 use renox::db::Transaction;
 use renox::prelude::*;
-use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx, TransitionError};
 use renox::state_machine::Transitioned;
+use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::delivery::DeliveryDiscarded;
 use wl_kernel::inventory::DispatchDiscarded;

@@ -31,12 +31,11 @@ use wl_kernel::documents::{
 };
 use wl_kernel::inventory::{
     DispatchDelivered, DispatchDiscarded, DispatchGoodsQuarantined, DispatchLost, DispatchReturned,
-    DispatchReversed, DispatchSent, GoodsReceived,
-    LandedCostAdjusted, LandedCostAllocated, LotDiscarded, LotHeld, LotReleased,
-    PendingIssueClosed, PreferredSupplierChanged, PurchaseOrderRevised, RecallClosed, RecallOpened,
-    RecallTraced, StockHoldClosed, StockHoldPlaced, StockNegative, SupplierReturnCredited,
-    SupplierReturnDispatched, SupplierScoreBelowThreshold, TraceFuture, TraceParty,
-    TracePartyResolver,
+    DispatchReversed, DispatchSent, GoodsReceived, LandedCostAdjusted, LandedCostAllocated,
+    LotDiscarded, LotHeld, LotReleased, PendingIssueClosed, PreferredSupplierChanged,
+    PurchaseOrderRevised, RecallClosed, RecallOpened, RecallTraced, StockHoldClosed,
+    StockHoldPlaced, StockNegative, SupplierReturnCredited, SupplierReturnDispatched,
+    SupplierScoreBelowThreshold, TraceFuture, TraceParty, TracePartyResolver,
 };
 use wl_kernel::invoicing::{
     CostPoster, DebitedLine, PeriodLocks, PostCost, ReverseCost, SupplierBillFuture,

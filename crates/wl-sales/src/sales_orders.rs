@@ -53,8 +53,8 @@ use crate::sales_order_machine::{
     ACCEPT, ACCEPT_HOLD, AcceptInput, CLOSE, CONFIRM_PAYMENT, CONFIRM_PAYMENT_FOR_ACCEPTANCE,
     CloseInput, FULFIL, FULFIL_LAST, FulfilInput, HOLD, PAYMENT_FAILED, PayInput, REJECT, RELEASE,
     RELEASE_APPROVED, RELEASE_PARTLY, RELEASE_PARTLY_APPROVED, RELEASE_PENDING,
-    RELEASE_PENDING_APPROVED, REVERSE_FULFILMENT, REVERSE_FULFILMENT_ALL, ReverseInput, SUBMIT,
-    SUBMIT_FOR_ACCEPTANCE, SUBMIT_HOLD, SUBMIT_ONLINE, SubmitInput,
+    RELEASE_PENDING_APPROVED, REVERSE_FULFILMENT, REVERSE_FULFILMENT_ALL, REVERSE_FULFILMENT_HELD,
+    ReverseInput, SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_HOLD, SUBMIT_ONLINE, SubmitInput,
 };
 use crate::texts::english;
 
@@ -546,9 +546,12 @@ pub async fn fulfil(state: &AppState, request: FulfilOrder) -> Result<Fulfilment
     let Some(order) = SalesOrder::find(&state.db, request.order.0).await? else {
         return Ok(FulfilmentOutcome::NoOrder);
     };
+    // A source that still holds quantities fulfilled the order already; one
+    // whose quantities were all reversed (a delivery reopened) may fulfil
+    // again.
     if FulfilmentRecord::of_source(&state.db, order.id, &request.source)
         .await?
-        .is_some()
+        .is_some_and(|record| !record.held().is_empty())
     {
         return Ok(FulfilmentOutcome::Already {
             order: order.order_id(),
@@ -581,7 +584,9 @@ pub async fn fulfil(state: &AppState, request: FulfilOrder) -> Result<Fulfilment
         .run(state)
         .await
         .map_err(|e| e.into_error())?;
-    if complete {
+    if config_of(state).invoice_on_delivery {
+        crate::delivery_invoice::sync(state, order.id).await?;
+    } else if complete {
         draft_invoice(state, order.id).await?;
     }
     Ok(FulfilmentOutcome::Fulfilled {
@@ -644,7 +649,9 @@ pub async fn reverse_fulfilment(
         none_left,
         problem,
     };
-    let name = if none_left {
+    let name = if order.status == SalesOrderStatus::CreditHold {
+        REVERSE_FULFILMENT_HELD
+    } else if none_left {
         REVERSE_FULFILMENT_ALL
     } else {
         REVERSE_FULFILMENT
@@ -658,6 +665,8 @@ pub async fn reverse_fulfilment(
         .run(state)
         .await
         .map_err(|e| e.into_error())?;
+    // A draft invoice follows what stays delivered; an issued one is left.
+    crate::delivery_invoice::sync(state, order.id).await?;
     Ok(FulfilmentOutcome::Reversed {
         order: order.order_id(),
     })
@@ -1093,7 +1102,7 @@ async fn announce(state: &AppState, event: &Transitioned<SalesOrder>) -> Result 
                 })
                 .await
         }
-        REVERSE_FULFILMENT | REVERSE_FULFILMENT_ALL => {
+        REVERSE_FULFILMENT | REVERSE_FULFILMENT_ALL | REVERSE_FULFILMENT_HELD => {
             let Ok(request) =
                 renox::serde_json::from_value::<ReverseFulfilment>(event.meta.clone())
             else {
