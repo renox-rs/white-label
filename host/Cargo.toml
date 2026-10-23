@@ -18,6 +18,7 @@ manpower = { path = "../apps/manpower" }
 accounting = { path = "../apps/accounting" }
 clinics = { path = "../apps/clinics" }
 edtech = { path = "../apps/edtech" }
+auto = { path = "../apps/auto" }
 logistics = { path = "../apps/logistics" }
 wl-parties = { path = "../crates/wl-parties" }
 wl-documents = { path = "../crates/wl-documents" }

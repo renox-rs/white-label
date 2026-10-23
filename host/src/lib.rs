@@ -25,6 +25,7 @@ use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
 pub use app::accounting_seed::parties_for;
+pub use app::auto_seed;
 pub use app::clinics_demo;
 pub use app::clinics_money;
 pub use app::clinics_seed;
@@ -239,6 +240,10 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
         // in local (never in production).
         app = app.module(app::edtech_demo::EdtechDemo::new(demo_client.clone()));
     }
+    // The Auto client's service types and ticket categories (08 §4.4).
+    if client_app == app::auto_seed::AUTO {
+        app = app.module(app::auto_seed::AutoSeed);
+    }
     // The Construction client's categories, checklists and SOPs (BL-CON-17,
     // BL-CON-18).
     if client_app == app::construction_seed::CONSTRUCTION {
@@ -302,12 +307,13 @@ pub const VERTICALS: &[&str] = &[
     "manpower",
     "logistics",
     "edtech",
+    "auto",
 ];
 
 /// The refusal of a vertical app that is not built.
 fn unbuilt_vertical(name: &str) -> ConfigError {
     ConfigError(format!(
-        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction`, `clinics`, `manpower`, `logistics` and `edtech`"
+        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction`, `clinics`, `manpower`, `logistics`, `edtech` and `auto`"
     ))
 }
 
@@ -331,6 +337,7 @@ fn mount_vertical(app: renox::App, name: &str) -> Result<renox::App, ConfigError
         "manpower" => Ok(app.module(manpower::Manpower)),
         "logistics" => Ok(app.module(logistics::Logistics)),
         "edtech" => Ok(app.module(edtech::EdTech)),
+        "auto" => Ok(app.module(auto::Auto)),
         other => Err(unbuilt_vertical(other)),
     }
 }
@@ -352,6 +359,7 @@ fn enable(
             app::accounting_seed::register_documents(client_app);
             app::clinics_seed::register_documents(client_app);
             app::edtech_seed::register_documents(client_app);
+            app::auto_seed::register_documents(client_app);
             app::logistics_seed::register_documents(client_app);
             if client_app == app::construction_seed::CONSTRUCTION {
                 app::construction_seed::register_documents();
@@ -403,6 +411,8 @@ fn enable(
         "portal" => Ok(app.module(wl_portal::WlPortal)),
         "scheduling" => Ok(app.module(if client_app == app::edtech_seed::EDTECH {
             app::edtech_seed::scheduling_for(client_app)
+        } else if client_app == app::auto_seed::AUTO {
+            app::auto_seed::scheduling_for()
         } else {
             app::clinics_seed::scheduling_for(client_app)
         })),
