@@ -1221,6 +1221,16 @@ pub const ROLES: &[(&str, &[&str])] = &[
             edu::ENROLMENTS_REFUND_APPROVE,
             edu::CERTIFICATES_VIEW,
             edu::CERTIFICATES_ISSUE,
+            // Decides the refunds of withdrawals and terminations (10 §3.1
+            // "discounts and refunds approval", `FIN.ACL.04`: never the user
+            // who asked): reads the payments and refunds, approves a refund.
+            payments::VIEW,
+            payments::REFUNDS_APPROVE,
+            // The campaigns and their acquisition figures (10 §3.1 "reports");
+            // a cost over a campaign's budget needs a manager (`SAL.ACL.07`).
+            sales::CAMPAIGNS_VIEW,
+            sales::CAMPAIGNS_COSTS_MANAGE,
+            sales::ACQUISITION_REPORTS_VIEW,
             // The complaints and tasks the ticket categories send to the
             // centre manager (10 §9): opened, assigned and worked here.
             tickets::VIEW,
