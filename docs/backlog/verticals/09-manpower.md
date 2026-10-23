@@ -1,6 +1,6 @@
 # Epic: 09 Manpower — negative flows
 
-> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-22 · Spec version: same commit as this file
 
 This epic builds the negative flows that belong to the Manpower vertical itself: the new client
 contract lifecycle (credit hold, release, early termination, renewal and end with its
@@ -12,6 +12,12 @@ negative-flow mechanisms. It closes 09-N3-a, 09-N12-a, 09-N8-b, the 09 parts of 
 X-16 and X-18, and the 09 MEDIUM items (client rejects a worker, rate card versions, overlap
 guards, visa step deadlines, no cover available). Payroll, settlement, pay account, timesheet,
 invoice and cheque behaviour lives in the module epics and is only configured here.
+
+BL-MPW-22 to BL-MPW-33 were added on 2026-10-22 after the browser test of the F9 app: most
+actions above existed only as routes, so these twelve issues build the screens for them (contract,
+request, deployment, absence case, rate card, timesheet, client approver portal, approvals inbox,
+payroll and settlement lists, employee page, dashboard tiles) and the Arabic translation. They
+carry the label `area:sme-gap` because the repository has no `area:screens` label.
 
 | ID | Title | Priority | Size | Milestone | Depends on |
 |---|---|---|---|---|---|
@@ -36,6 +42,18 @@ invoice and cheque behaviour lives in the module epics and is only configured he
 | BL-MPW-19 | Give wl-attendance the client approver, escalation contact and deemed-approval days | medium | s | Launch 09 | BL-ATT-10; BL-ATT-11 |
 | BL-MPW-20 | 09: configure shared negative-flow settings (documents, parties, notifications, alerts, integrations) | high | m | Launch 09 | BL-DOC-01; BL-DOC-02; BL-DOC-06; BL-PTY-03; BL-NTF-06; BL-KRN-05; BL-KRN-08; BL-TKT-11; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
 | BL-MPW-21 | 09: configure shared negative-flow settings (finance, attendance, payroll and HR) | high | m | Launch 09 | BL-INV-01; BL-INV-04; BL-INV-10; BL-PAY-09; BL-ATT-02; BL-ATT-04; BL-ATT-10; BL-ATT-12; BL-HRM-04; BL-HRM-14; BL-HRM-15; BL-HRM-19; BL-HRM-25; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26 |
+| BL-MPW-22 | Build the client contract screens (detail page, forms and actions, sites) | high | m | Launch 09 | Base: 09 Client contract lifecycle; BL-MPW-01; BL-MPW-02; BL-MPW-03; BL-MPW-04; BL-MPW-05; BL-MPW-07; BL-MPW-15; BL-KRN-01 |
+| BL-MPW-23 | Build the manpower request screens (create, submit, cancel, detail, plan from request) | high | m | Launch 09 | Base: 09 Manpower request lifecycle; BL-MPW-02; BL-MPW-14; BL-MPW-16; BL-MPW-10; BL-MPW-22 |
+| BL-MPW-24 | Build the deployment screens (detail, plan, activate with its checks, extend, suspend, resume, end, cancel, cover) | high | m | Launch 09 | Base: 09 Deployment lifecycle; BL-MPW-02; BL-MPW-08; BL-MPW-09; BL-MPW-10; BL-MPW-11; BL-MPW-12; BL-MPW-14; BL-MPW-16; BL-DOC-06; BL-MPW-23 |
+| BL-MPW-25 | Build the absence case screens (list, detail, report and close) | medium | m | Launch 09 | BL-MPW-17; BL-HRM-07; BL-HRM-08; BL-HRM-18; BL-HRM-30; Base: wl-ticketing Ticket lifecycle |
+| BL-MPW-26 | Build the rate card screens (card, versions, lines, client acceptance, MD approval, pricing preview) | high | m | Launch 09 | BL-MPW-07; BL-MPW-05; BL-MPW-22; BL-KRN-01; Base: wl-invoicing Rate cards and usage billing |
+| BL-MPW-27 | Build the timesheet screens (list, detail, submit, approve, reject, approve on behalf, adjustments) | high | m | Launch 09 | Base: wl-attendance Timesheet lifecycle; BL-ATT-06; BL-ATT-07; BL-ATT-08; BL-ATT-10; BL-ATT-11; BL-ATT-13; BL-MPW-19 |
+| BL-MPW-28 | Build the client approver portal section (requests, deployments, timesheets to approve) | high | m | Launch 09 | BL-POR-01; BL-POR-02; BL-POR-03; BL-MPW-19; BL-ATT-10; BL-ATT-11; BL-MPW-23; BL-MPW-24; BL-MPW-27 |
+| BL-MPW-29 | Build the approvals inbox (waiting approvals in words with approve, reject and return) | high | m | Launch 09 | BL-KRN-01; BL-KRN-02; BL-MPW-03; BL-MPW-04; BL-MPW-26; BL-HRM-04; BL-HRM-21; BL-INV-01 |
+| BL-MPW-30 | Build the payroll run and settlement lists (create run, SIF download, bank result upload) | high | m | Launch 09 | Base: wl-hr Payroll run lifecycle; Base: wl-hr Final settlement lifecycle; BL-HRM-11; BL-HRM-12; BL-HRM-13; BL-HRM-22; BL-MPW-20 |
+| BL-MPW-31 | Complete the employee page (documents, deployments, timesheets, salary, pay accounts) | medium | m | Launch 09 | Base: wl-hr Employee records; BL-HRM-01; BL-HRM-19; BL-HRM-20; BL-MPW-24; BL-MPW-27; BL-DOC-05 |
+| BL-MPW-32 | Add the manpower dashboard tiles | medium | m | Launch 09 | BL-MPW-22; BL-MPW-23; BL-MPW-24; BL-MPW-25; BL-MPW-27; BL-MPW-30; BL-MPW-29 |
+| BL-MPW-33 | Translate the Manpower screens into Arabic and check right-to-left | medium | m | Launch 09 | BL-MPW-22; BL-MPW-23; BL-MPW-24; BL-MPW-25; BL-MPW-26; BL-MPW-27; BL-MPW-28; BL-MPW-29; BL-MPW-30; BL-MPW-31; BL-MPW-32 |
 
 ---
 
@@ -1839,3 +1857,696 @@ company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL
 
 #### Out of scope
 Document, party, notification and integration values (BL-MPW-20); the mechanisms (module epics).
+
+---
+
+### BL-MPW-22 — 09 Manpower: build the client contract screens (detail page, forms and actions, sites)
+
+**Labels:** `vertical:09-manpower` `area:sme-gap` `priority:high` `surface:back-office` · **Milestone:** Launch 09 · **Size:** m
+**Depends on:** Base: 09 Client contract lifecycle · BL-MPW-01 · BL-MPW-02 · BL-MPW-03 · BL-MPW-04 · BL-MPW-05 · BL-MPW-07 · BL-MPW-15 · BL-KRN-01 · **Blocks:** None
+**Review items:** None (screens for the routes of these issues; browser test of 2026-10-22)
+
+#### Goal
+The contract routes (`create`, `signed`, `activate`, `cancel`, `hold`, `release`, `terminate`, `renew`, `timesheet-terms`) and `POST /manpower/sites` work but have no screen: `/manpower/contracts` is a list with no detail page and no buttons. The account manager must be able to run the whole contract life from the browser: see one contract with its status, hold reasons, rate card versions, deployments and approvals waiting, and use a form for each action. Every refusal of the services is shown in words on the same page.
+
+#### Surfaces
+- **Back office:** `GET /manpower/contracts/{id}` is the record page of `docs/UX.md` §2.2 (title, `wl-status` badge, only the actions this user may run now, blocked actions disabled with the missing guard in words, tabs *Overview*, *Deployments*, *Rate cards*, *Approvals*, *Activity*). `/manpower/contracts` gets a *New contract* button and links each row to its page. A *Sites* block on the client lists sites with *New site* and *Edit* sheets.
+
+#### Files to read
+- `docs/verticals/09-manpower.md` §3.1, §4.1 (contract states and transitions), §3.3 (`MPW.ACL.14`, `MPW.ACL.17`)
+- `docs/UX.md` §2.2 (record page), §2.3 (lists), §2.6 (forms) · `docs/DESIGN-SYSTEM.md` §6 (status language), §10 (review checklist)
+- `apps/manpower/src/pages.rs` (routes and handlers), `apps/manpower/views/manpower/contracts.html`, `apps/manpower/src/texts.rs`
+- `docs/backlog/verticals/09-manpower.md` blocks BL-MPW-01 to BL-MPW-05 (the transitions behind each button)
+
+#### Terms
+- **Record page:** the standard layout for one record with a state machine (UX §2.2).
+- **Hold reason:** one open cause of a credit hold (overdue invoice, bounced cheque, other with text); a contract can have several.
+- **Rate card version:** a dated price list of the contract (BL-MPW-07, screens in BL-MPW-26).
+- **Approval waiting:** an approval request of this contract (release, terminate) not yet decided.
+
+#### Spec excerpt (authoritative for this issue)
+
+| Button | Route | Permission | Form fields | Refused when (shown in words) |
+|---|---|---|---|---|
+| New contract | `POST /manpower/contracts` | `contracts.manage` | client, start date, end date, notice days, escalation contact, deemed-approval days | client blocked; end before start |
+| Mark signed | `POST /manpower/contracts/{id}/signed` | `contracts.manage` | signed document, signing date | no document attached |
+| Activate | `/activate` | `contracts.manage` | none | not signed; no accepted rate card version; client blocked |
+| Cancel | `/cancel` (under *More*, confirm) | `contracts.manage` | reason | not a draft |
+| Hold | `/hold` | `contracts.manage` | reason: overdue, bounced cheque or other with text | already held for that reason |
+| Release | `/release` | `contracts.manage`; MD approves while a hold condition remains | none | not on hold; requester tries to approve (403 text) |
+| Terminate | `/terminate` | `contracts.manage`; MD approves | initiated by, reason, notice date, end date, waiver | end date inside the notice period without a waiver |
+| Renew | `/renew` | `contracts.manage` | new end date, rates from (date of the new rate card version) | new end not later than the current end; client blocked |
+| Timesheet terms | `/timesheet-terms` | `contracts.manage` | escalation contact, deemed-approval days | days below 1 |
+| New site / Edit site | `POST /manpower/sites` | `sites.manage` | client, name, address, required licences | duplicate name in the client |
+
+Status in words: draft, active, on hold, terminating, ended, cancelled. A held contract shows each hold reason with its date, the amount or cheque behind it, who held it and the state before the hold.
+
+#### Edge cases decided
+- Buttons shown are those the state machine offers this user now; a disabled one names its guard ("Signed contract not attached"). A user without the permission sees no button, and a direct POST still answers 403 with the text *You do not have permission for this action*.
+- After a successful action the page redisplays the contract with a confirmation line; after a refusal the form keeps its input and shows the refusal above the field it concerns.
+- Release and terminate by the account manager create an approval request: the page says *Waiting for the MD* and the button disappears; the MD sees the same contract with *Approve* and *Reject* (inbox in BL-MPW-29).
+- Dates are shown as `01 Jan 2026` (Asia/Dubai); amounts as `AED 12,500.00`.
+- A contract with no hold shows no *Hold reasons* block; no `None`, no raw keys anywhere.
+
+#### Must not
+- Must not write the status directly: every button calls the existing service.
+- Must not show the rate or margin columns to roles without `MPW.ACL.04`.
+- Must not render `manpower.release`-style keys or `None`.
+
+#### Done when
+- [ ] Given account manager `accountmanager@desertstar.example`, when opening `/manpower/contracts`, then a *New contract* button is shown and every row links to `/manpower/contracts/{id}`.
+- [ ] Given a draft contract, when the account manager submits *New contract* with an end date before the start date, then the form stays filled and says *The end date must be after the start date*.
+- [ ] Given a draft contract, when *Mark signed* is submitted without a document, then the page says *Attach the signed contract first*; with the document and signing date 2026-11-01 the status stays *Draft* and the page shows *Signed on 01 Nov 2026* with the document linked.
+- [ ] Given a signed draft with an accepted rate card version, when *Activate* is pressed, then the page shows *Active*; without the accepted version it says *Accept a rate card version first*; for a blocked client it shows the refusal text of the block, in words.
+- [ ] Given an active contract, when the account manager holds it with reason *bounced cheque*, then the page shows *On hold*, the reason, the cheque, who held it and the state before; a second hold for the same reason is refused in words.
+- [ ] Given a held contract with an overdue invoice, when the account manager presses *Release*, then the page says *Waiting for the MD*; when `md@desertstar.example` opens the page and approves, it is *Active* again; when the account manager tries to approve his own request, the answer is 403 with the refusal text.
+- [ ] Given an active contract ending 2026-12-31, when *Terminate* is submitted with notice date 2026-11-20 and end date 2026-12-05 (notice 30 days) without a waiver, then the refusal says the end date is inside the notice period; with a waiver it creates an approval for the MD.
+- [ ] Given an active contract, when *Renew* is submitted with end date 2027-12-31 and rates from 2027-01-01, then the page shows the new end date and a pending rate card version dated 2027-01-01 in the *Rate cards* tab; an end date not later than the current one is refused in words.
+- [ ] Given the *Deployments* tab, then it lists the contract's deployments with worker, role, site, dates and status in words, each linking to its page (BL-MPW-24).
+- [ ] Given `supervisor@desertstar.example` (no `contracts.manage`), then no action button is shown and a direct `POST .../hold` answers 403.
+- [ ] Given a site form, when the account manager creates the site *Marina Tower* for Gulf Tower with a required licence, then it appears in the client's site list; editing its name keeps existing deployments linked.
+- [ ] At 390 px width the contract page and each form show no horizontal scroll; tabs scroll inside their own bar; buttons are at least 44 px high.
+
+#### Out of scope
+Rate card versions, lines, acceptance and preview (BL-MPW-26); deployment screens (BL-MPW-24); the approvals inbox (BL-MPW-29); the transitions themselves (BL-MPW-01 to BL-MPW-06).
+
+---
+
+### BL-MPW-23 — 09 Manpower: build the manpower request screens (create, submit, cancel, detail, plan from request)
+
+**Labels:** `vertical:09-manpower` `area:sme-gap` `priority:high` `surface:back-office` · **Milestone:** Launch 09 · **Size:** m
+**Depends on:** Base: 09 Manpower request lifecycle · BL-MPW-02 · BL-MPW-14 · BL-MPW-16 · BL-MPW-10 · BL-MPW-22 · **Blocks:** None
+**Review items:** None (screens for existing routes; browser test of 2026-10-22)
+
+#### Goal
+`/manpower/requests` lists requests, but `create`, `submit` and `cancel` exist only as POST routes, and a request has no page. Staff must create a request for a client contract, submit it, cancel it, see how many positions are filled and how many are missing, and start planning a deployment from the request. A replacement or cover request shows its cause.
+
+#### Surfaces
+- **Back office:** *New request* sheet on the list; `GET /manpower/requests/{id}` with status, positions *filled of requested*, missing positions, linked deployments, cause for replacement or cover requests, and actions *Submit*, *Cancel*, *Plan a deployment*.
+
+#### Files to read
+- `docs/verticals/09-manpower.md` §4.2 (request states), §4.6 replacements (`MPW.DEP.02`), §3.3 `MPW.ACL.14`
+- `apps/manpower/src/pages.rs` (`create_request`, `submit_request`, `cancel_request`), `apps/manpower/views/manpower/requests.html`, `apps/manpower/src/texts.rs`
+- `docs/UX.md` §2.2, §2.6 · blocks BL-MPW-02, BL-MPW-14, BL-MPW-16 of this file
+
+#### Terms
+- **Manpower request:** a client's order for workers: role, count, site, start and end date.
+- **Filled / missing:** positions with an `active` or `planned` deployment against the request, and requested minus filled.
+- **Replacement / cover request:** a request opened by an ended or suspended deployment (client rejected, expired document) or by a missing cover; its cause is stored.
+
+#### Spec excerpt (authoritative for this issue)
+
+| Button | Route | Permission | Form fields | Refused when |
+|---|---|---|---|---|
+| New request | `POST /manpower/requests` | `requests.create` | contract, site, job role, positions, start date, end date (empty = open-ended), shift | contract not active |
+| Submit | `/{id}/submit` | `requests.create` | none | contract on hold (`MPW.ACL.14`); client blocked |
+| Cancel | `/{id}/cancel` (More, confirm) | `requests.manage` | reason | filled positions still active |
+| Plan a deployment | opens the plan sheet of BL-MPW-24 with the request set | `deployments.manage` | worker, dates | request not submitted |
+
+Request status in words: draft, submitted, partly filled, filled, cancelled, closed. Cause in words: *Replacement for J. Khan, ended by client rejection on 12 Nov 2026*, *Cover for an absent worker*, *Cover not required*.
+
+#### Edge cases decided
+- The list shows the open-ended end date as *Open-ended*, never `None`.
+- *Filled of requested* counts only `planned` and `active` deployments; a suspended one counts as missing, with the text *1 suspended*.
+- Cancelling a request with active deployments is refused with their count; planned ones are listed.
+- A request on a held contract can be created as a draft, not submitted (`MPW.ACL.14`): *Submit* is disabled with *The contract is on hold*.
+
+#### Must not
+- Must not allow submit by a role without `requests.create`; a client approver submits through the portal (BL-MPW-28), not here.
+- Must not show raw role keys or `None`.
+
+#### Done when
+- [ ] Given `accountmanager@desertstar.example`, when *New request* is submitted for an active Gulf Tower contract with 3 *Security guard* positions from 2026-11-15 to 2027-05-14, then a draft request appears with status *Draft*, 0 of 3 filled.
+- [ ] Given the draft, when *Submit* is pressed on a contract on hold, then the page says *The contract is on hold. New requests wait for the release*; after release it submits and shows *Submitted*.
+- [ ] Given a submitted request with 2 active deployments of 3, then the page shows *2 of 3 filled, 1 missing*; *Plan a deployment* opens the plan form with the request chosen.
+- [ ] Given a replacement request opened by a client rejection, then the page shows the cause in words with the former worker, the date and the note, and links to the ended deployment.
+- [ ] Given a request with an active deployment, when *Cancel* is pressed, then it is refused with *1 deployment is still active*; with none it shows *Cancelled* and the reason.
+- [ ] Given an open-ended request, then the list and page show *Open-ended*, never `None`.
+- [ ] Given `supervisor@desertstar.example`, then no create, submit or cancel button is shown and the POST answers 403.
+- [ ] At 390 px the list becomes cards, the sheet fits the screen, no horizontal scroll.
+
+#### Out of scope
+Deployment screens (BL-MPW-24); the client's own submit in the portal (BL-MPW-28); contract screens (BL-MPW-22).
+
+---
+
+### BL-MPW-24 — 09 Manpower: build the deployment screens (detail, plan, activate with its checks, extend, suspend, resume, end, cancel, cover)
+
+**Labels:** `vertical:09-manpower` `area:sme-gap` `priority:high` `surface:back-office` · **Milestone:** Launch 09 · **Size:** m
+**Depends on:** Base: 09 Deployment lifecycle · BL-MPW-02 · BL-MPW-08 · BL-MPW-09 · BL-MPW-10 · BL-MPW-11 · BL-MPW-12 · BL-MPW-14 · BL-MPW-16 · BL-DOC-06 · BL-MPW-23 · **Blocks:** None
+**Review items:** None (screens for existing routes; browser test of 2026-10-22)
+
+#### Goal
+`/manpower/deployments` lists deployments, but plan, activate, extend, suspend, resume, end, cancel and cover are routes without a screen. The account manager must run a deployment from its page. `activate` lists every failing check at once (documents, overlap, hold, block), not only the first. Ending asks for the reason with the fields each reason needs.
+
+#### Surfaces
+- **Back office:** `GET /manpower/deployments/{id}` (worker, client, site, role, dates, status, cover, suspension days, documents with validity, the timesheets of the deployment) and sheets for each action. The site supervisor sees the page read-only.
+
+#### Files to read
+- `docs/verticals/09-manpower.md` §3.3 (`MPW.ACL.07`, `.14`, `.15`), §4.3 deployment states, §4.4 to §4.6 (suspend, end reasons, replacements)
+- `apps/manpower/src/pages.rs` handlers for deployments, `apps/manpower/src/guard.rs`, `ending.rs`, `ends.rs`, `views/manpower/deployments.html`
+- blocks BL-MPW-08, 10, 11, 12, 14, 16 of this file · `docs/UX.md` §2.2, §2.6
+
+#### Terms
+- **Plan / activate:** create a `planned` deployment; start it (guards run now).
+- **Check:** one guard result of `activate`: document (`MPW.ACL.07`), overlap (`MPW.ACL.15`), hold (`MPW.ACL.14`), client block, site pass.
+- **End reasons:** end date reached, client rejected (note required, opens a replacement), non-payment (MD only, notice period or waiver), entered in error (deployment voided).
+- **Cover:** a second deployment that covers the absence or suspension of a worker.
+
+#### Spec excerpt (authoritative for this issue)
+
+| Button | Route | Permission | Form fields | Refused when |
+|---|---|---|---|---|
+| Plan | `POST /manpower/deployments` | `deployments.manage` | request, worker, start, end, shift | overlap warning only |
+| Activate | `/{id}/activate` | `deployments.manage` | none; override request when the kind allows | any failing check, all listed |
+| Extend | `/{id}/extend` | `deployments.manage` | new end date | documents invalid at the new date; hold; overlap |
+| Suspend | `/{id}/suspend` | `deployments.manage` | reason | not active |
+| Resume | `/{id}/resume` | `deployments.manage` | none | document still invalid |
+| End | `/{id}/end` | `deployments.manage` (non-payment: MD) | reason; end date; client-rejected: note; non-payment: waiver document | note empty; notice period without waiver |
+| Cancel | `/{id}/cancel` | `deployments.manage` | reason | not planned |
+| Cover | `/{id}/cover` | `deployments.manage` | cover worker, dates | none found |
+
+Status in words: planned, active, suspended, ended, cancelled. Suspension days read *1 day suspended* / *3 days suspended*.
+
+#### Edge cases decided
+- Failing checks are shown as one list, each line in words with the document and its expiry ("Residence visa of J. Khan expired on 03 Nov 2026 (cannot be overridden)").
+- A document that may be overridden with MD approval (Emirates ID, site pass, health card) shows *Request override*; never for visa, work permit and SIRA.
+- *End* with reason *non-payment* is offered only to the MD; the end date before the notice period needs the waiver.
+- After *End* with *client rejected*, the page shows a link to the replacement request opened.
+- Plural wording is correct for 1 and more days; no `None`.
+
+#### Must not
+- Must not stop at the first failing check.
+- Must not offer an action the state machine does not allow; never write the status directly.
+
+#### Done when
+- [ ] Given a planned deployment of worker W whose residence visa expired and who has an overlapping active deployment, when *Activate* is pressed, then the refusal lists both checks as separate lines in words and the deployment stays *Planned*.
+- [ ] Given W's Emirates ID expired, then the check line offers *Request override* (MD approval); for the visa it says it cannot be overridden.
+- [ ] Given a clean planned deployment on a contract on hold, then *Activate* is refused with *The contract is on hold*; after the release it shows *Active*.
+- [ ] Given an active deployment ending 2026-12-31, when *Extend* to 2027-03-31 is submitted and the work permit ends 2027-02-01, then it is refused naming the work permit and its date.
+- [ ] Given an active deployment, when *Suspend* is submitted with a reason and later *Resume*, then the status reads *Suspended* with *3 days suspended*, then *Active*.
+- [ ] Given *End* with reason *client rejected* and an empty note, then the form says *Write the client's note*; with a note it shows *Ended* and links to the replacement request.
+- [ ] Given `accountmanager@desertstar.example`, then *non-payment* is not among the end reasons; `md@desertstar.example` sees it and, inside the notice period without a waiver, is refused in words.
+- [ ] Given *End* with reason *entered in error*, then the deployment is shown as voided with the reason, and its request count falls back.
+- [ ] Given a planned deployment, when *Cancel* is submitted with a reason, then it shows *Cancelled*; an active one cannot be cancelled and the button is absent.
+- [ ] Given `supervisor@desertstar.example`, then the page is read-only and a direct POST answers 403.
+- [ ] At 390 px the deployment page and its sheets have no horizontal scroll.
+
+#### Out of scope
+Request screens (BL-MPW-23); timesheet screens (BL-MPW-27); absence cases (BL-MPW-25); the guards (BL-MPW-08, BL-MPW-10).
+
+---
+
+### BL-MPW-25 — 09 Manpower: build the absence case screens (list, detail, report and close)
+
+**Labels:** `vertical:09-manpower` `area:sme-gap` `priority:medium` `surface:back-office` · **Milestone:** Launch 09 · **Size:** m
+**Depends on:** BL-MPW-17 · BL-HRM-07 · BL-HRM-08 · BL-HRM-18 · BL-HRM-30 · Base: wl-ticketing Ticket lifecycle · **Blocks:** None
+**Review items:** None (screens for existing routes; browser test of 2026-10-22)
+
+#### Goal
+`/manpower/absence` answers JSON only, so HR cannot work an absence case in the browser. HR must see the open cases, open one to see the worker, the days absent, the tickets, the failed contact attempts and the MoHRE report number, record the report, close the case with a reason, and move on to `report_absconding` once both are recorded.
+
+#### Surfaces
+- **Back office:** list of cases (open and closed) with worker, client, days absent, contact attempts, report number and status; `GET /manpower/absence/{id}` with the case, the tickets of the case, the contact attempts by day with outcome, the MoHRE number and date, *Record report*, *Close case*, and the link to *Report as absconded* on the employee page.
+
+#### Files to read
+- `docs/verticals/09-manpower.md` §4.7 "The worker absconds", §7.2 `MPW.RUL.09`
+- `apps/manpower/src/absence.rs`, `apps/manpower/src/pages.rs` (`absence_index`, `absence_report`, `absence_close`), `host` HR employee page for the contact attempts
+- block BL-MPW-17 of this file
+
+#### Terms
+- **Failed contact day:** a day with at least one failed contact attempt; two different days are needed.
+- **MoHRE report:** the absence report filed outside the system; number and date recorded on the case.
+
+#### Spec excerpt (authoritative for this issue)
+
+| Button | Route | Permission | Form fields | Refused when |
+|---|---|---|---|---|
+| Record report | `POST /manpower/absence/{id}/report` | `absence.manage` | MoHRE number, report date | number empty; date in the future |
+| Close case | `/{id}/close` | `absence.manage` | reason | reason empty |
+| Report as absconded | link to the employee action (BL-HRM-07) | HR | see BL-HRM-07 | fewer than two failed contact days or no report number |
+
+Status in words: open, closed. Days absent counted as in `MPW.RUL.09`.
+
+#### Edge cases decided
+- The detail shows *2 of 2 failed contact days recorded* / *1 of 2*; the *Report as absconded* link is disabled with *Two failed contact days and the MoHRE number are needed* until both are recorded.
+- A closed case is read-only and shows the reason, who closed it and whether the held pay was released and proposed in an off-cycle run.
+- A case of a worker whose deployment ended still shows the client name.
+
+#### Must not
+- Must not run `report_absconding` from the case page without the BL-HRM-07 guards.
+- Must not show the case to roles without `absence.manage`; a client never sees it.
+
+#### Done when
+- [ ] Given the demo absence case of a worker, when `hr@desertstar.example` opens `/manpower/absence`, then the case is listed with worker, client, days absent and status *Open* in an HTML table, not JSON.
+- [ ] Given the case with one failed contact day, then the detail shows *1 of 2 failed contact days* and the absconding link is disabled with its reason in words.
+- [ ] Given HR submits *Record report* with number `MOHRE-777`, then the page shows the number and date; an empty number is refused with *Enter the MoHRE report number*.
+- [ ] Given two failed contact days and the report number, then the link to *Report as absconded* is enabled.
+- [ ] Given HR closes the case with reason *hospitalised*, then it shows *Closed*, the reason, and a line that the held pay is proposed in an off-cycle run (linked); an empty reason is refused.
+- [ ] Given `accountmanager@desertstar.example`, then the case list answers 403 with the refusal text, and the portal user `approver@gulftower.example` has no such link.
+- [ ] The case lists its tickets (category *absence*) with status in words.
+- [ ] At 390 px no horizontal scroll; the list shows cards.
+
+#### Out of scope
+Opening the case and the daily reminders (BL-MPW-17); `report_absconding` and `reinstate` screens (BL-HRM-07, BL-HRM-08); the employee page (BL-MPW-31).
+
+---
+
+### BL-MPW-26 — 09 Manpower: build the rate card screens (card, versions, lines, client acceptance, MD approval, pricing preview)
+
+**Labels:** `vertical:09-manpower` `area:sme-gap` `priority:high` `surface:back-office` · **Milestone:** Launch 09 · **Size:** m
+**Depends on:** BL-MPW-07 · BL-MPW-05 · BL-MPW-22 · BL-KRN-01 · Base: wl-invoicing Rate cards and usage billing · **Blocks:** None
+**Review items:** None (screens for existing routes; browser test of 2026-10-22)
+
+#### Goal
+The rate card routes (`/rate-cards`, `/rate-cards/{id}/versions`, `/rate-card-versions/{id}`, lines, `accept`) answer JSON only. The account manager must see the card of a contract and its versions, create a new version with an effective date and lines, record the client's acceptance with the signed document, send a past-dated version for MD approval, and preview the price of hours before accepting.
+
+#### Surfaces
+- **Back office:** a *Rate cards* tab on the contract page (BL-MPW-22) and `GET /rate-cards/{id}` listing versions (effective date, status in words, who accepted); `GET /rate-card-versions/{id}` with the lines (role, hourly or monthly rate, overtime and holiday multipliers, minimum hours per shift), *Add line*, *Accept*, *Approve* for the MD, and *Preview price*. Rates are shown only to account managers, accountants and the MD (`MPW.ACL.04`).
+
+#### Files to read
+- `docs/verticals/09-manpower.md` §3.3 `MPW.ACL.16`, §4.8 "The rate card changes", `apps/manpower/src/billing.rs`, `renewal.rs`
+- `crates/wl-invoicing` rate card routes (`/rate-cards`, `/rate-card-versions/{id}/accept`) · `docs/UX.md` §2.2, §2.6
+- block BL-MPW-07 of this file
+
+#### Terms
+- **Version status:** *pending* (not yet accepted, prices nothing), *accepted*, *waiting for the MD* (past-dated), *in force*, *superseded*.
+- **Past-dated:** effective date before the day of submission; needs MD approval after acceptance.
+- **Pricing preview:** the price of sample hours (role, work date, regular hours, overtime, holiday) by the version in force on that date.
+
+#### Spec excerpt (authoritative for this issue)
+
+| Button | Route | Permission | Form fields | Refused when |
+|---|---|---|---|---|
+| New version | `POST /rate-cards/{id}/versions` | `contracts.manage` | effective date | same date as another version |
+| Add / edit line | `/rate-card-versions/{id}/lines`, `/rate-card-lines/{id}` | `contracts.manage` | job role, rate, unit, multipliers, minimum hours | version accepted (lines never edited) |
+| Accept | `/rate-card-versions/{id}/accept` | `contracts.manage` | signed document, acceptance date | no document |
+| Approve past-dated | approval step | MD | decision, note | requester approves |
+
+#### Edge cases decided
+- A version with no lines cannot be accepted: *Add at least one line*.
+- An accepted version shows its lines read-only; a change is a new version.
+- The preview of a date before the first accepted version says *No rate card in force on that date*.
+- A month rate whose version changes inside a billing period is shown split pro rata in the preview.
+- The amounts show `AED` and two decimals; no raw enum values.
+
+#### Must not
+- Must not edit lines of an accepted version, or let two versions share an effective date.
+- Must not show rates to roles without `MPW.ACL.04`.
+
+#### Done when
+- [ ] Given a contract with one accepted version, when `accountmanager@desertstar.example` opens its *Rate cards* tab, then the versions are listed with effective date, status in words and acceptance date, as HTML.
+- [ ] Given *New version* dated 2027-01-01 with a line *Security guard AED 28.00 per hour, overtime 1.25*, then the version is shown as *Pending* and prices nothing; a second version with the same date is refused in words.
+- [ ] Given a pending version, when *Accept* is submitted without a document, then it is refused with *Attach the client's signed acceptance*; with the document it shows *Accepted*.
+- [ ] Given a version dated yesterday and accepted, then it shows *Waiting for the MD*; `md@desertstar.example` can approve it, the account manager cannot (403 text), and it then shows *In force*.
+- [ ] Given an accepted version, then *Add line* and *Edit* are absent and a direct POST is refused.
+- [ ] Given the preview with 10 regular hours and 2 overtime hours of a *Security guard* on 2027-01-15, then it shows each line and the total in AED by the version of that date.
+- [ ] Given `supervisor@desertstar.example`, then the page answers 403 and shows no rates.
+- [ ] At 390 px the lines table scrolls inside its own container; the page has no horizontal scroll.
+
+#### Out of scope
+Renewal and its link to a new version (BL-MPW-05, BL-MPW-22); invoice pricing (BL-MPW-07); approvals inbox (BL-MPW-29).
+
+---
+
+### BL-MPW-27 — 09 Manpower: build the timesheet screens (list, detail, submit, approve, reject, approve on behalf, adjustments)
+
+**Labels:** `vertical:09-manpower` `area:sme-gap` `priority:high` `surface:back-office` · **Milestone:** Launch 09 · **Size:** m
+**Depends on:** Base: wl-attendance Timesheet lifecycle · BL-ATT-06 · BL-ATT-07 · BL-ATT-08 · BL-ATT-10 · BL-ATT-11 · BL-ATT-13 · BL-MPW-19 · **Blocks:** None
+**Review items:** None (no timesheet page exists; browser test of 2026-10-22)
+
+#### Goal
+There is no timesheet page: `submit`, `approve`, `reject`, `approve-on-behalf`, `reopen` and `adjustments` are POST routes only. Staff and the client approver must see the timesheets of a deployment and a month, with the hours per day and category, and use the actions. The status is shown in words, including *escalated*, *deemed approved* and *billed*.
+
+#### Surfaces
+- **Back office:** `GET /timesheets` (filters: client, month, status) and `GET /timesheets/{id}` with entries per day and category (regular, overtime, holiday, absence), totals, status history, and the actions *Submit*, *Approve*, *Reject*, *Approve on behalf*, *Open adjustment*. The deployment page (BL-MPW-24) links to its timesheets. The client's own view is in BL-MPW-28.
+
+#### Files to read
+- `docs/verticals/09-manpower.md` §4.4 timesheets, `MPW.ACL.09`, `HRM.ACL.02`, `HRM.ACL.08`, `HRM.RUL.08`, `HRM.RUL.15`
+- `crates/wl-attendance` timesheet routes and states · `docs/UX.md` §2.2, §2.3
+- blocks BL-MPW-19 of this file; BL-ATT-06 to BL-ATT-13 on GitHub
+
+#### Terms
+- **Timesheet states in words:** draft, submitted, escalated, approved, deemed approved, locked, billed, rejected.
+- **Approve on behalf:** the account manager approves for the client by attaching the client's signed sheet (`MPW.ACL.09`).
+- **Adjustment timesheet:** a correction of a locked timesheet, approved by the original approver kind, never by its creator.
+
+#### Spec excerpt (authoritative for this issue)
+
+| Button | Route | Permission | Form fields | Refused when |
+|---|---|---|---|---|
+| Submit | `/timesheets/{id}/submit` | staff | none | allocated hours exceed attended (BL-ATT-06) |
+| Approve | `/approve` | client approver (portal) or staff by rule | none | wrong client; already decided |
+| Reject | `/reject` | same | reason | reason empty |
+| Approve on behalf | `/approve-on-behalf` | `timesheets.approve_on_behalf` | signed sheet, signing date | no signed sheet (`MPW.ACL.09`) |
+| Reopen | `/reopen` | account manager | reason | locked (`HRM.ACL.08`) |
+| Open adjustment | `/adjustments` | staff | reason, hours | not locked |
+
+#### Edge cases decided
+- Escalated shows *Escalated on 06 Nov (6 days without answer)*; deemed approved shows the clause days and the date.
+- A billed timesheet is read-only with the invoice number linked.
+- Hours show as `8.00 h`; categories in words; days in `Mon 02 Nov` form; no raw keys.
+- A creator cannot approve his own adjustment (403 text).
+
+#### Must not
+- Must not let the creator approve an adjustment; must not edit a locked timesheet.
+- Must not show timesheets of other clients to a client approver (BL-MPW-28 checks).
+
+#### Done when
+- [ ] Given the demo timesheets, when `accountmanager@desertstar.example` opens `/timesheets`, then they are listed with client, worker, month, hours and status in words, not JSON.
+- [ ] Given a detail page, then entries per day and category are shown with totals and a status history (who, when).
+- [ ] Given a draft with allocated hours above attended hours, when *Submit* is pressed, then it is refused with the two hour figures; otherwise it shows *Submitted*.
+- [ ] Given a submitted sheet unanswered for 6 days, then it shows *Escalated* with the date; after 10 days with the deemed-approval clause it shows *Deemed approved* with the clause.
+- [ ] Given *Reject* with an empty reason, then the form says *Write the reason*; with a reason the status is *Rejected* and the reason is shown.
+- [ ] Given *Approve on behalf* without a signed sheet, then it is refused with *Attach the client's signed sheet*; with it, the status is *Approved* and the sheet is linked.
+- [ ] Given a locked sheet, when an adjustment is opened by user A and A tries to approve it, then the answer is 403 with the refusal text; the account manager's approval succeeds.
+- [ ] Given a billed sheet, then it shows *Billed* and the invoice link and no action button.
+- [ ] At 390 px the day grid scrolls inside its own container; no horizontal scroll of the page.
+
+#### Out of scope
+The client's portal view (BL-MPW-28); payroll use of hours (BL-ATT-12); the escalation and deemed rules (BL-ATT-10, BL-ATT-11).
+
+---
+
+### BL-MPW-28 — 09 Manpower: build the client approver portal section (requests, deployments, timesheets to approve)
+
+**Labels:** `vertical:09-manpower` `area:sme-gap` `priority:high` `surface:portal` · **Milestone:** Launch 09 · **Size:** m
+**Depends on:** BL-POR-01 · BL-POR-02 · BL-POR-03 · BL-MPW-19 · BL-ATT-10 · BL-ATT-11 · BL-MPW-23 · BL-MPW-24 · BL-MPW-27 · **Blocks:** None
+**Review items:** None (browser test of 2026-10-22: no portal section, staff links shown, cross-client approval)
+
+#### Goal
+The client approver (`approver@gulftower.example`) has no manpower section in the portal and no link to his requests, deployments or timesheets, and he sees staff-only links (Review tasks, Broadcasts). He must see his company's requests, deployments and timesheets waiting for him, give the approvals `MPW.ACL.01` allows, and nothing else. The browser test also showed he can approve a sheet of another client; this closes that.
+
+#### Surfaces
+- **Portal:** a manpower section registered with the portal (BL-POR-02) with the nav entries *Requests*, *Workers on site*, *Timesheets*, shown by the portal role; the home lists *Timesheets waiting for you*; a request form for the approver per `MPW.ACL.01` (the viewer only sees). Layout is the portal's centred page (UX §1, surface 3).
+
+#### Files to read
+- `docs/verticals/09-manpower.md` §3.3 `MPW.ACL.01`, `.02`, §4.4, §9 portal · `docs/modules/wl-portal.md` §5 sections and menus
+- `apps/manpower/src/approvers.rs`, `access.rs`, `tests/client_access.rs`, `tests/approvers.rs`
+- `docs/UX.md` §2.10 (portal patterns), §4.9 (09 portal)
+
+#### Terms
+- **Client approver / viewer:** portal roles of a client contact; approver acts, viewer only sees.
+- **Scope:** the client's party id; a portal user acts only in his client's scope.
+
+#### Spec excerpt (authoritative for this issue)
+
+| Page | Route | Who | Shows |
+|---|---|---|---|
+| Requests | `/portal/manpower/requests` | approver, viewer | own company's requests with filled / missing; approver: *New request*, *Submit*, *Cancel* |
+| Workers on site | `/portal/manpower/deployments` | approver, viewer | worker name, role, photo, site, dates, status (no salary, no documents: `MPW.ACL.02`) |
+| Timesheets | `/portal/manpower/timesheets` | approver, viewer | hours per day; approver: *Approve*, *Reject* with reason |
+
+#### Edge cases decided
+- The approver's grant is in the client's scope: a sheet or request of another client answers 404 *Not found*, never 403 with data.
+- A viewer sees no action buttons.
+- A portal-only user's nav has no *Review tasks*, *Broadcasts* or any staff entry; direct staff URLs answer 403.
+- A blocked client sees the neutral text of BL-POR-01 and no new request.
+- Status in words (submitted, escalated, deemed approved); deemed-approval notice text shows the hours and how to dispute.
+
+#### Must not
+- Must not show rates, margins, salary, or other clients' data.
+- Must not keep the approver as a global role: approval is scoped to the client.
+
+#### Done when
+- [ ] Given `approver@gulftower.example`, when opening the portal, then the nav shows *Requests*, *Workers on site*, *Timesheets* and no *Review tasks* or *Broadcasts*.
+- [ ] Given Gulf Tower has 2 timesheets waiting, then the portal home shows *2 timesheets waiting for you*, linking to the list.
+- [ ] Given the approver approves a Gulf Tower sheet, then it shows *Approved* with his name and date; rejecting without a reason is refused in words.
+- [ ] Given a sheet of another client, when the approver opens or POSTs approve on it, then the answer is 404 and nothing changes.
+- [ ] Given a viewer of Gulf Tower, then the same pages show data and no buttons; a POST answers 403 with the refusal text.
+- [ ] Given the approver opens `/manpower/contracts` or `/hr/employees`, then the answer is 403.
+- [ ] Given the worker pages, then no salary, bank, nationality document or medical data appears.
+- [ ] Given Gulf Tower blocked, then new request is hidden and the neutral text shows.
+- [ ] At 390 px the portal pages have no horizontal scroll.
+
+#### Out of scope
+Staff screens (BL-MPW-22 to BL-MPW-27); the portal framework (BL-POR-02); the invoices section of the portal (wl-invoicing).
+
+---
+
+### BL-MPW-29 — 09 Manpower: build the approvals inbox (waiting approvals in words with approve, reject and return)
+
+**Labels:** `vertical:09-manpower` `area:sme-gap` `priority:high` `surface:back-office` · **Milestone:** Launch 09 · **Size:** m
+**Depends on:** BL-KRN-01 · BL-KRN-02 · BL-MPW-03 · BL-MPW-04 · BL-MPW-26 · BL-HRM-04 · BL-HRM-21 · BL-INV-01 · **Blocks:** None
+**Review items:** None (approvals have routes but no inbox; browser test of 2026-10-22)
+
+#### Goal
+Approvals (`/approvals/{id}/approve`, `reject`, `return`, `withdraw`) exist as routes, and the dashboard rows say `manpower.release` (a raw key). The user must open a page listing the approvals waiting for him, read each in words with the requester and reason, and approve, reject or return it.
+
+#### Surfaces
+- **Back office:** `GET /approvals` lists approvals waiting for the signed-in user (and a tab *My requests*); each row has the action in words, the subject linked, requester, reason, date, and *Approve*, *Reject*, *Return for changes*. The dashboard "Needs your action" rows link to `/approvals`.
+
+#### Files to read
+- `crates/wl-kernel/src/approvals/awaiting.rs` (action labels), `docs/UX.md` §2.1, `docs/WORKFLOW.md` approvals
+- blocks BL-MPW-03, BL-MPW-04, BL-KRN-01, BL-KRN-02, BL-HRM-04, BL-HRM-21
+
+#### Terms
+- **Approval request:** a decision waiting for a user who holds the current step.
+- **Return:** send back for changes; the requester can resubmit (BL-KRN-02).
+- **Segregation of duties:** the requester never decides his own request.
+
+#### Spec excerpt (authoritative for this issue)
+
+| Action key | Shown as | Decider |
+|---|---|---|
+| `manpower.release` | Release a client contract from a credit hold | MD |
+| `manpower.terminate` | Terminate a client contract | MD |
+| `hr.exit` and absconding / death | Approve a non-standard exit | second HR user or MD |
+| `hr.pay_account` | Approve a new pay account | second user |
+| `hr.waive_cooling` | Waive the pay account cooling period | MD |
+| rate card past-dated | Approve a past-dated rate card | MD |
+| `invoicing.write_off` | Write off an invoice | per policy |
+| non-payment waiver | Waive the notice period | MD |
+
+The keys of exits, pay accounts, rate cards and write-offs are examples: the real keys are those each module registers (see `awaiting.rs`); the texts above are the ones to show.
+
+#### Edge cases decided
+- Every row text comes from one label table; an unknown key shows *Approval needed* and the key is logged, never shown.
+- A row the user may not decide (own request) shows the state *Waiting for another user* without buttons.
+- Reject and return need a note; the requester sees it on the subject.
+- An approval whose subject moved meanwhile shows *No longer needed* and offers *Dismiss*.
+
+#### Must not
+- Must not show raw action keys, subject ids such as `hr.employee #2`, or `None`.
+- Must not allow the requester to decide.
+
+#### Done when
+- [ ] Given a release request by the account manager, when `md@desertstar.example` opens `/approvals`, then the row reads *Release a client contract from a credit hold: Gulf Tower, requested by <name>, reason ...* with the three buttons.
+- [ ] Given the account manager opens `/approvals`, then his own request shows *Waiting for the MD* without buttons.
+- [ ] Given MD presses *Approve*, then the row disappears and the contract page shows *Active*; *Reject* without a note is refused in words.
+- [ ] Given *Return for changes* with a note, then the requester sees it on the contract and can resubmit.
+- [ ] Given a terminate, an exit, a pay account, a waiver, a past-dated rate card and a write-off request, then each shows its own text from the table above and its subject name, not an id.
+- [ ] Given the dashboard row *1 approval waiting for you*, then it links to `/approvals`, and no raw key appears on the dashboard.
+- [ ] Given `supervisor@desertstar.example`, then `/approvals` is empty with *Nothing needs your action*.
+- [ ] At 390 px the rows are cards with full-width buttons, no horizontal scroll.
+
+#### Out of scope
+The approval engine (BL-KRN-01, BL-KRN-02); the contract and rate card screens that start requests (BL-MPW-22, BL-MPW-26); the notification page shell.
+
+---
+
+### BL-MPW-30 — 09 Manpower: build the payroll run and settlement lists (create run, SIF download, bank result upload)
+
+**Labels:** `vertical:09-manpower` `area:sme-gap` `priority:high` `surface:back-office` · **Milestone:** Launch 09 · **Size:** m
+**Depends on:** Base: wl-hr Payroll run lifecycle · Base: wl-hr Final settlement lifecycle · BL-HRM-11 · BL-HRM-12 · BL-HRM-13 · BL-HRM-22 · BL-MPW-20 · **Blocks:** None
+**Review items:** None (browser test of 2026-10-22: no run list, approved run cannot be submitted)
+
+#### Goal
+A payroll run page exists (`/hr/payroll/{id}`) but there is no list, no way to start a run, and no way to submit an approved run, so WPS rejection and partial results cannot be reached. Settlements have a page but no list. HR must list runs and settlements, start a run, submit an approved run, download the SIF and upload the bank's result file (the manual WPS fallback deferred from BL-MPW-20 point 9).
+
+#### Surfaces
+- **Back office:** `GET /hr/payroll` (period, status, lines, total in AED) with *New run* (the `calculate` start: period and run kind); the run page gets *Submit*, *Download SIF*, *Upload bank result*; `GET /hr/settlements` (employee, status in words, amounts in AED, deadline).
+
+#### Files to read
+- `crates/wl-hr` payroll and settlement routes (`/hr/payroll/{id}/transitions/calculate`, `/confirm`, `/rejection`, `/partial`, `/resubmit`), `docs/modules/wl-hr.md` payroll run, WPS
+- block BL-MPW-20 of this file (Integrations point, deferred) · `docs/UX.md` §2.3
+
+#### Terms
+- **SIF:** the salary information file for WPS.
+- **Bank result:** the file the bank returns, with accepted and rejected lines.
+- **Run states in words:** draft, calculated, waiting for approval, approved, submitted, paid, partly paid, rejected.
+
+#### Spec excerpt (authoritative for this issue)
+
+| Button | Route | Permission | Form fields | Refused when |
+|---|---|---|---|---|
+| New run | `/hr/payroll/{id}/transitions/calculate` after creating the run | payroll preparer | period, kind | period already has a run |
+| Submit | new action on approved runs | preparer | none | not approved |
+| Download SIF | on submitted run | payroll roles | none | not approved |
+| Upload bank result | `/confirm`, `/rejection`, `/partial` | payroll roles | file | file unreadable |
+
+#### Edge cases decided
+- Preparer and approver differ (`HRM.ACL.04`); a preparer who opens the approve action gets 403 with the refusal text.
+- Amounts show `AED` with two decimals; held lines show the reason in words.
+- The run table scrolls inside its own container at phone width.
+- SIF download is audited; the bank result upload shows which lines were accepted and rejected.
+
+#### Must not
+- Must not submit a run that is not approved, or let the preparer approve.
+- Must not show salary to roles without `employees.sensitive.view`.
+
+#### Done when
+- [ ] Given `hr@desertstar.example`, when opening `/hr/payroll`, then runs are listed with period, status in words and total in AED.
+- [ ] Given *New run* for October 2026, then a draft run is created and calculated; a second run for the same period is refused in words.
+- [ ] Given an approved run, then *Submit* shows *Submitted*; a not approved run offers no submit.
+- [ ] Given a submitted run, when *Download SIF* is pressed, then a SIF file downloads; for a draft it is refused.
+- [ ] Given a bank result with one rejected line, when uploaded, then the page lists the rejected line with the reason and offers *Regenerate*.
+- [ ] Given the preparer opens approve, then the answer is 403 with the refusal text.
+- [ ] Given `/hr/settlements`, then settlements are listed with employee, status in words, amounts in AED and the 14-day deadline.
+- [ ] Given `supervisor@desertstar.example`, both lists answer 403.
+- [ ] At 390 px no horizontal scroll; wide tables scroll in their container.
+
+#### Out of scope
+Pay account screens (exist); WPS rejection logic (BL-HRM-12, BL-HRM-13); settlement dispute (BL-HRM-22).
+
+---
+
+### BL-MPW-31 — 09 Manpower: complete the employee page (documents, deployments, timesheets, salary, pay accounts)
+
+**Labels:** `vertical:09-manpower` `area:sme-gap` `priority:medium` `surface:back-office` · **Milestone:** Launch 09 · **Size:** m
+**Depends on:** Base: wl-hr Employee records · BL-HRM-01 · BL-HRM-19 · BL-HRM-20 · BL-MPW-24 · BL-MPW-27 · BL-DOC-05 · **Blocks:** None
+**Review items:** None (browser test of 2026-10-22)
+
+#### Goal
+`/hr/employees/{id}` shows basic data only. HR and the PRO must see on it the worker's documents with validity, deployments, timesheets, salary structure and pay accounts, each only to roles allowed to see it.
+
+#### Surfaces
+- **Back office:** tabs *Overview*, *Documents*, *Deployments*, *Timesheets*, *Salary*, *Pay accounts*, *Activity* on the record page (UX §2.2).
+
+#### Files to read
+- `crates/wl-hr` employee routes and `docs/modules/wl-hr.md` employee · `docs/modules/wl-documents.md` §5 expiry · `docs/UX.md` §2.2
+- `host` documents page (`/documents/of/hr.employee/{id}`)
+
+#### Terms
+- **Validity:** a document is valid, expiring within 30 days, or expired.
+- **Sensitive:** salary, bank and passport need `employees.sensitive.view`; each view is audited (`HRM.ACL.03`).
+
+#### Spec excerpt (authoritative for this issue)
+
+| Tab | Shows | Who |
+|---|---|---|
+| Documents | kind, number, valid to, validity badge, responsible role | HR, PRO, MD |
+| Deployments | client, site, role, dates, status in words | HR, account manager |
+| Timesheets | month, hours, status in words | HR, account manager |
+| Salary | basic and allowances, with a *Reveal* button | `employees.sensitive.view` |
+| Pay accounts | bank, masked IBAN, status, cooling end | HR, MD |
+
+#### Edge cases decided
+- A worker without deployments shows *On the bench*.
+- IBAN is masked; reveal is audited.
+- The documents page subtitle shows the employee's name, not `hr.employee #2`.
+- Tabs scroll horizontally in their own bar at phone width.
+
+#### Must not
+- Must not show salary or bank to roles without the permission; must not show raw subject keys.
+
+#### Done when
+- [ ] Given `pro@desertstar.example`, when opening a worker, then *Documents* lists kinds with *valid to* dates and badges; an expired visa shows *Expired*.
+- [ ] Given the documents page of a worker, then its subtitle reads the worker's name.
+- [ ] Given a deployed worker, then *Deployments* lists them with status in words; a bench worker shows *On the bench*.
+- [ ] Given `hr@desertstar.example`, then *Timesheets* lists months with hours and status.
+- [ ] Given *Salary* without the permission, then the tab is absent; with it, amounts are shown after *Reveal* and an audit entry is made.
+- [ ] Given *Pay accounts*, then each shows bank, masked IBAN and status, with the cooling end date.
+- [ ] Given `accountmanager@desertstar.example`, then *Salary* and *Pay accounts* are absent.
+- [ ] At 390 px no horizontal scroll.
+
+#### Out of scope
+Pay account pages themselves (exist); document upload (wl-documents).
+
+---
+
+### BL-MPW-32 — 09 Manpower: add the manpower dashboard tiles
+
+**Labels:** `vertical:09-manpower` `area:sme-gap` `priority:medium` `surface:back-office` · **Milestone:** Launch 09 · **Size:** m
+**Depends on:** BL-MPW-22 · BL-MPW-23 · BL-MPW-24 · BL-MPW-25 · BL-MPW-27 · BL-MPW-30 · BL-MPW-29 · **Blocks:** None
+**Review items:** None (browser test of 2026-10-22)
+
+#### Goal
+The dashboard of a manpower agency shows only generic rows. Each role must see the counts it can act on, each linking to its list, and left out without the permission, as construction's dashboard does (`host/src/app/dashboard/construction_tiles.rs`).
+
+#### Surfaces
+- **Back office:** tiles on `/dashboard`: contracts on hold, contracts ending within 60 days, unfilled requests, documents expiring within 30 days, deployments suspended, open absence cases, timesheets waiting for the client, payroll runs waiting for approval.
+
+#### Files to read
+- `host/src/app/dashboard/construction_tiles.rs`, `mod.rs`, `generic_tiles.rs` · `docs/UX.md` §2.1, §2.5
+
+#### Terms
+- **Tile:** one line with a count and a link to a filtered list.
+- **Left out:** not rendered when the user lacks the permission or the count source.
+
+#### Spec excerpt (authoritative for this issue)
+
+| Tile | Link | Permission |
+|---|---|---|
+| Contracts on hold | `/manpower/contracts?status=on_hold` | `contracts.view` |
+| Contracts ending within 60 days | `/manpower/contracts?ending=60` | `contracts.view` |
+| Unfilled requests | `/manpower/requests?status=missing` | `requests.view` |
+| Documents expiring within 30 days | `/documents?expiring=30` | documents permission |
+| Deployments suspended | `/manpower/deployments?status=suspended` | `deployments.view` |
+| Open absence cases | `/manpower/absence` | `absence.manage` |
+| Timesheets waiting for the client | `/timesheets?status=submitted` | timesheets permission |
+| Payroll runs waiting for approval | `/hr/payroll?status=waiting` | payroll permission |
+
+#### Edge cases decided
+- Counts are in the user's scope (an account manager counts his clients only).
+- Zero counts are shown only when the whole block is empty: "Nothing needs your action".
+- Wording is plural-correct (*1 contract on hold*, *2 contracts on hold*).
+
+#### Must not
+- Must not count records the user cannot open, nor render a tile without its permission.
+
+#### Done when
+- [ ] Given the demo agency, when `admin@desertstar.example` opens `/dashboard`, then every tile with a non-zero count appears with its link.
+- [ ] Given `accountmanager@desertstar.example`, then payroll and absence tiles are absent.
+- [ ] Given `hr@desertstar.example`, then the absence and payroll tiles appear, and a tile whose permission HR does not hold is absent.
+- [ ] Given the demo contract on hold, then the tile reads *1 contract on hold* and its link opens the list filtered to it.
+- [ ] Given a document expiring in 20 days, then the tile counts it; at 40 days it does not.
+- [ ] Given an account manager scoped to one client, then counts exclude other clients.
+- [ ] Given `/dashboard` as the client approver, then none of these tiles appears.
+- [ ] At 390 px the tiles stack in one column, no horizontal scroll.
+
+#### Out of scope
+The approvals inbox (BL-MPW-29); the generic dashboard rows.
+
+---
+
+### BL-MPW-33 — 09 Manpower: translate the Manpower screens into Arabic and check right-to-left
+
+**Labels:** `vertical:09-manpower` `area:sme-gap` `priority:medium` `surface:back-office` `surface:portal` · **Milestone:** Launch 09 · **Size:** m
+**Depends on:** BL-MPW-22 · BL-MPW-23 · BL-MPW-24 · BL-MPW-25 · BL-MPW-26 · BL-MPW-27 · BL-MPW-28 · BL-MPW-29 · BL-MPW-30 · BL-MPW-31 · BL-MPW-32 · **Blocks:** None
+**Review items:** None (browser test of 2026-10-22: layout mirrors in RTL, text stays English)
+
+#### Goal
+Right-to-left layout works, but all text stays English because `apps/manpower` has no `ar.json`. After the screens exist, every text they show (and the wl-hr and wl-attendance texts they show) gets an Arabic translation, so an Arabic-language user reads the whole app in Arabic. This issue is created only; it is built after the screen issues.
+
+#### Surfaces
+- **Back office** and **Portal:** all Manpower pages, forms, refusals and status words in Arabic when the user's language is Arabic; the client approver's portal too.
+
+#### Files to read
+- `apps/manpower/src/texts.rs`, existing `ar.json` of other apps, `docs/DESIGN-SYSTEM.md` §5 (UAE adaptation, RTL), `docs/UX.md` §2.8
+- the wl-hr and wl-attendance text tables used by the Manpower screens
+
+#### Terms
+- **Text key:** the key of a message in `texts.rs`; the translation file maps key to Arabic.
+- **RTL check:** a page opened with the Arabic language mirrors layout, keeps numbers, dates and AED amounts readable.
+
+#### Spec excerpt (authoritative for this issue)
+Numbers keep Western digits as the client's setting says; amounts show `AED` as the currency code beside the figure; dates keep the `DD Mon YYYY` order with the month name in Arabic; mixed text (English names, ids) is isolated so it does not scramble.
+
+#### Edge cases decided
+- A missing key falls back to English and is listed in a test, not shown as a key.
+- Plurals follow the Arabic forms (zero, one, two, few, many).
+- Names of workers stay as entered.
+
+#### Must not
+- Must not translate legal terms by guess; unclear ones are marked for review by the agency.
+
+#### Done when
+- [ ] Given the language Arabic, when opening each Manpower page as the demo roles, then no English message text and no raw key appears; names stay as entered.
+- [ ] Given a refusal (for example release by the requester), then it shows in Arabic.
+- [ ] Given a test over `texts.rs`, then every key has an Arabic entry.
+- [ ] Given RTL, then tables, tabs, sheets and the nav mirror, and amounts, dates and ids stay readable.
+- [ ] At 390 px in Arabic no page has horizontal overflow.
+
+#### Out of scope
+Building the screens (BL-MPW-22 to BL-MPW-32); translations of other verticals.

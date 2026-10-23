@@ -11,13 +11,24 @@
     <rx-link-button rx-if="can('users.manage')" route="users.index" label="{{ t('dashboard.users') }}" icon="users"/>
   </app-hero>
 
+  <template rx-if="portal_waiting">
+    {#- Timesheets waiting for the client approver (Manpower portal). -#}
+    <app-section-head :title="t('dashboard.needs_action.title')" id="portal-waiting-title" :compact="true">
+      <rx-list label="{{ t('dashboard.needs_action.title') }}">
+        <li><app-icon-circle icon="clock" :size="18"/><div class="rx-list__main">
+          <a href="{{ portal_url }}">{{ t('dashboard.portal.timesheets_one') if portal_waiting == 1 else t('dashboard.portal.timesheets_many', count=portal_waiting) }}</a>
+        </div></li>
+      </rx-list>
+    </app-section-head>
+  </template>
+
   <template rx-if="awaiting">
     {#- Approvals the signed-in person may decide
         (wl_kernel::approvals::awaiting_items). -#}
     <app-section-head :title="t('dashboard.needs_action.title')" id="awaiting-title" :compact="true">
       <rx-list label="{{ t('dashboard.needs_action.title') }}">
         <li><app-icon-circle icon="clipboard-list" :size="18"/><div class="rx-list__main">
-          <span>{{ t('dashboard.needs_action.awaiting_one') if awaiting_count == 1 else t('dashboard.needs_action.awaiting_many', count=awaiting_count) }}</span>
+          <a href="{{ route('approvals.inbox') }}">{{ t('dashboard.needs_action.awaiting_one') if awaiting_count == 1 else t('dashboard.needs_action.awaiting_many', count=awaiting_count) }}</a>
         </div></li>
         <li rx-for="item in awaiting"><app-icon-circle icon="circle-check" :size="18"/><div class="rx-list__main">
           <template rx-if="item.url"><a href="{{ item.url }}">{{ item.title }}</a></template>
@@ -46,6 +57,8 @@
   <rx-stats columns="3" rx-if="tiles">
     <app-stat-card rx-for="tile in tiles" :icon="tile.icon" :label="t(tile.label)" :value="tile.value" :tone="tile.tone" :url="tile.url" :hint="(t('dashboard.tiles.invoices_one') if tile.count == 1 else t('dashboard.tiles.invoices_many', count=tile.count)) if tile.count is not none else none"/>
   </rx-stats>
+
+  <app-empty-state rx-if="quiet" icon="check" :title="t('dashboard.quiet')" :text="t('dashboard.quiet_text')"/>
 
   <rx-dashboard columns="2" rx-if="expiring or tasks">
     <rx-widget rx-if="expiring" title="{{ t('dashboard.expiring.title') }}" description="{{ t('dashboard.expiring.description') }}">

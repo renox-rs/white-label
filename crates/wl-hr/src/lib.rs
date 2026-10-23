@@ -123,6 +123,14 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-hr/payroll_run.html"),
     ),
     (
+        "wl-hr/payroll_runs.html",
+        include_str!("../views/wl-hr/payroll_runs.html"),
+    ),
+    (
+        "wl-hr/settlements.html",
+        include_str!("../views/wl-hr/settlements.html"),
+    ),
+    (
         "wl-hr/templates.html",
         include_str!("../views/wl-hr/templates.html"),
     ),
@@ -144,6 +152,9 @@ const VIEWS: &[(&str, &str)] = &[
 pub mod permissions {
     /// See employee records in scope.
     pub const EMPLOYEES_VIEW: &str = "employees.view";
+    /// See salary, pay accounts and the other sensitive fields of an employee;
+    /// each view is audited (`HRM.ACL.03`).
+    pub const EMPLOYEES_SENSITIVE_VIEW: &str = "employees.sensitive.view";
     /// Create and edit employees; activate them.
     pub const EMPLOYEES_MANAGE: &str = "employees.manage";
     /// See onboardings in scope.
@@ -322,6 +333,8 @@ impl Module for WlHr {
         app.view_data::<pages::employees::IndexPage>()
             .view_data::<pages::employees::ShowPage>()
             .view_data::<pages::payroll::ShowPage>()
+            .view_data::<pages::payroll_list::IndexPage>()
+            .view_data::<pages::settlement_list::IndexPage>()
             .view_data::<pages::pay_accounts::ShowPage>()
             .view_data::<pages::pay_accounts::StopPage>()
             .view_data::<pages::settlements::ShowPage>()
@@ -337,6 +350,26 @@ impl Module for WlHr {
                 }
             }
         });
+        // The run's name where its documents are listed (the bank's result).
+        wl_kernel::documents::register_subject_label(
+            wl_kernel::workforce::PAYROLL_RUN_SUBJECT_TYPE,
+            |db, id| {
+                Box::pin(async move {
+                    Ok(PayrollRun::find(db, id).await?.map(|run| {
+                        format!(
+                            "{} {}",
+                            texts::english("wl_hr.payroll.title", &[]),
+                            run.period
+                        )
+                    }))
+                })
+            },
+        );
+        // Back from the documents page of a run to the run.
+        wl_kernel::approvals::register_subject_link(
+            wl_kernel::workforce::PAYROLL_RUN_SUBJECT_TYPE,
+            |id| format!("/hr/payroll/{id}"),
+        );
         app.model::<Employee>();
         app.model::<EmployeeScope>();
         app.model::<OnboardingTemplate>();
@@ -425,6 +458,30 @@ impl Module for WlHr {
                 .group("nav.app")
                 .order(60)
                 .permission(permissions::EMPLOYEES_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_hr.payroll_runs", "nav.payroll")
+                .icon("banknote")
+                .group("nav.app")
+                .order(61)
+                .permission(permissions::PAYROLL_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_hr.settlements", "nav.settlements")
+                .icon("file-text")
+                .group("nav.app")
+                .order(62)
+                .when(|user| {
+                    [
+                        permissions::SETTLEMENTS_PREPARE,
+                        permissions::SETTLEMENTS_APPROVE,
+                        permissions::SETTLEMENTS_PAY,
+                    ]
+                    .iter()
+                    .any(|p| user.has_permission(p))
+                }),
         );
         // Leave: the signed-in user's own requests, and the queue of those
         // waiting for a manager; the labels are the app's `nav.my_leave` and

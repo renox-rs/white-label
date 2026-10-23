@@ -612,8 +612,9 @@ async fn a_planned_deployment_is_cancelled_with_a_reason() {
 }
 
 /// §7.1 *Manpower request* `cancel`, effect: the planned deployments of the
-/// request are cancelled with it by the system; a deployment already active
-/// stays.
+/// request are cancelled with it by the system. A deployment already active
+/// is not left on site (BL-MPW-23, #503): the cancel is refused with their
+/// count until the worker is ended; then the planned ones are cancelled.
 #[renox::test]
 async fn cancelling_a_request_cancels_its_planned_deployments() {
     let t = boot().await;
@@ -636,6 +637,37 @@ async fn cancelling_a_request_cancels_its_planned_deployments() {
         t.fills(&deployment, &request).await;
         fixtures.push(deployment);
     }
+    let refused = t
+        .post(
+            &amal,
+            &format!("/manpower/requests/{}/cancel", request.id),
+            &[("reason", "client changed plan")],
+        )
+        .await;
+    refused.assert_status(422);
+    assert!(
+        refused.text().contains("1 deployment is still active"),
+        "{}",
+        refused.text()
+    );
+    assert_eq!(
+        t.reload_request(request.id).await.status,
+        RequestStatus::PartiallyFilled
+    );
+    assert_eq!(
+        t.reload_deployment(fixtures[1].id).await.status,
+        DeploymentStatus::Planned
+    );
+    t.on(date(2027, 3, 10), async {
+        t.post(
+            &amal,
+            &format!("/manpower/deployments/{}/end", fixtures[0].id),
+            &[("reason", "replaced")],
+        )
+        .await
+        .assert_status(303);
+    })
+    .await;
     t.post(
         &amal,
         &format!("/manpower/requests/{}/cancel", request.id),
@@ -654,7 +686,7 @@ async fn cancelling_a_request_cancels_its_planned_deployments() {
         }
         rows
     };
-    assert_eq!(after[0].status, DeploymentStatus::Active);
+    assert_eq!(after[0].status, DeploymentStatus::Ended);
     assert_eq!(after[1].status, DeploymentStatus::Cancelled);
     assert_eq!(after[2].status, DeploymentStatus::Cancelled);
     assert_eq!(after[1].cancel_reason.as_deref(), Some("request cancelled"));

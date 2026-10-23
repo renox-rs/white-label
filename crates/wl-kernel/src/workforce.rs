@@ -618,6 +618,18 @@ pub trait Workforce: Send + Sync + 'static {
         Box::pin(async { Ok(false) })
     }
 
+    /// The pages of the payroll runs (off-cycle or regular) that pay the lines
+    /// held for an absence case of `employee` once the case closed
+    /// (`HRM.RUL.12`), oldest first. The absence case page links them. The
+    /// default has none.
+    fn released_pay_paths<'a>(
+        &'a self,
+        _db: &'a Db,
+        _employee: EmployeeId,
+    ) -> WorkforceFuture<'a, Vec<String>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
     /// The employee whose account is the user `user_id`, if any. The default
     /// knows nobody.
     fn employee_of_user<'a>(

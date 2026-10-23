@@ -4,7 +4,7 @@
     in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['settlement.title'] ~ ' ' ~ settlement.employee">
   <rx-stack>
-    <rx-page-header :title="tx['settlement.title']" :subtitle="settlement.employee"
+    <rx-page-header :title="tx['settlement.title']" :subtitle="settlement.employee" :back="route('wl_hr.settlements')" :back-label="tx['settlement.list.title']"
                     :badge="settlement.status" :badge-kind="settlement.status_kind"/>
     <template rx-if="actions">
       <rx-transition-actions :actions="actions" :action="'/hr/settlements/' ~ settlement.id ~ '/transitions'"/>
@@ -46,7 +46,7 @@
     </template>
     <template rx-if="can_dispute">
       <rx-action-sheet id="settlement-dispute" :label="tx['settlement.dispute']" :action="route('wl_hr.settlement_dispute', settlement.id)"
-                       :title="tx['settlement.dispute']" :description="tx['settlement.dispute_hint']" :submit-label="tx['settlement.dispute']" variant="danger" icon="alert">
+                       :title="tx['settlement.dispute']" :description="tx['settlement.dispute_hint']" :submit-label="tx['settlement.dispute']" variant="danger" icon="triangle-alert">
         <rx-select name="source" :label="tx['settlement.dispute_source']" :options="sources" :selected="source_selected"/>
         <rx-input name="reference" :label="tx['settlement.dispute_reference']" id="settlement-dispute-reference" required/>
         <rx-input name="undisputed_amount" :label="tx['settlement.undisputed']" id="settlement-dispute-undisputed" required/>
@@ -63,7 +63,7 @@
     </template>
     <template rx-if="can_acknowledge">
       <rx-action-sheet id="settlement-acknowledgement" :label="tx['settlement.acknowledge']" :action="route('wl_hr.settlement_acknowledgement', settlement.id)"
-                       :title="tx['settlement.acknowledge']" :description="tx['settlement.acknowledge_hint']" :submit-label="tx['settlement.acknowledge']" icon="pen">
+                       :title="tx['settlement.acknowledge']" :description="tx['settlement.acknowledge_hint']" :submit-label="tx['settlement.acknowledge']" icon="pencil">
         <rx-input name="signed_on" type="date" :label="tx['settlement.signed_on']" :value="today" id="settlement-acknowledgement-date"/>
       </rx-action-sheet>
     </template>
@@ -71,7 +71,7 @@
       <rx-infolist columns="2">
         <rx-entry :label="tx['settlement.reason']" :value="settlement.reason" :placeholder="tx['none']"/>
         <rx-entry :label="tx['settlement.payee']" :value="settlement.payee"/>
-        <rx-entry :label="tx['settlement.last_working_day']" :value="settlement.last_working_day" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['settlement.last_working_day']" :value="settlement.last_working_day_shown" :placeholder="tx['none']"/>
         <rx-entry :label="tx['settlement.deadline']" :value="settlement.deadline" :placeholder="tx['none']"/>
         <rx-entry :label="tx['settlement.unpaid_salary']" :value="settlement.unpaid_salary"/>
         <rx-entry :label="tx['settlement.leave_encashment']" :value="settlement.leave_encashment"/>

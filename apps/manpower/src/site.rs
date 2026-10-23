@@ -28,6 +28,8 @@ pub struct Site {
     pub name: String,
     /// The address.
     pub address: Option<String>,
+    /// The licences and passes the site asks of the workers, in words.
+    pub required_licences: Option<String>,
     /// Whether workers can still be deployed there.
     pub active: bool,
     /// When the row was created.
@@ -53,12 +55,54 @@ impl Site {
     }
 }
 
+/// What a site is made of when it is added or changed.
+#[derive(Debug, Clone, Default)]
+pub struct SiteInput {
+    /// The name.
+    pub name: String,
+    /// The address.
+    pub address: Option<String>,
+    /// The licences and passes it asks of the workers, in words.
+    pub required_licences: Option<String>,
+}
+
+fn clean(text: Option<&str>) -> Option<String> {
+    text.map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_owned)
+}
+
+/// The checks every site passes: a name, not used by another site of the
+/// client (`except`: the site being changed).
+async fn check(
+    state: &AppState,
+    client: PartyId,
+    name: &str,
+    except: Option<i64>,
+) -> Result<String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(refused(english("manpower.problems.site_name", &[])));
+    }
+    let same = Site::query()
+        .where_(Site::CLIENT_PARTY_ID.eq(client.0))
+        .get(&state.db)
+        .await?
+        .into_iter()
+        .any(|site| Some(site.id) != except && site.name.trim().eq_ignore_ascii_case(name));
+    if same {
+        return Err(refused(english("manpower.problems.site_duplicate", &[])));
+    }
+    Ok(name.to_owned())
+}
+
 /// `by` adds a site of `client` named `name`.
 ///
 /// # Errors
 ///
-/// `Forbidden` without `sites.manage` for the client; a 422 for a blank name
-/// or a client that is not a known party.
+/// `Forbidden` without `sites.manage` for the client; a 422 for a blank name,
+/// a name another site of the client has, or a client that is not a known
+/// party.
 pub async fn create(
     state: &AppState,
     by: &AuthUser,
@@ -66,15 +110,37 @@ pub async fn create(
     name: &str,
     address: Option<&str>,
 ) -> Result<Site> {
+    create_with(
+        state,
+        by,
+        client,
+        SiteInput {
+            name: name.to_owned(),
+            address: address.map(str::to_owned),
+            required_licences: None,
+        },
+    )
+    .await
+}
+
+/// [`create`] with the licences the site asks for.
+///
+/// # Errors
+///
+/// As [`create`].
+pub async fn create_with(
+    state: &AppState,
+    by: &AuthUser,
+    client: PartyId,
+    input: SiteInput,
+) -> Result<Site> {
     if !by.has_permission_in(
         permissions::SITES_MANAGE,
         &permissions::client_scope(client.0),
     ) {
         return Err(Error::Forbidden);
     }
-    if name.trim().is_empty() {
-        return Err(refused(english("manpower.problems.site_name", &[])));
-    }
+    let name = check(state, client, &input.name, None).await?;
     if wl_kernel::parties::directory(state)
         .find(&state.db, client)
         .await?
@@ -86,15 +152,38 @@ pub async fn create(
         &state.db,
         Site {
             client_party_id: client.0,
-            name: name.trim().to_owned(),
-            address: address
-                .map(|a| a.trim().to_owned())
-                .filter(|a| !a.is_empty()),
+            name,
+            address: clean(input.address.as_deref()),
+            required_licences: clean(input.required_licences.as_deref()),
             active: true,
             ..Site::default()
         },
     )
     .await
+}
+
+/// `by` changes site `id`: its name, address and required licences. The
+/// deployments stay linked: the site keeps its id.
+///
+/// # Errors
+///
+/// `Forbidden` without `sites.manage` for the client; a 422 for a blank name or
+/// a name another site of the client has.
+pub async fn update(state: &AppState, by: &AuthUser, id: i64, input: SiteInput) -> Result<Site> {
+    let site = Site::find_or_404(&state.db, id).await?;
+    if !by.has_permission_in(
+        permissions::SITES_MANAGE,
+        &permissions::client_scope(site.client_party_id),
+    ) {
+        return Err(Error::Forbidden);
+    }
+    let name = check(state, site.client(), &input.name, Some(id)).await?;
+    let mut site = site;
+    site.name = name;
+    site.address = clean(input.address.as_deref());
+    site.required_licences = clean(input.required_licences.as_deref());
+    site.save(&state.db).await?;
+    Ok(site)
 }
 
 #[cfg(test)]

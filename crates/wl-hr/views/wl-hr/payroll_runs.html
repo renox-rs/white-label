@@ -1,0 +1,25 @@
+{#- wl-hr: the payroll runs with their period, status and total, and the
+    start of a run (`calculate`). Replace it with
+    resources/views/wl-hr/payroll_runs.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['payroll.list.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['payroll.list.title']" :subtitle="tx['payroll.list.subtitle']"/>
+    <rx-form-errors/>
+    <template rx-if="can_create">
+      <rx-row>
+        <rx-action-sheet id="new-run" :label="tx['payroll.list.new']" :action="route('wl_hr.payroll_create')"
+                         :title="tx['payroll.list.new']" :description="tx['payroll.list.new_hint']" :submit-label="tx['payroll.list.new_submit']" icon="plus">
+          <rx-input name="period" type="month" :label="tx['payroll.list.period']" id="new-run-period" :value="month" required/>
+        </rx-action-sheet>
+      </rx-row>
+    </template>
+    <rx-table :rows="runs" as="run" :key="run.id" :caption="tx['payroll.list.title']" card>
+      <rx-column :label="tx['payroll.list.period']"><a href="{{ run.url }}">{{ run.period }}</a></rx-column>
+      <rx-column :label="tx['payroll.list.kind']" hide-narrow>{{ run.kind }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="run.status_kind" :text="run.status"/></rx-column>
+      <rx-column :label="tx['payroll.lines']" hide-narrow>{{ run.lines }}</rx-column>
+      <rx-column :label="tx['payroll.list.total']">{{ run.total }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['payroll.list.empty']" :message="tx['payroll.list.empty_hint']" icon="banknote"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

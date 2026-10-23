@@ -31,7 +31,7 @@
       <rx-column :label="tx['subscription.columns.reason']">{{ item.reason }}</rx-column>
       <rx-column :label="tx['subscription.columns.since']" hide-narrow>{{ item.since }}</rx-column>
       <rx-column :label="tx['subscription.columns.until']" hide-narrow>{{ item.until }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['subscription.causes.empty']" icon="pause"/></rx-slot>
+      <rx-slot name="empty"><rx-empty :title="tx['subscription.causes.empty']" icon="clock"/></rx-slot>
     </rx-table>
     <rx-table :rows="cycles" as="item" :key="item.id" :caption="tx['subscription.sections.cycles']" card>
       <rx-column :label="tx['subscription.columns.period']">{{ item.period }}</rx-column>

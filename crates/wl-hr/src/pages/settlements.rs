@@ -69,7 +69,7 @@ fn text(lang: &Lang, key: &str) -> String {
 }
 
 /// The badge kind of a status.
-fn kind(status: SettlementStatus) -> &'static str {
+pub(crate) fn kind(status: SettlementStatus) -> &'static str {
     match status {
         SettlementStatus::Draft | SettlementStatus::Cancelled => "info",
         SettlementStatus::Approved | SettlementStatus::Paid | SettlementStatus::Closed => "success",
@@ -131,7 +131,9 @@ pub struct SettlementView {
     pub right_document: String,
     /// The last working day.
     pub last_working_day: String,
-    /// The legal deadline.
+    /// The last working day as read on the page (`01 Nov 2026`).
+    pub last_working_day_shown: String,
+    /// The legal deadline, as read on the page (`15 Nov 2026`).
     pub deadline: String,
     /// Unpaid salary.
     pub unpaid_salary: String,
@@ -271,7 +273,14 @@ async fn view_of(
         representative: settlement.representative.clone().unwrap_or_default(),
         right_document: settlement.right_document.clone().unwrap_or_default(),
         last_working_day: day(settlement.last_working_day),
-        deadline: day(settlement.deadline(config.settlement_deadline_days)),
+        last_working_day_shown: settlement
+            .last_working_day
+            .map(crate::pages::payroll::date_text)
+            .unwrap_or_default(),
+        deadline: settlement
+            .deadline(config.settlement_deadline_days)
+            .map(crate::pages::payroll::date_text)
+            .unwrap_or_default(),
         unpaid_salary: aed(settlement.unpaid_salary),
         leave_encashment: aed(settlement.leave_encashment),
         gratuity: aed(settlement.gratuity),
@@ -686,7 +695,7 @@ async fn acknowledgement(
 }
 
 /// The reason of an exit in words: `end_of_contract` as *End of contract*.
-fn reason_text(reason: &str) -> String {
+pub(crate) fn reason_text(reason: &str) -> String {
     let spaced = reason.replace('_', " ");
     let mut chars = spaced.chars();
     chars

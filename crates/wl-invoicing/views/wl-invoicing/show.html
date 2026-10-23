@@ -11,7 +11,7 @@
       <rx-badge rx-if="pending" kind="warning" :text="tx['pending_approval']"/>
       <template rx-if="can_issue">
         <rx-confirm :id="'issue-invoice-' ~ invoice.id" :label="tx['issue.action']" :action="route('wl_invoicing.issue', invoice.id)" method="POST"
-                    :title="tx['issue.confirm_title']" :message="tx['issue.confirm_message']" :confirm-label="tx['issue.action']" icon="send"/>
+                    :title="tx['issue.confirm_title']" :message="tx['issue.confirm_message']" :confirm-label="tx['issue.action']" icon="arrow-right"/>
       </template>
       <template rx-if="can_write_off"><rx-include template="wl-invoicing/_write_off_sheet.html"/></template>
       <template rx-if="credit.can_new"><rx-include template="wl-invoicing/_credit_note_form.html"/></template>
@@ -78,7 +78,7 @@
       <rx-column :label="tx['recoveries.amount']">{{ recovery.amount }}</rx-column>
       <rx-column :label="tx['recoveries.vat_share']" hide-narrow>{{ recovery.vat_share }}</rx-column>
       <rx-column :label="tx['recoveries.effect']" hide-narrow>{{ recovery.effect }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['recoveries.empty']" icon="wallet"/></rx-slot>
+      <rx-slot name="empty"><rx-empty :title="tx['recoveries.empty']" icon="banknote"/></rx-slot>
     </rx-table>
     <rx-card rx-if="issuer" :title="tx['sections.issuer']">
       <rx-infolist columns="2">
@@ -116,7 +116,7 @@
       <rx-column :label="tx['history.at']" hide-narrow>{{ allocation.allocated_at | date('%Y-%m-%d %H:%M') }}</rx-column>
       <rx-column :label="tx['allocations.removed']"><rx-badge rx-if="allocation.removed" kind="warning" :text="tx['allocations.removed']"/></rx-column>
       <rx-column :label="tx['allocations.removed_reason']" hide-narrow>{{ allocation.removed_reason or "" }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['no_allocations']" icon="wallet"/></rx-slot>
+      <rx-slot name="empty"><rx-empty :title="tx['no_allocations']" icon="banknote"/></rx-slot>
     </rx-table>
     <rx-table rx-if="reopened" :rows="reopened" as="item" :key="item.id" :caption="tx['sections.reopened']" card>
       <rx-column :label="tx['reopened.date']">{{ item.date | date('%Y-%m-%d %H:%M') }}</rx-column>

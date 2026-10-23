@@ -109,7 +109,16 @@ async fn the_manpower_demo_has_every_state_and_is_seeded_once() {
             "select count(*) from manpower_client_contracts where status = 'active'"
         )
         .await,
-        3
+        2
+    );
+    // The credit hold job ran on Al Quoz's overdue invoice.
+    assert_eq!(
+        count(
+            &app,
+            "select count(*) from manpower_client_contracts where status = 'on_hold'"
+        )
+        .await,
+        1
     );
 
     let tables = [

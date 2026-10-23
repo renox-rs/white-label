@@ -1,0 +1,22 @@
+{#- wl-hr: the final settlements with their status, amounts and the legal
+    deadline. Replace it with resources/views/wl-hr/settlements.html in the
+    app. -#}
+<rx-page layout="layouts/app.html" :title="tx['settlement.list.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['settlement.list.title']" :subtitle="tx['settlement.list.subtitle']"/>
+    <rx-table :rows="settlements" as="settlement" :key="settlement.id" :caption="tx['settlement.list.title']" card>
+      <rx-column :label="tx['settlement.list.employee']"><a href="{{ settlement.url }}">{{ settlement.employee }}</a></rx-column>
+      <rx-column :label="tx['settlement.reason']" hide-narrow>{{ settlement.reason }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="settlement.status_kind" :text="settlement.status"/></rx-column>
+      <rx-column :label="tx['settlement.list.dues']" hide-narrow>{{ settlement.dues }}</rx-column>
+      <rx-column :label="tx['settlement.list.recoveries']" hide-narrow>{{ settlement.recoveries }}</rx-column>
+      <rx-column :label="tx['settlement.list.net']">{{ settlement.net }}</rx-column>
+      <rx-column :label="tx['settlement.list.paid']" hide-narrow>{{ settlement.paid }}</rx-column>
+      <rx-column :label="tx['settlement.deadline']">
+        {{ settlement.deadline }}
+        <template rx-if="settlement.overdue"><rx-badge kind="error" :text="tx['settlement.list.overdue']"/></template>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['settlement.list.empty']" icon="banknote"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

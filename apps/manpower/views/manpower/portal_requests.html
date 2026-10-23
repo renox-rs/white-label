@@ -1,0 +1,69 @@
+{#- manpower: the client approver's requests in the portal (BL-MPW-28): the
+    company's contracts (a contract on hold reads "On hold" and nothing more),
+    its requests with the positions filled and missing, and for the approver
+    New request, Submit and Cancel. A viewer sees the same and no button; a
+    blocked client sees the neutral text and no New request. Replace it with
+    resources/views/manpower/portal_requests.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['portal.requests.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['portal.requests.title']" :subtitle="tx['portal.requests.subtitle']"/>
+    <rx-form-errors/>
+    <rx-alert rx-if="neutral" kind="info" :message="neutral"/>
+    <rx-row rx-if="can_create">
+      <rx-action-sheet id="portal-new-request" :label="tx['portal.requests.new']" :action="route('manpower.portal_request_create')"
+                       :title="tx['portal.requests.new']" :description="tx['portal.requests.new_hint']" :submit-label="tx['requests.new_save']" variant="primary" icon="plus">
+        <rx-select name="client_contract_id" :label="tx['form.contract']" :options="form.contracts" :selected="form.contract_selected"/>
+        <rx-select name="site_id" :label="tx['form.site']" :options="form.sites" :selected="form.site_selected"/>
+        <rx-select name="role" :label="tx['form.role']" :options="form.roles" :selected="form.role_selected"/>
+        <rx-input name="headcount" type="number" :label="tx['form.positions']" value="1" id="portal-new-request-headcount" required/>
+        <rx-select name="shift_type" :label="tx['form.shift']" :options="form.shifts" :selected="form.shift_selected"/>
+        <rx-input name="shift_start" type="time" :label="tx['form.shift_start']" id="portal-new-request-shift-start"/>
+        <rx-input name="shift_end" type="time" :label="tx['form.shift_end']" id="portal-new-request-shift-end"/>
+        <rx-input name="start_date" type="date" :label="tx['form.start_date']" :value="form.today" id="portal-new-request-start" required/>
+        <rx-input name="end_date" type="date" :label="tx['form.end_date']" :hint="tx['form.end_date_hint']" id="portal-new-request-end"/>
+      </rx-action-sheet>
+    </rx-row>
+    <rx-table :rows="contracts" as="contract" :key="contract.reference" :caption="tx['portal.contracts']" card>
+      <rx-column :label="tx['portal.contract']">
+        <rx-stack>
+          <span>{{ contract.reference }}</span>
+          <span class="rx-subtitle">{{ contract.client }}</span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['portal.period']" hide-narrow>{{ contract.period }}</rx-column>
+      <rx-column :label="tx['portal.status']"><rx-badge :kind="contract.status_kind" :text="contract.status"/></rx-column>
+    </rx-table>
+    <rx-table :rows="requests" as="request" :key="request.id" :caption="tx['portal.requests.title']" card>
+      <rx-column :label="tx['portal.requests.request']">
+        <rx-stack>
+          <span>{{ request.title }}</span>
+          <span class="rx-subtitle">{{ request.client }}</span>
+          <span><rx-badge :kind="request.status_kind" :text="request.status"/></span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['portal.requests.positions']">{{ request.positions }}</rx-column>
+      <rx-column :label="tx['portal.period']" hide-narrow>{{ request.period }}</rx-column>
+      <rx-column :label="tx['portal.status']">
+        <rx-row>
+          <template rx-if="request.submit.shown">
+            <template rx-if="request.submit.blocked">
+              <rx-button :label="tx['portal.requests.submit']" variant="primary" icon="arrow-right" :disabled-reason="request.submit.blocked"/>
+            </template>
+            <template rx-else>
+              <rx-action-sheet :id="'portal-submit-request-' ~ request.id" :label="tx['portal.requests.submit']" :action="route('manpower.portal_request_submit', request.id)"
+                               :title="tx['portal.requests.submit']" :description="tx['portal.requests.submit_hint']" :submit-label="tx['portal.requests.submit']" variant="primary" icon="arrow-right"/>
+            </template>
+          </template>
+          <template rx-if="request.cancel.shown">
+            <rx-action-sheet :id="'portal-cancel-request-' ~ request.id" :label="tx['portal.requests.cancel']" :action="route('manpower.portal_request_cancel', request.id)"
+                             :title="tx['portal.requests.cancel']" :description="tx['portal.requests.cancel_hint']" :submit-label="tx['portal.requests.cancel']" variant="plain-danger" icon="circle-x" danger>
+              <rx-textarea name="reason" :label="tx['portal.requests.reason']" :id="'portal-cancel-request-reason-' ~ request.id" required/>
+            </rx-action-sheet>
+          </template>
+        </rx-row>
+        <span rx-if="request.submit.shown and request.submit.blocked" class="rx-subtitle">{{ request.submit.blocked }}</span>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['portal.requests.empty']" :message="tx['portal.requests.empty_text']" icon="users"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

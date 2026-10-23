@@ -17,7 +17,7 @@
 (function () {
   var FALLBACK = {
     401: "Sign in again to continue.",
-    403: "You are not allowed to do this.",
+    403: "You do not have permission for this action.",
     404: "This is no longer there.",
     409: "This changed meanwhile. Reload the page and try again.",
     419: "This page expired. Reload it and try again.",
@@ -100,6 +100,19 @@
     event.detail.shouldSwap = false;
     show(event.detail.requestConfig && event.detail.requestConfig.elt,
       found.message || FALLBACK[xhr.status] || GENERIC);
+  });
+
+  // A form that answers 303 (back to the page of the record) is followed by
+  // the browser and nothing is swapped: open the page it landed on, so the
+  // person sees the new state at once.
+  document.addEventListener("htmx:afterRequest", function (event) {
+    var detail = event.detail;
+    if (!detail || !detail.successful || !detail.xhr || !detail.xhr.responseURL) return;
+    var config = detail.requestConfig || {};
+    if (String(config.verb || "get").toLowerCase() === "get") return;
+    var landed = new URL(detail.xhr.responseURL, window.location.href);
+    var sent = new URL(config.path || "", window.location.href);
+    if (landed.pathname !== sent.pathname) window.location.assign(landed.href);
   });
 
   // The request never got an answer (the network, a stopped server).

@@ -51,7 +51,14 @@
     "projects": "Projects",
     "contracts": "Client contracts",
     "requests": "Manpower requests",
+    "approvals": "Approvals",
+    "portal_requests": "Requests",
+    "portal_deployments": "Workers on site",
+    "portal_timesheets": "Timesheets",
     "deployments": "Deployments",
+    "absence": "Absence cases",
+    "payroll": "Payroll runs",
+    "settlements": "Final settlements",
     "shipments": "Shipments",
     "remittances": "COD remittances",
     "crew": "Crew list",
@@ -123,12 +130,19 @@
     "lead": "Where the portfolio stands today, and what waits for you.",
     "lead_construction": "Where your projects stand today, and what waits for you.",
     "lead_generic": "What waits for you today.",
+    "lead_manpower": "What needs your action in the agency today.",
+    "quiet": "Nothing needs your action",
+    "quiet_text": "Contracts, requests, workers, timesheets and payroll are all in order.",
     "account": "Your account",
     "users": "Manage users",
     "needs_action": {
       "title": "Needs your action",
       "awaiting_one": "1 approval waiting for you",
       "awaiting_many": ":count approvals waiting for you"
+    },
+    "portal": {
+      "timesheets_one": "1 timesheet waiting for you",
+      "timesheets_many": ":count timesheets waiting for you"
     },
     "tiles": {
       "units_available": "Units available",
@@ -149,7 +163,23 @@
       "purchase_orders_waiting": "Orders awaiting approval",
       "budget_near_limit": "Cost codes at 90% of budget",
       "absence_open": "Open absence cases",
-      "permits_expiring": "Permits ending in 30 days"
+      "permits_expiring": "Permits ending in 30 days",
+      "contracts_on_hold_one": "Contract on hold",
+      "contracts_on_hold_many": "Contracts on hold",
+      "contracts_ending_one": "Contract ending within 60 days",
+      "contracts_ending_many": "Contracts ending within 60 days",
+      "requests_unfilled_one": "Unfilled request",
+      "requests_unfilled_many": "Unfilled requests",
+      "documents_expiring_one": "Document expiring within 30 days",
+      "documents_expiring_many": "Documents expiring within 30 days",
+      "deployments_suspended_one": "Deployment suspended",
+      "deployments_suspended_many": "Deployments suspended",
+      "absence_cases_one": "Open absence case",
+      "absence_cases_many": "Open absence cases",
+      "timesheets_waiting_one": "Timesheet waiting for the client",
+      "timesheets_waiting_many": "Timesheets waiting for the client",
+      "payroll_waiting_one": "Payroll run waiting for approval",
+      "payroll_waiting_many": "Payroll runs waiting for approval"
     },
     "expiring": {
       "title": "Leases ending soon",
@@ -245,6 +275,24 @@
     "title": "Menu",
     "subtitle": "Everything you can open."
   },
+  "approvals": {
+    "title": "Approvals",
+    "subtitle": "The decisions that wait for you, and the requests you made.",
+    "tab_waiting": "Waiting for you",
+    "tab_mine": "My requests",
+    "reason": "Reason",
+    "open_record": "Open the record",
+    "requested": "Requested by :name on :date",
+    "waiting_for": "Waiting for :who",
+    "waiting_other": "Waiting for another user",
+    "rate_card_of": "Rate card of :client, from :date",
+    "returned": "Returned to you for changes",
+    "returned_with": "Returned to you: :note",
+    "empty": "Nothing needs your action",
+    "empty_text": "Decisions that wait for you appear here.",
+    "empty_mine": "No open requests",
+    "empty_mine_text": "What you ask others to approve appears here."
+  },
   "activity": {
     "title": "Activity",
     "subtitle": "Logins, account changes and role changes.",
@@ -268,6 +316,8 @@
   "errors": {
     "not_found": "That page isn't here. The link may be old or mistyped.",
     "other": "Sorry, that didn't work.",
-    "home": "Go to the home page"
+    "forbidden": "You do not have permission for this action.",
+    "home": "Go to the home page",
+    "refused": "This could not be done"
   }
 }

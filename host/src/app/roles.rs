@@ -329,6 +329,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::SEGMENTS_EXPORT,
             hr::EMPLOYEES_VIEW,
             hr::EMPLOYEES_MANAGE,
+            hr::EMPLOYEES_SENSITIVE_VIEW,
             hr::EMPLOYEES_EXIT_APPROVE,
             hr::PAY_ACCOUNTS_APPROVE,
             hr::ONBOARDING_VIEW,
@@ -904,6 +905,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
         &[
             hr::EMPLOYEES_VIEW,
             hr::EMPLOYEES_MANAGE,
+            // Salary and pay accounts on the employee page, audited
+            // (`HRM.ACL.03`).
+            hr::EMPLOYEES_SENSITIVE_VIEW,
             // The absence case of a worker who has not turned up
             // (`MPW.RUL.09`, 09 Manpower).
             mpw::ABSENCE_MANAGE,

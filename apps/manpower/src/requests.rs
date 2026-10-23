@@ -20,6 +20,7 @@ use crate::access::may_write;
 use crate::blocked;
 use crate::contract::{ClientContract, ContractStatus};
 use crate::db::{answer, lock_contract, refused};
+use crate::deployment::{Deployment, DeploymentStatus};
 use crate::deployments;
 use crate::hold;
 use crate::notices;
@@ -257,7 +258,9 @@ pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<Manpower
 ///
 /// `Forbidden` unless `by` holds `requests.manage` for the client or is the
 /// client's approver; a 422 without a reason or unless the request is a
-/// `draft`, `open` or `partially_filled`.
+/// `draft`, `open` or `partially_filled`, and a 422 *N deployments are still
+/// active* while a deployment of the request is `active` (BL-MPW-23): the
+/// worker on site is ended first; the planned ones are cancelled with it.
 pub async fn cancel(
     state: &AppState,
     by: &AuthUser,
@@ -275,6 +278,20 @@ pub async fn cancel(
     .await?
     {
         return Err(Error::Forbidden);
+    }
+    let active = Deployment::query()
+        .where_(Deployment::REQUEST_ID.eq(id))
+        .where_(Deployment::STATUS.eq(DeploymentStatus::Active))
+        .get(&state.db)
+        .await?
+        .len();
+    if active > 0 {
+        let key = if active == 1 {
+            "manpower.screen.requests.active_one"
+        } else {
+            "manpower.screen.requests.active_many"
+        };
+        return Err(refused(english(key, &[("count", &active)])));
     }
     let reason_for_deployments = english("manpower.request.cancelled_deployments", &[]);
     let mut tx = state.db.begin().await?;

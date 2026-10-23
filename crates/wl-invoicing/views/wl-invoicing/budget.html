@@ -10,7 +10,7 @@
                     :badge="status_label" :badge-kind="status_kind">
       <template rx-if="can_edit">
         <rx-confirm :id="'submit-budget-' ~ budget.id" :label="tx['budget.submit.action']" :action="route('wl_invoicing.budget_submit', budget.id)" method="POST"
-                    :title="tx['budget.submit.confirm_title']" :message="tx['budget.submit.confirm_message']" :confirm-label="tx['budget.submit.action']" icon="send"/>
+                    :title="tx['budget.submit.confirm_title']" :message="tx['budget.submit.confirm_message']" :confirm-label="tx['budget.submit.action']" icon="arrow-right"/>
         <rx-include template="wl-invoicing/_budget_sheets.html"/>
       </template>
     </rx-page-header>

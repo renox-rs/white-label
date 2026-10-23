@@ -42,6 +42,26 @@ pub struct RateCardVersion {
     pub effective_from: NaiveDate,
 }
 
+/// A version of a rate card as a record page lists it: no rate, only where the
+/// version stands (`MPW.ACL.04`: the rates are not shown to a role without it).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VersionRow {
+    /// The version, for the link to its page.
+    pub id: i64,
+    /// The version number, from 1.
+    pub version: i64,
+    /// The first day the version prices.
+    pub effective_from: NaiveDate,
+    /// `pending`, `awaiting_approval`, `accepted` or `rejected`.
+    pub status: String,
+    /// The day the client accepted it.
+    pub accepted_on: Option<NaiveDate>,
+    /// The signed acceptance staff recorded for the client.
+    pub accepted_document: Option<String>,
+    /// How many lines (role and shift) it prices.
+    pub lines: i64,
+}
+
 /// The future a [`RateCards`] method returns.
 pub type RateCardFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
@@ -59,6 +79,28 @@ pub trait RateCards: Send + Sync + 'static {
         _on: NaiveDate,
     ) -> RateCardFuture<'a, Option<RateCardVersion>> {
         Box::pin(async { Ok(None) })
+    }
+
+    /// The id of the rate card whose source contract is `source`, for the
+    /// link to its page; none when the contract has no card. The default
+    /// knows none.
+    fn card_of<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _source: &'a Subject,
+    ) -> RateCardFuture<'a, Option<i64>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Every version of the rate card whose source contract is `source`,
+    /// oldest first, with where it stands; none when the contract has no
+    /// card. The default knows none.
+    fn versions<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _source: &'a Subject,
+    ) -> RateCardFuture<'a, Vec<VersionRow>> {
+        Box::pin(async { Ok(Vec::new()) })
     }
 
     /// Whether the accepted version in force on `on` has a line for `role`

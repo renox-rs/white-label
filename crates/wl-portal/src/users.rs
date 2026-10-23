@@ -60,6 +60,31 @@ impl PortalUsers for GrantUsers {
         })
     }
 
+    fn parties_of<'a>(
+        &'a self,
+        db: &'a Db,
+        user: i64,
+        on: NaiveDate,
+    ) -> PortalFuture<'a, Vec<PortalUser>> {
+        Box::pin(async move {
+            let grants = AccessGrant::query()
+                .where_(AccessGrant::USER_ID.eq(user))
+                .where_(AccessGrant::STATUS.eq(GrantStatus::Active))
+                .order_by(AccessGrant::ID)
+                .get(db)
+                .await?;
+            Ok(grants
+                .iter()
+                .filter(|grant| grant.is_active_on(on))
+                .filter_map(user_of)
+                .collect())
+        })
+    }
+
+    fn neutral_text(&self, lang: &Lang) -> String {
+        crate::texts::neutral(lang)
+    }
+
     fn close_access<'a>(
         &'a self,
         state: &'a AppState,

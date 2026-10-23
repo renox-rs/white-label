@@ -133,7 +133,7 @@ pub(crate) struct CrewForm {
 
 /// The name of `employee`, from their profile's party; `Employee 7` when the
 /// workforce or the directory does not know it.
-async fn name_of(state: &AppState, lang: &Lang, employee: EmployeeId) -> String {
+pub(crate) async fn name_of(state: &AppState, lang: &Lang, employee: EmployeeId) -> String {
     let fallback = || english("wl_attendance.crew.employee_number", &[("id", &employee.0)]);
     let Ok(Some(profile)) = workforce(state).staff(state, employee).await else {
         return fallback();

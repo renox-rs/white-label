@@ -734,6 +734,12 @@ pub async fn reject(
     if !may {
         return Err(Error::Forbidden);
     }
+    if reason.trim().is_empty() {
+        return Err(crate::service::refuse(english(
+            "wl_attendance.approval.reason_required",
+            &[],
+        )));
+    }
     let mut run = sheet.transition(REJECT).by(actor);
     if !reason.trim().is_empty() {
         run = run.reason(reason.trim().to_owned());

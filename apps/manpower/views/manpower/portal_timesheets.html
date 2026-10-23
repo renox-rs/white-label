@@ -1,0 +1,26 @@
+{#- manpower: the timesheets of the client in the portal (BL-MPW-28): the ones
+    waiting for the approver first, each linking to the timesheet page where he
+    approves or rejects (BL-MPW-27). Replace it with
+    resources/views/manpower/portal_timesheets.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['portal.timesheets.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['portal.timesheets.title']" :subtitle="tx['portal.timesheets.subtitle']"/>
+    <rx-alert rx-if="waiting" kind="warning" :message="waiting"/>
+    <rx-table :rows="sheets" as="sheet" :key="sheet.url" :caption="tx['portal.timesheets.title']" card>
+      <rx-column :label="tx['portal.timesheets.worker']">
+        <rx-stack>
+          <a href="{{ sheet.url }}">{{ sheet.worker }}</a>
+          <span class="rx-subtitle">{{ sheet.work }}</span>
+          <span>
+            <rx-badge :kind="sheet.status_kind" :text="sheet.status"/>
+            <rx-badge rx-if="sheet.waiting" kind="warning" :text="tx['portal.timesheets.waiting']"/>
+            <rx-badge rx-if="sheet.adjustment" kind="info" :text="tx['portal.timesheets.adjustment']"/>
+          </span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['portal.timesheets.month']" hide-narrow>{{ sheet.month }}</rx-column>
+      <rx-column :label="tx['portal.timesheets.hours']" align="num">{{ sheet.hours }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['portal.timesheets.empty']" :message="tx['portal.timesheets.empty_text']" icon="clock"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

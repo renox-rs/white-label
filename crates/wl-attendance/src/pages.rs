@@ -396,6 +396,52 @@ pub struct AdjustmentForm {
     #[validate(max = 500)]
     #[serde(default)]
     pub evidence: String,
+    /// The page's one entry: the day to correct, `2026-11-02` (used when
+    /// `entries` is empty).
+    #[validate(max = 10)]
+    #[serde(default)]
+    pub entry_date: String,
+    /// The page's one entry: the category (`normal`, `overtime`...).
+    #[validate(max = 20)]
+    #[serde(default)]
+    pub entry_category: String,
+    /// The page's one entry: the signed hours, `-1.5`.
+    #[validate(max = 12)]
+    #[serde(default)]
+    pub entry_hours: String,
+}
+
+/// `-1.5` hours as minutes (`-90`); none when it is not a number with at most
+/// two decimals.
+fn minutes_of_hours(text: &str) -> Option<i64> {
+    let text = text.trim();
+    let (negative, digits) = match text.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, text.strip_prefix('+').unwrap_or(text)),
+    };
+    let (whole, fraction) = digits.split_once('.').unwrap_or((digits, ""));
+    if whole.is_empty()
+        || fraction.len() > 2
+        || !whole.bytes().all(|b| b.is_ascii_digit())
+        || !fraction.bytes().all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let hundredths =
+        whole.parse::<i64>().ok()? * 100 + format!("{fraction:0<2}").parse::<i64>().ok()?;
+    let minutes = (hundredths * 60 + 50) / 100;
+    Some(if negative { -minutes } else { minutes })
+}
+
+/// The one entry the adjustment sheet of the timesheet page sends.
+fn page_entry(lang: &Lang, form: &AdjustmentForm) -> Result<Vec<crate::entry::NewEntry>> {
+    let date = renox::chrono::NaiveDate::parse_from_str(form.entry_date.trim(), "%Y-%m-%d")
+        .map_err(|_| refuse(texts::t(lang, "wl_attendance.sheet.bad_day")))?;
+    let minutes = minutes_of_hours(&form.entry_hours)
+        .ok_or_else(|| refuse(texts::t(lang, "wl_attendance.sheet.bad_hours")))?;
+    let category = crate::entry::Category::parse(&form.entry_category)
+        .unwrap_or(crate::entry::Category::Normal);
+    Ok(vec![crate::entry::NewEntry::of(date, category, minutes)])
 }
 
 /// `POST /timesheets/{id}/adjustments`: a user opens an adjustment on a
@@ -417,7 +463,9 @@ async fn open_adjustment(
                 .map_err(|_| refuse(text(&lang, "adjustment.link_required")))?,
         )
     };
-    let entries = if form.entries.trim().is_empty() {
+    let entries = if form.entries.trim().is_empty() && !form.entry_date.trim().is_empty() {
+        page_entry(&lang, &form)?
+    } else if form.entries.trim().is_empty() {
         Vec::new()
     } else {
         adjustment::parse_entries(&form.entries)?
@@ -451,6 +499,9 @@ async fn approve_timesheet(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<Response> {
+    // A client user of another company meets "not found" (`MPW.ACL.01`).
+    let sheet = crate::timesheet::Timesheet::find_or_404(&state.db, id).await?;
+    crate::timesheet_pages::not_of_another_client(&state, &user, &sheet).await?;
     approval::approve(&state, &user, id).await?;
     Ok((
         Toast::success(text(&lang, "approval.approved")),
@@ -508,10 +559,28 @@ async fn reject_timesheet(
     Path(id): Path<i64>,
     Valid(form): Valid<ReviewForm>,
 ) -> Result<Response> {
+    // A client user of another company meets "not found" (`MPW.ACL.01`).
+    let sheet = crate::timesheet::Timesheet::find_or_404(&state.db, id).await?;
+    crate::timesheet_pages::not_of_another_client(&state, &user, &sheet).await?;
     approval::reject(&state, &user, id, &form.reason).await?;
     Ok((
         Toast::success(text(&lang, "approval.rejected")),
         renox::HxRefresh,
     )
         .into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::minutes_of_hours;
+
+    #[test]
+    fn hours_are_read_as_signed_minutes() {
+        assert_eq!(minutes_of_hours("1.5"), Some(90));
+        assert_eq!(minutes_of_hours("-2"), Some(-120));
+        assert_eq!(minutes_of_hours(" +0.25 "), Some(15));
+        assert_eq!(minutes_of_hours("1.255"), None);
+        assert_eq!(minutes_of_hours("x"), None);
+        assert_eq!(minutes_of_hours(""), None);
+    }
 }

@@ -103,6 +103,8 @@ pub mod policy;
 pub mod rate_card;
 mod rate_card_contract;
 mod rate_card_pages;
+mod rate_card_screens;
+mod rate_card_texts;
 pub mod rate_cards;
 pub mod rate_pricing;
 pub mod recover;
@@ -192,6 +194,14 @@ pub use write_off_notice::SendWriteOffNotice;
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
 const VIEWS: &[(&str, &str)] = &[
+    (
+        "wl-invoicing/rate_card.html",
+        include_str!("../views/wl-invoicing/rate_card.html"),
+    ),
+    (
+        "wl-invoicing/rate_card_version.html",
+        include_str!("../views/wl-invoicing/rate_card_version.html"),
+    ),
     (
         "wl-invoicing/einvoices.html",
         include_str!("../views/wl-invoicing/einvoices.html"),
@@ -1098,6 +1108,8 @@ impl Module for WlInvoicing {
             .model::<payer_remittance::PayerAllocation>()
             .model::<payer_recoupment::PayerRecoupment>()
             .model::<payer_credit::PayerCreditMovement>()
+            .view_data::<rate_card_screens::CardPage>()
+            .view_data::<rate_card_screens::VersionPage>()
             .view_data::<subscription_pages::IndexPage>()
             .view_data::<subscription_pages::ShowPage>()
             .view_data::<payer_bill_pages::IndexPage>()

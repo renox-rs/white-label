@@ -36,7 +36,7 @@ use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::documents::{
     BlockEntry, BlockFailure, BlockMode, BlockRefusal, CheckOutcome, CoveredBlock, DocumentFuture,
-    DocumentGuard, DocumentId, FlagFailure, FlagReason, InvalidReason, OverrideMode,
+    DocumentGuard, DocumentId, DocumentLine, FlagFailure, FlagReason, InvalidReason, OverrideMode,
     PendingRenewal, PlannedError, PlannedItem, PlannedWarning, PlannedWarningLine, RecordFlag,
     Validity, block_subjects, default_subject_label, dubai_date, today,
 };
@@ -68,6 +68,59 @@ impl DocumentGuard for DocumentsGuard {
         on_date: NaiveDate,
     ) -> DocumentFuture<'a, Validity> {
         Box::pin(is_valid(db, subject, kind, on_date))
+    }
+
+    fn documents_of<'a>(
+        &'a self,
+        db: &'a Db,
+        subject: &'a Subject,
+        on_date: NaiveDate,
+        locale: &'a str,
+    ) -> DocumentFuture<'a, Vec<DocumentLine>> {
+        Box::pin(async move {
+            let kinds = DocumentKind::ordered(db).await?;
+            let mut lines = Vec::new();
+            for document in Document::query()
+                .where_eq("subject_type", subject.subject_type.as_str())
+                .where_eq("subject_id", subject.subject_id)
+                .order_by("kind_id")
+                .order_by_desc("id")
+                .get(db)
+                .await?
+            {
+                let Some(kind) = kinds.iter().find(|k| k.id == document.kind_id) else {
+                    continue;
+                };
+                let look_ahead = if kind.look_ahead_days > 0 {
+                    kind.look_ahead_days
+                } else {
+                    30
+                };
+                let validity = match document.status {
+                    DocumentStatus::Accepted => match document.expiry_date {
+                        Some(end) if end < on_date => "expired",
+                        Some(end)
+                            if end <= on_date + renox::chrono::Days::new(look_ahead as u64) =>
+                        {
+                            "expiring"
+                        }
+                        _ => "valid",
+                    },
+                    DocumentStatus::PendingReview => "pending",
+                    DocumentStatus::Rejected => "rejected",
+                    DocumentStatus::Superseded | DocumentStatus::Archived => continue,
+                };
+                lines.push(DocumentLine {
+                    id: document.id,
+                    kind: kind.name(locale).to_owned(),
+                    number: document.number.clone(),
+                    valid_to: document.expiry_date,
+                    validity: validity.to_owned(),
+                    responsible_role: kind.responsible_role.clone(),
+                });
+            }
+            Ok(lines)
+        })
     }
 
     fn kind_subject_types<'a>(

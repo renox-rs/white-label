@@ -55,6 +55,15 @@ pub fn period_bounds(period: &str) -> Option<(NaiveDate, NaiveDate)> {
     Some((from, next - Duration::days(1)))
 }
 
+/// A timesheet's period for a list: `October 2026` for a whole month, else
+/// `01 Oct 2026 - 15 Oct 2026`.
+pub fn month_text(from: NaiveDate, to: NaiveDate) -> String {
+    match period_bounds(&from.format("%Y-%m").to_string()) {
+        Some((first, last)) if first == from && last == to => from.format("%B %Y").to_string(),
+        _ => format!("{} - {}", from.format("%d %b %Y"), to.format("%d %b %Y")),
+    }
+}
+
 /// The period asked of the timesheets: the month with the cut-off on
 /// `cut_off_day` (or the last day of a shorter month).
 pub fn payroll_period(period: &str, cut_off_day: u32) -> Option<PayrollPeriod> {

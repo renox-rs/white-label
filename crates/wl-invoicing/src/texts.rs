@@ -2336,7 +2336,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wl_invoicing.rate_card.problem.document",
-        "Record the signed acceptance of the client to accept a version on its behalf.",
+        "Attach the client's signed acceptance to accept a version on its behalf.",
     ),
     (
         "wl_invoicing.rate_card.problem.not_pending",
@@ -2344,7 +2344,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wl_invoicing.rate_card.problem.no_lines",
-        "A version without lines cannot be accepted.",
+        "A version without lines cannot be accepted. Add at least one line.",
     ),
     (
         "wl_invoicing.rate_card.problem.month",
@@ -2367,6 +2367,7 @@ pub(crate) fn english(key: &str) -> &str {
     TEXTS
         .iter()
         .chain(crate::payer_texts::TEXTS)
+        .chain(crate::rate_card_texts::TEXTS)
         .find(|(k, _)| *k == key)
         .map_or(key, |(_, text)| text)
 }
@@ -2386,6 +2387,7 @@ pub(crate) fn all(lang: &Lang) -> BTreeMap<&'static str, String> {
     TEXTS
         .iter()
         .chain(crate::payer_texts::TEXTS)
+        .chain(crate::rate_card_texts::TEXTS)
         .map(|(key, _)| (key.trim_start_matches("wl_invoicing."), t(lang, key)))
         .collect()
 }
@@ -2399,6 +2401,7 @@ mod tests {
         let mut keys: Vec<&str> = TEXTS
             .iter()
             .chain(crate::payer_texts::TEXTS)
+            .chain(crate::rate_card_texts::TEXTS)
             .map(|(key, _)| *key)
             .collect();
         assert!(keys.iter().all(|key| key.starts_with("wl_invoicing.")));

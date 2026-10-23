@@ -560,7 +560,9 @@ impl Module for WlParties {
             NavLink::route("wl_parties.review_tasks", "nav.review_tasks")
                 .icon("clipboard-list")
                 .group("nav.app")
-                .order(32),
+                .order(32)
+                // Shown to everyone signed in, but staff's: not to a portal user.
+                .when(|user| !wl_kernel::portal::is_portal_only(user)),
         );
         // The possible-match tasks, for the compliance role only (#38 A10).
         app.nav(

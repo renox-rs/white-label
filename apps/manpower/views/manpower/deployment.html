@@ -1,0 +1,121 @@
+{#- manpower: one deployment (docs/UX.md section 2.2): the worker, the status,
+    the actions this person may run now, the checks that stop an activation
+    (every one, with the document and its date), the documents the worker must
+    hold, the timesheets and the activity. The site supervisor sees it
+    read-only: no action is drawn. Replace it with
+    resources/views/manpower/deployment.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['deployment.title'] ~ ': ' ~ title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="subtitle" :badge="status" :badge-kind="status_kind"
+                    :back="route('manpower.deployments')" :back-label="tx['deployments.title']"/>
+    <rx-form-errors/>
+    <rx-alert rx-for="line in alerts" kind="warning" :message="line"/>
+    <rx-row>
+      <template rx-if="actions.activate.shown">
+        <rx-action-sheet id="activate-deployment" :label="tx['action.activate']" :action="route('manpower.deployment_activate', id)"
+                         :title="tx['action.activate']" :description="tx['deployment.activate_hint']" :submit-label="tx['action.activate']" variant="primary" icon="check"/>
+      </template>
+      <template rx-if="actions.extend.shown">
+        <rx-action-sheet id="extend-deployment" :label="tx['deployment.extend']" :action="route('manpower.deployment_extend', id)"
+                         :title="tx['deployment.extend']" :description="tx['deployment.extend_hint']" :submit-label="tx['deployment.extend']" icon="calendar">
+          <rx-input name="end_date" type="date" :label="tx['form.new_end']" :value="new_end" id="extend-deployment-end" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="actions.suspend.shown">
+        <rx-action-sheet id="suspend-deployment" :label="tx['deployment.suspend']" :action="route('manpower.deployment_suspend', id)"
+                         :title="tx['deployment.suspend']" :description="tx['deployment.suspend_hint']" :submit-label="tx['deployment.suspend']" icon="clock">
+          <rx-textarea name="reason" :label="tx['deployment.suspend_reason']" id="suspend-deployment-reason" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="actions.resume.shown">
+        <rx-action-sheet id="resume-deployment" :label="tx['deployment.resume']" :action="route('manpower.deployment_resume', id)"
+                         :title="tx['deployment.resume']" :description="tx['deployment.resume_hint']" :submit-label="tx['deployment.resume']" variant="primary" icon="arrow-right"/>
+      </template>
+      <template rx-if="actions.cover.shown">
+        <rx-action-sheet id="cover-deployment" :label="tx['deployment.cover']" :action="route('manpower.deployment_cover', id)"
+                         :title="tx['deployment.cover']" :description="tx['deployment.cover_hint']" :submit-label="tx['deployment.cover']" icon="users">
+          <rx-input name="from" type="date" :label="tx['deployment.cover_from']" :value="today" id="cover-deployment-from" required/>
+          <rx-input name="to" type="date" :label="tx['deployment.cover_to']" :hint="tx['deployment.cover_to_hint']" id="cover-deployment-to"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="actions.end.shown">
+        <rx-action-sheet id="end-deployment" :label="tx['deployment.end']" :action="route('manpower.deployment_end', id)"
+                         :title="tx['deployment.end']" :description="tx['deployment.end_hint']" :submit-label="tx['deployment.end']" icon="circle-x" danger>
+          <rx-select name="reason" :label="tx['deployment.end_reason']" :options="end_reasons" :selected="end_selected"/>
+          <rx-show-when field="reason" values="client_rejected">
+            <rx-textarea name="note" :label="tx['deployment.end_note']" :hint="tx['deployment.end_note_hint']" id="end-deployment-note"/>
+            <rx-checkbox name="conduct" :label="tx['deployment.end_conduct']"/>
+          </rx-show-when>
+          <rx-show-when field="reason" values="client_non_payment">
+            <rx-input name="end_date" type="date" :label="tx['deployment.end_last_day']" :hint="tx['deployment.end_last_day_hint']" :value="today" id="end-deployment-date"/>
+            <rx-input name="waiver" :label="tx['form.waiver']" :hint="tx['form.waiver_hint']" id="end-deployment-waiver"/>
+          </rx-show-when>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="actions.cancel.shown">
+        <rx-action-sheet id="cancel-deployment" :label="tx['action.cancel']" :action="route('manpower.deployment_cancel', id)"
+                         :title="tx['action.cancel']" :description="tx['deployment.cancel_hint']" :submit-label="tx['action.cancel']" variant="plain-danger" icon="circle-x" danger>
+          <rx-textarea name="reason" :label="tx['form.cancel_reason']" id="cancel-deployment-reason" required/>
+        </rx-action-sheet>
+      </template>
+    </rx-row>
+    <rx-card rx-if="end" :title="tx['deployment.ended']">
+      <rx-stack>
+        <span>{{ end.text }}</span>
+        <span rx-if="end.note" class="rx-subtitle">{{ end.note }}</span>
+        <span rx-if="end.waiver" class="rx-subtitle">{{ end.waiver }}</span>
+        <a rx-if="end.replacement_url" href="{{ end.replacement_url }}">{{ tx['deployment.replacement_link'] }}</a>
+      </rx-stack>
+    </rx-card>
+    <rx-card rx-if="checks" :title="tx['deployment.checks']">
+      <rx-stack>
+        <rx-stack rx-for="check in checks">
+          <rx-alert kind="warning" :message="check.text"/>
+          <a rx-if="check.override_url" href="{{ check.override_url }}">{{ tx['deployment.request_override'] }}</a>
+        </rx-stack>
+      </rx-stack>
+    </rx-card>
+    <rx-card rx-if="covers" :title="tx['deployment.cover_title']">
+      <rx-stack>
+        <a rx-for="line in covers" href="{{ line.url }}">{{ line.text }}</a>
+      </rx-stack>
+    </rx-card>
+    <rx-tabs id="deployment-tabs" selected="overview" :label="tx['deployment.title']">
+      <rx-tab key="overview" :label="tx['tab.overview']">
+        <rx-card :title="tx['deployment.title']">
+          <rx-stack>
+            <rx-infolist columns="2">
+              <rx-entry rx-for="fact in facts" :label="fact.label" :value="fact.value"/>
+            </rx-infolist>
+            <a href="{{ contract_url }}">{{ tx['request.contract'] }}: {{ contract }}</a>
+          </rx-stack>
+        </rx-card>
+      </rx-tab>
+      <rx-tab key="documents" :label="tx['deployment.documents']">
+        <rx-table :rows="documents" as="document" :key="document.kind" :caption="tx['deployment.documents']" card>
+          <rx-column :label="tx['deployment.document']">{{ document.kind }}</rx-column>
+          <rx-column :label="tx['fields.status']"><rx-badge :kind="document.status_kind" :text="document.status"/></rx-column>
+          <rx-column :label="tx['deployment.validity']" hide-narrow>{{ document.validity }}</rx-column>
+          <rx-slot name="empty"><rx-empty :title="tx['deployment.documents_empty']" icon="file-text"/></rx-slot>
+        </rx-table>
+      </rx-tab>
+      <rx-tab key="timesheets" :label="tx['deployment.timesheets']">
+        <rx-table :rows="timesheets" as="sheet" :key="sheet.period ~ sheet.kind" :caption="tx['deployment.timesheets']" card>
+          <rx-column :label="tx['deployments.period']"><a rx-if="sheet.url" href="{{ sheet.url }}">{{ sheet.period }}</a><span rx-if="not sheet.url">{{ sheet.period }}</span></rx-column>
+          <rx-column :label="tx['deployment.sheet_kind']" hide-narrow>{{ sheet.kind }}</rx-column>
+          <rx-column :label="tx['fields.status']">{{ sheet.status }}</rx-column>
+          <rx-slot name="empty"><rx-empty :title="tx['deployment.timesheets_empty']" icon="clock"/></rx-slot>
+        </rx-table>
+      </rx-tab>
+      <rx-tab key="activity" :label="tx['tab.activity']">
+        <rx-table :rows="activity" as="row" :key="row.at ~ row.what" :caption="tx['tab.activity']" card>
+          <rx-column :label="tx['activity.when']">{{ row.at }}</rx-column>
+          <rx-column :label="tx['activity.what']">{{ row.what }}</rx-column>
+          <rx-column :label="tx['activity.by']" hide-narrow>{{ row.by }}</rx-column>
+          <rx-column :label="tx['activity.reason']" hide-narrow>{{ row.reason }}</rx-column>
+          <rx-slot name="empty"><rx-empty :title="tx['activity.empty']" icon="clock"/></rx-slot>
+        </rx-table>
+      </rx-tab>
+    </rx-tabs>
+  </rx-stack>
+</rx-page>

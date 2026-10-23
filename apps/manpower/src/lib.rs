@@ -3,6 +3,7 @@
 
 pub mod absence;
 mod access;
+pub mod approvals_text;
 pub mod approvers;
 mod attendance;
 pub mod bench;
@@ -28,11 +29,14 @@ pub mod notices;
 pub mod overlap;
 pub mod pages;
 pub mod permissions;
+pub mod placements;
+pub mod portal;
 pub mod release;
 pub mod renewal;
 pub mod request;
 pub mod requests;
 pub mod resumption;
+mod screens;
 pub mod seed;
 pub mod site;
 pub mod suspension;
@@ -101,9 +105,27 @@ impl Module for Manpower {
     fn register(&self, app: &mut Registry) {
         app.view_data::<pages::ContractsPage>()
             .view_data::<pages::RequestsPage>()
-            .view_data::<pages::DeploymentsPage>();
+            .view_data::<pages::DeploymentsPage>()
+            .view_data::<screens::contract_page::ContractPage>()
+            .view_data::<screens::request_page::RequestPage>()
+            .view_data::<screens::deployment_page::DeploymentPage>()
+            .view_data::<screens::absence_page::CasesPage>()
+            .view_data::<screens::absence_page::CasePage>()
+            .view_data::<screens::portal_page::RequestsPage>()
+            .view_data::<screens::portal_page::DeploymentsPage>()
+            .view_data::<screens::portal_page::TimesheetsPage>();
+        // An approval of a contract or a request links to its page.
+        wl_kernel::approvals::register_subject_link(contract::SUBJECT_TYPE, |id| {
+            screens::contract_page::url(id)
+        });
+        wl_kernel::approvals::register_subject_link(request::SUBJECT_TYPE, |id| {
+            screens::request_page::url(id)
+        });
+        wl_kernel::approvals::register_subject_link(deployment::SUBJECT_TYPE, |id| {
+            screens::deployment_page::url(id)
+        });
         app.templates(|env| {
-            for (name, source) in VIEWS {
+            for (name, source) in VIEWS.iter().chain(screens::VIEWS) {
                 // The app's own file of that name wins.
                 if env.get_template(name).is_err() {
                     renox::view::add_template(env, *name, *source)
@@ -137,6 +159,46 @@ impl Module for Manpower {
                 .order(11)
                 .permission(permissions::DEPLOYMENTS_VIEW),
         );
+        app.nav(
+            "app",
+            NavLink::route("manpower.absence", "nav.absence")
+                .icon("user")
+                .group("nav.app")
+                .order(12)
+                .permission(permissions::ABSENCE_MANAGE),
+        );
+        // The client's own users: their company's requests, workers on site
+        // and timesheets (BL-MPW-28). Only the people of the portal see them;
+        // the pages check the grant for the company.
+        for (route, label, icon, order) in [
+            (
+                "manpower.portal_requests",
+                "nav.portal_requests",
+                "users",
+                13,
+            ),
+            (
+                "manpower.portal_deployments",
+                "nav.portal_deployments",
+                "map-pin",
+                14,
+            ),
+            (
+                "manpower.portal_timesheets",
+                "nav.portal_timesheets",
+                "clock",
+                15,
+            ),
+        ] {
+            app.nav(
+                "app",
+                NavLink::route(route, label)
+                    .icon(icon)
+                    .group("nav.app")
+                    .order(order)
+                    .when(wl_kernel::portal::is_portal_only),
+            );
+        }
         app.model::<Site>()
             .model::<ClientContract>()
             .model::<ManpowerRequest>()
@@ -178,6 +240,8 @@ impl Module for Manpower {
         // BL-MPW-19: who approves a deployment's timesheets, who is told when
         // the client does not, and after how many days silence is approval.
         wl_kernel::timesheets::provide_approver_resolver(app, approvers::Approvers);
+        // BL-MPW-31: the deployments of a worker, on the employee page of HR.
+        wl_kernel::placements::provide_placements(app, placements::WorkerPlacements);
         // Deployments whose end date has passed end by themselves: daily at
         // 02:00 Asia/Dubai.
         app.schedule()
