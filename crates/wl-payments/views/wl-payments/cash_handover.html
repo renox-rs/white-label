@@ -11,6 +11,10 @@
                        :title="tx['cash.count.title']" :description="tx['cash.count.description']" :submit-label="tx['cash.count.submit']" icon="calculator">
         <rx-input name="counted" :label="tx['cash.counted']" :hint="tx['cash.amount_hint']" :id="'count-amount-' ~ handover.id" required/>
         <rx-checkbox name="absent" :label="tx['cash.absent']" :id="'count-absent-' ~ handover.id"/>
+        <template rx-if="cheque_options">
+          <rx-checkbox-list name="present" :label="tx['cash.cheques.present']" :hint="tx['cash.cheques_tick']" :options="cheque_options" :id="'count-cheques-' ~ handover.id"/>
+          <input type="hidden" name="shown" value="{{ shown_cheques }}"/>
+        </template>
         <rx-textarea name="note" :label="tx['cash.note']" :id="'count-note-' ~ handover.id"/>
       </rx-action-sheet>
       <rx-action-sheet rx-if="can_recount" :id="'recount-cash-' ~ handover.id" :label="tx['cash.recount.action']" :action="route('wl_payments.cash.recount', handover.id)"
@@ -18,6 +22,10 @@
         <rx-input name="counted" :label="tx['cash.counted']" :hint="tx['cash.amount_hint']" :id="'recount-amount-' ~ handover.id" required/>
         <rx-select name="holder_present" :label="tx['cash.holder_present']" :options="presence" :selected="''" :id="'recount-present-' ~ handover.id"/>
         <rx-checkbox name="absent" :label="tx['cash.absent']" :id="'recount-absent-' ~ handover.id"/>
+        <template rx-if="cheque_options">
+          <rx-checkbox-list name="present" :label="tx['cash.cheques.present']" :hint="tx['cash.cheques_tick']" :options="cheque_options" :id="'recount-cheques-' ~ handover.id"/>
+          <input type="hidden" name="shown" value="{{ shown_cheques }}"/>
+        </template>
         <rx-textarea name="note" :label="tx['cash.note']" :id="'recount-note-' ~ handover.id"/>
       </rx-action-sheet>
       <rx-action-sheet rx-if="can_record" :id="'recovery-cash-' ~ handover.id" :label="tx['cash.recovery.action']" :action="route('wl_payments.cash.recovery', handover.id)"
@@ -66,6 +74,15 @@
                     :title="tx['cash.acknowledge.title']" :message="tx['cash.acknowledge.message']" :confirm-label="tx['cash.acknowledge.action']" icon="check"/>
       </rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['cash.no_recoveries']" icon="hand-coins"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="cheques" as="cheque" :key="cheque.id" :caption="tx['cash.cheques.title']" card>
+      <rx-column :label="tx['cash.cheques.number']">{{ cheque.label }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="cheque.state_kind" :text="cheque.state"/></rx-column>
+      <rx-column :label="tx['cash.cheques.actions']">
+        <rx-confirm rx-if="cheque.can_return_lost" :id="'lost-' ~ cheque.id" :label="tx['cash.cheque_lost.action']" :action="route('wl_payments.cash.cheque_lost', handover.id, cheque.id)" method="POST"
+                    :title="tx['cash.cheque_lost.title']" :message="tx['cash.cheque_lost.message']" :confirm-label="tx['cash.cheque_lost.action']" icon="undo-2"/>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['cash.cheques.empty']" icon="landmark"/></rx-slot>
     </rx-table>
     <rx-table :rows="counts" as="count" :key="count.id" :caption="tx['cash.sections.counts']" card>
       <rx-column :label="tx['cash.count.kind']">{{ count.kind }}</rx-column>

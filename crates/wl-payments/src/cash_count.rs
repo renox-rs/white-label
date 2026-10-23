@@ -20,6 +20,12 @@
 //! accountant decides (§12 question 4). After the commit `CashHandoverCounted`
 //! is emitted, and for a short count `CashShortage` and the notice to the
 //! holder and the manager ([`after_count`]).
+//!
+//! Cheques collected in the field are counted with the cash
+//! ([`crate::cash_cheques`], `FIN.ACL.20`, issue #111): the counter ticks each
+//! expected cheque present or missing (`count_with_cheques`); present cheques
+//! get their custody confirmed, and a missing one makes the handover `short`
+//! even when the cash is complete.
 
 use renox::prelude::*;
 use renox::state_machine::{
@@ -28,6 +34,7 @@ use renox::state_machine::{
 use serde::{Deserialize, Serialize};
 use wl_kernel::custody::{CashHandoverCounted, CashShortage, HandoverStatus};
 
+use crate::cash_cheques::{self, ChequeTicks};
 use crate::cash_handover::{CashCount, CashHandover, CashPosting, CountKind, PostingKind};
 use crate::cash_notices;
 use crate::permissions;
@@ -52,6 +59,13 @@ pub struct CountInput {
     pub holder_absent: bool,
     /// A note.
     pub note: Option<String>,
+    /// The cheques the counter ticked present or missing.
+    #[serde(default)]
+    pub ticks: ChequeTicks,
+    /// The cheques the handover expects to be ticked now (the service reads
+    /// them; a guard cannot read the database).
+    #[serde(default)]
+    pub expected_cheques: Vec<i64>,
 }
 
 fn count_input(ctx: &TransitionCtx) -> Option<CountInput> {
@@ -89,7 +103,12 @@ pub(crate) fn count_problem(
     if recount && input.holder_present.is_none() && !input.holder_absent {
         return Some("Say whether the holder was present or notified.".to_owned());
     }
-    let is_short = input.counted < handover.expected;
+    if let Some(problem) = cash_cheques::ticks_problem(&input.expected_cheques, &input.ticks) {
+        return Some(problem);
+    }
+    // A missing cheque makes the count short, whatever the cash (it is never
+    // cash: the difference stays what the cash lacks).
+    let is_short = input.counted < handover.expected || !input.ticks.missing.is_empty();
     if short && !is_short {
         return Some("The count reaches the expected amount: it is not short.".to_owned());
     }
@@ -186,6 +205,7 @@ fn counting(
                         )
                         .await?;
                 }
+                cash_cheques::apply(&mut *tx, id, &input.ticks, recount, actor).await?;
                 if overage > 0 {
                     // Held as a liability, not income, until the accountant
                     // decides (§12 question 4).
@@ -232,8 +252,39 @@ pub async fn count(
     holder_absent: bool,
     note: Option<&str>,
 ) -> std::result::Result<CashHandover, TransitionError> {
+    count_with_cheques(
+        state,
+        user,
+        handover,
+        counted,
+        holder_absent,
+        note,
+        ChequeTicks::default(),
+    )
+    .await
+}
+
+/// [`count`] with the cheques the holder was expected to hand over ticked
+/// present or missing (`FIN.ACL.20`): `ticks` must account for each expected
+/// cheque (see [`cash_cheques::to_tick`]). A missing cheque makes the
+/// handover `short` with the cash difference unchanged.
+///
+/// # Errors
+///
+/// As [`count`]; `Guard` (422) when a cheque is not ticked or ticked that was
+/// not expected.
+pub async fn count_with_cheques(
+    state: &AppState,
+    user: &AuthUser,
+    handover: &CashHandover,
+    counted: i64,
+    holder_absent: bool,
+    note: Option<&str>,
+    ticks: ChequeTicks,
+) -> std::result::Result<CashHandover, TransitionError> {
     let handover = reload(state, handover).await?;
-    let name = if counted < handover.expected {
+    let expected_cheques = cash_cheques::to_tick(&state.db, &handover, false).await?;
+    let name = if counted < handover.expected || !ticks.missing.is_empty() {
         COUNT_SHORT
     } else {
         COUNT
@@ -243,6 +294,8 @@ pub async fn count(
         holder_present: None,
         holder_absent,
         note: note.map(str::to_owned),
+        ticks,
+        expected_cheques,
     };
     let _outcome = handover
         .transition(name)
@@ -272,8 +325,41 @@ pub async fn recount(
     holder_absent: bool,
     note: Option<&str>,
 ) -> std::result::Result<CashHandover, TransitionError> {
+    // Without a word about the cheques still missing, they stay missing.
+    let still_missing = cash_cheques::to_tick(&state.db, handover, true).await?;
+    recount_with_cheques(
+        state,
+        user,
+        handover,
+        counted,
+        holder_present,
+        holder_absent,
+        note,
+        ChequeTicks::present_of(&still_missing, &[]),
+    )
+    .await
+}
+
+/// [`recount`] with the cheques still missing ticked: the ones the recount
+/// found are `present` (their custody is confirmed), the others `missing`.
+///
+/// # Errors
+///
+/// As [`recount`]; `Guard` (422) when a missing cheque is not ticked.
+#[allow(clippy::too_many_arguments)]
+pub async fn recount_with_cheques(
+    state: &AppState,
+    user: &AuthUser,
+    handover: &CashHandover,
+    counted: i64,
+    holder_present: Option<bool>,
+    holder_absent: bool,
+    note: Option<&str>,
+    ticks: ChequeTicks,
+) -> std::result::Result<CashHandover, TransitionError> {
     let handover = reload(state, handover).await?;
-    let name = if counted < handover.expected {
+    let expected_cheques = cash_cheques::to_tick(&state.db, &handover, true).await?;
+    let name = if counted < handover.expected || !ticks.missing.is_empty() {
         RECOUNT_SHORT
     } else {
         RECOUNT
@@ -283,6 +369,8 @@ pub async fn recount(
         holder_present,
         holder_absent,
         note: note.map(str::to_owned),
+        ticks,
+        expected_cheques,
     };
     let _outcome = handover
         .transition(name)
@@ -326,7 +414,9 @@ async fn after_count(state: &AppState, event: &Transitioned<CashHandover>) -> Re
         })
         .await?;
     if handover.status == HandoverStatus::Short {
-        state.emit(shortage_event(&handover)).await?;
+        let mut shortage = shortage_event(&handover);
+        shortage.missing_cheques = cash_cheques::missing_ids(&state.db, handover.id).await?;
+        state.emit(shortage).await?;
         cash_notices::shortage(state, &handover).await?;
     }
     Ok(())

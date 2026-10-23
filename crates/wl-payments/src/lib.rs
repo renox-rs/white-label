@@ -9,6 +9,7 @@ pub mod bank_statement_line;
 mod bank_statement_machine;
 pub mod bank_statement_pages;
 pub mod bank_statement_parse;
+pub mod cash_cheques;
 pub mod cash_count;
 pub mod cash_custody;
 pub mod cash_escalation;
@@ -639,6 +640,7 @@ impl Module for WlPayments {
         app.model::<CashHandover>();
         app.model::<cash_handover::CashEntry>();
         app.model::<cash_handover::CashCount>();
+        app.model::<cash_cheques::CashCheque>();
         app.model::<cash_handover::CashPosting>();
         app.model::<CashRecovery>();
         app.model::<FollowupTask>();
@@ -811,6 +813,7 @@ impl Module for WlPayments {
         cash_notices::register_types();
         // `CashHandoverCounted` and `CashShortage` after a count.
         cash_count::register(app);
+        cash_cheques::register(app);
         // `RunHandedOver`: the cash moves between the drivers' handovers.
         cash_hand_over::register(app);
         // The write-off approval (`FIN.ACL.06`) and `CashShortageSettled`.
