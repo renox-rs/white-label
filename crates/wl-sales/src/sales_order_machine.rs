@@ -17,6 +17,9 @@
 //!     fulfilled --close--> closed
 //!     confirmed --cancel_line--> confirmed
 //!     partially_fulfilled --cancel_line_partly--> partially_fulfilled
+//!     draft --submit_hold--> credit_hold
+//!     pending_acceptance --accept_hold--> credit_hold
+//!     confirmed | partially_fulfilled --hold--> credit_hold
 //! ```
 //!
 //! `cancel_line` is the part of the spec's `cancel_line` that BL-SAL-23 needs
@@ -24,8 +27,10 @@
 //! outcome per line, the approval when fulfilment started, the refund and the
 //! credit note, and the move to `fulfilled` when nothing is open (use
 //! `cancel_remaining`) come with BL-SAL-06 and BL-SAL-09.
-//! `hold`, `release`, `amend` and `cancel_remaining` come with
-//! their issues (BL-SAL-05 to BL-SAL-11). `confirm_payment`, `payment_failed`,
+//! `submit_hold`, `accept_hold` and `hold` are the credit check's three ways
+//! into `credit_hold` (BL-SAL-10, see [`crate::credit`]): the spec's `submit`,
+//! `accept` and `hold` with the target `credit_hold`. `release`, `amend` and
+//! `cancel_remaining` come with their issues (BL-SAL-05 to BL-SAL-11). `confirm_payment`, `payment_failed`,
 //! `fulfil`, `fulfil_last`, `reverse_fulfilment`, `reverse_fulfilment_all` and
 //! `close` are system transitions (the gateway, the hand-over, the invoicing
 //! state); the rest are by users.
@@ -39,7 +44,7 @@ use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
-use wl_kernel::sales::{FulfilledLine, SALES_ORDER_SUBJECT_TYPE};
+use wl_kernel::sales::{CreditFailure, FulfilledLine, SALES_ORDER_SUBJECT_TYPE};
 
 use crate::permissions;
 use crate::sale_line::SaleLine;
@@ -84,6 +89,37 @@ pub const CANCEL_LINE: &str = "cancel_line";
 /// cancelled.
 pub const CANCEL_LINE_PARTLY: &str = "cancel_line_partly";
 
+/// `draft → credit_hold`: the credit check at `submit` failed.
+pub const SUBMIT_HOLD: &str = "submit_hold";
+/// `pending_acceptance → credit_hold`: the credit check at `accept` failed.
+pub const ACCEPT_HOLD: &str = "accept_hold";
+/// `confirmed | partially_fulfilled → credit_hold`: the re-check at dispatch
+/// failed, or a bounced cheque (`SAL.RUL.05`).
+pub const HOLD: &str = "hold";
+
+/// What a hold takes: the failure and the figures the order keeps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HoldInput {
+    /// Why the check failed.
+    pub reason: CreditFailure,
+    /// What the customer owes with this order counted, in fils.
+    pub open_balance: i64,
+    /// The overdue balance beyond the grace days, in fils.
+    pub overdue: i64,
+    /// The limit checked against, in fils.
+    pub limit: Option<i64>,
+}
+
+/// What `accept` and `accept_hold` take: the result of the credit check the
+/// service ran.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct AcceptInput {
+    /// The credit check was run and passed (`accept`).
+    pub checked: bool,
+    /// The hold the check calls for (`accept_hold`).
+    pub hold: Option<HoldInput>,
+}
+
 /// What the `submit` family takes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubmitInput {
@@ -95,6 +131,13 @@ pub struct SubmitInput {
     pub vat: i64,
     /// Net plus VAT, in fils.
     pub gross: i64,
+    /// Whether `accept` must run the credit check of the service (the order
+    /// is on account and its customer has an account).
+    #[serde(default)]
+    pub credit_gate: bool,
+    /// The hold the credit check calls for (`submit_hold`).
+    #[serde(default)]
+    pub hold: Option<HoldInput>,
 }
 
 /// What `confirm_payment` takes.
@@ -285,6 +328,9 @@ impl StateMachine for SalesOrder {
             .transition(close())
             .transition(cancel_line(CANCEL_LINE, Confirmed))
             .transition(cancel_line(CANCEL_LINE_PARTLY, PartiallyFulfilled))
+            .transition(submit(SUBMIT_HOLD, "Submit", CreditHold))
+            .transition(accept_hold())
+            .transition(hold())
     }
 }
 
@@ -292,6 +338,7 @@ impl StateMachine for SalesOrder {
 /// the totals stored.
 fn submit(name: &str, label: &str, to: SalesOrderStatus) -> Transition<SalesOrder> {
     let confirms = to == SalesOrderStatus::Confirmed;
+    let holds = to == SalesOrderStatus::CreditHold;
     Transition::new(name)
         .label(label)
         .tone("primary")
@@ -306,6 +353,13 @@ fn submit(name: &str, label: &str, to: SalesOrderStatus) -> Transition<SalesOrde
                     "wl_sales.orders.problem.no_lines",
                 )
             })
+        })
+        .guard("credit_result", move |_o: &SalesOrder, ctx| {
+            // Only `submit_hold` carries a hold, and it must.
+            let held = ctx
+                .input_as::<SubmitInput>()
+                .is_ok_and(|i| i.hold.is_some());
+            Box::pin(async move { check(held == holds, "wl_sales.orders.problem.input") })
         })
         .effect(move |order: &SalesOrder, ctx, tx| {
             let id = order.id;
@@ -324,10 +378,102 @@ fn submit(name: &str, label: &str, to: SalesOrderStatus) -> Transition<SalesOrde
                             ("vat_total", &input.vat),
                             ("gross_total", &input.gross),
                             ("confirmed_at", &confirmed),
+                            ("credit_gate", &input.credit_gate),
                         ],
                     )
                     .await?;
+                if let Some(hold) = input.hold {
+                    write_hold(tx, id, &hold, SalesOrderStatus::Confirmed).await?;
+                }
                 Ok(())
+            })
+        })
+}
+
+/// Stores the hold on order `id`: the state it returns to, why, and the
+/// figures.
+async fn write_hold(
+    tx: &mut renox::db::Transaction,
+    id: i64,
+    hold: &HoldInput,
+    before: SalesOrderStatus,
+) -> Result {
+    let before = Some(before.as_str().to_owned());
+    let reason = Some(hold.reason.as_str().to_owned());
+    let (balance, overdue, limit) = (Some(hold.open_balance), Some(hold.overdue), hold.limit);
+    let held_at = Some(now());
+    SalesOrder::query()
+        .where_(SalesOrder::ID.eq(id))
+        .update(
+            &mut *tx,
+            &[
+                ("state_before_hold", &before),
+                ("hold_reason", &reason),
+                ("hold_open_balance", &balance),
+                ("hold_overdue", &overdue),
+                ("hold_limit", &limit),
+                ("held_at", &held_at),
+            ],
+        )
+        .await?;
+    Ok(())
+}
+
+/// `accept_hold`: the credit check at `accept` failed; the order is held
+/// without ever having been confirmed.
+fn accept_hold() -> Transition<SalesOrder> {
+    Transition::new(ACCEPT_HOLD)
+        .label("Accept")
+        .tone("warning")
+        .permission(permissions::SALES_ORDERS_ACCEPT)
+        .from([SalesOrderStatus::PendingAcceptance])
+        .to(SalesOrderStatus::CreditHold)
+        .guard("credit_result", |_o: &SalesOrder, ctx| {
+            let held = ctx
+                .input_as::<AcceptInput>()
+                .is_ok_and(|i| i.hold.is_some());
+            Box::pin(async move { check(held, "wl_sales.orders.problem.input") })
+        })
+        .effect(|order: &SalesOrder, ctx, tx| {
+            let id = order.id;
+            let hold = ctx.input_as::<AcceptInput>().ok().and_then(|i| i.hold);
+            Box::pin(async move {
+                let Some(hold) = hold else {
+                    return Ok(());
+                };
+                write_hold(tx, id, &hold, SalesOrderStatus::Confirmed).await
+            })
+        })
+}
+
+/// `hold`: a confirmed or partly fulfilled order on account goes on credit
+/// hold. Its reservations stay.
+fn hold() -> Transition<SalesOrder> {
+    Transition::new(HOLD)
+        .label("Hold")
+        .tone("warning")
+        .system()
+        .from([
+            SalesOrderStatus::Confirmed,
+            SalesOrderStatus::PartiallyFulfilled,
+        ])
+        .to(SalesOrderStatus::CreditHold)
+        .guard("on_account", |o: &SalesOrder, _ctx| {
+            let on_account = o.is_on_account();
+            Box::pin(async move { check(on_account, "wl_sales.orders.problem.not_on_account") })
+        })
+        .guard("failure_given", |_o: &SalesOrder, ctx| {
+            let given = ctx.input_as::<HoldInput>().is_ok();
+            Box::pin(async move { check(given, "wl_sales.orders.problem.input") })
+        })
+        .effect(|order: &SalesOrder, ctx, tx| {
+            let (id, before) = (order.id, order.status);
+            let hold = ctx.input_as::<HoldInput>().ok();
+            Box::pin(async move {
+                let Some(hold) = hold else {
+                    return Ok(());
+                };
+                write_hold(tx, id, &hold, before).await
             })
         })
 }
@@ -396,6 +542,12 @@ fn accept() -> Transition<SalesOrder> {
         .permission(permissions::SALES_ORDERS_ACCEPT)
         .from([SalesOrderStatus::PendingAcceptance])
         .to(SalesOrderStatus::Confirmed)
+        .guard("credit_checked", |o: &SalesOrder, ctx| {
+            // An order whose customer has an account is accepted by the
+            // service, which runs the credit check first.
+            let ok = !o.credit_gate || ctx.input_as::<AcceptInput>().is_ok_and(|i| i.checked);
+            Box::pin(async move { check(ok, "wl_sales.orders.problem.credit_not_checked") })
+        })
         .effect(|order: &SalesOrder, _ctx, tx| {
             let id = order.id;
             Box::pin(async move {
@@ -688,6 +840,19 @@ mod tests {
                 vec!["partially_fulfilled"],
                 "partially_fulfilled",
                 false,
+            ),
+            (SUBMIT_HOLD, vec!["draft"], "credit_hold", false),
+            (
+                ACCEPT_HOLD,
+                vec!["pending_acceptance"],
+                "credit_hold",
+                false,
+            ),
+            (
+                HOLD,
+                vec!["confirmed", "partially_fulfilled"],
+                "credit_hold",
+                true,
             ),
         ];
         assert_eq!(machine.transitions().len(), table.len());

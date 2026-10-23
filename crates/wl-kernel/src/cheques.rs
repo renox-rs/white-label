@@ -507,6 +507,20 @@ pub trait Cheques: Send + Sync + 'static {
     ) -> ChequeFuture<'a, Vec<OpenCheque>> {
         Box::pin(async { Ok(Vec::new()) })
     }
+
+    /// What `party` has in received cheques not cleared yet (`received`,
+    /// `due_for_deposit` or `deposited`) in `currency`, as the open amounts
+    /// added up, in fils: the post-dated cheques the credit check of
+    /// wl-sales counts in the exposure (`SAL.CRD.01`). Read only. The default
+    /// is 0.
+    fn uncleared_amount<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _currency: &'a str,
+    ) -> ChequeFuture<'a, i64> {
+        Box::pin(async { Ok(0) })
+    }
 }
 
 /// The 422 of a write while payments is off.

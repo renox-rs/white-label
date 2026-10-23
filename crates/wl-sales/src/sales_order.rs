@@ -20,8 +20,12 @@
 //!   `fulfil_last` (→ `fulfilled`), `reverse_fulfilment` (→
 //!   `partially_fulfilled`) and `reverse_fulfilment_all` (→ `confirmed`).
 //!   The service picks the one that fits.
-//! - The credit check (`SAL.RUL.01`, BL-SAL-10) is not built: an order that
-//!   passes `submit` or `accept` is `confirmed`.
+//! - The credit check (`SAL.RUL.01`, BL-SAL-10) runs at `submit` and `accept`
+//!   for an order on account whose customer has a
+//!   [`CustomerAccount`](crate::customer_account::CustomerAccount): a failure
+//!   is `submit_hold` / `accept_hold` (→ `credit_hold`), and `hold` puts a
+//!   confirmed order there at dispatch. The state before the hold, the
+//!   reason and the figures are kept on the order ([`crate::credit`]).
 
 use renox::db::DateTime;
 use renox::prelude::*;
@@ -121,6 +125,29 @@ pub struct SalesOrder {
     pub confirmed_at: Option<DateTime>,
     /// When its last open quantity was fulfilled.
     pub fulfilled_at: Option<DateTime>,
+    /// Whether `accept` needs the credit check of the service: the order is
+    /// on account and its customer has an account (set at `submit`).
+    pub credit_gate: bool,
+    /// The state the order was in before `credit_hold` (`confirmed` when it
+    /// was held at `submit` or `accept`); set by the hold.
+    pub state_before_hold: Option<String>,
+    /// Why it is on `credit_hold`: `limit`, `overdue` or `account_on_hold`.
+    pub hold_reason: Option<String>,
+    /// What the customer owes with this order counted, in fils, at the hold.
+    pub hold_open_balance: Option<i64>,
+    /// The overdue balance beyond the grace days at the hold, in fils.
+    pub hold_overdue: Option<i64>,
+    /// The limit checked against at the hold, in fils.
+    pub hold_limit: Option<i64>,
+    /// When it was put on hold.
+    pub held_at: Option<DateTime>,
+    /// When the last hold was released (BL-SAL-11).
+    pub released_at: Option<DateTime>,
+    /// What the customer owed without this order when the hold was released,
+    /// in fils; the next dispatch passes while it owes no more.
+    pub release_exposure: Option<i64>,
+    /// The overdue balance at that release, in fils.
+    pub release_overdue: Option<i64>,
     /// Where it is; changed only by the machine.
     pub status: SalesOrderStatus,
     /// When the row was created.
@@ -148,6 +175,11 @@ impl SalesOrder {
     /// Whether the order's lines can still change.
     pub fn is_draft(&self) -> bool {
         self.status == SalesOrderStatus::Draft
+    }
+
+    /// Whether the order is paid on account (the credit control applies).
+    pub fn is_on_account(&self) -> bool {
+        self.payment_mode == PAYMENT_ON_ACCOUNT
     }
 
     /// Whether the order was handed over, in whole or in part, and not yet

@@ -20,6 +20,9 @@ pub mod costs;
 pub mod counter_sale;
 pub mod counter_sale_machine;
 pub mod counter_sales;
+pub mod credit;
+mod credit_texts;
+pub mod customer_account;
 pub mod daily;
 mod events;
 pub mod expiry;
@@ -78,6 +81,7 @@ pub use campaign::{
 pub use config::SalesConfig;
 pub use cost_entry::{CostEntry, CostRefused, CostStatus};
 pub use counter_sale::{CounterSale, CounterSalePayment, CounterSaleStatus};
+pub use customer_account::{AccountHoldSource, CreditGroup, CustomerAccount};
 pub use lead::{Captured, Lead, LeadNote, LeadRefused, LeadStatus, NewLead};
 pub use lead_source::{LeadSource, LeadSourceRefused};
 pub use loyalty_account::{AccountStatus, Enrolment, LoyaltyAccount};
@@ -235,6 +239,14 @@ pub mod permissions {
     /// Turn the loyalty programme on, review accounts and approve a large
     /// adjustment.
     pub const LOYALTY_MANAGE: &str = "loyalty.manage";
+    /// See the credit hold reason, the customer accounts and their limits
+    /// (`credit.view`).
+    pub const CREDIT_VIEW: &str = "credit.view";
+    /// Release an order held for credit and clear an account hold, never the
+    /// order's creator nor the requester (`SAL.ACL.03`).
+    pub const CREDIT_RELEASE: &str = "credit.release";
+    /// Set the credit limit and terms of a customer account.
+    pub const CREDIT_LIMITS_APPROVE: &str = "credit.limits.approve";
     /// Define customer segments and preview their size.
     pub const SEGMENTS_MANAGE: &str = "segments.manage";
     /// Export the members of a segment: a sensitive export, audited
@@ -449,6 +461,62 @@ impl WlSales {
         self
     }
 
+    /// Whether orders on account are credit-checked (`SAL.CRD.01`, default
+    /// on; a customer without an account is never checked).
+    pub fn credit_check(mut self, on: bool) -> Self {
+        self.config.credit_check = on;
+        self
+    }
+
+    /// The days past terms before an overdue invoice fails the credit check
+    /// (§7, default 30).
+    pub fn credit_grace_days(mut self, days: i64) -> Self {
+        assert!(days >= 0, "the grace days cannot be negative");
+        self.config.credit_grace_days = days;
+        self
+    }
+
+    /// Whether an invoice overdue beyond the grace days holds the order
+    /// (§7, default on).
+    pub fn hold_on_overdue(mut self, on: bool) -> Self {
+        self.config.hold_on_overdue = on;
+        self
+    }
+
+    /// Whether an exposure above the limit holds the order (§7, default on).
+    pub fn hold_on_limit(mut self, on: bool) -> Self {
+        self.config.hold_on_limit = on;
+        self
+    }
+
+    /// Whether each dispatch of an order on account is credit-checked again
+    /// (§7, default on).
+    pub fn credit_recheck_at_dispatch(mut self, on: bool) -> Self {
+        self.config.credit_recheck_at_dispatch = on;
+        self
+    }
+
+    /// Whether a bounced cheque holds the whole credit group (`SAL.RUL.05`,
+    /// §7, default on).
+    pub fn bounced_cheque_hold_group(mut self, on: bool) -> Self {
+        self.config.bounced_cheque_hold_group = on;
+        self
+    }
+
+    /// Whether the same customer PO number, with its call-off number, may be
+    /// used by one order of a customer only (§7, default off; 07: on).
+    pub fn unique_customer_po(mut self, on: bool) -> Self {
+        self.config.unique_customer_po = on;
+        self
+    }
+
+    /// The role told of a credit hold, with the customer's sales rep
+    /// (default `accountant`).
+    pub fn accountant_role(mut self, role: &str) -> Self {
+        self.config.accountant_role = role.to_owned();
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &SalesConfig {
         &self.config
@@ -546,6 +614,9 @@ impl Module for WlSales {
         app.model::<SaleLine>();
         app.model::<CounterSale>();
         app.model::<CounterSalePayment>();
+        app.model::<CreditGroup>();
+        app.model::<CustomerAccount>();
+        app.model::<AccountHoldSource>();
         app.model::<SalesOrder>();
         app.model::<FulfilmentRecord>();
         app.model::<SalesReturn>();

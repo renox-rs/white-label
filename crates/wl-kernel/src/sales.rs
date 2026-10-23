@@ -1327,6 +1327,134 @@ pub fn order_fulfilment(state: &AppState) -> Arc<dyn OrderFulfilment> {
     }
 }
 
+/// Why the credit check failed (`SAL.ACL.03`, `SAL.RUL.05`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CreditFailure {
+    /// The exposure is above the customer's or the credit group's limit.
+    Limit,
+    /// An invoice is overdue beyond the grace days.
+    Overdue,
+    /// The customer account is on hold (a bounced cheque).
+    AccountOnHold,
+}
+
+impl CreditFailure {
+    /// The stored name: `limit`, `overdue` or `account_on_hold`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CreditFailure::Limit => "limit",
+            CreditFailure::Overdue => "overdue",
+            CreditFailure::AccountOnHold => "account_on_hold",
+        }
+    }
+
+    /// The failure stored as `name`, if it is one.
+    pub fn parse(name: &str) -> Option<Self> {
+        [
+            CreditFailure::Limit,
+            CreditFailure::Overdue,
+            CreditFailure::AccountOnHold,
+        ]
+        .into_iter()
+        .find(|failure| failure.as_str() == name)
+    }
+}
+
+/// The answer of a credit check (wl-sales §6 `CreditChecker`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CreditVerdict {
+    /// The goods may go.
+    Passed,
+    /// The check does not apply (a prepaid order, no customer account, set-off
+    /// or the setting off).
+    NotApplicable,
+    /// The check failed. For `credit_recheck` the order is on `credit_hold`
+    /// already.
+    Failed(CreditFailure),
+}
+
+impl CreditVerdict {
+    /// Whether the goods may go.
+    pub fn allows(self) -> bool {
+        !matches!(self, CreditVerdict::Failed(_))
+    }
+}
+
+/// An order of a customer was put on credit hold: the re-check at dispatch
+/// failed, or a bounced cheque (`SAL.RUL.05`) held it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SalesOrderCreditHeld {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The customer.
+    pub party: PartyId,
+    /// What the customer owes: open invoices, uncleared cheques and other
+    /// confirmed orders, plus this order's undelivered value, in fils.
+    pub open_balance: i64,
+    /// The overdue balance beyond the grace days, in fils.
+    pub overdue: i64,
+    /// The limit checked against, in fils; `None` when the customer has none.
+    pub limit: Option<i64>,
+    /// The failure.
+    pub reason: CreditFailure,
+}
+
+impl Event for SalesOrderCreditHeld {}
+
+/// What the dispatch of an order on account asks of the credit control
+/// (wl-sales §6 `CreditChecker`). `wl-sales` provides it.
+pub trait CreditChecker: Send + Sync + 'static {
+    /// Re-checks the credit of the order `order` before its goods leave
+    /// (`credit_recheck`): counts the exposure without the order plus its
+    /// undelivered value against the limits, the overdue balance and the
+    /// account's on-hold flag, and on a failure puts the order on
+    /// `credit_hold` itself, so every caller behaves the same. Prepaid and
+    /// cash-on-delivery orders, an order settled by set-off and customers
+    /// without an account are not checked. The default passes.
+    fn credit_recheck<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _order: SalesOrderId,
+    ) -> SalesFuture<'a, CreditVerdict> {
+        Box::pin(async { Ok(CreditVerdict::NotApplicable) })
+    }
+
+    /// Checks `amount` fils on top of the exposure of `party` against its
+    /// limits, overdue balance and on-hold flag, for a vertical that sells on
+    /// account without a sales order (a fleet job card). Changes nothing.
+    /// The default passes.
+    fn check_amount<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _party: PartyId,
+        _amount: i64,
+    ) -> SalesFuture<'a, CreditVerdict> {
+        Box::pin(async { Ok(CreditVerdict::NotApplicable) })
+    }
+}
+
+/// The credit control when the `sales` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoCreditChecker;
+
+impl CreditChecker for NoCreditChecker {}
+
+/// Makes `checker` the app's [`CreditChecker`]; `wl-sales` calls it in
+/// `register`.
+pub fn provide_credit_checker(app: &mut Registry, checker: impl CreditChecker) {
+    let checker: Arc<dyn CreditChecker> = Arc::new(checker);
+    app.provide(checker);
+}
+
+/// The app's [`CreditChecker`], or [`NoCreditChecker`] when none is provided.
+pub fn credit_checker(state: &AppState) -> Arc<dyn CreditChecker> {
+    match state.provided::<Arc<dyn CreditChecker>>() {
+        Some(checker) => Arc::clone(&checker),
+        None => Arc::new(NoCreditChecker),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1461,5 +1589,18 @@ mod tests {
     fn the_default_order_fulfilment_has_no_order() {
         fn _object_safe(_: &dyn OrderFulfilment) {}
         _object_safe(&NoOrderFulfilment);
+    }
+
+    #[test]
+    fn the_default_credit_checker_is_object_safe_and_a_failure_is_not_allowed() {
+        fn _object_safe(_: &dyn CreditChecker) {}
+        _object_safe(&NoCreditChecker);
+        assert!(CreditVerdict::Passed.allows() && CreditVerdict::NotApplicable.allows());
+        assert!(!CreditVerdict::Failed(CreditFailure::Limit).allows());
+        assert_eq!(
+            CreditFailure::parse("account_on_hold"),
+            Some(CreditFailure::AccountOnHold)
+        );
+        assert_eq!(CreditFailure::parse("x"), None);
     }
 }

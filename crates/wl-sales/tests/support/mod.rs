@@ -3,6 +3,7 @@
 
 #![allow(dead_code)]
 
+pub mod credit;
 pub mod floor;
 pub mod retention;
 pub mod shop;

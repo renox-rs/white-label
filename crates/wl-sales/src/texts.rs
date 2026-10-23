@@ -1745,6 +1745,7 @@ pub(crate) fn t_with(lang: &Lang, key: &str, params: &[(&str, &dyn Display)]) ->
 pub(crate) fn all(lang: &Lang) -> BTreeMap<&'static str, String> {
     TEXTS
         .iter()
+        .chain(crate::credit_texts::TEXTS)
         .map(|(key, _)| (key.trim_start_matches("wl_sales."), t(lang, key)))
         .collect()
 }
@@ -1754,6 +1755,7 @@ pub(crate) fn all(lang: &Lang) -> BTreeMap<&'static str, String> {
 pub(crate) fn english(key: &str, params: &[(&str, &dyn Display)]) -> String {
     let text = TEXTS
         .iter()
+        .chain(crate::credit_texts::TEXTS)
         .find(|(k, _)| *k == key)
         .map_or(key, |(_, text)| *text);
     let params: Vec<(&str, String)> = params.iter().map(|(k, v)| (*k, v.to_string())).collect();
@@ -1766,7 +1768,11 @@ mod tests {
 
     #[test]
     fn keys_are_unique_and_prefixed() {
-        let mut keys: Vec<&str> = TEXTS.iter().map(|(key, _)| *key).collect();
+        let mut keys: Vec<&str> = TEXTS
+            .iter()
+            .chain(crate::credit_texts::TEXTS)
+            .map(|(key, _)| *key)
+            .collect();
         assert!(keys.iter().all(|key| key.starts_with("wl_sales.")));
         let count = keys.len();
         keys.sort_unstable();

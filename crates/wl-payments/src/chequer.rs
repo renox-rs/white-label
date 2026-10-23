@@ -484,6 +484,15 @@ impl Cheques for ChequeBook {
         Box::pin(async move { crate::cheque_return::return_undeposited(state, &request, by).await })
     }
 
+    fn uncleared_amount<'a>(
+        &'a self,
+        db: &'a Db,
+        party: PartyId,
+        currency: &'a str,
+    ) -> ChequeFuture<'a, i64> {
+        Box::pin(Cheque::uncleared_amount(db, party, currency))
+    }
+
     fn not_cleared<'a>(
         &'a self,
         state: &'a AppState,

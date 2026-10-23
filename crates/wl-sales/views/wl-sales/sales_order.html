@@ -37,6 +37,8 @@
         <rx-input name="quantity" :label="tx['counter.quantity']" id="cancel-order-line-quantity" required/>
         <rx-textarea name="reason" :label="tx['orders.reason']" id="cancel-order-line-reason" required/>
       </rx-action-sheet>
+      <rx-confirm rx-if="can_accept" :id="'accept-order-' ~ order.id" :label="tx['orders.accept']" :action="route('wl_sales.sales_order_accept', order.id)" method="POST"
+                  :title="tx['orders.accept']" :message="tx['orders.accept_message']" :confirm-label="tx['orders.accept']" :cancel-label="tx['cancel']" icon="check"/>
       <template rx-if="actions">
         <rx-transition-actions :actions="actions" action="/sales-orders/{{ order.id }}/transitions"/>
       </template>

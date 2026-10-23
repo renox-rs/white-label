@@ -9,9 +9,11 @@
 //! | `POST /sales-orders/{id}/lines` | `wl_sales.sales_order_line` | `sales_orders.create` |
 //! | `POST /sales-orders/{id}/submit` | `wl_sales.sales_order_submit` | `sales_orders.create` |
 //! | `POST /sales-orders/{id}/cancel-line` | `wl_sales.sales_order_cancel_line` | `sales_orders.cancel` |
+//! | `POST /sales-orders/{id}/accept` | `wl_sales.sales_order_accept` | `sales_orders.accept` |
 //!
-//! `accept`, `reject` and `cancel` run through the kernel's generic
-//! transition route, with the reason the form gives. The system transitions
+//! `reject` and `cancel` run through the kernel's generic transition route,
+//! with the reason the form gives; `accept` has its own route because the
+//! credit check of an order on account runs first. The system transitions
 //! (`fulfil`, `confirm_payment`...) are not reachable from a page.
 
 use std::collections::BTreeMap;
@@ -29,7 +31,8 @@ use crate::pages::counter_sales::parse_milli;
 use crate::sale_line::{NewLine, SaleLine, totals};
 use crate::sales_order::{SalesOrder, SalesOrderStatus};
 use crate::sales_order_machine::{
-    CANCEL_LINE, CANCEL_LINE_PARTLY, SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_ONLINE,
+    ACCEPT, ACCEPT_HOLD, CANCEL_LINE, CANCEL_LINE_PARTLY, SUBMIT, SUBMIT_FOR_ACCEPTANCE,
+    SUBMIT_HOLD, SUBMIT_ONLINE,
 };
 use crate::sales_orders::{self, NewSalesOrder};
 use crate::{permissions, texts};
@@ -65,6 +68,12 @@ pub fn routes() -> Routes {
                 .post("/sales-orders/{id}/submit", submit)
                 .name("wl_sales.sales_order_submit")
                 .require_permission(permissions::SALES_ORDERS_CREATE),
+        )
+        .merge(
+            Routes::new()
+                .post("/sales-orders/{id}/accept", accept)
+                .name("wl_sales.sales_order_accept")
+                .require_permission(permissions::SALES_ORDERS_ACCEPT),
         )
         .merge(
             Routes::new()
@@ -191,6 +200,7 @@ pub(crate) struct ShowPage {
     actions: Vec<Available>,
     member: Option<String>,
     can_edit: bool,
+    can_accept: bool,
     can_attach: bool,
     can_cancel_line: bool,
     redeem: crate::pages::redeem::RedeemView,
@@ -238,6 +248,9 @@ async fn show(
                 SUBMIT,
                 SUBMIT_ONLINE,
                 SUBMIT_FOR_ACCEPTANCE,
+                SUBMIT_HOLD,
+                ACCEPT,
+                ACCEPT_HOLD,
                 CANCEL_LINE,
                 CANCEL_LINE_PARTLY,
             ]
@@ -280,6 +293,8 @@ async fn show(
             SalesOrderStatus::Confirmed | SalesOrderStatus::PartiallyFulfilled
         ) && user.has_permission(permissions::SALES_ORDERS_CANCEL),
         can_edit: order.is_draft() && user.has_permission(permissions::SALES_ORDERS_CREATE),
+        can_accept: order.status == SalesOrderStatus::PendingAcceptance
+            && user.has_permission(permissions::SALES_ORDERS_ACCEPT),
         order,
     }))
 }
@@ -376,6 +391,27 @@ async fn submit(
     sales_orders::submit(&state, &user, order.id).await?;
     Ok((
         Toast::success(text(&lang, "orders.submitted")),
+        Redirect::route("wl_sales.sales_order", &[&order.id])?,
+    )
+        .into_response())
+}
+
+/// `POST /sales-orders/{id}/accept`: the seller accepts the order; an order
+/// on account whose customer fails the credit check goes on credit hold.
+async fn accept(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(order): Found<SalesOrder>,
+) -> Result<Response> {
+    let accepted = sales_orders::accept(&state, &user, order.id).await?;
+    let key = if accepted.status == SalesOrderStatus::CreditHold {
+        "orders.accepted_held"
+    } else {
+        "orders.accepted"
+    };
+    Ok((
+        Toast::success(text(&lang, key)),
         Redirect::route("wl_sales.sales_order", &[&order.id])?,
     )
         .into_response())

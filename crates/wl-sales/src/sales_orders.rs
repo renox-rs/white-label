@@ -27,23 +27,26 @@ use renox::serde_json::Value;
 use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::invoicing::{DEFAULT_CURRENCY, InvoiceDraft, invoicer};
 use wl_kernel::sales::{
-    FulfilOrder, FulfilledLine, FulfilmentOutcome, OrderFulfilment, ReverseFulfilment,
-    SALES_ORDER_SUBJECT_TYPE, SalesFuture, SalesOrderCancelled, SalesOrderClosed,
-    SalesOrderConfirmed, SalesOrderFulfilled, SalesOrderFulfilmentReversed,
-    SalesOrderLineCancelled, SalesOrderRejected,
+    CreditFailure, FulfilOrder, FulfilledLine, FulfilmentOutcome, OrderFulfilment,
+    ReverseFulfilment, SALES_ORDER_SUBJECT_TYPE, SalesFuture, SalesOrderCancelled,
+    SalesOrderClosed, SalesOrderConfirmed, SalesOrderCreditHeld, SalesOrderFulfilled,
+    SalesOrderFulfilmentReversed, SalesOrderLineCancelled, SalesOrderRejected,
 };
 use wl_kernel::{PartyId, Subject};
 
 use crate::config::config_of;
+use crate::credit;
+use crate::customer_account::CustomerAccount;
 use crate::sale_line::{KIND_ITEM, NewLine, SaleLine, totals};
 use crate::sales_order::{
     FulfilmentRecord, ORDER_SERIES, PAYMENT_ONLINE, SalesOrder, SalesOrderStatus,
 };
 use crate::sales_order_machine::{
-    ACCEPT, CANCEL, CANCEL_LINE, CANCEL_LINE_PARTLY, CLOSE, CONFIRM_PAYMENT,
-    CONFIRM_PAYMENT_FOR_ACCEPTANCE, CancelLineInput, CloseInput, FULFIL, FULFIL_LAST, FulfilInput,
-    PAYMENT_FAILED, PayInput, REJECT, REVERSE_FULFILMENT, REVERSE_FULFILMENT_ALL, ReverseInput,
-    SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_ONLINE, SubmitInput,
+    ACCEPT, ACCEPT_HOLD, AcceptInput, CANCEL, CANCEL_LINE, CANCEL_LINE_PARTLY, CLOSE,
+    CONFIRM_PAYMENT, CONFIRM_PAYMENT_FOR_ACCEPTANCE, CancelLineInput, CloseInput, FULFIL,
+    FULFIL_LAST, FulfilInput, HOLD, PAYMENT_FAILED, PayInput, REJECT, REVERSE_FULFILMENT,
+    REVERSE_FULFILMENT_ALL, ReverseInput, SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_HOLD,
+    SUBMIT_ONLINE, SubmitInput,
 };
 use crate::texts::english;
 
@@ -159,20 +162,35 @@ pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<SalesOrd
     let order = SalesOrder::find_or_404(&state.db, id).await?;
     let lines = SaleLine::of(&state.db, &order.subject()).await?;
     let t = totals(&lines);
-    let input = SubmitInput {
+    let config = config_of(state);
+    let credit_gate = config.credit_check
+        && order.is_on_account()
+        && CustomerAccount::of_party(&state.db, order.party_id)
+            .await?
+            .is_some();
+    let mut input = SubmitInput {
         line_count: lines.len() as i64,
         net: t.net,
         vat: t.vat,
         gross: t.gross,
+        credit_gate,
+        hold: None,
     };
-    let config = config_of(state);
-    let name = if order.payment_mode == PAYMENT_ONLINE {
+    let mut name = if order.payment_mode == PAYMENT_ONLINE {
         SUBMIT_ONLINE
     } else if config.order_acceptance_channels.contains(&order.channel) {
         SUBMIT_FOR_ACCEPTANCE
     } else {
         SUBMIT
     };
+    // An order that would be confirmed now is credit-checked first; one that
+    // waits for acceptance is checked when it is accepted.
+    if name == SUBMIT
+        && let Some(hold) = credit::hold_for_placing(state, &order).await?
+    {
+        name = SUBMIT_HOLD;
+        input.hold = Some(hold);
+    }
     let _ = order
         .transition(name)
         .by(by)
@@ -182,6 +200,38 @@ pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<SalesOrd
         .map_err(|e| e.into_error())?;
     // The points held for the order stay held until it resolves.
     crate::redeem::order_placed(state, &Subject::new(SALES_ORDER_SUBJECT_TYPE, id)).await?;
+    SalesOrder::find_or_404(&state.db, id).await
+}
+
+/// Accepts the order `id` waiting in `pending_acceptance` as `by`:
+/// `confirmed`, or `credit_hold` when the credit check of an order on account
+/// fails (the credit check of `accept`, §4.2).
+pub async fn accept(state: &AppState, by: &AuthUser, id: i64) -> Result<SalesOrder> {
+    let order = SalesOrder::find_or_404(&state.db, id).await?;
+    let hold = credit::hold_for_placing(state, &order).await?;
+    let (name, input) = match hold {
+        Some(hold) => (
+            ACCEPT_HOLD,
+            AcceptInput {
+                checked: false,
+                hold: Some(hold),
+            },
+        ),
+        None => (
+            ACCEPT,
+            AcceptInput {
+                checked: true,
+                hold: None,
+            },
+        ),
+    };
+    let _ = order
+        .transition(name)
+        .by(by)
+        .input(&input)
+        .run(state)
+        .await
+        .map_err(|e| e.into_error())?;
     SalesOrder::find_or_404(&state.db, id).await
 }
 
@@ -585,6 +635,23 @@ async fn announce(state: &AppState, event: &Transitioned<SalesOrder>) -> Result 
                 })
                 .await
         }
+        SUBMIT_HOLD | ACCEPT_HOLD | HOLD => {
+            crate::notices::order_credit_held(state, &order).await?;
+            state
+                .emit(SalesOrderCreditHeld {
+                    order: id,
+                    party,
+                    open_balance: order.hold_open_balance.unwrap_or_default(),
+                    overdue: order.hold_overdue.unwrap_or_default(),
+                    limit: order.hold_limit,
+                    reason: order
+                        .hold_reason
+                        .as_deref()
+                        .and_then(CreditFailure::parse)
+                        .unwrap_or(CreditFailure::Limit),
+                })
+                .await
+        }
         CLOSE => state.emit(SalesOrderClosed { order: id, party }).await,
         _ => Ok(()),
     }
@@ -594,6 +661,7 @@ async fn announce(state: &AppState, event: &Transitioned<SalesOrder>) -> Result 
 pub(crate) fn register(app: &mut Registry) {
     renox::state_machine::register::<SalesOrder>();
     wl_kernel::sales::provide_order_fulfilment(app, Fulfilment);
+    wl_kernel::sales::provide_credit_checker(app, credit::Checker);
     app.listen(|event: Transitioned<SalesOrder>, state: AppState| async move {
         announce(&state, &event).await
     });
