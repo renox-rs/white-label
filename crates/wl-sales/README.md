@@ -56,6 +56,10 @@ translates them in `resources/lang/{locale}.json`.
 Seams the real host leaves unwired because a sale line has no promised day and no delivery address
 yet (BL-MFG-14, F7): the kernel's `PromisedLines` (the look-ahead of a document that expires),
 `DeliveryDestination` (whether an order is delivered abroad) and `OrderLineRules` (the refusal of an
-export-only item at `submit` and `amend`). The traits, their defaults and their callers are in
-place; a vertical test provides them with fakes, and wl-sales answers them once the sale line
-carries the data.
+export-only item at `submit` and `amend`). The traits, their defaults and the vertical's
+implementations (manufacturing: the `ItemRules` of `conformity`) exist; wl-sales has no caller of
+`order_line_rules().refuse_line` at `submit` and `amend` yet, because it cannot tell whether an
+order is delivered in the UAE without a delivery address. Until the sale line or the order carries
+the address (a wl-sales issue, with `DeliveryDestination`), the refusal of an export-only item at
+submit is tested at the vertical's side only (`host/tests/manufacturing_conformity.rs`, the pick and
+dispatch guards run for real) and stays deferred (BL-MFG-11 point 6, `DEFERRED-F7`).
