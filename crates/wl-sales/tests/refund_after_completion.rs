@@ -248,6 +248,48 @@ async fn the_approval_resolves_the_return_requests_the_refund_and_carries_the_co
         .assert_see("AED 60.00");
 }
 
+/// AC1 (complaint ticket): a refund raised from complaint ticket 77 stores the
+/// ticket on the return, and when it is resolved the ticket gets an internal
+/// comment with the return number, the resolution and the value.
+#[renox::test]
+async fn a_refund_raised_from_a_complaint_ticket_comments_on_the_ticket() {
+    let (t, c, _seen) = boot().await;
+    t.app.acting_as(&cashier(&t).await);
+    let (order, items) = completed(&t, &c, "phone", &[("pizza", "60.00"), ("cola", "30.00")]).await;
+
+    refund(&t, &order, &items[1], "30.00", &[("ticket", "77")])
+        .await
+        .assert_status(303);
+
+    let raised = latest(&t).await;
+    assert_eq!(raised.ticket_id, Some(77));
+    assert_eq!(raised.status, ReturnStatus::Resolved, "within the limit");
+    let comments = c.desk.comments();
+    assert_eq!(comments.len(), 1);
+    assert_eq!(comments[0].0, 77);
+    assert!(comments[0].1.contains(&raised.number), "{}", comments[0].1);
+    assert!(comments[0].1.contains("AED 30.00"), "{}", comments[0].1);
+
+    // A ticket that is not a number is refused and nothing is raised.
+    let before = SalesReturn::query().count(t.db()).await.unwrap();
+    let key = format!("line_{}_refund", items[0].id);
+    t.app
+        .htmx()
+        .post(
+            &format!("/sales-orders/{}/refund", order.id),
+            &[
+                ("reason", "cold"),
+                ("category", "cold"),
+                ("party", "business"),
+                ("ticket", "abc"),
+                (key.as_str(), "10.00"),
+            ],
+        )
+        .await
+        .assert_status(422);
+    assert_eq!(SalesReturn::query().count(t.db()).await.unwrap(), before);
+}
+
 /// AC3: Given a refund of AED 30, it resolves without approval.
 #[renox::test]
 async fn a_refund_within_the_limit_resolves_at_once() {

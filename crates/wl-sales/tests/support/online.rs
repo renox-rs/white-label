@@ -230,9 +230,17 @@ impl PaymentLinks for Gateway {
 
 /// The tasks opened, as ticketing would keep them.
 #[derive(Clone, Default)]
-pub struct Desk(Arc<Mutex<Vec<OpenTicket>>>);
+pub struct Desk(
+    Arc<Mutex<Vec<OpenTicket>>>,
+    Arc<Mutex<Vec<(i64, String)>>>,
+);
 
 impl Desk {
+    /// The comments added to tickets, as (ticket id, text), oldest first.
+    pub fn comments(&self) -> Vec<(i64, String)> {
+        self.1.lock().unwrap().clone()
+    }
+
     /// The tasks opened, oldest first.
     pub fn opened(&self) -> Vec<OpenTicket> {
         self.0.lock().unwrap().clone()
@@ -253,6 +261,18 @@ impl TaskCreator for Desk {
                 id: TicketId(n),
                 number: format!("TKT-{n}"),
             }))
+        })
+    }
+
+    fn comment<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        comment: wl_kernel::tickets::TaskComment,
+    ) -> TicketFuture<'a, ()> {
+        Box::pin(async move {
+            self.1.lock().unwrap().push((ticket.0, comment.text));
+            Ok(())
         })
     }
 
