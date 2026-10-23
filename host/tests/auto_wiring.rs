@@ -118,3 +118,21 @@ async fn aut_base_a_service_advisor_signs_in() {
     app.acting_as(&advisor);
     app.get("/dashboard").await.assert_ok();
 }
+
+/// The cancel of a job card is an approval action for a holder of
+/// `job_cards.approve` and has words (`AUT.ACL.21`, #397).
+#[renox::test]
+async fn aut_01_the_cancel_approval_policy_is_installed_with_words() {
+    let app = auto_booted().await;
+    let policy = wl_kernel::approvals::ApprovalPolicy::query()
+        .where_(wl_kernel::approvals::ApprovalPolicy::ACTION.eq("auto.job_card_cancel"))
+        .first(app.db())
+        .await
+        .unwrap()
+        .expect("the policy is installed");
+    assert_eq!(
+        policy.steps.0[0].permission.as_deref(),
+        Some(aut::JOB_CARDS_APPROVE)
+    );
+    assert!(wl_kernel::approvals::action_is_labelled("auto.job_card_cancel"));
+}
