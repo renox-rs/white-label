@@ -147,6 +147,44 @@ async fn paying_the_link_releases_the_added_quantity() {
     assert!(try_hand_over(&t, &now_order, 2_600, 3).await);
 }
 
+/// AC2 (other channels): the link of a phone order lasts 24 hours: it is
+/// still open after 23, and expired after 24 with the task for the outlet
+/// manager.
+#[renox::test]
+async fn the_link_of_a_phone_order_expires_after_twenty_four_hours() {
+    let (t, c) = boot_changes().await;
+    t.app.acting_as(&clerk(&t).await);
+    let order = place(&t, &c, "phone", "online", &[("meal", "2", "100.00")]).await;
+    let line = lines(&t, &order).await.remove(0);
+    let quantity = format!("line_{}_quantity", line.id);
+    amend(&t, &order, "More", &[(&quantity, "2.6")])
+        .await
+        .assert_status(303);
+    let link = c.gateway.links().last().cloned().unwrap();
+    assert!(link.expires_at > now() + TimeDelta::hours(23));
+    assert!(link.expires_at <= now() + TimeDelta::hours(24) + TimeDelta::minutes(1));
+
+    let early = wl_sales::settle::lapse_links(t.state(), now() + TimeDelta::hours(23))
+        .await
+        .unwrap();
+    assert_eq!(early, 0, "still open after 23 hours");
+    let steps = OrderSettlement::of_order(t.db(), order.id).await.unwrap();
+    assert_eq!(steps[0].status, STATUS_OPEN);
+
+    let late = wl_sales::settle::lapse_links(t.state(), now() + TimeDelta::hours(24) + TimeDelta::minutes(2))
+        .await
+        .unwrap();
+    assert_eq!(late, 1);
+    let steps = OrderSettlement::of_order(t.db(), order.id).await.unwrap();
+    assert_eq!(steps[0].status, STATUS_EXPIRED);
+    assert!(
+        c.desk
+            .opened()
+            .iter()
+            .any(|task| task.title.contains("Payment link expired"))
+    );
+}
+
 /// AC2: Given a website order whose AED 60 link is not paid within 15 min, the
 /// outlet manager gets a "payment link expired" task, the added quantity is
 /// still not released to the kitchen, and the order stays at rev 2; choosing

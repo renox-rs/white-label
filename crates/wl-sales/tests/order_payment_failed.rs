@@ -27,6 +27,39 @@ async fn waiting(t: &Booted, extra: &[(&str, &str)]) -> SalesOrder {
     submit(t, draft.id).await
 }
 
+/// AC1 (scheduler): the registered minute job `sales:online-payment-window`
+/// cancels the order once the window has passed on the clock, and does nothing
+/// a minute earlier.
+#[renox::test]
+async fn the_scheduled_job_cancels_the_order_when_the_window_has_passed() {
+    let (t, online) = boot_online().await;
+    t.app.acting_as(&seller(&t).await);
+    let order = waiting(&t, &[]).await;
+
+    t.app.travel(std::time::Duration::from_secs(10 * 60));
+    t.app
+        .at_travelled_time(t.app.run_scheduled(wl_sales::online_payment::TASK))
+        .await
+        .unwrap();
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::AwaitingPayment,
+        "ten minutes in, the window is still open"
+    );
+
+    t.app.travel(std::time::Duration::from_secs(6 * 60));
+    t.app
+        .at_travelled_time(t.app.run_scheduled(wl_sales::online_payment::TASK))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Cancelled
+    );
+    assert_eq!(online.cancelled.lock().unwrap().len(), 1);
+}
+
 /// AC1: Given an order submitted at 12:00:00 with no confirmation, at 12:15:00
 /// it is `cancelled` with reason *payment failed* and `SalesOrderCancelled` is
 /// emitted.
