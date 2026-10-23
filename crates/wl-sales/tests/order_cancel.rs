@@ -236,7 +236,10 @@ async fn the_fee_line_takes_the_configured_vat_category() {
     let drafts = c.ledger.drafts();
     assert_eq!(drafts.len(), 1);
     let line = &drafts[0].1.lines[0];
-    assert_eq!(line.vat_category, wl_kernel::invoicing::VatCategory::Standard);
+    assert_eq!(
+        line.vat_category,
+        wl_kernel::invoicing::VatCategory::Standard
+    );
     assert_eq!((line.net(), line.vat(), line.gross()), (762, 38, 800));
 }
 

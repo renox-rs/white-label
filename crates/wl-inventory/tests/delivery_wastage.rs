@@ -12,10 +12,10 @@ use renox::prelude::Model;
 
 use wl_inventory::movement::MovementType;
 use wl_inventory::{Item, Location};
+use wl_kernel::Subject;
 use wl_kernel::delivery::{DeliveryId, DiscardLine, DiscardWastage, delivery_wastage};
 use wl_kernel::inventory::{LineComponent, SaleLineStock};
 use wl_kernel::sales::SalesOrderId;
-use wl_kernel::Subject;
 
 use support::{Booted, boot};
 
@@ -124,7 +124,9 @@ async fn the_record_posts_the_components_as_wastage_with_the_order_and_the_drive
         assert_eq!(moved.reason.as_deref(), Some("Spoilt in the heat"));
         assert_eq!(moved.source(), SalesOrderId(ORDER).subject());
     }
-    let reference = recorded.reference.expect("the first movement is the record");
+    let reference = recorded
+        .reference
+        .expect("the first movement is the record");
     assert_eq!(reference.subject_type, "inventory.stock_movement");
     assert_eq!(reference.subject_id, chicken_waste[0].id);
 }

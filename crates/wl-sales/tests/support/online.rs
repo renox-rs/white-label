@@ -230,10 +230,7 @@ impl PaymentLinks for Gateway {
 
 /// The tasks opened, as ticketing would keep them.
 #[derive(Clone, Default)]
-pub struct Desk(
-    Arc<Mutex<Vec<OpenTicket>>>,
-    Arc<Mutex<Vec<(i64, String)>>>,
-);
+pub struct Desk(Arc<Mutex<Vec<OpenTicket>>>, Arc<Mutex<Vec<(i64, String)>>>);
 
 impl Desk {
     /// The comments added to tickets, as (ticket id, text), oldest first.

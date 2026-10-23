@@ -529,14 +529,23 @@ async fn an_amendment_that_raises_a_line_reserves_only_what_the_stock_covers() {
         .unwrap();
 
     let grown = lines_of(t.db(), dispatch.id).await.unwrap();
-    assert_eq!(grown[0].quantity_milli, 4_000, "only the 1 kg that was free");
+    assert_eq!(
+        grown[0].quantity_milli, 4_000,
+        "only the 1 kg that was free"
+    );
     assert_eq!(t.available(&item, &store, None).await, 0);
     let effects = wl_inventory::sales_cancel::CancelEffect::of_order(t.db(), ORDER)
         .await
         .unwrap();
     let first = effects.iter().find(|e| e.sale_line_id == 81).unwrap();
     assert_eq!(first.action, "added");
-    assert!(first.note.as_deref().unwrap_or_default().contains("2000 short"));
+    assert!(
+        first
+            .note
+            .as_deref()
+            .unwrap_or_default()
+            .contains("2000 short")
+    );
     let second = effects.iter().find(|e| e.sale_line_id == 82).unwrap();
     assert_eq!(second.action, "none");
 }

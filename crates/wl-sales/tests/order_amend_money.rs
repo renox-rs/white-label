@@ -171,9 +171,12 @@ async fn the_link_of_a_phone_order_expires_after_twenty_four_hours() {
     let steps = OrderSettlement::of_order(t.db(), order.id).await.unwrap();
     assert_eq!(steps[0].status, STATUS_OPEN);
 
-    let late = wl_sales::settle::lapse_links(t.state(), now() + TimeDelta::hours(24) + TimeDelta::minutes(2))
-        .await
-        .unwrap();
+    let late = wl_sales::settle::lapse_links(
+        t.state(),
+        now() + TimeDelta::hours(24) + TimeDelta::minutes(2),
+    )
+    .await
+    .unwrap();
     assert_eq!(late, 1);
     let steps = OrderSettlement::of_order(t.db(), order.id).await.unwrap();
     assert_eq!(steps[0].status, STATUS_EXPIRED);
