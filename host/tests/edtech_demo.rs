@@ -286,9 +286,7 @@ async fn every_login_of_the_demo_centre_opens_its_pages() {
                 pages = vec![
                     "/dashboard".into(),
                     "/edtech/batches".into(),
-                    format!("/edtech/batches/{batch}"),
                     "/edtech/sessions".into(),
-                    format!("/edtech/sessions/{session}"),
                 ];
             }
         }
@@ -301,7 +299,36 @@ async fn every_login_of_the_demo_centre_opens_its_pages() {
             .await
             .unwrap()
             .unwrap_or_else(|| panic!("the demo login {}", login.email));
-        for path in pages_of(login.email) {
+        let mut paths = pages_of(login.email);
+        // A tutor opens the batch and the session they teach.
+        if matches!(
+            login.email,
+            "tutor@gulfskills.example"
+                | "omar@gulfskills.example"
+                | "layla@gulfskills.example"
+                | "ravi@gulfskills.example"
+                | "hind@gulfskills.example"
+        ) {
+            let own_batch = count(
+                &app,
+                &format!(
+                    "select min(s.batch_id) from edtech_sessions s join wl_hr_employees e on e.id = s.tutor_employee_id where e.user_id = {}",
+                    user.id
+                ),
+            )
+            .await;
+            let own_session = count(
+                &app,
+                &format!(
+                    "select min(s.id) from edtech_sessions s join wl_hr_employees e on e.id = s.tutor_employee_id where e.user_id = {}",
+                    user.id
+                ),
+            )
+            .await;
+            paths.push(format!("/edtech/batches/{own_batch}"));
+            paths.push(format!("/edtech/sessions/{own_session}"));
+        }
+        for path in paths {
             app.acting_as(&user);
             let page = app.get(&path).await;
             if page.status.as_u16() != 200 {
@@ -405,4 +432,57 @@ async fn the_login_page_lists_the_people_of_the_demo_centre() {
     for person in LOGINS {
         login.assert_see(&format!("data-demo-email=\"{}\"", person.email));
     }
+}
+
+/// A tutor sees the batches and the sessions they are assigned to and no
+/// others (`EDU.ACL.03`); the coordinator sees all of them.
+#[renox::test]
+async fn a_tutor_sees_only_the_batches_and_sessions_assigned_to_them() {
+    let app = booted().await;
+    host::edtech_demo::seed(app.kernel()).await.unwrap();
+    let tutor = User::find_by_email(app.db(), "tutor@gulfskills.example")
+        .await
+        .unwrap()
+        .expect("the demo tutor");
+    let others_batch = count(
+        &app,
+        &format!(
+            "select min(s.batch_id) from edtech_sessions s join wl_hr_employees e on e.id = s.tutor_employee_id where e.user_id <> {} and s.batch_id not in (select batch_id from edtech_sessions s2 join wl_hr_employees e2 on e2.id = s2.tutor_employee_id where e2.user_id = {})",
+            tutor.id, tutor.id
+        ),
+    )
+    .await;
+    let others_session = count(
+        &app,
+        &format!(
+            "select min(s.id) from edtech_sessions s join wl_hr_employees e on e.id = s.tutor_employee_id where e.user_id <> {}",
+            tutor.id
+        ),
+    )
+    .await;
+    app.acting_as(&tutor);
+    let list = app.get("/edtech/batches").await;
+    list.assert_ok();
+    let sessions = app.get("/edtech/sessions").await;
+    sessions.assert_ok();
+    assert!(
+        !list.text().contains("Omar Siddiqui") && !sessions.text().contains("Omar Siddiqui"),
+        "another tutor's classes are not listed"
+    );
+    assert!(sessions.text().contains("Sara Whitfield"));
+    app.get(&format!("/edtech/batches/{others_batch}"))
+        .await
+        .assert_status(403);
+    app.get(&format!("/edtech/sessions/{others_session}"))
+        .await
+        .assert_status(403);
+
+    let coordinator = User::find_by_email(app.db(), "coordinator@gulfskills.example")
+        .await
+        .unwrap()
+        .unwrap();
+    app.acting_as(&coordinator);
+    app.get(&format!("/edtech/batches/{others_batch}"))
+        .await
+        .assert_ok();
 }

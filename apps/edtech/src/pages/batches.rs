@@ -155,10 +155,19 @@ fn course_title(courses: &[Course], id: i64) -> String {
 /// `GET /edtech/batches`.
 async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
     require(&user, permissions::BATCHES_VIEW)?;
-    let all = Batch::query()
+    let own = crate::sessions::assigned_scope(&state, &user).await?;
+    let mine = match own {
+        Some(employee) => Some(crate::sessions::assigned_batches(&state.db, employee).await?),
+        None => None,
+    };
+    let all: Vec<Batch> = Batch::query()
         .order_by_desc(Batch::ID)
         .get(&state.db)
-        .await?;
+        .await?
+        .into_iter()
+        // A tutor sees the batches they are assigned to (`EDU.ACL.03`).
+        .filter(|b| mine.as_ref().is_none_or(|ids| ids.contains(&b.id)))
+        .collect();
     let courses = Course::query()
         .order_by(Course::CODE)
         .get(&state.db)
@@ -368,6 +377,13 @@ async fn show(
 ) -> Result<View> {
     require(&user, permissions::BATCHES_VIEW)?;
     let batch = Batch::find_or_404(&state.db, id).await?;
+    if let Some(employee) = crate::sessions::assigned_scope(&state, &user).await?
+        && !crate::sessions::assigned_batches(&state.db, employee)
+            .await?
+            .contains(&batch.id)
+    {
+        return Err(Error::Forbidden);
+    }
     let course = Course::find_or_404(&state.db, batch.course_id).await?;
     let number = batch.number();
     let planned = Session::of_batch(&state.db, batch.id).await?;

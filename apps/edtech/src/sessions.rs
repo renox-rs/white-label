@@ -410,6 +410,53 @@ pub async fn may_mark(state: &AppState, by: &AuthUser, session: &Session) -> Res
     Ok(session.tutor_employee_id == Some(own.0))
 }
 
+/// The employee whose assigned batches and sessions `by` sees and no others
+/// (`EDU.ACL.03`): a user who teaches (`sessions.teach`), does not manage
+/// batches and is a known employee. `None` for everyone else, who keeps the
+/// reach of their permission.
+///
+/// # Errors
+///
+/// The workforce contract's errors.
+pub async fn assigned_scope(state: &AppState, by: &AuthUser) -> Result<Option<i64>> {
+    if !by.has_permission(permissions::SESSIONS_TEACH)
+        || by.has_permission(permissions::BATCHES_MANAGE)
+    {
+        return Ok(None);
+    }
+    Ok(wl_kernel::workforce::workforce(state)
+        .employee_of_user(&state.db, by.id)
+        .await?
+        .map(|employee| employee.0))
+}
+
+/// The ids of the batches `employee` is assigned to: as the batch's tutor, or
+/// as the tutor of one of its sessions.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn assigned_batches(db: &Db, employee: i64) -> Result<Vec<i64>> {
+    let mut ids: Vec<i64> = Batch::query()
+        .where_(Batch::TUTOR_EMPLOYEE_ID.eq(employee))
+        .get(db)
+        .await?
+        .into_iter()
+        .map(|batch| batch.id)
+        .collect();
+    ids.extend(
+        Session::query()
+            .where_(Session::TUTOR_EMPLOYEE_ID.eq(employee))
+            .get(db)
+            .await?
+            .into_iter()
+            .map(|session| session.batch_id),
+    );
+    ids.sort_unstable();
+    ids.dedup();
+    Ok(ids)
+}
+
 /// Runs the transition `name` of the user `by` on `session`.
 async fn run(
     state: &AppState,

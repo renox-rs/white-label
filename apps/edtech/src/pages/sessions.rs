@@ -161,11 +161,16 @@ pub(crate) struct IndexPage {
 /// `GET /edtech/sessions`.
 async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
     require(&user, permissions::SESSIONS_VIEW)?;
-    let coming = Session::query()
+    let own = sessions::assigned_scope(&state, &user).await?;
+    let coming: Vec<Session> = Session::query()
         .where_(Session::SESSION_DATE.gte(today()))
         .order_by(Session::STARTS_AT)
         .get(&state.db)
-        .await?;
+        .await?
+        .into_iter()
+        // A tutor sees the sessions they teach (`EDU.ACL.03`).
+        .filter(|s| own.is_none_or(|employee| s.tutor_employee_id == Some(employee)))
+        .collect();
     let batches = Batch::query().get(&state.db).await?;
     let names = names_of(
         &state,
@@ -357,6 +362,11 @@ async fn show(
         .collect();
     let found = sessions::document_flags(&state, session.id).await?;
     let assigned = sessions::may_mark(&state, &user, &session).await?;
+    if let Some(employee) = sessions::assigned_scope(&state, &user).await?
+        && session.tutor_employee_id != Some(employee)
+    {
+        return Err(Error::Forbidden);
+    }
     let none = text(&lang, "none");
     let doc_flags: Vec<DocFlagRow> = found
         .iter()

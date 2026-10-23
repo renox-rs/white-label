@@ -67,12 +67,18 @@ impl Seed {
         Ok(offset(sessions[n - 1].session_date) + 1)
     }
 
-    /// The system completes the active enrolments of `keys` the day after
-    /// the last session; a certificate is drafted for each that attended
-    /// enough.
+    /// The active enrolments of `keys` are completed the day after the last
+    /// session; a certificate is drafted for each that attended enough. The
+    /// batch's own completion does it when the last attendance is submitted
+    /// (`enrolments::complete_batch`); one that is still active (the batch
+    /// was not completed by then) is completed here.
     async fn complete_all(&self, keys: &[&str], on: i64) -> Result {
         for key in keys {
             let id = self.enrolment(key);
+            let found = edtech::Enrolment::find_or_404(self.db(), id).await?;
+            if found.status == edtech::EnrolmentStatus::Completed {
+                continue;
+            }
             at!(self, day(on), {
                 edtech::enrolments::complete(&self.state, id).await
             })?;
