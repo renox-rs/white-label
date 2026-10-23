@@ -1221,6 +1221,15 @@ pub const ROLES: &[(&str, &[&str])] = &[
             edu::ENROLMENTS_REFUND_APPROVE,
             edu::CERTIFICATES_VIEW,
             edu::CERTIFICATES_ISSUE,
+            // The complaints and tasks the ticket categories send to the
+            // centre manager (10 §9): opened, assigned and worked here.
+            tickets::VIEW,
+            tickets::CREATE,
+            tickets::ASSIGN,
+            tickets::WORK,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
+            tickets::TASKS_REVIEW,
             // The owner of the front desk and refunds SOPs publishes their
             // versions (`DOC.RUL.04`, 10 §7.2).
             documents::SOPS_MANAGE,
@@ -1240,6 +1249,12 @@ pub const ROLES: &[(&str, &[&str])] = &[
             edu::ENROLMENTS_VIEW,
             edu::CERTIFICATES_VIEW,
             edu::CERTIFICATES_ISSUE,
+            // The classroom issues and the tasks of the coordinator.
+            tickets::VIEW,
+            tickets::CREATE,
+            tickets::WORK,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
             documents::SOPS_MANAGE,
         ],
     ),
@@ -1262,6 +1277,12 @@ pub const ROLES: &[(&str, &[&str])] = &[
             edu::ENROLMENTS_VIEW,
             edu::ENROLMENTS_MANAGE,
             edu::CERTIFICATES_VIEW,
+            // The tasks the system gives the front desk (a payment charged
+            // back, a call to make) and the complaints it raises.
+            tickets::VIEW,
+            tickets::CREATE,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
         ],
     ),
     (
