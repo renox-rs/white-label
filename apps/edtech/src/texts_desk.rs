@@ -6,6 +6,12 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("edtech.batches.tutor_pick", "Tutor"),
     ("edtech.batches.room_pick", "Room"),
     ("edtech.transfer.target_pick", "Move to the batch"),
+    ("edtech.verify.code", "Verification code"),
+    (
+        "edtech.verify.code_hint",
+        "The code printed on the certificate, for example 3WDJL0ICIJ",
+    ),
+    ("edtech.verify.check", "Check the certificate"),
     ("edtech.desk.action", "Record a payment"),
     (
         "edtech.desk.description",

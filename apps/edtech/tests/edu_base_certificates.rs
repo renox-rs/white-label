@@ -123,6 +123,21 @@ async fn edu_base_an_issued_certificate_is_verified_on_the_public_page() {
         .await
         .assert_ok()
         .assert_see("No published certificate");
+    // The public page asks for the code when nobody gave one, and a code typed
+    // there (in any case, with spaces) leads to the certificate.
+    t.app
+        .get("/verify/certificate")
+        .await
+        .assert_ok()
+        .assert_see("Verification code")
+        .assert_dont_see("No published certificate");
+    t.app
+        .get(&format!(
+            "/verify/certificate?code={}",
+            issued.verification_code.to_lowercase()
+        ))
+        .await
+        .assert_status(303);
 }
 
 /// A certificate is issued only by `certificates.issue`, and only when the

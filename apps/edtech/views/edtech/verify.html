@@ -6,6 +6,13 @@
   <rx-stack>
     <rx-page-header :title="tx['verify.title']" :subtitle="tx['verify.subtitle']"/>
     <rx-card>
+      <form method="get" action="{{ route('edtech.verify_lookup') }}">
+        <rx-input name="code" :label="tx['verify.code']" :hint="tx['verify.code_hint']" id="verify-code" required/>
+        <rx-button type="submit" :label="tx['verify.check']"/>
+      </form>
+    </rx-card>
+    <template rx-if="show_result">
+    <rx-card>
       <rx-badge :kind="state_kind" :text="state_text"/>
       <template rx-if="found">
         <rx-infolist columns="2">
@@ -23,5 +30,6 @@
         <p>{{ tx['verify.replacement_pending'] }}</p>
       </template>
     </rx-card>
+    </template>
   </rx-stack>
 </rx-page>

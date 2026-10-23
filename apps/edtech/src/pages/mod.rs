@@ -130,7 +130,7 @@ pub(crate) fn parse_optional_id(text: &str) -> std::result::Result<Option<i64>, 
         .ok()
         .filter(|id| *id > 0)
         .map(Some)
-        .ok_or_else(|| invalid("number: 1, 2, 3 ..."))
+        .ok_or_else(|| invalid("Give a whole number, for example 12."))
 }
 
 /// A time typed in a form, `2026-11-09 09:00` (Dubai time); `Ok(None)` when it is
@@ -145,7 +145,7 @@ pub(crate) fn parse_local_time(
     }
     let parsed = NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M")
         .or_else(|_| NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M"))
-        .map_err(|_| invalid("time: YYYY-MM-DD HH:MM, Dubai time"))?;
+        .map_err(|_| invalid("Give the time as year-month-day and hour:minute, Dubai time, for example 2026-11-09 18:00."))?;
     Ok(Some(
         wl_kernel::calendar::BusinessCalendar::default().from_local(parsed),
     ))
@@ -155,12 +155,14 @@ pub(crate) fn parse_local_time(
 pub(crate) fn parse_number(text: &str) -> std::result::Result<i64, Error> {
     text.trim()
         .parse()
-        .map_err(|_| invalid("number: 1, 2, 3 ..."))
+        .map_err(|_| invalid("Give a whole number, for example 12."))
 }
 
 /// A date typed in a form (`2026-11-10`).
 pub(crate) fn parse_date(text: &str) -> std::result::Result<NaiveDate, Error> {
-    text.trim().parse().map_err(|_| invalid("date: YYYY-MM-DD"))
+    text.trim()
+        .parse()
+        .map_err(|_| invalid("Give the date as year-month-day, for example 2026-11-09."))
 }
 
 /// The weekdays typed in a form: `1,3` or `1 3`, 1 = Monday ... 7 = Sunday.
@@ -174,7 +176,11 @@ pub(crate) fn parse_weekdays(text: &str) -> std::result::Result<Vec<i64>, Error>
             .parse()
             .ok()
             .filter(|day| (1..=7).contains(day))
-            .ok_or_else(|| invalid("weekdays: 1 = Monday ... 7 = Sunday"))?;
+            .ok_or_else(|| {
+                invalid(
+                    "Give the weekdays as numbers, 1 for Monday to 7 for Sunday, for example 1,3.",
+                )
+            })?;
         if !days.contains(&day) {
             days.push(day);
         }
@@ -241,9 +247,9 @@ pub(crate) async fn party_of(state: &AppState, text: &str) -> std::result::Resul
             None => None,
         }
     };
-    found
-        .map(|party| party.id.0)
-        .ok_or_else(|| invalid("party: pick one from the list or give its number, P-00023"))
+    found.map(|party| party.id.0).ok_or_else(|| {
+        invalid("Pick the person from the list, or give the party code, for example P-00023.")
+    })
 }
 
 /// A party that may be left blank.

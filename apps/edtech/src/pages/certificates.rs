@@ -53,6 +53,8 @@ pub fn routes() -> Routes {
 /// The public route: anyone with the code may verify a certificate.
 pub fn public_routes() -> Routes {
     Routes::new()
+        .get("/verify/certificate", lookup)
+        .name("edtech.verify_lookup")
         .get("/verify/certificate/{code}", verify)
         .name("edtech.verify_certificate")
 }
@@ -260,19 +262,23 @@ pub(crate) struct VerifyPage {
     replacement_pending: bool,
     replacement_number: String,
     replacement_path: String,
+    /// The result card is shown (not only the form that asks for the code).
+    show_result: bool,
 }
 
-/// `GET /verify/certificate/{code}`: no login.
-async fn verify(
-    State(state): State<AppState>,
-    lang: Lang,
-    Path(code): Path<String>,
-) -> Result<View> {
-    let none = text(&lang, "none");
-    let mut page = VerifyPage {
-        tx: texts::all(&lang),
+/// The code typed in the form of the verification page.
+#[derive(Deserialize, Debug, Default)]
+struct LookupQuery {
+    #[serde(default)]
+    code: String,
+}
+
+/// The verification page with nothing found.
+fn blank_page(lang: &Lang) -> VerifyPage {
+    VerifyPage {
+        tx: texts::all(lang),
         found: false,
-        state_text: text(&lang, "verify.unknown"),
+        state_text: text(lang, "verify.unknown"),
         state_kind: "warning",
         number: String::new(),
         student: String::new(),
@@ -284,7 +290,41 @@ async fn verify(
         replacement_pending: false,
         replacement_number: String::new(),
         replacement_path: String::new(),
-    };
+        show_result: true,
+    }
+}
+
+/// `GET /verify/certificate?code=...`: the form that asks for the code; with a
+/// code it goes to the page of that certificate. No login.
+async fn lookup(
+    lang: Lang,
+    renox::axum::extract::Query(query): renox::axum::extract::Query<LookupQuery>,
+) -> Result<Response> {
+    let code: String = query
+        .code
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect();
+    if !code.is_empty() {
+        return Ok(renox::axum::response::Redirect::to(&format!(
+            "/verify/certificate/{}",
+            code.to_ascii_uppercase()
+        ))
+        .into_response());
+    }
+    let mut page = blank_page(&lang);
+    page.show_result = false;
+    Ok(View::typed(page).into_response())
+}
+
+/// `GET /verify/certificate/{code}`: no login.
+async fn verify(
+    State(state): State<AppState>,
+    lang: Lang,
+    Path(code): Path<String>,
+) -> Result<View> {
+    let none = text(&lang, "none");
+    let mut page = blank_page(&lang);
     let (shown, kind, label) = match certificates::verify(&state.db, &code).await? {
         Verification::Unknown => return Ok(View::typed(page)),
         Verification::Valid(shown) => (shown, "success", "verify.valid"),

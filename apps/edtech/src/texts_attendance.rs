@@ -52,11 +52,11 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "edtech.attendance.problem.mark",
-        "mark: present, late, absent or excused",
+        "Mark each student present, late, absent or excused.",
     ),
     (
         "edtech.attendance.problem.time",
-        "time: YYYY-MM-DD HH:MM, Dubai time",
+        "Give the time as year-month-day and hour:minute, Dubai time, for example 2026-11-09 18:00.",
     ),
     // The page.
     ("edtech.attendance.title", "Students"),
