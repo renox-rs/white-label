@@ -320,6 +320,27 @@ pub async fn boot_all(
     payments: WlPayments,
     inventory: WlInventory,
 ) -> World {
+    boot_everything(delivery, fnb, payments, inventory, false).await
+}
+
+/// [`boot_all`] with the real wl-ticketing as the ticket service (the client
+/// has `ticketing` on); `tickets` of the world is the idle fake then.
+pub async fn boot_real_tickets(
+    delivery: WlDelivery,
+    fnb: Fnb,
+    payments: WlPayments,
+    inventory: WlInventory,
+) -> World {
+    boot_everything(delivery, fnb, payments, inventory, true).await
+}
+
+async fn boot_everything(
+    delivery: WlDelivery,
+    fnb: Fnb,
+    payments: WlPayments,
+    inventory: WlInventory,
+    real_tickets: bool,
+) -> World {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -347,9 +368,18 @@ pub async fn boot_all(
         .module(fnb)
         .module(Probe)
         .module(PortalProbe(portal.clone()))
-        .provide(notifier)
-        .provide(task_creator);
-    let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
+        .provide(notifier);
+    let app = if real_tickets {
+        app.module(wl_ticketing::WlTicketing::new())
+    } else {
+        app.provide(task_creator)
+    };
+    let client = if real_tickets {
+        CLIENT.replace("\"delivery\"]", "\"delivery\", \"ticketing\"]")
+    } else {
+        CLIENT.to_owned()
+    };
+    let config = ClientConfig::parse(&client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
@@ -361,6 +391,12 @@ pub async fn boot_all(
         .call("sales:install", Vec::<String>::new())
         .await
         .expect("sales:install runs");
+    if real_tickets {
+        app.kernel()
+            .call("ticketing:install", Vec::<String>::new())
+            .await
+            .expect("ticketing:install runs");
+    }
     seed::install(app.db()).await.expect("the defaults seed");
     install_failure_reasons(app.db()).await;
 

@@ -29,7 +29,7 @@ use wl_kernel::notify::NotifyRecipient;
 use wl_payments::WlPayments;
 
 use support::stock::{Kitchen, kitchen};
-use support::{World, boot_all, make_user, own_riders};
+use support::{World, boot_all, boot_real_tickets, make_user, own_riders};
 
 /// The 06 client's stock settings: a wastage above AED 200 needs a second
 /// person, a temperature hold is reminded after 2 hours and escalated to the
@@ -571,4 +571,124 @@ async fn a_reaction_that_keeps_failing_alerts_the_owner() {
         .await
         .unwrap();
     assert_eq!(alerts.len(), 1, "the owner is alerted once");
+}
+
+/// AC6 (return to supplier): the chef decides a line of yoghurt received from
+/// a supplier *return to supplier* with the reading and the minutes: the
+/// quantity goes to quarantine onto a draft Return to supplier of the lot's
+/// supplier, the decision is noted, and the line is decided.
+#[renox::test]
+async fn the_chef_returns_a_held_lot_to_its_supplier() {
+    let w = boot_cold().await;
+    let k = kitchen(&w).await;
+    let f = fridge(&w, &k).await;
+    let supplier = w.customer("Al Ain Dairy").await;
+    let mut receipt = wl_inventory::GoodsReceipt {
+        supplier_party_id: supplier.0,
+        location_id: f.location.id,
+        ..wl_inventory::GoodsReceipt::default()
+    };
+    receipt.save(w.db()).await.unwrap();
+    let mut yoghurt = Item::new("YOGHURT", "Yoghurt", "kg").lot_tracked();
+    yoghurt.average_cost = 500;
+    yoghurt.save(w.db()).await.unwrap();
+    let mut lot = wl_inventory::Lot {
+        item_id: yoghurt.id,
+        number: "Y-1".to_owned(),
+        source_type: Some(receipt.subject().subject_type),
+        source_id: Some(receipt.id),
+        status: wl_inventory::LotStatus::Released,
+        ..wl_inventory::Lot::default()
+    };
+    lot.save(w.db()).await.unwrap();
+    let mut moved = StockMovement::receive(
+        yoghurt.id,
+        Some(lot.id),
+        f.location.id,
+        4_000,
+        500,
+        value_of(4_000, 500),
+        &receipt.subject(),
+        None,
+    );
+    moved.save(w.db()).await.unwrap();
+    read(&w, &f.logger, &f.unit, "9").await.assert_status(303);
+    let hold = temperature_holds(&w).await.remove(0);
+    let line = lines_of(&w, &hold)
+        .await
+        .into_iter()
+        .find(|l| l.item_id == yoghurt.id)
+        .expect("the yoghurt is held");
+
+    w.post(
+        &k.chef,
+        &format!("/cold-units/{}/lines/{}/decide", f.unit.id, line.id),
+        &[
+            ("decision", "return_to_supplier"),
+            ("reading", "9"),
+            ("minutes", "40"),
+        ],
+    )
+    .await
+    .assert_status(303);
+
+    let decided = StockHoldLine::find_or_404(w.db(), line.id).await.unwrap();
+    assert_eq!(decided.status, HoldLineStatus::ReturnedToSupplier);
+    let note = HoldDecisionRecord::of_line(w.db(), line.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(note.decision, "return_to_supplier");
+    assert_eq!((note.reading_tenths, note.minutes_out), (90, 40));
+    let drafts = wl_inventory::supplier_return::SupplierReturn::query()
+        .get(w.db())
+        .await
+        .unwrap();
+    assert_eq!(drafts.len(), 1);
+    assert_eq!(drafts[0].supplier_party_id, supplier.0);
+    assert_eq!(
+        drafts[0].status,
+        wl_inventory::supplier_return::ReturnStatus::Draft
+    );
+    let listed = wl_inventory::supplier_return::lines_of(w.db(), drafts[0].id)
+        .await
+        .unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].lot_id, Some(lot.id));
+    assert_eq!(listed[0].quantity_milli, 4_000);
+}
+
+/// AC1 (real ticket service): with the real wl-ticketing the out-of-range
+/// reading opens one real ticket for the unit, a second reading joins it
+/// instead of opening another, and the unit remembers its number.
+#[renox::test]
+async fn the_equipment_ticket_is_a_real_ticket_and_a_second_reading_joins_it() {
+    let w = boot_real_tickets(
+        own_riders(),
+        Fnb::new(),
+        WlPayments::new(),
+        WlInventory::new(),
+    )
+    .await;
+    let k = kitchen(&w).await;
+    let f = fridge(&w, &k).await;
+
+    read(&w, &f.logger, &f.unit, "9").await.assert_status(303);
+    read(&w, &f.logger, &f.unit, "8").await.assert_status(303);
+
+    let key = format!("fnb.cold_unit:{}", f.unit.id);
+    let ticket = wl_kernel::tickets::task_creator(w.state())
+        .find_open(w.state(), &key)
+        .await
+        .unwrap()
+        .expect("a real ticket is open for the unit");
+    let real = wl_ticketing::Ticket::query().get(w.db()).await.unwrap();
+    assert_eq!(real.len(), 1, "one ticket for both readings");
+    assert_eq!(real[0].number, ticket.number);
+    assert_eq!(real[0].subject_type, "fnb.cold_unit");
+    assert_eq!(real[0].subject_id, f.unit.id);
+    assert!(real[0].title.contains("Fridge 2"), "{}", real[0].title);
+    let unit = ColdUnit::find_or_404(w.db(), f.unit.id).await.unwrap();
+    assert_eq!(unit.ticket_number.as_deref(), Some(ticket.number.as_str()));
+    assert!(w.tickets.opened().is_empty(), "the fake desk was not used");
 }

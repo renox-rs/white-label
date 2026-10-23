@@ -22,3 +22,5 @@ wl-sales = { path = "../../crates/wl-sales" }
 wl-payments = { path = "../../crates/wl-payments" }
 wl-inventory = { path = "../../crates/wl-inventory" }
 wl-parties = { path = "../../crates/wl-parties" }
+# The real ticket service in the equipment task test.
+wl-ticketing = { path = "../../crates/wl-ticketing" }

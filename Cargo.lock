@@ -740,6 +740,7 @@ dependencies = [
  "wl-parties",
  "wl-payments",
  "wl-sales",
+ "wl-ticketing",
 ]
 
 [[package]]
