@@ -278,3 +278,57 @@ async fn aut_05_release_is_refused_while_unpaid_and_as_is_needs_a_signature() {
     assert!(unsigned.to_string().contains("signature"), "{unsigned}");
     assert!(t.reload(card.id).await.released_at.is_none());
 }
+
+/// The notifier is down at the day-3 run: the step is given back (no stamp, no
+/// message), the next run sends it once, and a rerun does not send it again.
+#[renox::test]
+async fn aut_05_a_reminder_that_failed_is_sent_once_by_the_next_run() {
+    let t = boot().await;
+    let card = waiting(&t, JobCardStatus::Ready, 4, None).await;
+
+    t.messages.fail(true);
+    assert!(process(t.state(), after(&card, 3)).await.is_err());
+    assert!(t.messages.of_type("auto.collect_vehicle").is_empty());
+    assert!(t.reload(card.id).await.collect_first_on.is_none());
+
+    t.messages.fail(false);
+    process(t.state(), after(&card, 3)).await.unwrap();
+    process(t.state(), after(&card, 3)).await.unwrap();
+    assert_eq!(t.messages.of_type("auto.collect_vehicle").len(), 1);
+    assert!(t.reload(card.id).await.collect_first_on.is_some());
+}
+
+/// The invoice book is down at the release: the vehicle is released and the
+/// release does not fail; the daily run bills the storage once the book is
+/// back, and only once.
+#[renox::test]
+async fn aut_05_a_storage_invoice_that_failed_at_release_is_billed_by_the_daily_run() {
+    let t = boot().await;
+    settings::set(t.db(), settings::STORAGE_FEE_ENABLED, "1", None)
+        .await
+        .unwrap();
+    let card = waiting(&t, JobCardStatus::Cancelled, 9, Some("customer_stopped")).await;
+    process(t.state(), after(&card, 3)).await.unwrap();
+    process(t.state(), after(&card, 7)).await.unwrap();
+    let sami = t.advisor().await;
+
+    t.books.fail(true);
+    let released = release::release(t.state(), &sami, card.id, Release::safe("Mona Hassan"))
+        .await
+        .expect("the vehicle leaves although the book is down");
+    assert!(released.released_at.is_some());
+    assert!(released.storage_invoiced_at.is_none());
+    assert!(t.books.about(&card.subject()).is_empty());
+    let today = today();
+    assert!(storage::run_daily(t.state(), today).await.is_err());
+
+    t.books.fail(false);
+    storage::run_daily(t.state(), today).await.unwrap();
+    storage::run_daily(t.state(), today).await.unwrap();
+    let invoices = t.books.about(&card.subject());
+    assert_eq!(invoices.len(), 1, "billed once");
+    assert_eq!(invoices[0].net(), 30_000);
+    let again = t.reload(card.id).await;
+    assert_eq!(again.storage_invoice_id, Some(invoices[0].id));
+    assert_eq!(again.storage_days, 6);
+}

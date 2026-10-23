@@ -32,7 +32,7 @@
 //! `⚠ open: lawyer (L-36)`.
 
 use renox::chrono::{Duration, NaiveDate};
-use renox::db::{DateTime, now};
+use renox::db::{Col, DateTime, now};
 use renox::prelude::*;
 use renox::serde_json::json;
 use std::sync::Arc;
@@ -196,16 +196,37 @@ async fn tell_manager(state: &AppState, card: &JobCard, days: i64) -> Result {
     Ok(())
 }
 
-/// Stamps the column `column` of job card `id` with `day`.
-async fn mark(state: &AppState, id: i64, column: &str, day: NaiveDate) -> Result {
+/// Claims a step of job card `id`: stamps `column` with `day` only if it is
+/// still empty, and tells whether this call did. The step is claimed *before*
+/// its message goes out, so a failure after the message cannot send it twice.
+async fn claim(
+    state: &AppState,
+    id: i64,
+    when: Col<JobCard, Option<NaiveDate>>,
+    column: &str,
+    day: NaiveDate,
+) -> Result<bool> {
+    let claimed = JobCard::query()
+        .where_(JobCard::ID.eq(id))
+        .where_(when.is_null())
+        .update(&state.db, &[(column, &Some(day)), ("updated_at", &now())])
+        .await?;
+    Ok(claimed > 0)
+}
+
+/// Gives a claimed step back, because its message could not be sent: the next
+/// run does it again.
+async fn unclaim(state: &AppState, id: i64, column: &str) -> Result {
+    let none: Option<NaiveDate> = None;
     JobCard::query()
         .where_(JobCard::ID.eq(id))
-        .update(&state.db, &[(column, &Some(day)), ("updated_at", &now())])
+        .update(&state.db, &[(column, &none), ("updated_at", &now())])
         .await?;
     Ok(())
 }
 
-/// The steps of one job card on `on`.
+/// The steps of one job card on `on`. Each is claimed first, then done; a step
+/// that fails is given back so the next run tries it again.
 async fn step_card(state: &AppState, card: &JobCard, on: NaiveDate) -> Result {
     let Some(start) = start_of(card) else {
         return Ok(());
@@ -215,34 +236,34 @@ async fn step_card(state: &AppState, card: &JobCard, on: NaiveDate) -> Result {
     }
     let days = (on - start).num_days();
     if days >= REMINDER_DAYS[0] && card.collect_first_on.is_none() {
-        remind(state, card, 1, REMINDER_DAYS[0]).await?;
-        mark(
-            state,
-            card.id,
-            "collect_first_on",
-            start + Duration::days(REMINDER_DAYS[0]),
-        )
-        .await?;
+        let day = start + Duration::days(REMINDER_DAYS[0]);
+        let column = "collect_first_on";
+        if claim(state, card.id, JobCard::COLLECT_FIRST_ON, column, day).await? {
+            if let Err(error) = remind(state, card, 1, REMINDER_DAYS[0]).await {
+                unclaim(state, card.id, column).await?;
+                return Err(error);
+            }
+        }
     }
     if days >= REMINDER_DAYS[1] && card.collect_second_on.is_none() {
-        remind(state, card, 2, REMINDER_DAYS[1]).await?;
-        mark(
-            state,
-            card.id,
-            "collect_second_on",
-            start + Duration::days(REMINDER_DAYS[1]),
-        )
-        .await?;
+        let day = start + Duration::days(REMINDER_DAYS[1]);
+        let column = "collect_second_on";
+        if claim(state, card.id, JobCard::COLLECT_SECOND_ON, column, day).await? {
+            if let Err(error) = remind(state, card, 2, REMINDER_DAYS[1]).await {
+                unclaim(state, card.id, column).await?;
+                return Err(error);
+            }
+        }
     }
     if days >= MANAGER_DAYS && card.collect_manager_on.is_none() {
-        tell_manager(state, card, MANAGER_DAYS).await?;
-        mark(
-            state,
-            card.id,
-            "collect_manager_on",
-            start + Duration::days(MANAGER_DAYS),
-        )
-        .await?;
+        let day = start + Duration::days(MANAGER_DAYS);
+        let column = "collect_manager_on";
+        if claim(state, card.id, JobCard::COLLECT_MANAGER_ON, column, day).await? {
+            if let Err(error) = tell_manager(state, card, MANAGER_DAYS).await {
+                unclaim(state, card.id, column).await?;
+                return Err(error);
+            }
+        }
     }
     Ok(())
 }
@@ -273,13 +294,55 @@ pub async fn process(state: &AppState, on: NaiveDate) -> Result {
     failure.map_or(Ok(()), Err)
 }
 
-/// The daily run of `AUT.RUL.18` for the day `on`.
+/// How many days after it left a vehicle's storage invoice is still retried.
+pub const BILL_RETRY_DAYS: i64 = 35;
+
+/// Bills again the storage of the vehicles that left (released or delivered)
+/// and whose storage invoice did not get made (the invoicer failed at the
+/// release): without this the vehicle stays released and unbilled. A job card
+/// is billed once ([`bill_release`] claims it), so a card billed or with no fee
+/// is left alone.
 ///
 /// # Errors
 ///
-/// As [`process`].
+/// The database's errors, and the first invoicer error after all were tried.
+pub async fn retry_unbilled(state: &AppState, on: NaiveDate) -> Result<Vec<i64>> {
+    let cards = JobCard::query()
+        .where_(JobCard::STORAGE_INVOICED_AT.is_null())
+        .where_(JobCard::COLLECT_FIRST_ON.is_not_null())
+        .order_by(JobCard::ID)
+        .get(&state.db)
+        .await?;
+    let mut billed = Vec::new();
+    let mut failure = None;
+    for card in cards {
+        let Some(left) = card.released_at.or(card.delivered_at) else {
+            continue;
+        };
+        if card.storage_fee_daily <= 0 || (on - dubai_date(left)).num_days() > BILL_RETRY_DAYS {
+            continue;
+        }
+        match bill_release(state, card.id).await {
+            Ok(Some(_)) => billed.push(card.id),
+            Ok(None) => {}
+            Err(error) => {
+                failure.get_or_insert(error);
+            }
+        }
+    }
+    failure.map_or(Ok(billed), Err)
+}
+
+/// The daily run of `AUT.RUL.18` for the day `on`: the steps, then the storage
+/// invoices that failed at a release ([`retry_unbilled`]).
+///
+/// # Errors
+///
+/// As [`process`], and the first invoicer error of the retry.
 pub async fn run_daily(state: &AppState, on: NaiveDate) -> Result {
-    process(state, on).await
+    let steps = process(state, on).await;
+    let billing = retry_unbilled(state, on).await.map(|_| ());
+    steps.and(billing)
 }
 
 /// Invoices the storage fee of the job card `job_card_id` that left (released,

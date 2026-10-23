@@ -245,7 +245,9 @@ pub async fn release_with_instruction(
     }
     // The storage fee of the days the vehicle stayed (`AUT.RUL.18`); none after
     // a total loss, where the claim bills the storage.
-    crate::storage::bill_release(state, id).await?;
+    // The vehicle has left: a failed invoice must not undo or hide that. The
+    // daily run bills it again ([`crate::storage::retry_unbilled`]).
+    let _ = crate::storage::bill_release(state, id).await;
     JobCard::find_or_404(&state.db, id).await
 }
 

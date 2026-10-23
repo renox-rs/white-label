@@ -48,7 +48,9 @@ pub async fn after_deliver(state: &AppState, card: &JobCard) -> Result {
     }
     bill(state, card.id).await?;
     // The storage fee of a vehicle that waited ready (`AUT.RUL.18`).
-    crate::storage::bill_release(state, card.id).await?;
+    // A failed storage invoice is billed again by the daily run
+    // ([`crate::storage::retry_unbilled`]).
+    let _ = crate::storage::bill_release(state, card.id).await;
     Ok(())
 }
 
