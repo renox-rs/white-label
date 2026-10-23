@@ -9,6 +9,7 @@ pub mod dispatch;
 mod dispatch_events;
 mod dispatch_pages;
 pub mod dispatch_pick;
+mod dispatch_screens;
 pub mod dispatch_send;
 mod dispatch_texts;
 mod events;
@@ -384,6 +385,7 @@ impl Module for WlInventory {
             .merge(transfer_screens::routes())
             .merge(receipt_screens::routes())
             .merge(dispatch_pages::routes())
+            .merge(dispatch_screens::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -405,12 +407,15 @@ impl Module for WlInventory {
             .view_data::<transfer_screens::TransfersPage>()
             .view_data::<receipt_screens::OrdersPage>()
             .view_data::<receipt_screens::ReceiptsPage>()
-            .view_data::<receipt_screens::ReceiptPage>();
+            .view_data::<receipt_screens::ReceiptPage>()
+            .view_data::<dispatch_screens::DispatchesPage>()
+            .view_data::<dispatch_screens::DispatchPage>();
         app.templates(|env| {
             for (name, source) in screens::VIEWS
                 .iter()
                 .chain(stock_screens::VIEWS)
                 .chain(recall_screens::VIEWS)
+                .chain(dispatch_screens::VIEWS)
             {
                 // The app's own file of that name wins.
                 if env.get_template(name).is_err() {
@@ -441,7 +446,7 @@ impl Module for WlInventory {
         // The stock screens, in the app group of the sidebar for those who
         // hold the permission of each somewhere; the labels are the app's
         // `nav.stock`, `nav.receive_stock`, `nav.stock_transfers`,
-        // `nav.stock_holds` and `nav.pending_issues` texts.
+        // `nav.stock_holds`, `nav.pending_issues` and `nav.dispatches` texts.
         for (route, label, icon, order, held) in [
             (
                 "wl_inventory.stock",
@@ -485,6 +490,13 @@ impl Module for WlInventory {
                 69,
                 &[permissions::RECALLS_VIEW, permissions::RECALLS_MANAGE][..],
             ),
+            (
+                "wl_inventory.dispatches",
+                "nav.dispatches",
+                "truck",
+                70,
+                &[permissions::DISPATCH_MANAGE][..],
+            ),
         ] {
             app.nav(
                 "app",
@@ -502,6 +514,7 @@ impl Module for WlInventory {
         // A page that holds only the id of a lot, a hold, a transfer or a
         // receipt (an approval, a message) shows its number.
         stock_screens::register_labels();
+        dispatch_screens::register_labels();
         app.model::<Item>();
         app.model::<Location>();
         app.model::<ItemSupplier>();

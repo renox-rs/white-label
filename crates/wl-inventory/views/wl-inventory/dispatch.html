@@ -1,0 +1,75 @@
+{#- wl-inventory: one dispatch: its status, the hand-over, its lines (sent,
+    delivered, refused, in return, received back, missing), and the buttons
+    that pick, dispatch, cancel and re-pick a line. A button that cannot run
+    now is shown disabled and says why; a refusal of the service shows in the
+    sheet. Replace it with resources/views/wl-inventory/dispatch.html in the
+    app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="recipient" :back="route('wl_inventory.dispatches')" :back-label="tx['title']"
+                    :badge="status" :badge-kind="status_kind"/>
+    <rx-form-errors/>
+    <rx-alert rx-for="note in alerts" kind="warning" :message="note"/>
+    <rx-row>
+      <template rx-if="actions.pick.shown">
+        <rx-action-sheet id="pick-dispatch" :label="tx['pick']" :action="route('wl_inventory.dispatch_pick', id)"
+                         :title="tx['pick']" :description="tx['pick_description']" :submit-label="tx['pick']" variant="primary" icon="check"/>
+      </template>
+      <template rx-if="actions.dispatch.shown">
+        <template rx-if="actions.dispatch.blocked">
+          <rx-button :label="tx['dispatch']" variant="primary" icon="truck" :disabled-reason="actions.dispatch.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="send-dispatch" :label="tx['dispatch']" :action="route('wl_inventory.dispatch_send', id)"
+                           :title="tx['dispatch']" :description="tx['dispatch_description']" :submit-label="tx['dispatch']" variant="primary" icon="truck">
+            <rx-select name="handover" :label="tx['handover']" :options="handovers" :selected="'own_delivery'" id="send-dispatch-handover" required/>
+            <rx-input name="tracking_number" :label="tx['tracking_field']" id="send-dispatch-tracking"/>
+            <rx-input name="signature" :label="tx['signature_field']" id="send-dispatch-signature"/>
+          </rx-action-sheet>
+        </template>
+      </template>
+      <template rx-if="actions.cancel.shown">
+        <rx-action-sheet id="cancel-dispatch" :label="tx['cancel']" :action="route('wl_inventory.dispatch_cancel', id)"
+                         :title="tx['cancel']" :description="tx['cancel_description']" :submit-label="tx['cancel']" icon="circle-x" danger>
+          <rx-input name="reason" :label="tx['cancel_reason']" id="cancel-dispatch-reason"/>
+        </rx-action-sheet>
+      </template>
+      <rx-link-button rx-if="has_note" :href="route('wl_inventory.dispatch_note', id)" :label="tx['delivery_note']" icon="file-text"/>
+    </rx-row>
+    <rx-card :title="tx['details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['recipient']" :value="recipient" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['address']" :value="address" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['source']" :value="source" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['store']" :value="store"/>
+        <rx-entry :label="tx['handover']" :value="handover" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['tracking']" :value="tracking" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['signature']" :value="signature" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['delivery']" :value="delivery" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['picked_by']" :value="picked_at" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['dispatched_at']" :value="dispatched_at" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['delivered_at']" :value="delivered_at" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['lines']" card>
+      <rx-column :label="tx['item']">{{ line.item }}</rx-column>
+      <rx-column :label="tx['lot']" hide-narrow>{{ line.lot }}</rx-column>
+      <rx-column :label="tx['quantity']">{{ line.quantity }}</rx-column>
+      <rx-column :label="tx['delivered']">{{ line.delivered }}</rx-column>
+      <rx-column :label="tx['refused']" hide-narrow>{{ line.refused }} {{ line.reason }}</rx-column>
+      <rx-column :label="tx['in_return']" hide-narrow>{{ line.in_return }}</rx-column>
+      <rx-column :label="tx['received_back']" hide-narrow>{{ line.received }}</rx-column>
+      <rx-column :label="tx['missing']" hide-narrow>{{ line.missing }}</rx-column>
+      <rx-row-actions>
+        <template rx-if="line.can_repick">
+          <rx-action-sheet :id="'repick-' ~ line.id" :label="tx['repick']" :action="route('wl_inventory.dispatch_repick', id)"
+                           :title="tx['repick']" :description="tx['repick_description']" :submit-label="tx['repick']" icon="refresh-cw">
+            <input type="hidden" name="line" :value="line.id"/>
+            <rx-select name="lot" :label="tx['new_lot']" :options="line.lots" :selected="''" :id="'repick-lot-' ~ line.id"/>
+          </rx-action-sheet>
+        </template>
+      </rx-row-actions>
+      <rx-slot name="empty"><rx-empty :title="tx['empty']" icon="truck"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>
