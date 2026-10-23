@@ -4,7 +4,9 @@
 pub mod abort;
 pub mod cost;
 mod db;
+pub mod disputes;
 pub mod events;
+pub mod incidents;
 pub mod issue;
 pub mod material_hold;
 pub mod ncr;
@@ -14,6 +16,7 @@ pub mod pages;
 pub mod permissions;
 pub mod pick_list;
 pub mod plant;
+pub mod portal;
 pub mod report;
 mod screens;
 mod texts;
@@ -62,7 +65,8 @@ impl Module for Manufacturing {
         app.view_data::<screens::work_orders_page::WorkOrdersPage>()
             .view_data::<screens::work_order_page::WorkOrderPage>()
             .view_data::<screens::ncrs_page::NcrsPage>()
-            .view_data::<screens::ncr_page::NcrPage>();
+            .view_data::<screens::ncr_page::NcrPage>()
+            .view_data::<portal::InvoicesPage>();
         wl_kernel::approvals::register_subject_link(ncr::SUBJECT_TYPE, |id| {
             screens::ncr_page::url(id)
         });
@@ -103,7 +107,8 @@ impl Module for Manufacturing {
             .model::<ProductionReport>()
             .model::<AbortLine>()
             .model::<Ncr>()
-            .model::<NcrDecision>();
+            .model::<NcrDecision>()
+            .model::<disputes::NcrLink>();
         work_order::register();
         ncr::register();
         report::register(app);
@@ -120,6 +125,9 @@ impl Module for Manufacturing {
         abort::listen(app);
         material_hold::listen(app);
         ncrs::listen(app);
+        // The supplier scorecard counts the NCRs caused by the supplier.
+        wl_kernel::inventory::provide_supplier_incidents(app, incidents::NcrIncidents);
+        disputes::listen(app);
         // A lot with an NCR open on it is not released (§7.1 *NCR*).
         wl_kernel::lot_disposal::provide_lot_release_guard(app, ncrs::NcrReleaseGuard);
         app.schedule()

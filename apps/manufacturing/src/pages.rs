@@ -17,6 +17,8 @@
 //! | `POST /manufacturing/work-orders/{id}/issue` | `manufacturing.issue` | `work_orders.issue` |
 //! | `POST /manufacturing/work-orders/{id}/report` | `manufacturing.report` | `work_orders.report` |
 //! | `POST /manufacturing/reports/{id}/void` | `manufacturing.report_void` | `work_orders.report` on the line; the line's supervisor or the production manager (`work_orders.void_approve`) approves (BL-MFG-04) |
+//! | `GET /portal/manufacturing/invoices` | `manufacturing.portal_invoices` | a portal grant for the buyer's company (BL-MFG-13) |
+//! | `POST /portal/manufacturing/invoices/{id}/dispute` | `manufacturing.portal_dispute` | as above; reason, text and, for quality, the ticked lines |
 //! | `GET /manufacturing/ncrs` | `manufacturing.ncrs` | a permission of the NCRs for a plant |
 //! | `POST /manufacturing/ncrs` | `manufacturing.ncr_create` | `ncrs.raise` for the plant |
 //! | `GET /manufacturing/ncrs/{id}` | `manufacturing.ncr` | as the list |
@@ -88,6 +90,13 @@ pub fn routes() -> Routes {
         .name("manufacturing.report")
         .post("/manufacturing/reports/{id}/void", void_report)
         .name("manufacturing.report_void")
+        .get("/portal/manufacturing/invoices", crate::portal::show)
+        .name("manufacturing.portal_invoices")
+        .post(
+            "/portal/manufacturing/invoices/{id}/dispute",
+            crate::portal::dispute,
+        )
+        .name("manufacturing.portal_dispute")
         .get("/manufacturing/ncrs", screens::ncrs_page::show)
         .name("manufacturing.ncrs")
         .post("/manufacturing/ncrs", raise_ncr)

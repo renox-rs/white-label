@@ -573,6 +573,10 @@ pub struct DisputeRequest {
     /// The record that caused the dispute (e.g. a delivery); `None` when
     /// raised on the invoice itself.
     pub source: Option<Subject>,
+    /// What the dispute is about, when the form asks (`quantity`, `price`,
+    /// `quality`, `other`); a vertical reads it from [`InvoiceDisputed`].
+    #[serde(default)]
+    pub kind: Option<String>,
 }
 
 impl DisputeRequest {
@@ -587,7 +591,14 @@ impl DisputeRequest {
             by,
             ticket: None,
             source: None,
+            kind: None,
         }
+    }
+
+    /// About `kind` (`quantity`, `price`, `quality`, `other`).
+    pub fn kind(mut self, kind: impl Into<String>) -> Self {
+        self.kind = Some(kind.into());
+        self
     }
 
     /// With the disputed `amount` in fils.
@@ -876,6 +887,16 @@ pub trait Invoicer: Send + Sync + 'static {
                 ),
             ))
         })
+    }
+
+    /// The lines of invoice `invoice`, in order: what a dispute form lets
+    /// the buyer tick. Empty by default (invoicing is not enabled).
+    fn lines_of<'a>(
+        &'a self,
+        _db: &'a Db,
+        _invoice: InvoiceId,
+    ) -> InvoiceFuture<'a, Vec<InvoiceLineInfo>> {
+        Box::pin(async { Ok(Vec::new()) })
     }
 
     /// Where the dispute `dispute` stands: its invoice and, once resolved,
@@ -1178,9 +1199,29 @@ pub struct InvoiceDisputed {
     pub ticket: Option<TicketId>,
     /// Who raised it.
     pub raised_by: DisputeBy,
+    /// Why, in the raiser's words.
+    #[serde(default)]
+    pub reason: String,
+    /// What it is about (`quantity`, `price`, `quality`, `other`), when the
+    /// form asked.
+    #[serde(default)]
+    pub kind: Option<String>,
 }
 
 impl Event for InvoiceDisputed {}
+
+/// An invoice line, as a vertical's dispute form lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InvoiceLineInfo {
+    /// The position on the invoice (1-based).
+    pub position: i32,
+    /// The description.
+    pub description: String,
+    /// The gross amount (net + VAT), in fils.
+    pub gross: i64,
+    /// The record the line bills for (a dispatch line), when it has one.
+    pub origin: Option<Subject>,
+}
 
 /// A dispute was resolved (`wl-invoicing` `resolve_dispute`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2705,6 +2746,8 @@ mod tests {
             }],
             ticket: Some(TicketId(11)),
             raised_by: DisputeBy::Party { id: PartyId(2) },
+            reason: "colour off".into(),
+            kind: Some("quality".into()),
         };
         let json = to_value(&event).unwrap();
         assert_eq!(json["lines"][0]["position"], 2);

@@ -48,6 +48,10 @@ pub(crate) const VIEWS: &[(&str, &str)] = &[
         include_str!("../../views/manufacturing/ncrs.html"),
     ),
     (
+        "manufacturing/portal_invoices.html",
+        include_str!("../../views/manufacturing/portal_invoices.html"),
+    ),
+    (
         "manufacturing/ncr.html",
         include_str!("../../views/manufacturing/ncr.html"),
     ),

@@ -396,6 +396,23 @@ async fn build(state: &AppState, user: &AuthUser, lang: &Lang, ncr: &Ncr) -> Res
         });
     }
 
+    for link in crate::disputes::links_of(&state.db, ncr.id).await? {
+        facts.push(Fact {
+            label: t(lang, "manufacturing.screen.ncr.fact.dispute"),
+            value: tf(
+                lang,
+                "manufacturing.screen.ncr.fact.dispute_on",
+                &[("dispute", &link.dispute_id), ("invoice", &link.invoice_id)],
+            ),
+        });
+        if let Some(text) = link.text.as_deref() {
+            facts.push(Fact {
+                label: t(lang, "manufacturing.screen.ncr.fact.customer_says"),
+                value: text.to_owned(),
+            });
+        }
+    }
+
     let mut notes = Vec::new();
     if waiting {
         notes.push(t(lang, "manufacturing.screen.ncr.note.waiting"));

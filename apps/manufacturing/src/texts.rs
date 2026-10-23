@@ -97,6 +97,15 @@ const TEXTS: &[(&str, &str)] = &[
         "manufacturing.ncr.keeps_lot",
         "{{ ncr }} is {{ status }} on this lot: it is not released until its action is done.",
     ),
+    ("manufacturing.dispute.title", "Quality dispute: {{ ncrs }}"),
+    (
+        "manufacturing.dispute.body",
+        "A customer disputes an invoice for quality; NCR {{ ncrs }} is open on the delivered lot. The customer says: {{ text }}",
+    ),
+    (
+        "manufacturing.ncr.raiser_approves",
+        "The inspector who raised the NCR cannot approve using it as it is: ask again for somebody else to approve.",
+    ),
     ("manufacturing.ncr.task_done", "Done."),
     ("manufacturing.ncr.close_title", "Close {{ ncr }}"),
     (
@@ -903,6 +912,60 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("manufacturing.screen.transition.reopen", "Reopened"),
     ("manufacturing.screen.transition.auto_reopen", "Reopened"),
+    // The buyer's portal.
+    (
+        "manufacturing.screen.done.disputed",
+        "The dispute was sent. We will look into it.",
+    ),
+    ("manufacturing.screen.portal.title", "Invoices"),
+    (
+        "manufacturing.screen.portal.subtitle",
+        "Your open invoices. Tell us if something on one is wrong.",
+    ),
+    ("manufacturing.screen.portal.invoice", "Invoice"),
+    ("manufacturing.screen.portal.balance", "Balance"),
+    ("manufacturing.screen.portal.due", "Due"),
+    ("manufacturing.screen.portal.dispute", "Dispute"),
+    (
+        "manufacturing.screen.portal.dispute_hint",
+        "Tell us what is wrong with the invoice. Reminders for it pause while we look.",
+    ),
+    ("manufacturing.screen.portal.dispute_send", "Send"),
+    ("manufacturing.screen.portal.kind", "What is wrong"),
+    ("manufacturing.screen.portal.text", "Tell us more"),
+    (
+        "manufacturing.screen.portal.lines_hint",
+        "Tick the lines with the problem. With none ticked, every line is meant.",
+    ),
+    ("manufacturing.screen.portal.empty", "No open invoices"),
+    (
+        "manufacturing.screen.portal.empty_text",
+        "Invoices you still have to pay appear here.",
+    ),
+    ("manufacturing.screen.portal.under_review", "Under review"),
+    ("manufacturing.screen.dispute_kind.quantity", "Quantity"),
+    ("manufacturing.screen.dispute_kind.price", "Price"),
+    ("manufacturing.screen.dispute_kind.quality", "Quality"),
+    ("manufacturing.screen.dispute_kind.other", "Other"),
+    ("manufacturing.screen.invoice_status.issued", "Issued"),
+    (
+        "manufacturing.screen.invoice_status.partially_paid",
+        "Partly paid",
+    ),
+    ("manufacturing.screen.invoice_status.overdue", "Overdue"),
+    (
+        "manufacturing.portal.kind",
+        "Choose what is wrong: quantity, price, quality or other.",
+    ),
+    ("manufacturing.screen.ncr.fact.dispute", "Customer dispute"),
+    (
+        "manufacturing.screen.ncr.fact.dispute_on",
+        "Dispute {{ dispute }} on invoice {{ invoice }}",
+    ),
+    (
+        "manufacturing.screen.ncr.fact.customer_says",
+        "The customer says",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

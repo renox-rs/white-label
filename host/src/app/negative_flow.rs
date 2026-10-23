@@ -99,6 +99,13 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
         // 04 `FIN.ACL.15`, `FIN.RUL.15`, `FIN.RUL.23`, `FIN.RUL.24`, `FIN.ACL.21`
         // (BL-ACC-24): see [`super::accounting_seed::invoicing`].
         "accounting" => super::accounting_seed::invoicing(module, entities),
+        // 07 Manufacturing §7.1 *Disputes*: the customer buyer disputes an
+        // invoice in the portal (a quality dispute links an NCR, BL-MFG-13),
+        // and `FIN.RUL.15` escalates after 14 days to the accountant.
+        "manufacturing" => module
+            .portal_disputes(true)
+            .dispute_escalation_days(DISPUTE_ESCALATION_DAYS)
+            .dispute_escalation_role(ACCOUNTANT),
         _ => module,
     }
 }

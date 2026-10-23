@@ -26,7 +26,8 @@ use wl_kernel::inventory::{
     StockNegative, StockService, provide_stock_service,
 };
 use wl_kernel::lot_disposal::{
-    LotDisposal, LotFacts, LotFuture, ReturnLot, ScrapLot, Scrapped, provide_lot_disposal,
+    DispatchLots, DispatchedLot, LotDisposal, LotFacts, LotFuture, ReturnLot, ScrapLot, Scrapped,
+    provide_dispatch_lots, provide_lot_disposal,
 };
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
@@ -568,6 +569,48 @@ impl LotDisposal for Lots {
     }
 }
 
+/// The lots behind the dispatch lines, as wl-inventory's `DispatchLots`
+/// would tell them.
+#[derive(Clone, Default)]
+pub struct Dispatches(Arc<Mutex<Vec<(Subject, Vec<DispatchedLot>)>>>);
+
+impl Dispatches {
+    /// Dispatch line `line` sent `(lot, quantity in thousandths)` of resin; a
+    /// lot of `None` is an item that is not lot-tracked.
+    pub fn put(&self, line: i64, lots: &[(Option<i64>, i64)]) {
+        let origin = Subject::new("inventory.dispatch_line", line);
+        let rows = lots
+            .iter()
+            .map(|(lot, quantity_milli)| DispatchedLot {
+                line: origin.clone(),
+                item: Subject::new(ITEM_SUBJECT_TYPE, RESIN),
+                lot: lot.map(|id| Subject::new(LOT_SUBJECT_TYPE, id)),
+                quantity_milli: *quantity_milli,
+            })
+            .collect();
+        self.0.lock().unwrap().push((origin, rows));
+    }
+}
+
+impl DispatchLots for Dispatches {
+    fn lots_of<'a>(
+        &'a self,
+        _state: &'a AppState,
+        origin: &'a Subject,
+    ) -> LotFuture<'a, Vec<DispatchedLot>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(known, _)| known == origin)
+                .map(|(_, rows)| rows.clone())
+                .unwrap_or_default())
+        })
+    }
+}
+
 /// The bills of materials of wl-inventory.
 #[derive(Clone, Default)]
 pub struct Boms(Arc<Mutex<Vec<BomVersion>>>);
@@ -802,6 +845,7 @@ impl Notifier for Recording {
 struct Fakes {
     stock: Stock,
     lots: Lots,
+    dispatches: Dispatches,
     boms: Boms,
     lines: Lines,
     tickets: Tickets,
@@ -822,6 +866,7 @@ impl Module for Fakes {
         provide_stock_service(app, self.stock.clone());
         provide_production_stock(app, self.stock.clone());
         provide_lot_disposal(app, self.lots.clone());
+        provide_dispatch_lots(app, self.dispatches.clone());
         provide_boms(app, self.boms.clone());
         provide_order_lines(app, self.lines.clone());
         provide_task_creator(app, self.tickets.clone());
@@ -842,6 +887,8 @@ pub struct Booted {
     pub stock: Stock,
     /// The lots of the inventory.
     pub lots: Lots,
+    /// The lots behind the dispatch lines.
+    pub dispatches: Dispatches,
     /// The BOMs.
     pub boms: Boms,
     /// The sales order lines.
@@ -1153,6 +1200,7 @@ impl Booted {
 pub async fn boot() -> Booted {
     let stock = Stock::default();
     let lots = Lots::default();
+    let dispatches = Dispatches::default();
     let boms = Boms::default();
     boms.panel(BOM, true);
     boms.panel(BOM + 1, false);
@@ -1167,6 +1215,7 @@ pub async fn boot() -> Booted {
     let fakes = Fakes {
         stock: stock.clone(),
         lots: lots.clone(),
+        dispatches: dispatches.clone(),
         boms: boms.clone(),
         lines: lines.clone(),
         tickets: tickets.clone(),
@@ -1269,6 +1318,7 @@ pub async fn boot() -> Booted {
         app,
         stock,
         lots,
+        dispatches,
         boms,
         lines,
         tickets,
