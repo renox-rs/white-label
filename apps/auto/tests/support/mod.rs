@@ -298,6 +298,7 @@ impl Garage {
             workshop_type: Some("scheduling.location".to_owned()),
             workshop_id: Some(1),
             technician_user_id: Some(self.technician_user("Tareq").await.id),
+            status,
             ..JobCard::default()
         };
         let mut tx = self.db().begin().await.unwrap();
