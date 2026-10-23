@@ -110,7 +110,13 @@ pub(crate) fn parse_money(text: &str) -> std::result::Result<i64, Error> {
         Some((whole, cents)) => (whole, cents),
         None => (cleaned.as_str(), ""),
     };
-    if cents.len() > 2 || (whole.is_empty() && cents.is_empty()) {
+    if !whole
+        .chars()
+        .chain(cents.chars())
+        .all(|c| c.is_ascii_digit())
+        || cents.len() > 2
+        || (whole.is_empty() && cents.is_empty())
+    {
         return Err(bad());
     }
     let whole: i64 = if whole.is_empty() {
@@ -141,7 +147,13 @@ pub(crate) fn parse_milli(text: &str) -> std::result::Result<i64, Error> {
         Some((whole, fraction)) => (whole, fraction),
         None => (cleaned.as_str(), ""),
     };
-    if fraction.len() > 3 || (whole.is_empty() && fraction.is_empty()) {
+    if !whole
+        .chars()
+        .chain(fraction.chars())
+        .all(|c| c.is_ascii_digit())
+        || fraction.len() > 3
+        || (whole.is_empty() && fraction.is_empty())
+    {
         return Err(bad());
     }
     let whole: i64 = if whole.is_empty() {

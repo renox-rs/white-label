@@ -22,7 +22,7 @@
         </rx-action-sheet>
       </template>
     </rx-page-header>
-    <rx-alert rx-if="!active" kind="info" :message="tx['vehicles.inactive']"/>
+    <rx-alert rx-if="not active" kind="info" :message="tx['vehicles.inactive']"/>
     <rx-card :title="tx['vehicles.details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['vehicles.plate']" :value="plate"/>
