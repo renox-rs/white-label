@@ -5,13 +5,16 @@
 //! screens answer in words and a person without the right is refused.
 
 mod manufacturing_support;
+mod support;
 
 use host::roles::{PRODUCTION_MANAGER, QC_INSPECTOR, STOREKEEPER};
 use manufacturing::recalls::RepickFlag;
 use manufacturing::{WorkOrder, WorkOrderSource};
-use manufacturing_support::{boot_with_orders, browse, floor, person, post};
+use manufacturing_support::{boot_tuned, boot_with_orders, browse, floor, person, post};
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
+use renox::testing::TestApp;
+use support::BouncingMail;
 use wl_inventory::movement::{MovementType, StockMovement};
 use wl_inventory::{Lot, LotStatus, NewDispatch, NewDispatchLine, create_dispatch};
 use wl_kernel::{PartyId, Subject};
@@ -277,16 +280,20 @@ async fn a_recalled_raw_lot_is_traced_to_the_customers_through_the_work_orders()
     .assert_status(403);
 }
 
-/// BL-MFG-10 AC4 (#391): customer C4 has no buyer with a portal login; the
-/// recall notice sent from the recall page goes to its main contact: a
-/// message under the 07 type `mfg.recall_notice` is queued for the party's
-/// primary e-mail address, and none for a buyer.
-#[renox::test]
-async fn a_customer_without_a_portal_buyer_is_told_at_its_main_contact_email() {
-    let (app, _orders) = boot_with_orders().await;
-    let f = floor(&app).await;
-    let keeper = person(&app, "Karim", STOREKEEPER, None).await;
-    let manager = person(&app, "Mona", PRODUCTION_MANAGER, None).await;
+/// Customer C4 with a main contact e-mail and no portal buyer, a lot F4 sent
+/// to it on a dispatch, and a recall on F4 opened by the production manager:
+/// the manager and the recall line of C4.
+async fn recalled_for_c4(
+    app: &TestApp,
+) -> (
+    wl_kernel::PartyId,
+    User,
+    wl_inventory::Recall,
+    wl_inventory::RecallLine,
+) {
+    let f = floor(app).await;
+    let keeper = person(app, "Karim", STOREKEEPER, None).await;
+    let manager = person(app, "Mona", PRODUCTION_MANAGER, None).await;
     let c4 = wl_parties::create(
         app.state(),
         wl_parties::NewParty {
@@ -334,11 +341,11 @@ async fn a_customer_without_a_portal_buyer_is_told_at_its_main_contact_email() {
     )
     .await
     .unwrap();
-    post(&app, &keeper, &format!("/dispatches/{}/pick", sent.id), &[])
+    post(app, &keeper, &format!("/dispatches/{}/pick", sent.id), &[])
         .await
         .assert_ok();
     post(
-        &app,
+        app,
         &keeper,
         &format!("/dispatches/{}/dispatch", sent.id),
         &[("handover", "courier"), ("tracking_number", "TRK-4")],
@@ -346,7 +353,7 @@ async fn a_customer_without_a_portal_buyer_is_told_at_its_main_contact_email() {
     .await
     .assert_ok();
     post(
-        &app,
+        app,
         &manager,
         "/recalls",
         &[
@@ -371,6 +378,17 @@ async fn a_customer_without_a_portal_buyer_is_told_at_its_main_contact_email() {
         .unwrap()
         .expect("the line of C4");
 
+    (c4, manager, recall, line)
+}
+
+/// BL-MFG-10 AC4 (#391): customer C4 has no buyer with a portal login; the
+/// recall notice sent from the recall page goes to its main contact: a
+/// message under the 07 type `mfg.recall_notice` is queued for the party's
+/// primary e-mail address, and none for a buyer.
+#[renox::test]
+async fn a_customer_without_a_portal_buyer_is_told_at_its_main_contact_email() {
+    let (app, _orders) = boot_with_orders().await;
+    let (c4, manager, recall, line) = recalled_for_c4(&app).await;
     post(
         &app,
         &manager,
@@ -393,4 +411,63 @@ async fn a_customer_without_a_portal_buyer_is_told_at_its_main_contact_email() {
     );
     assert_eq!(messages[0].party_id, Some(c4.0));
     assert!(messages[0].user_id.is_none(), "there is no buyer to tell");
+}
+
+/// BL-MFG-14 *Notifications* (#395): the 07 recall notice (`mfg.recall_notice`,
+/// urgent, no group) that bounces for good gives up: the line is `pending`
+/// again and the recall owner has the task to tell the customer another way,
+/// the company admin has the staff task and the in-app alert, which links to
+/// that task.
+#[renox::test]
+async fn a_recall_notice_that_gives_up_gives_the_owner_a_task_and_the_admin_an_alert() {
+    let mail = BouncingMail::default();
+    let (app, _orders) = boot_tuned(host::Tuning::default().notify({
+        let mail = mail.clone();
+        move |n| n.provider(mail)
+    }))
+    .await;
+    let admin = person(&app, "Ada", host::roles::ADMIN, None).await;
+    let (_c4, manager, recall, line) = recalled_for_c4(&app).await;
+
+    post(
+        &app,
+        &manager,
+        &format!("/recalls/{}/notices", recall.id),
+        &[("template", "customer"), ("lines", &line.id.to_string())],
+    )
+    .await
+    .assert_ok();
+    app.run_all_jobs().await;
+
+    assert!(!mail.attempts().is_empty(), "the notice was e-mailed");
+    let again = wl_inventory::RecallLine::find_or_404(app.db(), line.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        again.notice_status,
+        wl_inventory::NoticeStatus::Pending,
+        "the customer was not told"
+    );
+    let tasks = wl_kernel::tickets::task_creator(app.state());
+    assert!(
+        tasks
+            .find_open(app.state(), &wl_inventory::recall_notice::task_key(line.id))
+            .await
+            .unwrap()
+            .is_some(),
+        "the recall owner has the task"
+    );
+    let alerts: Vec<_> = admin
+        .notifications(app.db(), 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|n| n.kind == "notify-give-up-alert")
+        .collect();
+    assert_eq!(
+        alerts.len(),
+        1,
+        "an urgent notice alerts the admin in the app"
+    );
+    assert!(alerts[0].data.to_string().contains("/tickets/"));
 }

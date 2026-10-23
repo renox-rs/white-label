@@ -166,10 +166,16 @@ impl Module for OrdersModule {
 
 /// [`boot`] with the sales order lines of a test.
 pub async fn boot_with_orders() -> (TestApp, Orders) {
+    boot_tuned(host::Tuning::default()).await
+}
+
+/// [`boot_with_orders`] with the shared modules tuned (a mail provider that
+/// bounces, say).
+pub async fn boot_tuned(tuning: host::Tuning) -> (TestApp, Orders) {
     let orders = Orders::default();
     let config = ClientConfig::parse(CLIENT).unwrap();
     let app = TestApp::new(
-        host::app_for(config)
+        host::app_for_tuned(config, tuning)
             .unwrap()
             .module(OrdersModule(orders.clone())),
     )
