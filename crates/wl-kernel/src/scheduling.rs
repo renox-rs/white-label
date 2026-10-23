@@ -381,6 +381,57 @@ pub fn work_done_status(state: &AppState) -> Arc<dyn WorkDoneStatus> {
     }
 }
 
+/// What a vertical may do to a booking from its own record (wl-scheduling §8
+/// `Bookings`): link the record it opened at check-in, so that a cancellation
+/// after the check-in asks [`WorkDoneStatus`] about it, and complete the
+/// booking when that record is done (08: the job card is delivered). The
+/// defaults do nothing.
+pub trait BookingActions: Send + Sync + 'static {
+    /// Links `record` (a job card, a visit) as the record that holds the work
+    /// done for `booking`.
+    fn link_work_done<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _booking: BookingId,
+        _record: Subject,
+    ) -> SchedulingFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
+    /// Completes `booking` as the system (`complete`, §4.1): the service took
+    /// place. Refused with a 422 when the booking cannot be completed yet (the
+    /// start has not passed, or it is not checked in).
+    fn complete<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _booking: BookingId,
+    ) -> SchedulingFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+/// The actions when no scheduling module is provided: nothing is linked and
+/// nothing is completed.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoBookingActions;
+
+impl BookingActions for NoBookingActions {}
+
+/// Makes `actions` the app's [`BookingActions`]; `wl-scheduling` calls it in
+/// `register`.
+pub fn provide_booking_actions(app: &mut Registry, actions: impl BookingActions) {
+    let actions: Arc<dyn BookingActions> = Arc::new(actions);
+    app.provide(actions);
+}
+
+/// The app's [`BookingActions`], or [`NoBookingActions`].
+pub fn booking_actions(state: &AppState) -> Arc<dyn BookingActions> {
+    match state.provided::<Arc<dyn BookingActions>>() {
+        Some(found) => Arc::clone(&found),
+        None => Arc::new(NoBookingActions),
+    }
+}
+
 /// The names of the services a module books, by code, in a language: what a
 /// vertical shows where it has only a booking's service code
 /// (`dental_checkup` is *Dental check-up*). The default knows none, so a code

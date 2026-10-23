@@ -2485,3 +2485,38 @@ async fn the_deposit_handover_falls_back_when_payments_is_off() {
     assert_eq!(request.new_holder, PartyId(31));
     assert_eq!(request.receipt, "RCPT-1");
 }
+
+/// 08 Auto: without a scheduling module the booking actions link and complete
+/// nothing, and without an inventory module a return posts nothing.
+#[renox::test]
+async fn without_scheduling_and_inventory_the_workshop_contracts_do_nothing() {
+    use wl_kernel::Subject;
+    use wl_kernel::inventory::{ReturnRequest, stock_service};
+    use wl_kernel::scheduling::{BookingId, booking_actions};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+
+    let actions = booking_actions(state);
+    actions
+        .link_work_done(state, BookingId(4), Subject::new("auto.job_card", 9))
+        .await
+        .unwrap();
+    actions.complete(state, BookingId(4)).await.unwrap();
+
+    let request = ReturnRequest::new(
+        Subject::new("inventory.item", 1),
+        Subject::new("inventory.location", 2),
+        2_000,
+        Subject::new("auto.job_card", 9),
+    )
+    .cost_object(Subject::new("auto.job_card", 9))
+    .reason("not fitted");
+    assert_eq!(request.reason.as_deref(), Some("not fitted"));
+    let returned = stock_service(state)
+        .return_to_stock(state, request)
+        .await
+        .unwrap();
+    assert_eq!(returned.posted_milli, 0);
+}

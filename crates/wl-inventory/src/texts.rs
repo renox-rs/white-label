@@ -638,6 +638,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Enter a quantity above zero.",
     ),
     (
+        "wl_inventory.return.needs_lot",
+        "{{ item }} is tracked by lot: name the lot it goes back to.",
+    ),
+    (
         "wl_inventory.issue.wrong_lot",
         "The lot is not a lot of that item.",
     ),

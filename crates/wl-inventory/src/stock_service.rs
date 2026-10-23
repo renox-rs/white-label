@@ -30,7 +30,8 @@ use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::inventory::{
     ConsumeRequest, Consumed, ConsumedLot, ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE,
-    LOT_SUBJECT_TYPE, StockChoice, StockFuture, StockLot, StockNegative, StockService,
+    LOT_SUBJECT_TYPE, ReturnRequest, Returned, StockChoice, StockFuture, StockLot, StockNegative,
+    StockService,
 };
 
 use crate::balance::{self, Candidate};
@@ -295,6 +296,56 @@ pub async fn consume(state: &AppState, request: ConsumeRequest) -> Result<Consum
     })
 }
 
+/// Puts `request` back into stock (see [`StockService::return_to_stock`]): a
+/// `return_in` movement of the quantity at the item's average cost against the
+/// record that gives it back.
+///
+/// # Errors
+///
+/// 422 for a quantity that is not above zero and for an item tracked by lot
+/// without a lot; a database error.
+pub async fn return_to_stock(state: &AppState, request: ReturnRequest) -> Result<Returned> {
+    if request.quantity_milli <= 0 {
+        return Err(refused(said("wl_inventory.issue.bad_quantity", &[])));
+    }
+    let location = Location::find_or_404(&state.db, request.location.subject_id).await?;
+    let item = Item::find_or_404(&state.db, request.item.subject_id).await?;
+    let lot_id = request.lot.as_ref().map(|lot| lot.subject_id);
+    if item.lot_tracked && lot_id.is_none() {
+        return Err(refused(said(
+            "wl_inventory.return.needs_lot",
+            &[("item", &item.code)],
+        )));
+    }
+    let mut tx = state.db.begin().await?;
+    let mut moved = StockMovement::moving(
+        MovementType::ReturnIn,
+        item.id,
+        lot_id,
+        None,
+        Some(location.id),
+        request.quantity_milli,
+        item.average_cost,
+        value_of(request.quantity_milli, item.average_cost),
+        &request.source,
+        None,
+    );
+    moved.reason = request.reason.clone();
+    moved.cost_object_type = request
+        .cost_object
+        .as_ref()
+        .map(|subject| subject.subject_type.clone());
+    moved.cost_object_id = request
+        .cost_object
+        .as_ref()
+        .map(|subject| subject.subject_id);
+    moved.insert(&mut tx).await?;
+    tx.commit().await?;
+    Ok(Returned {
+        posted_milli: request.quantity_milli,
+    })
+}
+
 /// The store of scope `kind`/`id`: the location of that scope of the type
 /// store (else the first location of the scope that is not in transit,
 /// quarantine or scrap), oldest first.
@@ -373,6 +424,14 @@ impl StockService for InventoryStock {
         request: ConsumeRequest,
     ) -> StockFuture<'a, Consumed> {
         Box::pin(async move { consume(state, request).await })
+    }
+
+    fn return_to_stock<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: ReturnRequest,
+    ) -> StockFuture<'a, Returned> {
+        Box::pin(async move { return_to_stock(state, request).await })
     }
 
     fn store_of<'a>(

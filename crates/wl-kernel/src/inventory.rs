@@ -951,6 +951,71 @@ pub struct StockChoice {
     pub lots: Vec<StockLot>,
 }
 
+/// Goods put back into stock by the record that took them (wl-inventory §6
+/// `StockService` *return*): the parts a job card issued and did not fit
+/// (08 §7.1 *Job card* `cancel`, `AUT.ACL.21`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReturnRequest {
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The location it goes back to, `inventory.location:2`.
+    pub location: Subject,
+    /// The quantity, in thousandths of the base unit.
+    pub quantity_milli: i64,
+    /// The record that gives it back: a job card.
+    pub source: Subject,
+    /// The record the cost was charged to, if any.
+    pub cost_object: Option<Subject>,
+    /// The lot it goes back to (`inventory.lot:4`); needed for an item
+    /// tracked by lot.
+    #[serde(default)]
+    pub lot: Option<Subject>,
+    /// Why it comes back.
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+impl ReturnRequest {
+    /// `quantity_milli` of `item` going back to `location` from `source`.
+    pub fn new(item: Subject, location: Subject, quantity_milli: i64, source: Subject) -> Self {
+        ReturnRequest {
+            item,
+            location,
+            quantity_milli,
+            source,
+            cost_object: None,
+            lot: None,
+            reason: None,
+        }
+    }
+
+    /// The cost charged to `cost_object` is taken back.
+    pub fn cost_object(mut self, cost_object: Subject) -> Self {
+        self.cost_object = Some(cost_object);
+        self
+    }
+
+    /// Goes back to `lot`.
+    pub fn lot(mut self, lot: Subject) -> Self {
+        self.lot = Some(lot);
+        self
+    }
+
+    /// For this reason.
+    pub fn reason(mut self, reason: &str) -> Self {
+        self.reason = Some(reason.to_owned());
+        self
+    }
+}
+
+/// What a return did.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Returned {
+    /// The quantity that went back into stock, in thousandths; 0 when there
+    /// is no inventory module.
+    pub posted_milli: i64,
+}
+
 /// The stock service other modules call (wl-inventory §6 `StockService`).
 /// Without the inventory module [`stock_service`] gives [`NoStockService`],
 /// which posts nothing.
@@ -986,6 +1051,19 @@ pub trait StockService: Send + Sync + 'static {
         _location: &'a Subject,
     ) -> StockFuture<'a, Option<StockChoice>> {
         Box::pin(async { Ok(None) })
+    }
+
+    /// Puts goods back into stock at a location: a `return_in` movement
+    /// against the record that gives them back (a job card's parts issued and
+    /// not fitted). Refused with a 422 for a quantity that is not above zero
+    /// and for an item tracked by lot without a lot. The default posts
+    /// nothing.
+    fn return_to_stock<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: ReturnRequest,
+    ) -> StockFuture<'a, Returned> {
+        Box::pin(async { Ok(Returned::default()) })
     }
 
     /// The `source` that consumed (a visit, a sale) was cancelled before its
