@@ -121,6 +121,15 @@ async fn work_order_for(
     made
 }
 
+/// A GET the way a browser sends it, as `by`.
+async fn browse(app: &TestApp, by: &User, path: &str) -> renox::testing::TestResponse {
+    app.acting_as(by);
+    app.request()
+        .header("accept", "text/html,application/xhtml+xml,*/*;q=0.8")
+        .get(path)
+        .await
+}
+
 async fn item(app: &TestApp, code: &str) -> wl_inventory::Item {
     let mut item = wl_inventory::Item::new(code, code, "pcs");
     item.save(app.db()).await.unwrap();
@@ -345,4 +354,94 @@ async fn cancelling_an_order_cancels_the_planned_work_order_and_unlinks_the_star
     let kept = WorkOrder::find_or_404(app.db(), started.id).await.unwrap();
     assert_eq!(kept.status, WorkOrderStatus::InProgress);
     assert_eq!(kept.source, WorkOrderSource::Stock, "now for stock");
+}
+
+/// BL-MFG-03 Surfaces: the work order page lists what the sales order
+/// changed. A decrease shows as *Quantity changed* on the planner's page of
+/// the planned work order; a cancellation with the outcome *scrap* of a
+/// started line shows as *Abort asked for* on the production manager's page,
+/// where the abort sheet is offered with its reason already filled in.
+#[renox::test]
+async fn the_work_order_page_lists_the_order_changes_and_fills_the_abort_sheet() {
+    let app = manufacturing_booted().await;
+    let sales = person(&app, "Sara", SALES).await;
+    let sales_manager = person(&app, "Sam", SALES_MANAGER).await;
+    let planner = person(&app, "Amal", host::roles::PRODUCTION_PLANNER).await;
+    let manager = person(&app, "Mona", PRODUCTION_MANAGER).await;
+    let panel = item(&app, "PANEL").await;
+    let customer = company(&app, "Al Noor Trading LLC").await;
+    let (order, line) = place(&app, &sales, customer, "PANEL", "10").await;
+    let planned = work_order_for(
+        &app,
+        &order,
+        &line,
+        &panel,
+        10_000,
+        WorkOrderStatus::Planned,
+    )
+    .await;
+    app.acting_as(&sales);
+    app.htmx()
+        .post(
+            &format!("/sales-orders/{}/amend", order.id),
+            &[
+                ("revision", &order.revision.to_string()),
+                ("reason", "The customer needs fewer"),
+                (&format!("line_{}_quantity", line.id), "6"),
+            ],
+        )
+        .await
+        .assert_status(303);
+    let page = |id: i64| format!("/manufacturing/work-orders/{id}");
+    let seen = browse(&app, &planner, &page(planned.id)).await;
+    seen.assert_ok();
+    seen.assert_see("Quantity changed");
+
+    let (started_order, started_line) = place(&app, &sales, customer, "PANEL", "8").await;
+    let started = work_order_for(
+        &app,
+        &started_order,
+        &started_line,
+        &panel,
+        8_000,
+        WorkOrderStatus::InProgress,
+    )
+    .await;
+    WorkOrder::query()
+        .where_(WorkOrder::ID.eq(started.id))
+        .update(app.db(), &[("has_issue", &true)])
+        .await
+        .unwrap();
+    app.acting_as(&sales);
+    app.htmx()
+        .post(
+            &format!("/sales-orders/{}/cancel", started_order.id),
+            &[
+                ("reason", "The customer withdrew the order"),
+                (&format!("line_{}_outcome", started_line.id), "scrap"),
+            ],
+        )
+        .await
+        .assert_status(303);
+    let waiting =
+        wl_kernel::approvals::ApprovalRequest::pending_about(app.db(), &started_order.subject())
+            .await
+            .unwrap();
+    wl_kernel::approvals::approve(app.state(), waiting[0].id, &sales_manager, "agreed")
+        .await
+        .unwrap();
+
+    let asked = browse(&app, &manager, &page(started.id)).await;
+    asked.assert_ok();
+    asked.assert_see("Abort asked for");
+    asked.assert_see("abort-order");
+    asked.assert_see("cancelled, outcome scrap");
+    assert_eq!(
+        WorkOrder::find_or_404(app.db(), started.id)
+            .await
+            .unwrap()
+            .status,
+        WorkOrderStatus::InProgress,
+        "the page only offers the abort; nobody aborts it"
+    );
 }
