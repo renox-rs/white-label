@@ -8,10 +8,9 @@ mod support;
 
 use auto::JobCardStatus;
 use auto::notices::{self, VEHICLE_READY};
-use renox::prelude::*;
 use support::boot;
 use wl_kernel::notify::{
-    ChannelTried, GiveUpReaction, MessageGaveUp, MessageId, NotifyChannel, NotifyRecipient,
+    ChannelTried, GiveUpReaction, MessageGaveUp, MessageId, NotifyRecipient,
 };
 use wl_kernel::PartyId;
 

@@ -211,15 +211,15 @@ pub async fn on_confirmed(state: &AppState, order_id: i64) -> Result {
         let got = stock_reservations(state)
             .reserve(state, request_for(&order, &line, wanted))
             .await?;
-        if order.location_id.is_none() {
-            if let Some(location) = got.location {
-                let id = Some(location.subject_id);
-                SalesOrder::query()
-                    .where_(SalesOrder::ID.eq(order.id))
-                    .update(&state.db, &[("location_id", &id)])
-                    .await?;
-                order.location_id = id;
-            }
+        if order.location_id.is_none()
+            && let Some(location) = got.location
+        {
+            let id = Some(location.subject_id);
+            SalesOrder::query()
+                .where_(SalesOrder::ID.eq(order.id))
+                .update(&state.db, &[("location_id", &id)])
+                .await?;
+            order.location_id = id;
         }
         let reserved = line.reserved_milli + got.reserved_milli;
         let backordered = line.backordered_milli + (wanted - got.reserved_milli);

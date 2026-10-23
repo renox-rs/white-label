@@ -38,8 +38,8 @@
 //!   when it is: so the service picks the request by the effective date at the
 //!   time of the request - [`TERMINATE`] (ends at the approval) for a date
 //!   before today, [`SCHEDULE_TERMINATION`] (records the termination and marks
-//!   it *scheduled*, per state because a transition keeps one state) otherwise
-//!   - and, when a scheduled termination is approved after its effective date
+//!   it *scheduled*, per state because a transition keeps one state) otherwise,
+//!   and, when a scheduled termination is approved after its effective date
 //!   passed, the approval's listener runs [`TERMINATE_SYSTEM`] at once.
 //!   `terminate_system` is the daily job's run on the first day after the
 //!   effective date; its guard `owner_approval` asks that the termination was

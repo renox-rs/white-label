@@ -227,6 +227,9 @@ async fn places_of(db: &Db, lot_id: i64) -> Result<BTreeSet<i64>> {
         .collect())
 }
 
+/// The (lot, item, outlet, day) a walk-in sale is grouped by.
+type WalkInKey = (i64, i64, i64, NaiveDate);
+
 /// Collects the lines, asking the resolver for the party of each subject.
 struct Collector<'a> {
     state: &'a AppState,
@@ -234,7 +237,7 @@ struct Collector<'a> {
     planned: BTreeMap<String, Planned>,
     /// Walk-in sales: (lot, item, outlet, day) to the sales and the quantity;
     /// the lot is 0 for an item not tracked by lot, the item 0 for a lot.
-    walk_in: BTreeMap<(i64, i64, i64, NaiveDate), (BTreeSet<Subject>, i64)>,
+    walk_in: BTreeMap<WalkInKey, (BTreeSet<Subject>, i64)>,
 }
 
 impl<'a> Collector<'a> {

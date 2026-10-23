@@ -23,11 +23,14 @@ use wl_sales::{SaleLine, SalesOrder, SalesOrderStatus, WlSales};
 use support::shop::Shop;
 use support::{Booted, boot_pair};
 
+/// One hold: (order id, line, item code, milli).
+type Hold = (i64, i64, String, i64);
+
 /// The stock of item codes at one location, and what is set aside.
 #[derive(Clone, Default)]
 struct Stock {
     free: Arc<Mutex<BTreeMap<String, i64>>>,
-    held: Arc<Mutex<Vec<(i64, i64, String, i64)>>>,
+    held: Arc<Mutex<Vec<Hold>>>,
 }
 
 impl Stock {
