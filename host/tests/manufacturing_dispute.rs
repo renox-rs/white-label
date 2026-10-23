@@ -240,3 +240,46 @@ async fn a_price_dispute_raises_no_ncr_and_only_the_buyer_may_dispute() {
     .await;
     other.assert_status(404);
 }
+
+/// BL-MFG-14 *Disputes* and BL-MFG-13 AC3 (#394, #395): the buyer's portal
+/// offers "Dispute this invoice"; the choice of lines is part of the form only
+/// for the kind *quality* (it sits in a block the page shows when the kind is
+/// quality), and a price dispute ignores the lines it is sent: no NCR.
+#[renox::test]
+async fn the_portal_offers_dispute_this_invoice_and_the_lines_only_for_a_quality_dispute() {
+    let app = boot().await;
+    let f = floor(&app).await;
+    let company = customer(&app).await;
+    let bilal = buyer(&app, company).await;
+    let accountant = person(&app, "Alia", ADMIN, None).await;
+    let f4 = lot(&app, &f, "F4").await;
+    let invoice = invoiced(&app, &f, company, &accountant, &[&f4]).await;
+
+    let page = browse(&app, &bilal, "/portal/manufacturing/invoices").await;
+    page.assert_ok();
+    page.assert_see("Dispute this invoice");
+    let html = page.text();
+    let gate = html
+        .find("data-rx-show-when")
+        .unwrap_or_else(|| panic!("a block shown by the kind: {html}"));
+    let checkbox = html.find("line_1").expect("the line to tick");
+    assert!(
+        gate < checkbox,
+        "the lines come after the gate that shows them"
+    );
+    let block = &html[gate..checkbox];
+    assert!(
+        block.contains("quality") && !block.contains("price"),
+        "the block is shown for quality only: {block}"
+    );
+
+    post(
+        &app,
+        &bilal,
+        &format!("/portal/manufacturing/invoices/{}/dispute", invoice.id),
+        &[("kind", "price"), ("text", "too dear"), ("line_1", "on")],
+    )
+    .await
+    .assert_status(303);
+    assert!(ncrs(&app).await.is_empty());
+}
