@@ -1924,6 +1924,55 @@ pub fn dispatch_directory(state: &AppState) -> Arc<dyn DispatchDirectory> {
     }
 }
 
+/// One line to deliver again: the quantity of the order line `source_line`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RedispatchLine {
+    /// The line of the source (a sales order line) the original dispatch
+    /// carried for it.
+    pub source_line: Subject,
+    /// The quantity to send again, in thousandths.
+    pub quantity_milli: i64,
+}
+
+/// Makes the draft dispatch that delivers goods again (wl-inventory §5.4
+/// step 1, 07 `MFG.RUL.10`): the new draft goes to the same recipient and
+/// address from the same location, with the item and lot of the original
+/// lines. `wl-inventory` provides it; the default makes none.
+pub trait DispatchMaker: Send + Sync + 'static {
+    /// A draft dispatch for `lines`, copied from `original`; `by` is the user
+    /// who asks. `None` when nothing can be made (unknown dispatch, none of
+    /// the lines is on it) and by default.
+    fn redispatch<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _by: Option<i64>,
+        _original: &'a Subject,
+        _lines: &'a [RedispatchLine],
+    ) -> TraceFuture<'a, Option<Subject>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The maker when nothing provides one.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoDispatchMaker;
+
+impl DispatchMaker for NoDispatchMaker {}
+
+/// Makes `maker` the app's [`DispatchMaker`].
+pub fn provide_dispatch_maker(app: &mut Registry, maker: impl DispatchMaker) {
+    let maker: Arc<dyn DispatchMaker> = Arc::new(maker);
+    app.provide(maker);
+}
+
+/// The app's [`DispatchMaker`], or [`NoDispatchMaker`] when none is provided.
+pub fn dispatch_maker(state: &AppState) -> Arc<dyn DispatchMaker> {
+    match state.provided::<Arc<dyn DispatchMaker>>() {
+        Some(maker) => Arc::clone(&maker),
+        None => Arc::new(NoDispatchMaker),
+    }
+}
+
 /// The item-flag guard of a dispatch (wl-inventory §4 *Dispatch* rows `pick`
 /// and `dispatch`, STK.DSP.01; 07 `MFG.ACL.11`): the vertical says why the
 /// goods on a dispatch may not be picked or may not leave, with no override.

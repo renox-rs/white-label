@@ -190,3 +190,73 @@ async fn the_dispatch_page_offers_return_and_says_how_it_ended() {
         .await;
     assert!(page.text().contains("written off as wastage"));
 }
+
+/// A draft dispatch to deliver returned goods again is a copy of the original:
+/// same recipient, address and store, the item and lot of the lines asked for,
+/// the quantity asked for; an unknown dispatch or a line not on it gives none.
+#[renox::test]
+async fn goods_that_came_back_are_delivered_again_on_a_copy_of_the_dispatch() {
+    use renox::prelude::*;
+    use wl_kernel::Subject;
+    use wl_kernel::inventory::{RedispatchLine, dispatch_maker};
+
+    let t = boot().await;
+    let store = t.named_location("STORE-1", "Jebel Ali warehouse").await;
+    let pump = t.priced_item("PUMP", false, 5_000).await;
+    t.stock_in(&pump, &store, None, 40_000, 5_000).await;
+    let dispatcher = t.dispatcher("Dina").await;
+    let sent = t
+        .sent_dispatch(
+            &dispatcher,
+            &store,
+            ORDER,
+            vec![NewDispatchLine::of(pump.id, 10_000).for_sale_line(7)],
+        )
+        .await;
+    let line = Subject::new("sales.sale_line", 7);
+
+    let made = dispatch_maker(t.state())
+        .redispatch(
+            t.state(),
+            Some(dispatcher.id),
+            &sent.subject(),
+            &[RedispatchLine {
+                source_line: line.clone(),
+                quantity_milli: 4_000,
+            }],
+        )
+        .await
+        .unwrap()
+        .expect("a draft");
+
+    let copy = wl_inventory::Dispatch::find_or_404(t.db(), made.subject_id)
+        .await
+        .unwrap();
+    assert_eq!(copy.status, DispatchStatus::Draft);
+    assert_eq!(copy.source(), sent.source());
+    assert_eq!(copy.location_id, sent.location_id);
+    assert_eq!(copy.recipient_name, sent.recipient_name);
+    let lines = wl_inventory::dispatch::lines_of(t.db(), copy.id)
+        .await
+        .unwrap();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(
+        (lines[0].item_id, lines[0].quantity_milli),
+        (pump.id, 4_000)
+    );
+    assert_eq!(lines[0].source_line(), Some(line));
+
+    let none = dispatch_maker(t.state())
+        .redispatch(
+            t.state(),
+            None,
+            &sent.subject(),
+            &[RedispatchLine {
+                source_line: Subject::new("sales.sale_line", 99),
+                quantity_milli: 1_000,
+            }],
+        )
+        .await
+        .unwrap();
+    assert!(none.is_none());
+}

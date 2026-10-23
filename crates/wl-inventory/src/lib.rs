@@ -717,6 +717,12 @@ impl Module for WlInventory {
             app,
             dispatch_directory::InventoryDispatches,
         );
+        // A vertical delivers returned goods again from a copy of the
+        // dispatch they came back from (07 `MFG.RUL.10`).
+        wl_kernel::inventory::provide_dispatch_maker(
+            app,
+            dispatch_directory::InventoryDispatchMaker,
+        );
         // `BatchStock`: a production batch consumes its ingredient lots and
         // makes its output lot (06 F&B).
         wl_kernel::inventory::provide_batch_stock(app, batch_stock::InventoryBatches);

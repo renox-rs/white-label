@@ -7,10 +7,15 @@
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_kernel::documents::dubai_date;
-use wl_kernel::inventory::{DISPATCH_SUBJECT_TYPE, DispatchDirectory, DispatchFacts, TraceFuture};
+use wl_kernel::inventory::{
+    DISPATCH_SUBJECT_TYPE, DispatchDirectory, DispatchFacts, DispatchMaker, RedispatchLine,
+    TraceFuture,
+};
 use wl_kernel::{PartyId, Subject};
 
-use crate::dispatch::{Dispatch, DispatchStatus, lines_of};
+use crate::dispatch::{
+    Dispatch, DispatchStatus, NewDispatch, NewDispatchLine, create_draft, lines_of,
+};
 use crate::dispatch_events::event_lines;
 
 /// The directory of wl-inventory's dispatches.
@@ -89,6 +94,65 @@ impl DispatchDirectory for InventoryDispatches {
             }
             found.sort_by_key(|facts| (facts.dispatched_on, facts.dispatch.subject_id));
             Ok(found)
+        })
+    }
+}
+
+/// The kernel's [`DispatchMaker`]: the draft dispatch that delivers goods
+/// again.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct InventoryDispatchMaker;
+
+impl DispatchMaker for InventoryDispatchMaker {
+    fn redispatch<'a>(
+        &'a self,
+        state: &'a AppState,
+        by: Option<i64>,
+        original: &'a Subject,
+        lines: &'a [RedispatchLine],
+    ) -> TraceFuture<'a, Option<Subject>> {
+        Box::pin(async move {
+            if original.subject_type != DISPATCH_SUBJECT_TYPE {
+                return Ok(None);
+            }
+            let Some(found) = Dispatch::find(&state.db, original.subject_id).await? else {
+                return Ok(None);
+            };
+            let mut wanted = Vec::new();
+            for line in lines_of(&state.db, found.id).await? {
+                let Some(source_line) = line.source_line() else {
+                    continue;
+                };
+                let Some(asked) = lines
+                    .iter()
+                    .find(|asked| asked.source_line == source_line && asked.quantity_milli > 0)
+                else {
+                    continue;
+                };
+                let mut redo =
+                    NewDispatchLine::of(line.item_id, asked.quantity_milli).for_line(source_line);
+                if let Some(lot) = line.lot_id {
+                    redo = redo.lot(lot);
+                }
+                wanted.push(redo);
+            }
+            if wanted.is_empty() {
+                return Ok(None);
+            }
+            let made = create_draft(
+                &state.db,
+                by,
+                NewDispatch {
+                    source: found.source(),
+                    recipient: found.recipient_party_id.map(PartyId),
+                    recipient_name: found.recipient_name.clone(),
+                    address: found.address.clone(),
+                    location_id: found.location_id,
+                    lines: wanted,
+                },
+            )
+            .await?;
+            Ok(Some(made.subject()))
         })
     }
 }
