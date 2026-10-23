@@ -94,7 +94,7 @@ pub async fn demo_campaigns(db: &Db) -> Result<usize> {
 /// through the online-payment stories (BL-SAL-01 to BL-SAL-03): a website
 /// order that waits for the gateway (`awaiting_payment`, ten minutes left),
 /// a website order cancelled because its payment failed, and an aggregator
-/// order `TB-555` on channel `talabat` whose number a second import is
+/// order `TB-555` on channel `aggregator_a` whose number a second import is
 /// refused. Each is found by channel and external number, so a re-run adds
 /// nothing. Returns how many it made.
 pub async fn demo_online_orders(db: &Db, party: i64) -> Result<usize> {
@@ -123,7 +123,7 @@ pub async fn demo_online_orders(db: &Db, party: i64) -> Result<usize> {
             OrderPaymentStatus::Failed,
         ),
         (
-            "talabat",
+            "aggregator_a",
             "TB-555",
             SalesOrderStatus::Confirmed,
             "on_account",
@@ -537,7 +537,7 @@ pub async fn demo_order_changes(db: &Db, party: i64) -> Result<usize> {
 /// - `RFD-1001`: a `fulfilled` order of AED 90 (pizza 60, cola 30) to raise a
 ///   refund after completion from (AED 60 waits for a manager, AED 30 does
 ///   not).
-/// - `ORD-1001`: a `fulfilled` Talabat order of AED 25 whose customer the
+/// - `ORD-1001`: a `fulfilled` aggregator order of AED 25 whose customer the
 ///   aggregator refunded itself: a no goods return *refunded by the channel*,
 ///   to reverse from its page.
 /// - `RFD-1002`: a `fulfilled` order of AED 90 with a refund of AED 30 for a
@@ -816,10 +816,10 @@ pub async fn demo_order_cancellations(db: &Db, party: i64) -> Result<usize> {
     }
 
     // ORD-1001: the aggregator refunded its customer itself.
-    if let Some((talabat, lines)) = order(
+    if let Some((aggregator, lines)) = order(
         db,
         party,
-        "talabat",
+        "aggregator_a",
         "ORD-1001",
         "on_account",
         OrderPaymentStatus::NotRequired,
@@ -831,13 +831,13 @@ pub async fn demo_order_cancellations(db: &Db, party: i64) -> Result<usize> {
     {
         resolved_return(
             db,
-            &talabat,
+            &aggregator,
             &lines[0],
-            talabat.gross_total,
+            aggregator.gross_total,
             ReturnResolution::RefundedByChannel,
             "cold",
             "business",
-            "Talabat refunded the customer",
+            "Aggregator A refunded the customer",
         )
         .await?;
         made += 1;
@@ -993,12 +993,12 @@ mod tests {
         assert_eq!(demo_order_cancellations(db, 7).await.unwrap(), 5);
         assert_eq!(demo_order_cancellations(db, 7).await.unwrap(), 0);
         let key = crate::sales_orders::external_key("ORD-1001").unwrap();
-        let talabat = SalesOrder::of_external(db, "talabat", &key)
+        let aggregator = SalesOrder::of_external(db, "aggregator_a", &key)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(talabat.refunded_amount, 2_500);
-        assert_eq!(talabat.gross_total, 2_500);
+        assert_eq!(aggregator.refunded_amount, 2_500);
+        assert_eq!(aggregator.gross_total, 2_500);
     }
 
     #[renox::test]

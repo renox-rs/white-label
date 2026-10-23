@@ -112,7 +112,7 @@
     <rx-card :title="tx['sections.details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['fields.number']" :value="delivery.number" copyable/>
-        <rx-entry :label="tx['fields.source']" :value="delivery.source_type ~ ' #' ~ delivery.source_id"/>
+        <rx-entry :label="tx['fields.source']" :value="source_label"/>
         <rx-entry :label="tx['fields.recipient']" :value="delivery.recipient_name"/>
         <rx-entry :label="tx['fields.phone']" :value="delivery.recipient_phone" :placeholder="tx['none']"/>
         <rx-entry :label="tx['fields.address']" :value="delivery.address" :placeholder="tx['none']"/>

@@ -425,6 +425,8 @@ pub(crate) struct CodRequestRow {
 pub(crate) struct ShowPage {
     tx: Texts,
     delivery: Delivery,
+    /// The record the delivery is for, in words (`SO-2026-0014`).
+    source_label: String,
     status_label: String,
     status_kind: &'static str,
     card: Card,
@@ -746,8 +748,13 @@ async fn show(
         }),
         attempts: format!("{} / {}", delivery.attempts, delivery.max_attempts),
     };
+    let source = delivery.source();
+    let source_label = wl_kernel::documents::subject_label(&state.db, &source)
+        .await?
+        .unwrap_or_else(|| wl_kernel::documents::default_subject_label(&source));
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
+        source_label,
         status_label: t(&format!("status.{}", delivery.status.as_str())),
         status_kind: status_kind(delivery.status),
         delivery,
@@ -1295,7 +1302,7 @@ pub fn runs_grid(lang: &Lang) -> Grid {
         )
         .column(Column::date("run_date", &t("fields.date")).mobile())
         .column(
-            Column::text("driver", &t("fields.driver"))
+            Column::text("driver", &t("fields.driver_name"))
                 .computed(
                     "(SELECT \"users\".\"name\" FROM \"users\" WHERE \"users\".\"id\" = {T}.\"driver_user_id\")",
                 )
@@ -1330,17 +1337,33 @@ pub(crate) struct RunsPage {
     tx: Texts,
     can_dispatch: bool,
     vehicle_types: Vec<(String, String)>,
+    /// `(user id, name)` of who may drive: the sheet that plans a run picks one.
+    drivers: Vec<(String, String)>,
+    today: String,
     runs: GridPage<Run>,
 }
 
 /// `GET /runs`.
-async fn runs(lang: Lang, user: AuthUser, request: GridRequest) -> Result<View> {
+async fn runs(
+    State(state): State<AppState>,
+    lang: Lang,
+    user: AuthUser,
+    request: GridRequest,
+) -> Result<View> {
     let t = texts_in(&lang);
+    let drivers =
+        renox::auth::permissions::users_with_permission(&state.db, permissions::RUNS_DRIVE)
+            .await?
+            .into_iter()
+            .map(|u| (u.id.to_string(), u.name))
+            .collect();
     let runs = runs_grid(&lang).page(Run::query(), &request).await?;
     Ok(View::typed(RunsPage {
         tx: texts::all(&lang),
         can_dispatch: user.has_permission(permissions::RUNS_DISPATCH),
         vehicle_types: options(&t, "vehicle", VehicleType::ALL.iter().map(|v| v.as_str())),
+        drivers,
+        today: today().format("%Y-%m-%d").to_string(),
         runs,
     }))
 }
@@ -1350,8 +1373,9 @@ async fn runs(lang: Lang, user: AuthUser, request: GridRequest) -> Result<View> 
 pub struct RunForm {
     /// The day, `2026-11-12`.
     pub run_date: NaiveDate,
-    /// The driver's user id.
-    pub driver_user_id: i64,
+    /// The driver's user id; blank when none was chosen.
+    #[serde(default)]
+    pub driver_user_id: String,
     /// The vehicle type's key.
     pub vehicle_type: String,
     /// The vehicle's asset id; blank for an on-foot rider.
@@ -1383,8 +1407,14 @@ async fn store_run(
             )
         })?),
     };
+    let driver_user_id = form.driver_user_id.trim().parse::<i64>().map_err(|_| {
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            texts::t(&lang, "wl_delivery.runs.driver_needed"),
+        )
+    })?;
     let mut new =
-        NewRun::new(form.run_date, form.driver_user_id).vehicle(vehicle_type, vehicle_asset_id);
+        NewRun::new(form.run_date, driver_user_id).vehicle(vehicle_type, vehicle_asset_id);
     new.depot = form.depot.clone().unwrap_or_default();
     let run = plan::create_run(&state, new).await?;
     Ok((
@@ -1848,10 +1878,16 @@ pub(crate) struct WaitingRow {
 /// `GET /driver`: today's stops of the signed-in driver.
 async fn driver(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
     let day = today();
+    let t = texts_in(&lang);
+    // The list says each stop's state in words, not by its key.
     let stops = stops_of(&state.db, user.id, day)
         .await?
         .iter()
-        .map(|stop| stop.view())
+        .map(|stop| {
+            let mut view = stop.view();
+            view.status = t(&format!("status.{}", view.status));
+            view
+        })
         .collect();
     let returnable = Run::query()
         .where_(Run::DRIVER_USER_ID.eq(user.id))
@@ -1863,7 +1899,6 @@ async fn driver(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Re
         .into_iter()
         .map(|run| (run.id, run.number))
         .collect();
-    let t = texts_in(&lang);
     let mut waiting = Vec::new();
     for hand_over in hand_over::waiting_for(&state.db, user.id).await? {
         let from_run = Run::find(&state.db, hand_over.run_id)
@@ -2034,6 +2069,19 @@ fn unprocessable(message: String) -> Error {
     Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message)
 }
 
+/// A refusal (422) of a posted form, said on the form the driver filled in
+/// (what they typed is kept) instead of on an error page.
+fn on_the_form(error: Error, fields: &HashMap<String, String>) -> Error {
+    match error {
+        Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message) => {
+            let mut errors = renox::validation::Errors::new();
+            errors.add("form", message);
+            Error::Validation(renox::validation::ValidationError::new(errors).with_input(fields))
+        }
+        other => other,
+    }
+}
+
 /// The text field `name` of the posted form, blank as none.
 fn field<'a>(fields: &'a HashMap<String, String>, name: &str) -> Option<&'a str> {
     fields.get(name).map(|v| v.trim()).filter(|v| !v.is_empty())
@@ -2103,7 +2151,7 @@ async fn store_deliver(
     };
     let outcome = proof::deliver(&state, &user, &delivery, form, renox::db::now())
         .await
-        .map_err(TransitionError::into_error)?;
+        .map_err(|e| on_the_form(TransitionError::into_error(e), &fields))?;
     let toast = match outcome {
         proof::DeliverOutcome::Delivered => {
             Toast::success(texts::t(&lang, "wl_delivery.driver.delivered"))

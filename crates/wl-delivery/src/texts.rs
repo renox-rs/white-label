@@ -49,6 +49,11 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_delivery.fields.instructions", "Instructions"),
     ("wl_delivery.fields.date", "Date"),
     ("wl_delivery.fields.driver", "Driver (user id)"),
+    ("wl_delivery.fields.driver_name", "Driver"),
+    (
+        "wl_delivery.runs.driver_needed",
+        "Choose the driver of the run.",
+    ),
     ("wl_delivery.fields.vehicle_type", "Vehicle type"),
     ("wl_delivery.fields.vehicle", "Vehicle (asset id)"),
     (

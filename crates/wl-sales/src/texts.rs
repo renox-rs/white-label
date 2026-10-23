@@ -723,6 +723,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_sales.orders.create", "Enter an order"),
     ("wl_sales.orders.customer", "Customer (party id)"),
+    ("wl_sales.orders.customer_name", "Customer"),
     ("wl_sales.orders.channel", "Channel"),
     ("wl_sales.orders.payment_mode", "Payment"),
     ("wl_sales.orders.number", "Order"),

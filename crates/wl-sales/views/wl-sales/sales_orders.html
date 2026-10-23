@@ -18,7 +18,7 @@
     </nav>
     <rx-table :rows="orders" as="order" :key="order.id" :caption="tx['orders.title']" card>
       <rx-column :label="tx['orders.number']"><a href="{{ route('wl_sales.sales_order', order.id) }}">{{ order.number }}</a></rx-column>
-      <rx-column :label="tx['orders.customer']" hide-narrow>{{ order.customer }}</rx-column>
+      <rx-column :label="tx['orders.customer_name']" hide-narrow>{{ order.customer }}</rx-column>
       <rx-column :label="tx['orders.channel']" hide-narrow>{{ order.channel }}</rx-column>
       <rx-column :label="tx['orders.total']">{{ order.total }}</rx-column>
       <rx-column :label="tx['fields.status']"><rx-badge :kind="order.status_kind" :text="order.status_label"/></rx-column>

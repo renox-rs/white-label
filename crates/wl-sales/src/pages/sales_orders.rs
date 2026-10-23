@@ -147,8 +147,8 @@ pub struct OrderRow {
     pub id: i64,
     /// The order number.
     pub number: String,
-    /// The customer's party id.
-    pub customer: i64,
+    /// The customer's name.
+    pub customer: String,
     /// The channel.
     pub channel: String,
     /// The total, `AED 105.00`.
@@ -175,34 +175,37 @@ pub(crate) struct IndexPage {
 /// (BL-SAL-02: they are invisible to fulfilment until the payment is
 /// confirmed).
 async fn index(
-    State(db): State<Db>,
+    State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Query(query): Query<BTreeMap<String, String>>,
 ) -> Result<View> {
+    let db = &state.db;
     let awaiting = matches!(query.get("awaiting").map(String::as_str), Some("1"));
     let rows = SalesOrder::query()
         .order_by_desc(SalesOrder::ID)
-        .get(&db)
+        .get(db)
         .await?;
     let awaiting_count = rows
         .iter()
         .filter(|o| o.status == SalesOrderStatus::AwaitingPayment)
         .count() as i64;
-    let orders = rows
+    let mut orders = Vec::new();
+    for order in rows
         .into_iter()
         .filter(|o| (o.status == SalesOrderStatus::AwaitingPayment) == awaiting)
         .take(50)
-        .map(|order| OrderRow {
+    {
+        orders.push(OrderRow {
             id: order.id,
             number: order.number.clone(),
-            customer: order.party_id,
+            customer: super::party_name(&state, &lang, order.party_id).await,
             channel: order.channel.clone(),
             total: money(order.gross_total),
             status_label: text(&lang, &format!("orders.status.{}", order.status.as_str())),
             status_kind: status_kind(order.status),
-        })
-        .collect();
+        });
+    }
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         orders,
