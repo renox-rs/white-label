@@ -1,6 +1,6 @@
 # Epic: 09 Manpower — negative flows
 
-> Status: draft · Last updated: 2026-10-22 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-23 · Spec version: same commit as this file
 
 This epic builds the negative flows that belong to the Manpower vertical itself: the new client
 contract lifecycle (credit hold, release, early termination, renewal and end with its
@@ -14,7 +14,7 @@ guards, visa step deadlines, no cover available). Payroll, settlement, pay accou
 invoice and cheque behaviour lives in the module epics and is only configured here.
 
 BL-MPW-22 to BL-MPW-33 were added on 2026-10-22 after the browser test of the F9 app: most
-actions above existed only as routes, so these twelve issues build the screens for them (contract,
+actions above existed only as routes, so these twelve issues (BL-MPW-34 followed on 2026-10-23: the pay accounts waiting for approval in the inbox) build the screens for them (contract,
 request, deployment, absence case, rate card, timesheet, client approver portal, approvals inbox,
 payroll and settlement lists, employee page, dashboard tiles) and the Arabic translation. They
 carry the label `area:sme-gap` because the repository has no `area:screens` label.
@@ -54,6 +54,7 @@ carry the label `area:sme-gap` because the repository has no `area:screens` labe
 | BL-MPW-31 | Complete the employee page (documents, deployments, timesheets, salary, pay accounts) | medium | m | Launch 09 | Base: wl-hr Employee records; BL-HRM-01; BL-HRM-19; BL-HRM-20; BL-MPW-24; BL-MPW-27; BL-DOC-05 |
 | BL-MPW-32 | Add the manpower dashboard tiles | medium | m | Launch 09 | BL-MPW-22; BL-MPW-23; BL-MPW-24; BL-MPW-25; BL-MPW-27; BL-MPW-30; BL-MPW-29 |
 | BL-MPW-33 | Translate the Manpower screens into Arabic and check right-to-left | medium | m | Launch 09 | BL-MPW-22; BL-MPW-23; BL-MPW-24; BL-MPW-25; BL-MPW-26; BL-MPW-27; BL-MPW-28; BL-MPW-29; BL-MPW-30; BL-MPW-31; BL-MPW-32 |
+| BL-MPW-34 | Approvals inbox lists the pay accounts waiting for approval | high | s | Launch 09 | BL-HRM-19; BL-HRM-21; BL-MPW-29 |
 
 ---
 
@@ -1921,7 +1922,7 @@ Status in words: draft, active, on hold, terminating, ended, cancelled. A held c
 - [ ] Given an active contract, when the account manager holds it with reason *bounced cheque*, then the page shows *On hold*, the reason, the cheque, who held it and the state before; a second hold for the same reason is refused in words.
 - [ ] Given a held contract with an overdue invoice, when the account manager presses *Release*, then the page says *Waiting for the MD*; when `md@desertstar.example` opens the page and approves, it is *Active* again; when the account manager tries to approve his own request, the answer is 403 with the refusal text.
 - [ ] Given an active contract ending 2026-12-31, when *Terminate* is submitted with notice date 2026-11-20 and end date 2026-12-05 (notice 30 days) without a waiver, then the refusal says the end date is inside the notice period; with a waiver it creates an approval for the MD.
-- [ ] Given an active contract, when *Renew* is submitted with end date 2027-12-31 and rates from 2027-01-01, then the page shows the new end date and a pending rate card version dated 2027-01-01 in the *Rate cards* tab; an end date not later than the current one is refused in words.
+- [ ] Renew with changed rates needs the rate card version accepted by the client first; without it the renewal is refused (422) with a message that names the rate card version; with it the renewal succeeds and the contract end date moves.
 - [ ] Given the *Deployments* tab, then it lists the contract's deployments with worker, role, site, dates and status in words, each linking to its page (BL-MPW-24).
 - [ ] Given `supervisor@desertstar.example` (no `contracts.manage`), then no action button is shown and a direct `POST .../hold` answers 403.
 - [ ] Given a site form, when the account manager creates the site *Marina Tower* for Gulf Tower with a required licence, then it appears in the client's site list; editing its name keeps existing deployments linked.
@@ -2206,7 +2207,7 @@ There is no timesheet page: `submit`, `approve`, `reject`, `approve-on-behalf`, 
 - Escalated shows *Escalated on 06 Nov (6 days without answer)*; deemed approved shows the clause days and the date.
 - A billed timesheet is read-only with the invoice number linked.
 - Hours show as `8.00 h`; categories in words; days in `Mon 02 Nov` form; no raw keys.
-- A creator cannot approve his own adjustment (403 text).
+- A creator cannot approve his own adjustment (422 with the refusal text).
 
 #### Must not
 - Must not let the creator approve an adjustment; must not edit a locked timesheet.
@@ -2219,7 +2220,7 @@ There is no timesheet page: `submit`, `approve`, `reject`, `approve-on-behalf`, 
 - [ ] Given a submitted sheet unanswered for 6 days, then it shows *Escalated* with the date; after 10 days with the deemed-approval clause it shows *Deemed approved* with the clause.
 - [ ] Given *Reject* with an empty reason, then the form says *Write the reason*; with a reason the status is *Rejected* and the reason is shown.
 - [ ] Given *Approve on behalf* without a signed sheet, then it is refused with *Attach the client's signed sheet*; with it, the status is *Approved* and the sheet is linked.
-- [ ] Given a locked sheet, when an adjustment is opened by user A and A tries to approve it, then the answer is 403 with the refusal text; the account manager's approval succeeds.
+- [ ] Given a locked sheet, when an adjustment is opened by user A and A tries to approve it, then the answer is 422 with the refusal text (separation of duties answers 422 everywhere); the account manager's approval succeeds.
 - [ ] Given a billed sheet, then it shows *Billed* and the invoice link and no action button.
 - [ ] At 390 px the day grid scrolls inside its own container; no horizontal scroll of the page.
 
@@ -2312,7 +2313,7 @@ Approvals (`/approvals/{id}/approve`, `reject`, `return`, `withdraw`) exist as r
 | `manpower.release` | Release a client contract from a credit hold | MD |
 | `manpower.terminate` | Terminate a client contract | MD |
 | `hr.exit` and absconding / death | Approve a non-standard exit | second HR user or MD |
-| `hr.pay_account` | Approve a new pay account | second user |
+| `hr.pay_account` | Approve a new pay account (a pay account in `pending_approval` is listed by BL-MPW-34) | second user |
 | `hr.waive_cooling` | Waive the pay account cooling period | MD |
 | rate card past-dated | Approve a past-dated rate card | MD |
 | `invoicing.write_off` | Write off an invoice | per policy |
@@ -2335,7 +2336,7 @@ The keys of exits, pay accounts, rate cards and write-offs are examples: the rea
 - [ ] Given the account manager opens `/approvals`, then his own request shows *Waiting for the MD* without buttons.
 - [ ] Given MD presses *Approve*, then the row disappears and the contract page shows *Active*; *Reject* without a note is refused in words.
 - [ ] Given *Return for changes* with a note, then the requester sees it on the contract and can resubmit.
-- [ ] Given a terminate, an exit, a pay account, a waiver, a past-dated rate card and a write-off request, then each shows its own text from the table above and its subject name, not an id.
+- [ ] Given a terminate, an exit, a waiver of the pay account cooling period, a waiver, a past-dated rate card and a write-off request, then each shows its own text from the table above and its subject name, not an id. A new pay account waiting for a second user is not a kernel approval request: BL-MPW-34 lists it.
 - [ ] Given the dashboard row *1 approval waiting for you*, then it links to `/approvals`, and no raw key appears on the dashboard.
 - [ ] Given `supervisor@desertstar.example`, then `/approvals` is empty with *Nothing needs your action*.
 - [ ] At 390 px the rows are cards with full-width buttons, no horizontal scroll.
@@ -2376,7 +2377,7 @@ A payroll run page exists (`/hr/payroll/{id}`) but there is no list, no way to s
 | Upload bank result | `/confirm`, `/rejection`, `/partial` | payroll roles | file | file unreadable |
 
 #### Edge cases decided
-- Preparer and approver differ (`HRM.ACL.04`); a preparer who opens the approve action gets 403 with the refusal text.
+- Preparer and approver differ (`HRM.ACL.04`); a preparer who opens the approve action gets 422 with the refusal text.
 - Amounts show `AED` with two decimals; held lines show the reason in words.
 - The run table scrolls inside its own container at phone width.
 - SIF download is audited; the bank result upload shows which lines were accepted and rejected.
@@ -2391,7 +2392,7 @@ A payroll run page exists (`/hr/payroll/{id}`) but there is no list, no way to s
 - [ ] Given an approved run, then *Submit* shows *Submitted*; a not approved run offers no submit.
 - [ ] Given a submitted run, when *Download SIF* is pressed, then a SIF file downloads; for a draft it is refused.
 - [ ] Given a bank result with one rejected line, when uploaded, then the page lists the rejected line with the reason and offers *Regenerate*.
-- [ ] Given the preparer opens approve, then the answer is 403 with the refusal text.
+- [ ] Given the preparer approves a payroll run, then the answer is 422 with the refusal text (separation of duties answers 422 everywhere).
 - [ ] Given `/hr/settlements`, then settlements are listed with employee, status in words, amounts in AED and the 14-day deadline.
 - [ ] Given `supervisor@desertstar.example`, both lists answer 403.
 - [ ] At 390 px no horizontal scroll; wide tables scroll in their container.
@@ -2531,7 +2532,7 @@ Right-to-left layout works, but all text stays English because `apps/manpower` h
 - **RTL check:** a page opened with the Arabic language mirrors layout, keeps numbers, dates and AED amounts readable.
 
 #### Spec excerpt (authoritative for this issue)
-Numbers keep Western digits as the client's setting says; amounts show `AED` as the currency code beside the figure; dates keep the `DD Mon YYYY` order with the month name in Arabic; mixed text (English names, ids) is isolated so it does not scramble.
+Western digits (0-9) in both languages; money as `AED 1,250.00` (the code before the amount, 2 decimals); dates as `14 Oct 2026` in text and `14/10/2026` in dense tables, Gregorian only (`docs/DESIGN-SYSTEM.md` §5); mixed text (English names, ids) is isolated so it does not scramble; module CSS uses logical properties only.
 
 #### Edge cases decided
 - A missing key falls back to English and is listed in a test, not shown as a key.
@@ -2550,3 +2551,56 @@ Numbers keep Western digits as the client's setting says; amounts show `AED` as 
 
 #### Out of scope
 Building the screens (BL-MPW-22 to BL-MPW-32); translations of other verticals.
+
+---
+
+### BL-MPW-34 — 09 Manpower: approvals inbox lists the pay accounts waiting for approval
+
+**Labels:** `vertical:09-manpower` `area:sme-gap` `priority:high` `surface:back-office` · **Milestone:** Launch 09 · **Size:** s
+**Depends on:** BL-HRM-19 · BL-HRM-21 · BL-MPW-29 · **Blocks:** None
+**Review items:** None (found while building BL-MPW-29: a pay account waiting for a second user is not in the inbox)
+
+#### Goal
+A pay account change requested by HR or by the worker waits in `pending_approval` for a second user who holds `pay_accounts.approve` (`HRM.ACL.05`). That wait is a state machine transition, not a kernel approval request, so the inbox of BL-MPW-29 does not show it today and the approver has to find the employee page by chance. The inbox must list the pending pay accounts for the users who may approve them, in words, with *Approve* and *Reject*, and the dashboard count must include them. The pay account state machine does not change.
+
+#### Surfaces
+- **Back office:** `GET /approvals` (tab *Waiting for you*) lists each pending pay account for a user holding `pay_accounts.approve` who is not the requester: *Approve a new pay account*, the worker's name, the last 4 digits of the account, *requested by* name and date, and the explanation when the holder's name differs from the worker's. *Approve* and *Reject* post to the existing pay account routes (`POST /hr/pay-accounts/{id}/transitions/approve|reject`; *Reject* needs a reason).
+- The requester sees the account in *My requests* as *Waiting for another approver* with no buttons.
+- **Dashboard:** the "awaiting you" count and rows include the pending pay accounts.
+
+#### Files to read
+- `crates/wl-hr/src/pay_account.rs` (machine, `approve`, `reject`, same-user guard), `crates/wl-hr/src/pages/pay_accounts.rs`
+- `host/src/app/approvals_inbox.rs`, `host/resources/views/approvals/index.html`, `host/src/app/dashboard/mod.rs`
+- blocks BL-HRM-19, BL-HRM-21, BL-MPW-29
+
+#### Terms
+- **Pending pay account:** an account in `pending_approval`; after *Approve* it is `cooling`, after *Reject* it is `rejected`.
+- **Segregation of duties:** the requester never approves his own request (`HRM.ACL.05`); the refusal answers 422 with its text.
+
+#### Spec excerpt (authoritative for this issue)
+The inbox shows a pending pay account as: *Approve a new pay account*, then the worker's name, *Account ending 1234*, *Requested by <name> on 01 Nov 2026*, and, when the holder's name differs, the explanation the requester gave. The number is never shown in full. The account's own page (`/hr/pay-accounts/{id}`) stays the place for the details.
+
+#### Edge cases decided
+- A user without `pay_accounts.approve` sees no pay account in *Waiting for you*.
+- The requester, even when he holds the permission, sees no buttons: his row is in *My requests*.
+- Approved, rejected or stopped accounts leave the inbox at once.
+- No change of the pay account state machine, of its events or of the waiver of the cooling period (that one stays a kernel approval).
+
+#### Must not
+- Must not show the full account number or the IBAN.
+- Must not approve through any route other than the existing pay account transition.
+- Must not show a raw key or `None`.
+
+#### Done when
+- [ ] Given a pay account requested by `hr@desertstar.example`, when `md@desertstar.example` opens `/approvals`, then *Waiting for you* shows *Approve a new pay account* with the worker's name, the last 4 digits (never the full number), who requested it and the date, with *Approve* and *Reject*.
+- [ ] Given the holder's name differs from the worker's, then the row shows the explanation.
+- [ ] Given `hr@desertstar.example` who requested it (HR does not hold `pay_accounts.approve`), then the account is in *My requests* as *Waiting for another approver* with no buttons, and a direct `POST .../transitions/approve` by HR answers 403; given an approver who asked for the account himself, then his own approve answers 422 with the refusal text.
+- [ ] Given the MD presses *Approve*, then the row leaves the inbox of every approver, the account is *Cooling* and the requester's request is no longer open.
+- [ ] Given *Reject* without a reason, then it is refused in words; with a reason the account is *Rejected* and leaves the inbox.
+- [ ] Given `admin@desertstar.example`, then the same row is listed and can be decided.
+- [ ] Given the dashboard of the MD, then the count and the rows of "awaiting you" include the pending pay account and link to `/approvals`.
+- [ ] Given `supervisor@desertstar.example`, then no pay account is listed.
+- [ ] At 390 px the row is a card with full-width buttons, no horizontal scroll.
+
+#### Out of scope
+The pay account state machine and its events (BL-HRM-19, BL-HRM-21); the waiver of the cooling period; the kernel approval requests (BL-MPW-29).

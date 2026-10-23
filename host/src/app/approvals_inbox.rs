@@ -18,6 +18,15 @@
 //!   `comment`), the only place the kernel keeps it; a request without one
 //!   shows no reason line.
 //!
+//! - **Pay accounts** waiting for a second user (`pending_approval`, wl-hr
+//!   `HRM.ACL.05`, BL-MPW-34) are a state machine transition, not a kernel
+//!   approval request, so they are added here: a user holding
+//!   `pay_accounts.approve` who is not the requester sees them in *Waiting for
+//!   you* with *Approve* and *Reject* (they post to the pay account's own
+//!   transition routes); the requester sees them in *My requests* as *Waiting
+//!   for another approver*. Only the last 4 digits are ever shown. The
+//!   dashboard counts them ([`pay_account_items`]).
+//!
 //! Decision: the subject's name comes from the registered subject label, else
 //! from [`subject_text`] for the Manpower and HR records, else nothing: the
 //! page never shows `hr.employee #2`. A request whose subject moved on shows
@@ -81,6 +90,15 @@ struct Row {
     can_decide: bool,
     can_withdraw: bool,
     labels: std::collections::BTreeMap<&'static str, String>,
+    /// More lines of the row (a pay account: the number's end, the holder, why
+    /// the name differs).
+    detail: Vec<String>,
+    /// A pay account waiting for a second user, decided on its own routes.
+    pay_account: bool,
+    /// Where *Approve* posts (pay accounts only).
+    approve_url: String,
+    /// Where *Reject* posts (pay accounts only).
+    reject_url: String,
 }
 
 /// The first non-empty text of the payload under a name a reason goes by.
@@ -229,7 +247,132 @@ async fn row(
         can_decide: card.can_decide,
         can_withdraw: card.can_withdraw,
         labels: card.labels,
+        detail: Vec::new(),
+        pay_account: false,
+        approve_url: String::new(),
+        reject_url: String::new(),
     })
+}
+
+/// The pay accounts waiting for approval (`pending_approval`), oldest first.
+async fn pending_pay_accounts(state: &AppState) -> Result<Vec<wl_hr::PayAccount>> {
+    wl_hr::PayAccount::query()
+        .where_(wl_hr::PayAccount::STATUS.eq(wl_hr::PayAccountStatus::PendingApproval))
+        .order_by(wl_hr::PayAccount::ID)
+        .get(&state.db)
+        .await
+}
+
+/// A pending pay account as a row; `can_decide` when `user` may approve it.
+async fn pay_account_row(
+    state: &AppState,
+    lang: &Lang,
+    account: &wl_hr::PayAccount,
+    can_decide: bool,
+) -> Result<Row> {
+    let name = hr_subject(state, lang, &account.subject())
+        .await
+        .unwrap_or_default();
+    let requester = match account.requested_by {
+        Some(id) => User::find(&state.db, id)
+            .await?
+            .map(|user| user.name)
+            .unwrap_or_default(),
+        None => String::new(),
+    };
+    let day = account.created_at.map_or_else(String::new, |at| {
+        at.with_timezone(&BusinessCalendar::offset())
+            .format("%d %b %Y")
+            .to_string()
+    });
+    let requested = lang.t(
+        "approvals.requested",
+        &[("name", &requester), ("date", &day)],
+    );
+    let mut detail = vec![lang.t("approvals.pay_account_ending", &[("last4", &account.last4)])];
+    if !account.holder_name.trim().is_empty() {
+        detail.push(lang.t(
+            "approvals.pay_account_holder",
+            &[("name", &account.holder_name)],
+        ));
+    }
+    let explanation = account.mismatch_explanation.clone().unwrap_or_default();
+    if !explanation.trim().is_empty() {
+        detail.push(lang.t("approvals.pay_account_mismatch", &[("text", &explanation)]));
+    }
+    let mut labels = std::collections::BTreeMap::new();
+    for (key, text) in [
+        ("approve", "approvals.pay_approve"),
+        ("reject", "approvals.pay_reject"),
+        ("approve_title", "approvals.pay_approve_title"),
+        ("reject_title", "approvals.pay_reject_title"),
+        ("comment", "approvals.pay_reason"),
+        ("comment_reject", "approvals.pay_reason_hint"),
+        ("cancel", "approvals.pay_cancel"),
+    ] {
+        labels.insert(key, lang.t(text, &[]));
+    }
+    labels.insert(
+        "approve_message",
+        lang.t("approvals.pay_approve_message", &[("name", &name)]),
+    );
+    Ok(Row {
+        id: account.id,
+        action: lang.t("approvals.pay_account", &[]),
+        subject: name,
+        url: format!("/hr/pay-accounts/{}", account.id),
+        requester,
+        requested,
+        reason: String::new(),
+        status: String::new(),
+        status_kind: "warning",
+        state: if can_decide {
+            String::new()
+        } else {
+            lang.t("approvals.waiting_approver", &[])
+        },
+        can_decide,
+        can_withdraw: false,
+        labels,
+        detail,
+        pay_account: true,
+        approve_url: format!("/hr/pay-accounts/{}/transitions/approve", account.id),
+        reject_url: format!("/hr/pay-accounts/{}/transitions/reject", account.id),
+    })
+}
+
+/// A line of the dashboard's *awaiting you*: the title and the page.
+pub struct PayAccountItem {
+    /// `Approve a new pay account: Ravi Kumar`.
+    pub title: String,
+    /// The inbox, where it is decided.
+    pub url: String,
+}
+
+/// The pay accounts `user` may decide now: they hold `pay_accounts.approve`
+/// and did not ask for the account.
+pub async fn pay_account_items(
+    state: &AppState,
+    lang: &Lang,
+    user: &AuthUser,
+) -> Result<Vec<PayAccountItem>> {
+    if !user.has_permission(wl_hr::permissions::PAY_ACCOUNTS_APPROVE) {
+        return Ok(Vec::new());
+    }
+    let mut items = Vec::new();
+    for account in pending_pay_accounts(state).await? {
+        if account.requested_by == Some(user.id) {
+            continue;
+        }
+        let name = hr_subject(state, lang, &account.subject())
+            .await
+            .unwrap_or_default();
+        items.push(PayAccountItem {
+            title: lang.t("approvals.pay_account_item", &[("name", &name)]),
+            url: "/approvals".to_owned(),
+        });
+    }
+    Ok(items)
 }
 
 /// What the inbox shows.
@@ -238,7 +381,15 @@ async fn build(state: &AppState, lang: &Lang, user: &AuthUser) -> Result<(Vec<Ro
     for request in approvals::awaiting::awaiting(&state.db, user).await? {
         waiting.push(row(state, lang, user, &request).await?);
     }
+    let may_approve = user.has_permission(wl_hr::permissions::PAY_ACCOUNTS_APPROVE);
     let mut mine = Vec::new();
+    for account in pending_pay_accounts(state).await? {
+        if account.requested_by == Some(user.id) {
+            mine.push(pay_account_row(state, lang, &account, false).await?);
+        } else if may_approve {
+            waiting.push(pay_account_row(state, lang, &account, true).await?);
+        }
+    }
     for request in ApprovalRequest::query()
         .where_(ApprovalRequest::REQUESTER_ID.eq(user.id))
         .where_(ApprovalRequest::STATUS.eq(ApprovalStatus::Pending))

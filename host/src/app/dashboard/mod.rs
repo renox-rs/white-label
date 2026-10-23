@@ -312,11 +312,15 @@ async fn show(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Resu
         })
         .collect();
     // What this person may decide now (wl-kernel approvals).
-    let awaiting: Vec<_> = approvals::awaiting_items(&state.db, &user, &lang)
+    let mut awaiting: Vec<_> = approvals::awaiting_items(&state.db, &user, &lang)
         .await?
         .into_iter()
         .map(|item| context! { title => item.title, url => item.url })
         .collect();
+    // A pay account waiting for a second user is no approval request (BL-MPW-34).
+    for item in super::approvals_inbox::pay_account_items(&state, &lang, &user).await? {
+        awaiting.push(context! { title => item.title, url => item.url });
+    }
     let awaiting_count = awaiting.len();
     // The timesheets waiting for a client approver (Manpower portal).
     let portal_waiting = manpower_tiles::timesheets_waiting(&state, &user).await?;

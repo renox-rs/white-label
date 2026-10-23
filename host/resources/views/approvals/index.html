@@ -13,8 +13,15 @@
             <rx-stack>
               <span>{{ item.requested }}</span>
               <span rx-if="item.reason">{{ t('approvals.reason') }}: {{ item.reason }}</span>
+              <span rx-for="line in item.detail">{{ line }}</span>
               <a rx-if="item.url" href="{{ item.url }}">{{ t('approvals.open_record') }}</a>
-              <rx-row rx-if="item.can_decide">
+              <rx-row rx-if="item.can_decide and item.pay_account">
+                <rx-confirm :id="'pay-approve-' ~ item.id" :label="item.labels.approve" :action="item.approve_url" method="POST" :title="item.labels.approve_title" :message="item.labels.approve_message" :confirm-label="item.labels.approve" :cancel-label="item.labels.cancel" icon="check"/>
+                <rx-action-sheet :id="'pay-reject-' ~ item.id" :label="item.labels.reject" :action="item.reject_url" :title="item.labels.reject_title" :submit-label="item.labels.reject" icon="circle-x" danger>
+                  <rx-textarea name="reason" :label="item.labels.comment" :hint="item.labels.comment_reject" :id="'pay-reject-reason-' ~ item.id" required/>
+                </rx-action-sheet>
+              </rx-row>
+              <rx-row rx-if="item.can_decide and not item.pay_account">
                 <rx-action-sheet :id="'approve-' ~ item.id" :label="item.labels.approve" :action="route('wl_kernel.approvals.approve', item.id)" :title="item.labels.approve_title" :submit-label="item.labels.approve" variant="primary" icon="check">
                   <rx-textarea name="comment" :label="item.labels.comment" :hint="item.labels.comment_optional" :id="'approve-comment-' ~ item.id"/>
                 </rx-action-sheet>
@@ -37,6 +44,7 @@
               <span><rx-badge :kind="item.status_kind" :text="item.state or item.status"/></span>
               <span>{{ item.requested }}</span>
               <span rx-if="item.reason">{{ t('approvals.reason') }}: {{ item.reason }}</span>
+              <span rx-for="line in item.detail">{{ line }}</span>
               <a rx-if="item.url" href="{{ item.url }}">{{ t('approvals.open_record') }}</a>
               <rx-row rx-if="item.can_withdraw">
                 <rx-confirm :id="'withdraw-' ~ item.id" :label="item.labels.withdraw" :action="route('wl_kernel.approvals.withdraw', item.id)" method="POST" :title="item.labels.withdraw_title" :message="item.labels.withdraw_message" :confirm-label="item.labels.withdraw" :cancel-label="item.labels.cancel" icon="x"/>

@@ -300,7 +300,21 @@
     "empty": "Nothing needs your action",
     "empty_text": "Decisions that wait for you appear here.",
     "empty_mine": "No open requests",
-    "empty_mine_text": "What you ask others to approve appears here."
+    "empty_mine_text": "What you ask others to approve appears here.",
+    "pay_account": "Approve a new pay account",
+    "pay_account_ending": "Account ending :last4",
+    "pay_account_holder": "Account holder: :name",
+    "pay_account_mismatch": "The name differs from the worker's: :text",
+    "pay_account_item": "Approve a new pay account: :name",
+    "waiting_approver": "Waiting for another approver",
+    "pay_approve": "Approve",
+    "pay_approve_title": "Approve this pay account?",
+    "pay_approve_message": "The account of :name starts to cool; it can be used for pay after the cooling period.",
+    "pay_reject": "Reject",
+    "pay_reject_title": "Reject this pay account",
+    "pay_reason": "Reason",
+    "pay_reason_hint": "Say why the account is not accepted.",
+    "pay_cancel": "Cancel"
   },
   "activity": {
     "title": "Activity",
