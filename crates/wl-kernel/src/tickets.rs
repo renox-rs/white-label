@@ -494,6 +494,46 @@ pub fn task_creator(state: &AppState) -> Arc<dyn TaskCreator> {
     }
 }
 
+/// A vertical's rule on who may resolve the tickets of one category
+/// (08 Auto: a vehicle incident is closed only with the branch manager's
+/// liability decision, taken on the job card, never by an involved person).
+/// `wl-ticketing` asks it before a user resolves a ticket of that category;
+/// the record that opened the ticket resolves it itself with
+/// [`TaskCreator::resolve_from_source`], which the rule does not see.
+pub trait ResolveRule: Send + Sync + 'static {
+    /// `Ok` when `user` may resolve `ticket` (about `subject`); the refusal
+    /// in words otherwise.
+    fn check<'a>(
+        &'a self,
+        state: &'a AppState,
+        ticket: TicketId,
+        subject: &'a Subject,
+        user: i64,
+    ) -> TicketFuture<'a, std::result::Result<(), String>>;
+}
+
+static RESOLVE_RULES: std::sync::RwLock<std::collections::BTreeMap<String, Arc<dyn ResolveRule>>> =
+    std::sync::RwLock::new(std::collections::BTreeMap::new());
+
+/// Registers `rule` for the tickets of category `category_key`; registering
+/// the same category again replaces it.
+pub fn register_resolve_rule(category_key: &str, rule: impl ResolveRule) {
+    RESOLVE_RULES
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(category_key.to_owned(), Arc::new(rule));
+}
+
+/// The rule of category `category_key`, if one is registered.
+pub fn resolve_rule(category_key: &str) -> Option<Arc<dyn ResolveRule>> {
+    RESOLVE_RULES
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(category_key)
+        .cloned()
+}
+
+
 /// Why a covered subject is not compliant (wl-ticketing §3 *Compliance
 /// flag*).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

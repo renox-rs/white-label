@@ -2554,3 +2554,31 @@ async fn without_scheduling_a_service_booking_is_refused_and_a_cancel_does_nothi
             .unwrap()
     );
 }
+
+/// #402: a vertical binds who resolves the tickets of one category; a category
+/// with no rule has none.
+#[test]
+fn a_resolve_rule_is_registered_per_ticket_category() {
+    use renox::prelude::*;
+    use wl_kernel::Subject;
+    use wl_kernel::tickets::{
+        ResolveRule, TicketFuture, TicketId, register_resolve_rule, resolve_rule,
+    };
+
+    struct Nobody;
+    impl ResolveRule for Nobody {
+        fn check<'a>(
+            &'a self,
+            _state: &'a AppState,
+            _ticket: TicketId,
+            _subject: &'a Subject,
+            _user: i64,
+        ) -> TicketFuture<'a, std::result::Result<(), String>> {
+            Box::pin(async { Ok(Err("not here".to_owned())) })
+        }
+    }
+    assert!(resolve_rule("package_test_category").is_none());
+    register_resolve_rule("package_test_category", Nobody);
+    assert!(resolve_rule("package_test_category").is_some());
+    assert!(resolve_rule("another_category").is_none());
+}

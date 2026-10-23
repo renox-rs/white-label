@@ -752,6 +752,25 @@ pub async fn resolve(
     ticket: &Ticket,
     at: DateTime,
 ) -> std::result::Result<(), TransitionError> {
+    // A vertical's rule on who resolves the tickets of a category (08: the
+    // vehicle incident is decided on the job card by the branch manager).
+    let category = Category::find(&state.db, ticket.category_id).await?;
+    if let Some(rule) = category.and_then(|c| wl_kernel::tickets::resolve_rule(&c.key)) {
+        let verdict = rule
+            .check(
+                state,
+                wl_kernel::tickets::TicketId(ticket.id),
+                &ticket.subject(),
+                user.id,
+            )
+            .await?;
+        if let Err(words) = verdict {
+            return Err(TransitionError::Failed(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                words,
+            )));
+        }
+    }
     let charge_lines = if ticket.chargeable {
         crate::charge::ChargeLine::query()
             .where_(crate::charge::ChargeLine::TICKET_ID.eq(ticket.id))

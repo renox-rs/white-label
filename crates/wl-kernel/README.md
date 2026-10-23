@@ -165,6 +165,8 @@ emits `MessageFailed`, `MessageSuppressed`, `MessageGaveUp` and `ContactPointInv
 the type's text, skips party and address recipients, and returns no message ids.
 `Notifier::notice_status(state, subject, type_key)` answers `NoticeStatus` (`Delivered { at }`, `ProofRecorded { delivered_on }`, `NotDelivered`) and `Notifier::undelivered_notices(state, subject)` lists the given-up statutory notices without proof; both have default bodies (`NotDelivered`, empty), so `NoNotifier` never reads a notice as delivered. `NotificationTypeDef::proof_methods(&[..])` sets the `ProofMethod`s staff may use (all four by default); `StatutoryNoticeProofRecorded` is emitted when a proof is recorded.
 
+A vertical can bind who resolves the tickets of one category: `register_resolve_rule("vehicle_incident", rule)` with a `ResolveRule` (`check(state, ticket, subject, user)` answers `Ok(())` or the refusal in words); `wl-ticketing` asks it before a user's `resolve` of a ticket of that category, and `resolve_from_source` (the record that opened the ticket) does not go through it (08 Auto: the liability decision of a vehicle incident).
+
 Other modules open tickets (tasks) only through `wl_kernel::tickets::task_creator(&state)`:
 `open(&state, OpenTicket::new(subject, "general", title).description(..).requester_party(p))`
 gives a `TicketRef` (id and number, e.g. `TKT-2026-0001`), and fails for an unknown category
