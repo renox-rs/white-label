@@ -25,6 +25,7 @@
 use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::{StateMachine, Transitioned};
+use wl_kernel::approvals;
 use wl_kernel::invoicing::{DEFAULT_CURRENCY, InvoiceDraft, invoicer};
 use wl_kernel::sales::{
     CreditFailure, FulfilOrder, FulfilledLine, FulfilmentOutcome, OrderFulfilment,
@@ -44,9 +45,9 @@ use crate::sales_order::{
 use crate::sales_order_machine::{
     ACCEPT, ACCEPT_HOLD, AcceptInput, CANCEL, CANCEL_LINE, CANCEL_LINE_PARTLY, CLOSE,
     CONFIRM_PAYMENT, CONFIRM_PAYMENT_FOR_ACCEPTANCE, CancelLineInput, CloseInput, FULFIL,
-    FULFIL_LAST, FulfilInput, HOLD, PAYMENT_FAILED, PayInput, REJECT, REVERSE_FULFILMENT,
-    REVERSE_FULFILMENT_ALL, ReverseInput, SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_HOLD,
-    SUBMIT_ONLINE, SubmitInput,
+    FULFIL_LAST, FulfilInput, HOLD, PAYMENT_FAILED, PayInput, REJECT, RELEASE, RELEASE_APPROVED,
+    RELEASE_PARTLY, RELEASE_PARTLY_APPROVED, REVERSE_FULFILMENT, REVERSE_FULFILMENT_ALL,
+    ReverseInput, SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_HOLD, SUBMIT_ONLINE, SubmitInput,
 };
 use crate::texts::english;
 
@@ -233,6 +234,57 @@ pub async fn accept(state: &AppState, by: &AuthUser, id: i64) -> Result<SalesOrd
         .await
         .map_err(|e| e.into_error())?;
     SalesOrder::find_or_404(&state.db, id).await
+}
+
+/// A credit releaser `by` asks to release the order `id` from its credit hold
+/// (`release`), with an optional `note` for the approver. The order goes back
+/// to the state it was held from once another holder of `credit.release`
+/// approves; the request waits for that and the order stays on hold until
+/// then (and after a rejection). Returns the order and whether it was
+/// released at once, which happens only while no approval policy exists.
+///
+/// # Errors
+///
+/// 422 when the order is not on credit hold or a release is already
+/// requested; 403 when `by` entered the order (`SAL.ACL.03`).
+pub async fn release(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+    note: &str,
+) -> Result<(SalesOrder, bool)> {
+    let order = SalesOrder::find_or_404(&state.db, id).await?;
+    if order.status != SalesOrderStatus::CreditHold {
+        return Err(refused("wl_sales.orders.problem.not_on_hold"));
+    }
+    if order.created_by == Some(by.id) {
+        return Err(Error::Forbidden);
+    }
+    if !wl_kernel::ApprovalRequest::pending_about(&state.db, &order.subject())
+        .await?
+        .into_iter()
+        .filter(|request| request.action == crate::policy::RELEASE_ACTION)
+        .collect::<Vec<_>>()
+        .is_empty()
+    {
+        return Err(refused("wl_sales.orders.problem.release_pending"));
+    }
+    let name = if order.state_before_hold.as_deref()
+        == Some(SalesOrderStatus::PartiallyFulfilled.as_str())
+    {
+        RELEASE_PARTLY
+    } else {
+        RELEASE
+    };
+    let mut run = order.transition(name).by(by);
+    if !note.trim().is_empty() {
+        run = run.reason(note.trim().to_owned());
+    }
+    let outcome = run.run(state).await.map_err(|e| e.into_error())?;
+    approvals::announce(state, &outcome).await?;
+    let released = SalesOrder::find_or_404(&state.db, id).await?;
+    let done = released.status != SalesOrderStatus::CreditHold;
+    Ok((released, done))
 }
 
 /// The gateway confirmed `amount` fils for the order `id` waiting in
@@ -554,6 +606,26 @@ impl OrderFulfilment for Fulfilment {
     }
 }
 
+/// Emits `SalesOrderConfirmed` for `order` unless it was emitted before, and
+/// remembers that it was (a second kitchen ticket or work order must never
+/// follow a release at dispatch).
+async fn confirmed_once(state: &AppState, order: &SalesOrder) -> Result {
+    if order.confirmed_announced {
+        return Ok(());
+    }
+    SalesOrder::query()
+        .where_(SalesOrder::ID.eq(order.id))
+        .update(&state.db, &[("confirmed_announced", &true)])
+        .await?;
+    state
+        .emit(SalesOrderConfirmed {
+            order: order.order_id(),
+            party: order.party(),
+            channel: order.channel.clone(),
+        })
+        .await
+}
+
 /// Emits the kernel events after an order transition committed.
 async fn announce(state: &AppState, event: &Transitioned<SalesOrder>) -> Result {
     let name = event.transition.as_str();
@@ -562,14 +634,12 @@ async fn announce(state: &AppState, event: &Transitioned<SalesOrder>) -> Result 
     };
     let (id, party) = (order.order_id(), order.party());
     match name {
-        SUBMIT | ACCEPT | CONFIRM_PAYMENT => {
-            state
-                .emit(SalesOrderConfirmed {
-                    order: id,
-                    party,
-                    channel: order.channel.clone(),
-                })
-                .await
+        SUBMIT | ACCEPT | CONFIRM_PAYMENT => confirmed_once(state, &order).await,
+        RELEASE | RELEASE_PARTLY | RELEASE_APPROVED | RELEASE_PARTLY_APPROVED => {
+            // The next dispatch passes while the customer owes no more than now.
+            credit::remember_release(state, &order).await?;
+            // Held at submit or accept, the order is confirmed for the first time.
+            confirmed_once(state, &order).await
         }
         FULFIL | FULFIL_LAST => {
             let Ok(request) = renox::serde_json::from_value::<FulfilOrder>(event.meta.clone())
@@ -662,6 +732,20 @@ pub(crate) fn register(app: &mut Registry) {
     renox::state_machine::register::<SalesOrder>();
     wl_kernel::sales::provide_order_fulfilment(app, Fulfilment);
     wl_kernel::sales::provide_credit_checker(app, credit::Checker);
+    crate::sales_order_machine::subject_machine().register();
+    crate::policy::release_policy().register();
+    // The order's creator may not decide the release of its hold, besides
+    // the user who asks for it (`SAL.ACL.03`).
+    approvals::register_excluded_approvers(SALES_ORDER_SUBJECT_TYPE, |db, request| {
+        Box::pin(async move {
+            Ok(SalesOrder::find(db, request.subject_id)
+                .await?
+                .and_then(|order| order.created_by)
+                .into_iter()
+                .collect())
+        })
+    });
+    approvals::register_subject_link(SALES_ORDER_SUBJECT_TYPE, |id| format!("/sales-orders/{id}"));
     app.listen(|event: Transitioned<SalesOrder>, state: AppState| async move {
         announce(&state, &event).await
     });

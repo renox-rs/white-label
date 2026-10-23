@@ -25,6 +25,17 @@ pub fn adjustment_policy() -> PolicyDefault {
     PolicyDefault::new(ADJUSTMENT_ACTION).step_permission(permissions::LOYALTY_MANAGE)
 }
 
+/// The approval policies' action key of releasing an order from a credit
+/// hold (`SAL.ACL.03`, `PLT.APR.01`).
+pub const RELEASE_ACTION: &str = "sales.order_release";
+
+/// The default policy of a release: one step by a holder of `credit.release`
+/// other than the requester; the order's creator is excluded too (see
+/// [`crate::sales_orders`]).
+pub fn release_policy() -> PolicyDefault {
+    PolicyDefault::new(RELEASE_ACTION).step_permission(permissions::CREDIT_RELEASE)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -34,6 +45,12 @@ mod tests {
         let expected =
             PolicyDefault::new("loyalty.adjustment_over_limit").step_permission("loyalty.manage");
         assert_eq!(adjustment_policy(), expected);
+    }
+
+    #[test]
+    fn a_release_is_decided_by_another_credit_releaser() {
+        let expected = PolicyDefault::new("sales.order_release").step_permission("credit.release");
+        assert_eq!(release_policy(), expected);
     }
 
     #[test]

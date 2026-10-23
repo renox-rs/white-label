@@ -39,10 +39,22 @@
       </rx-action-sheet>
       <rx-confirm rx-if="can_accept" :id="'accept-order-' ~ order.id" :label="tx['orders.accept']" :action="route('wl_sales.sales_order_accept', order.id)" method="POST"
                   :title="tx['orders.accept']" :message="tx['orders.accept_message']" :confirm-label="tx['orders.accept']" :cancel-label="tx['cancel']" icon="check"/>
+      <template rx-if="release.shown">
+        <template rx-if="release.blocked">
+          <rx-button :label="tx['credit.release']" variant="primary" icon="unlock" :disabled-reason="release.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="release-order" :label="tx['credit.release']" :action="route('wl_sales.sales_order_release', order.id)"
+                           :title="tx['credit.release']" :description="release.description" :submit-label="tx['credit.release']" variant="primary" icon="unlock">
+            <rx-textarea name="note" :label="tx['credit.release_note']" id="release-order-note"/>
+          </rx-action-sheet>
+        </template>
+      </template>
       <template rx-if="actions">
         <rx-transition-actions :actions="actions" action="/sales-orders/{{ order.id }}/transitions"/>
       </template>
     </rx-page-header>
+    <rx-include template="wl-kernel/approval_card.html"/>
     <rx-card rx-if="hold" :title="tx['credit.hold_title']">
       <p>{{ tx['credit.hold_goods_reserved'] }}</p>
       <rx-infolist rx-if="hold.detail" columns="2">

@@ -28,6 +28,8 @@ pub async fn boot() -> (Booted, Credit) {
 pub async fn boot_with(sales: WlSales) -> (Booted, Credit) {
     let credit = Credit::default();
     let t = boot_configured(sales, credit.clone()).await;
+    // The default approval policies (the release of a held order).
+    wl_kernel::approvals::install(t.db()).await.unwrap();
     (t, credit)
 }
 

@@ -296,6 +296,27 @@ fn released_and_no_worse(order: &SalesOrder, found: &Assessment) -> bool {
             .is_some_and(|before| found.overdue <= before)
 }
 
+/// Notes what the customer owes at the moment `order` was released, so the
+/// next dispatch passes while it owes no more (BL-SAL-11).
+pub(crate) async fn remember_release(state: &AppState, order: &SalesOrder) -> Result {
+    let Some(account) = CustomerAccount::of_party(&state.db, order.party_id).await? else {
+        return Ok(());
+    };
+    let lines = SaleLine::of(&state.db, &order.subject()).await?;
+    let found = assess(state, &account, undelivered_value(&lines), Some(order.id)).await?;
+    SalesOrder::query()
+        .where_(SalesOrder::ID.eq(order.id))
+        .update(
+            &state.db,
+            &[
+                ("release_exposure", &Some(found.exposure)),
+                ("release_overdue", &Some(found.overdue)),
+            ],
+        )
+        .await?;
+    Ok(())
+}
+
 /// Runs `hold` on the confirmed or partly fulfilled `order` with `hold`.
 pub async fn hold_order(state: &AppState, order: &SalesOrder, hold: HoldInput) -> Result {
     let _ = order

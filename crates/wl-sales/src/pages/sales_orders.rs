@@ -10,6 +10,7 @@
 //! | `POST /sales-orders/{id}/submit` | `wl_sales.sales_order_submit` | `sales_orders.create` |
 //! | `POST /sales-orders/{id}/cancel-line` | `wl_sales.sales_order_cancel_line` | `sales_orders.cancel` |
 //! | `POST /sales-orders/{id}/accept` | `wl_sales.sales_order_accept` | `sales_orders.accept` |
+//! | `POST /sales-orders/{id}/release` | `wl_sales.sales_order_release` | `credit.release` |
 //!
 //! `reject` and `cancel` run through the kernel's generic transition route,
 //! with the reason the form gives; `accept` has its own route because the
@@ -31,8 +32,9 @@ use crate::pages::counter_sales::parse_milli;
 use crate::sale_line::{NewLine, SaleLine, totals};
 use crate::sales_order::{SalesOrder, SalesOrderStatus};
 use crate::sales_order_machine::{
-    ACCEPT, ACCEPT_HOLD, CANCEL_LINE, CANCEL_LINE_PARTLY, SUBMIT, SUBMIT_FOR_ACCEPTANCE,
-    SUBMIT_HOLD, SUBMIT_ONLINE,
+    ACCEPT, ACCEPT_HOLD, CANCEL_LINE, CANCEL_LINE_PARTLY, RELEASE, RELEASE_APPROVED,
+    RELEASE_PARTLY, RELEASE_PARTLY_APPROVED, SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_HOLD,
+    SUBMIT_ONLINE,
 };
 use crate::sales_orders::{self, NewSalesOrder};
 use crate::{permissions, texts};
@@ -74,6 +76,12 @@ pub fn routes() -> Routes {
                 .post("/sales-orders/{id}/accept", accept)
                 .name("wl_sales.sales_order_accept")
                 .require_permission(permissions::SALES_ORDERS_ACCEPT),
+        )
+        .merge(
+            Routes::new()
+                .post("/sales-orders/{id}/release", release)
+                .name("wl_sales.sales_order_release")
+                .require_permission(permissions::CREDIT_RELEASE),
         )
         .merge(
             Routes::new()
@@ -240,6 +248,17 @@ pub struct HoldView {
     pub held_on: String,
 }
 
+/// The release of a held order as its page offers it (`SAL.ACL.03`).
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct ReleaseView {
+    /// The viewer holds `credit.release` and the order is on hold.
+    pub shown: bool,
+    /// Why the button is disabled, if it is.
+    pub blocked: String,
+    /// What the sheet says, with the account hold warning when it applies.
+    pub description: String,
+}
+
 /// What the order page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-sales/sales_order.html")]
@@ -256,6 +275,8 @@ pub(crate) struct ShowPage {
     actions: Vec<Available>,
     member: Option<String>,
     hold: Option<HoldView>,
+    release: ReleaseView,
+    approvals: Vec<wl_kernel::approvals::ApprovalCard>,
     can_edit: bool,
     can_accept: bool,
     can_attach: bool,
@@ -308,6 +329,10 @@ async fn show(
                 SUBMIT_HOLD,
                 ACCEPT,
                 ACCEPT_HOLD,
+                RELEASE,
+                RELEASE_PARTLY,
+                RELEASE_APPROVED,
+                RELEASE_PARTLY_APPROVED,
                 CANCEL_LINE,
                 CANCEL_LINE_PARTLY,
             ]
@@ -333,9 +358,17 @@ async fn show(
             | SalesOrderStatus::Rejected
     );
     let hold = hold_view(&user, &lang, &order);
+    let release = release_view(&state, &user, &lang, &order).await?;
+    let approvals = if order.status == SalesOrderStatus::CreditHold {
+        wl_kernel::approvals::cards_for(&state.db, &order.subject(), &user, &lang).await?
+    } else {
+        Vec::new()
+    };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         hold,
+        release,
+        approvals,
         title: order.number.clone(),
         status_label: text(&lang, &format!("orders.status.{}", order.status.as_str())),
         status_kind: status_kind(order.status),
@@ -356,6 +389,79 @@ async fn show(
             && user.has_permission(permissions::SALES_ORDERS_ACCEPT),
         order,
     }))
+}
+
+/// What the release button of `order` shows `user`: nothing for someone
+/// without `credit.release`, a disabled button with the reason for the
+/// order's creator or while a release waits for approval, else the sheet,
+/// which warns when the customer account is on hold.
+async fn release_view(
+    state: &AppState,
+    user: &AuthUser,
+    lang: &Lang,
+    order: &SalesOrder,
+) -> Result<ReleaseView> {
+    if order.status != SalesOrderStatus::CreditHold
+        || !user.has_permission(permissions::CREDIT_RELEASE)
+    {
+        return Ok(ReleaseView::default());
+    }
+    let waiting = !wl_kernel::ApprovalRequest::pending_about(&state.db, &order.subject())
+        .await?
+        .iter()
+        .all(|request| request.action != crate::policy::RELEASE_ACTION);
+    let blocked = if order.created_by == Some(user.id) {
+        text(lang, "credit.release_creator")
+    } else if waiting {
+        text(lang, "credit.release_waiting")
+    } else {
+        String::new()
+    };
+    let on_hold = match crate::customer_account::CustomerAccount::of_party(
+        &state.db,
+        order.party_id,
+    )
+    .await?
+    {
+        Some(account) => account.is_on_hold(&state.db).await?,
+        None => false,
+    };
+    let mut description = text(lang, "credit.release_description");
+    if on_hold {
+        description = format!(
+            "{} {}",
+            text(lang, "credit.release_account_on_hold"),
+            description
+        );
+    }
+    Ok(ReleaseView {
+        shown: true,
+        blocked,
+        description,
+    })
+}
+
+/// `POST /sales-orders/{id}/release`: a credit releaser asks to release the
+/// held order; another one approves it.
+async fn release(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(order): Found<SalesOrder>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let note = form.get("note").map_or("", |v| v.trim());
+    let (_, done) = sales_orders::release(&state, &user, order.id, note).await?;
+    let key = if done {
+        "credit.released"
+    } else {
+        "credit.release_requested"
+    };
+    Ok((
+        Toast::success(text(&lang, key)),
+        Redirect::route("wl_sales.sales_order", &[&order.id])?,
+    )
+        .into_response())
 }
 
 /// The credit hold card of `order`, if it is on credit hold.

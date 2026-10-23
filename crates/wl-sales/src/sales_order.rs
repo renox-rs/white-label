@@ -123,6 +123,10 @@ pub struct SalesOrder {
     pub reason: Option<String>,
     /// When it was confirmed.
     pub confirmed_at: Option<DateTime>,
+    /// Whether `SalesOrderConfirmed` was emitted for it: a release from a
+    /// hold at `submit` or `accept` emits it, one from a hold at dispatch
+    /// does not.
+    pub confirmed_announced: bool,
     /// When its last open quantity was fulfilled.
     pub fulfilled_at: Option<DateTime>,
     /// Whether `accept` needs the credit check of the service: the order is

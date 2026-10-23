@@ -20,6 +20,8 @@
 //!     draft --submit_hold--> credit_hold
 //!     pending_acceptance --accept_hold--> credit_hold
 //!     confirmed | partially_fulfilled --hold--> credit_hold
+//!     credit_hold --release--> confirmed
+//!     credit_hold --release_partly--> partially_fulfilled
 //! ```
 //!
 //! `cancel_line` is the part of the spec's `cancel_line` that BL-SAL-23 needs
@@ -29,8 +31,13 @@
 //! `cancel_remaining`) come with BL-SAL-06 and BL-SAL-09.
 //! `submit_hold`, `accept_hold` and `hold` are the credit check's three ways
 //! into `credit_hold` (BL-SAL-10, see [`crate::credit`]): the spec's `submit`,
-//! `accept` and `hold` with the target `credit_hold`. `release`, `amend` and
-//! `cancel_remaining` come with their issues (BL-SAL-05 to BL-SAL-11). `confirm_payment`, `payment_failed`,
+//! `accept` and `hold` with the target `credit_hold`. `release` (BL-SAL-11) is
+//! two transitions for its two targets, `release` (→ `confirmed`) and
+//! `release_partly` (→ `partially_fulfilled`), each with the system twin the
+//! kernel runs once a second credit releaser approved
+//! (`release_approved`, `release_partly_approved`); the service picks by the
+//! state stored before the hold. `amend` and `cancel_remaining` come with
+//! their issues (BL-SAL-05 to BL-SAL-09). `confirm_payment`, `payment_failed`,
 //! `fulfil`, `fulfil_last`, `reverse_fulfilment`, `reverse_fulfilment_all` and
 //! `close` are system transitions (the gateway, the hand-over, the invoicing
 //! state); the rest are by users.
@@ -44,9 +51,11 @@ use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
+use wl_kernel::machines::SubjectMachine;
 use wl_kernel::sales::{CreditFailure, FulfilledLine, SALES_ORDER_SUBJECT_TYPE};
 
 use crate::permissions;
+use crate::policy;
 use crate::sale_line::SaleLine;
 use crate::sales_order::{FulfilmentRecord, SalesOrder, SalesOrderStatus};
 use crate::texts::english;
@@ -96,6 +105,17 @@ pub const ACCEPT_HOLD: &str = "accept_hold";
 /// `confirmed | partially_fulfilled → credit_hold`: the re-check at dispatch
 /// failed, or a bounced cheque (`SAL.RUL.05`).
 pub const HOLD: &str = "hold";
+
+/// `credit_hold → confirmed`: a credit releaser asks to release an order held
+/// at `submit`, `accept` or from `confirmed`; a second one approves.
+pub const RELEASE: &str = "release";
+/// `credit_hold → partially_fulfilled`: the same for an order held from
+/// `partially_fulfilled`.
+pub const RELEASE_PARTLY: &str = "release_partly";
+/// The twin of [`RELEASE`] the kernel runs at the approval.
+pub const RELEASE_APPROVED: &str = "release_approved";
+/// The twin of [`RELEASE_PARTLY`] the kernel runs at the approval.
+pub const RELEASE_PARTLY_APPROVED: &str = "release_partly_approved";
 
 /// What a hold takes: the failure and the figures the order keeps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -331,6 +351,10 @@ impl StateMachine for SalesOrder {
             .transition(submit(SUBMIT_HOLD, "Submit", CreditHold))
             .transition(accept_hold())
             .transition(hold())
+            .transition(release(RELEASE, Confirmed, false))
+            .transition(release(RELEASE_PARTLY, PartiallyFulfilled, false))
+            .transition(release(RELEASE_APPROVED, Confirmed, true))
+            .transition(release(RELEASE_PARTLY_APPROVED, PartiallyFulfilled, true))
     }
 }
 
@@ -442,6 +466,70 @@ fn accept_hold() -> Transition<SalesOrder> {
                     return Ok(());
                 };
                 write_hold(tx, id, &hold, SalesOrderStatus::Confirmed).await
+            })
+        })
+}
+
+/// The machine's entry in the kernel registry: both releases are one approval
+/// action, `sales.order_release`, decided by another holder of
+/// `credit.release`.
+pub fn subject_machine() -> SubjectMachine {
+    SubjectMachine::of::<SalesOrder>(SALES_ORDER_SUBJECT_TYPE)
+        .action(RELEASE, policy::RELEASE_ACTION)
+        .action(RELEASE_PARTLY, policy::RELEASE_ACTION)
+        .scope(|_order: &SalesOrder| renox::auth::permissions::Scope::global())
+        .build()
+}
+
+/// `release`, `release_partly` and their `_approved` twins: the order goes back
+/// to the state it was held from. The user's run needs `credit.release` and is
+/// deferred as an approval request; the order's creator cannot ask
+/// (`SAL.ACL.03`).
+fn release(name: &str, to: SalesOrderStatus, approved: bool) -> Transition<SalesOrder> {
+    let partly = to == SalesOrderStatus::PartiallyFulfilled;
+    let transition: Transition<SalesOrder> = if approved {
+        Transition::new(name).system()
+    } else {
+        Transition::new(name)
+            .tone("success")
+            .permission(permissions::CREDIT_RELEASE)
+    };
+    transition
+        .label("Release")
+        .from([SalesOrderStatus::CreditHold])
+        .to(to)
+        .guard("held_from_this_state", move |o: &SalesOrder, _ctx| {
+            let held_partly = o.state_before_hold.as_deref()
+                == Some(SalesOrderStatus::PartiallyFulfilled.as_str());
+            Box::pin(async move {
+                check(
+                    held_partly == partly,
+                    "wl_sales.orders.problem.release_state",
+                )
+            })
+        })
+        .guard("not_the_creator", |o: &SalesOrder, ctx| {
+            let creator = ctx
+                .actor()
+                .is_some_and(|actor| Some(actor.id) == o.created_by);
+            Box::pin(async move { check(!creator, "wl_sales.orders.problem.release_creator") })
+        })
+        .effect(|order: &SalesOrder, _ctx, tx| {
+            let id = order.id;
+            let first = order.confirmed_at.is_none();
+            Box::pin(async move {
+                let stamp = Some(now());
+                SalesOrder::query()
+                    .where_(SalesOrder::ID.eq(id))
+                    .update(&mut *tx, &[("released_at", &stamp)])
+                    .await?;
+                if first {
+                    SalesOrder::query()
+                        .where_(SalesOrder::ID.eq(id))
+                        .update(&mut *tx, &[("confirmed_at", &stamp)])
+                        .await?;
+                }
+                Ok(())
             })
         })
 }
@@ -854,6 +942,20 @@ mod tests {
                 "credit_hold",
                 true,
             ),
+            (RELEASE, vec!["credit_hold"], "confirmed", false),
+            (
+                RELEASE_PARTLY,
+                vec!["credit_hold"],
+                "partially_fulfilled",
+                false,
+            ),
+            (RELEASE_APPROVED, vec!["credit_hold"], "confirmed", true),
+            (
+                RELEASE_PARTLY_APPROVED,
+                vec!["credit_hold"],
+                "partially_fulfilled",
+                true,
+            ),
         ];
         assert_eq!(machine.transitions().len(), table.len());
         for (name, from, to, system) in table {
@@ -863,6 +965,24 @@ mod tests {
             assert_eq!(t.to_state(), Some(to), "{name}");
         }
         assert_eq!(machine.initial_states(), ["draft"]);
+    }
+
+    #[test]
+    fn both_releases_are_one_approval_action() {
+        let m = subject_machine();
+        assert_eq!(m.action_key(RELEASE), "sales.order_release");
+        assert_eq!(m.action_key(RELEASE_PARTLY), "sales.order_release");
+        assert_eq!(m.action_key(SUBMIT), "sales.submit");
+        assert!(m.waiting_state().is_none());
+    }
+
+    #[test]
+    fn only_the_user_releases_can_be_asked_for_and_by_a_releaser() {
+        let machine = SalesOrder::machine();
+        for name in [RELEASE, RELEASE_PARTLY] {
+            let t = machine.find(name).unwrap();
+            assert_eq!(t.guard_names(), ["held_from_this_state", "not_the_creator"]);
+        }
     }
 
     #[test]

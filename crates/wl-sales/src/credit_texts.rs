@@ -80,6 +80,32 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "wl_sales.credit.hold_goods_reserved",
         "The goods stay reserved. No dispatch can leave until a credit releaser releases the order.",
     ),
+    ("wl_sales.credit.release", "Release the order"),
+    (
+        "wl_sales.credit.release_note",
+        "Note for the approver (optional)",
+    ),
+    (
+        "wl_sales.credit.release_description",
+        "The order goes back to where it was held from once another credit releaser approves.",
+    ),
+    (
+        "wl_sales.credit.release_account_on_hold",
+        "The customer account is on hold: the next dispatch will fail the credit check again until the hold is cleared.",
+    ),
+    (
+        "wl_sales.credit.release_creator",
+        "You entered this order, so another credit releaser must release it.",
+    ),
+    (
+        "wl_sales.credit.release_waiting",
+        "A release is waiting for approval.",
+    ),
+    ("wl_sales.credit.released", "Order released."),
+    (
+        "wl_sales.credit.release_requested",
+        "Release requested. Another credit releaser must approve it.",
+    ),
     ("wl_sales.orders.all", "All orders"),
     ("wl_sales.orders.on_credit_hold", "Orders on credit hold"),
     ("wl_sales.orders.accept", "Accept the order"),
@@ -91,6 +117,22 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     (
         "wl_sales.orders.accepted_held",
         "Order accepted, but it is on credit hold.",
+    ),
+    (
+        "wl_sales.orders.problem.release_state",
+        "The order was not held from this state.",
+    ),
+    (
+        "wl_sales.orders.problem.release_creator",
+        "The order's creator cannot release it: another credit releaser must.",
+    ),
+    (
+        "wl_sales.orders.problem.not_on_hold",
+        "The order is not on credit hold.",
+    ),
+    (
+        "wl_sales.orders.problem.release_pending",
+        "A release is already waiting for approval.",
     ),
     (
         "wl_sales.notices.order_credit_hold_subject",
