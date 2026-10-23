@@ -12,6 +12,7 @@ mod dispatch_events;
 pub mod dispatch_loss;
 mod dispatch_pages;
 pub mod dispatch_pick;
+pub mod dispatch_reverse;
 mod dispatch_screens;
 pub mod dispatch_send;
 mod dispatch_texts;
@@ -708,6 +709,7 @@ impl Module for WlInventory {
         dispatch_events::register(app);
         dispatch_deliver::register(app);
         dispatch_loss::register(app);
+        dispatch_reverse::register(app);
         hold_decide::register(app);
         // `STK.RUL.07`: the deciders of an open hold are reminded every H
         // hours and the escalation role told every 2 x H.

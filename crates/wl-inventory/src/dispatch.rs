@@ -17,6 +17,7 @@
 //! | `dispatch` (no lot on hold, the credit re-check, the hand-over, the movements, the delivery note) | [`crate::dispatch_send`] | #240 |
 //! | `confirm_delivery` per line and the refused goods received back into quarantine | [`crate::dispatch_deliver`] | #241 |
 //! | `mark_lost` and `found` (the loss pending the claim) | [`crate::dispatch_loss`] | #243 |
+//! | `reverse` (a delivery reversal reopens the dispatch) | [`crate::dispatch_reverse`] | #244 |
 //! | the kernel events and the listeners of `wl-delivery`'s events | [`crate::dispatch_events`] | all |
 //!
 //! Not built here: `return` (comes with the dispatch return issue) and
@@ -503,7 +504,7 @@ impl StateMachine for Dispatch {
         let machine = crate::dispatch_send::add_to(machine);
         let machine = crate::dispatch_deliver::add_to(machine);
         let machine = crate::dispatch_loss::add_to(machine);
-        machine
+        crate::dispatch_reverse::add_to(machine)
     }
 }
 
