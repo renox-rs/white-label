@@ -288,11 +288,10 @@ impl<'a> Collector<'a> {
             found.on = found.on.min(Some(on));
             return Ok(());
         }
-        let delivery = if matches!(kind, LineKind::Dispatch | LineKind::Production) {
-            self.resolver.delivery_status(self.state, &subject).await?
-        } else {
-            None
-        };
+        // The vertical may say a subject has not shipped (a work order still
+        // making the goods) as well as how a dispatch stands.
+        let delivery = self.resolver.delivery_status(self.state, &subject).await?;
+
         let party = match party {
             TraceParty::Party(PartyId(id)) => Some(id),
             _ => None,
@@ -669,8 +668,7 @@ pub async fn trace(
                     .await?;
             }
             Some(existing)
-                if matches!(found.kind, LineKind::Dispatch | LineKind::Production)
-                    && existing.delivery_status != found.delivery =>
+                if found.kind != LineKind::WalkIn && existing.delivery_status != found.delivery =>
             {
                 // A dispatch that left since the last run is *shipped* now.
                 RecallLine::query()

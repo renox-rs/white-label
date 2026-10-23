@@ -852,6 +852,15 @@ pub(crate) fn register_labels() {
     };
     // The number alone: a page that names a lot (a recall's trace) never
     // names the product.
+    // The code and the name: a page that names an item (a certificate that is
+    // missing for it) says which.
+    register(wl_kernel::inventory::ITEM_SUBJECT_TYPE, |db, id| {
+        Box::pin(async move {
+            Ok(Item::find(db, id)
+                .await?
+                .map(|item| format!("{} - {}", item.code, item.name_en)))
+        })
+    });
     register(LOT_SUBJECT_TYPE, |db, id| {
         Box::pin(async move { Ok(Lot::find(db, id).await?.map(|lot| lot.number)) })
     });

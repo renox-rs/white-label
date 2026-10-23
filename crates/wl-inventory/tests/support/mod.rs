@@ -189,6 +189,52 @@ impl TracePartyResolver for TraceParties {
     }
 }
 
+/// A vertical's `DispatchGuard`: the words that refuse the steps of a dispatch
+/// holding an item the test blocks.
+#[derive(Clone, Default)]
+pub struct ItemGuard {
+    blocked: Arc<Mutex<Vec<(i64, String)>>>,
+    asked: Arc<Mutex<Vec<(String, renox::chrono::NaiveDate)>>>,
+}
+
+impl ItemGuard {
+    /// Dispatches holding `item` are refused with `words`.
+    pub fn block(&self, item: i64, words: &str) {
+        self.blocked.lock().unwrap().push((item, words.to_owned()));
+    }
+
+    /// The steps and days the guard was asked about, oldest first.
+    pub fn asked(&self) -> Vec<(String, renox::chrono::NaiveDate)> {
+        self.asked.lock().unwrap().clone()
+    }
+
+    /// Nothing is blocked any more.
+    pub fn clear(&self) {
+        self.blocked.lock().unwrap().clear();
+    }
+}
+
+impl wl_kernel::inventory::DispatchGuard for ItemGuard {
+    fn blocked<'a>(
+        &'a self,
+        _state: &'a AppState,
+        dispatch: &'a wl_kernel::inventory::DispatchFacts,
+        guarded: &'a str,
+        on: renox::chrono::NaiveDate,
+    ) -> TraceFuture<'a, Option<String>> {
+        Box::pin(async move {
+            self.asked.lock().unwrap().push((guarded.to_owned(), on));
+            let blocked = self.blocked.lock().unwrap().clone();
+            Ok(dispatch.lines.iter().find_map(|line| {
+                blocked
+                    .iter()
+                    .find(|(item, _)| line.item.subject_id == *item)
+                    .map(|(_, words)| words.clone())
+            }))
+        })
+    }
+}
+
 /// A `TaskCreator` that records the tickets it opens; a ticket opened with
 /// a source key that is still open is the same ticket.
 #[derive(Clone, Default)]
@@ -756,6 +802,7 @@ struct Fakes {
     traced: Arc<Mutex<Vec<RecallTraced>>>,
     recall_closed: Arc<Mutex<Vec<RecallClosed>>>,
     trace_parties: TraceParties,
+    item_guard: ItemGuard,
     sent: Arc<Mutex<Vec<DispatchSent>>>,
     delivered: Arc<Mutex<Vec<DispatchDelivered>>>,
     lost: Arc<Mutex<Vec<DispatchLost>>>,
@@ -807,6 +854,7 @@ impl Module for Fakes {
         wl_kernel::sales::provide_credit_checker(app, self.credit.clone());
         wl_kernel::delivery::provide_requester(app, self.deliveries.clone());
         wl_kernel::inventory::provide_trace_party_resolver(app, self.trace_parties.clone());
+        wl_kernel::inventory::provide_dispatch_guard(app, self.item_guard.clone());
         wl_kernel::tickets::provide_task_creator(app, self.tickets.clone());
         wl_kernel::invoicing::provide_cost_poster(app, self.costs.clone());
         wl_kernel::notify::provide_notifier(app, self.notices.clone());
@@ -873,6 +921,8 @@ pub struct Booted {
     pub recall_closed: Recorded<RecallClosed>,
     /// The parties behind the subjects of a trace.
     pub trace_parties: TraceParties,
+    /// The item flags of a vertical's `DispatchGuard`.
+    pub item_guard: ItemGuard,
     /// Every `DispatchSent`.
     pub sent: Recorded<DispatchSent>,
     /// Every `DispatchDelivered`.
@@ -1915,6 +1965,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     let traced = Arc::new(Mutex::new(Vec::new()));
     let recall_closed = Arc::new(Mutex::new(Vec::new()));
     let trace_parties = TraceParties::default();
+    let item_guard = ItemGuard::default();
     let sent = Arc::new(Mutex::new(Vec::new()));
     let delivered = Arc::new(Mutex::new(Vec::new()));
     let lost = Arc::new(Mutex::new(Vec::new()));
@@ -1977,6 +2028,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         traced: traced.clone(),
         recall_closed: recall_closed.clone(),
         trace_parties: trace_parties.clone(),
+        item_guard: item_guard.clone(),
         sent: sent.clone(),
         delivered: delivered.clone(),
         lost: lost.clone(),
@@ -2128,6 +2180,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         traced: Recorded(traced),
         recall_closed: Recorded(recall_closed),
         trace_parties,
+        item_guard,
         sent: Recorded(sent),
         delivered: Recorded(delivered),
         lost: Recorded(lost),

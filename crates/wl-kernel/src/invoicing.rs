@@ -1221,6 +1221,10 @@ pub struct InvoiceLineInfo {
     pub gross: i64,
     /// The record the line bills for (a dispatch line), when it has one.
     pub origin: Option<Subject>,
+    /// The VAT treatment of the line (07 `MFG.RUL.08` looks for the zero
+    /// rate of an export).
+    #[serde(default)]
+    pub vat_category: VatCategory,
 }
 
 /// A dispute was resolved (`wl-invoicing` `resolve_dispute`).

@@ -166,6 +166,7 @@ impl Invoicer for Invoices {
                         description: line.description.clone(),
                         gross: line.gross_amount,
                         origin: line.origin(),
+                        vat_category: line.vat_category,
                     })
                 })
                 .collect())

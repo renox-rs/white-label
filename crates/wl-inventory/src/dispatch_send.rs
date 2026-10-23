@@ -433,6 +433,19 @@ pub async fn dispatch(
     let mut tx = state.db.begin().await?;
     let mut found = gather(&mut tx, &dispatch, Some(choice), Some(user.id)).await?;
     tx.rollback().await?;
+    // The item flags and the documents of the vertical (`MFG.ACL.11`) again on
+    // the dispatch date: a certificate that expired since the pick refuses it
+    // and the dispatch can be cancelled.
+    if !found.problem_before_credit() {
+        crate::dispatch_guard::check(
+            state,
+            crate::dispatch_guard::DISPATCH,
+            &dispatch,
+            Some(user.id),
+            wl_kernel::documents::today(),
+        )
+        .await?;
+    }
     if !found.problem_before_credit() && dispatch.source_type == SALES_ORDER_SUBJECT_TYPE {
         let verdict = wl_kernel::sales::credit_checker(state)
             .credit_recheck(state, SalesOrderId(dispatch.source_id))

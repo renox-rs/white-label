@@ -15,8 +15,8 @@
 //!
 //! Decisions: `pick` reads what stands in its way in a transaction of its
 //! own, rolled back, and the effect reads it again; the vertical item-flag
-//! guards of the spec (`MFG.ACL.11`) are the manufacturing app's and come
-//! with that app.
+//! guards of the spec (`MFG.ACL.11`) are asked after them
+//! ([`crate::dispatch_guard`]), the manufacturing app answers.
 
 use std::collections::BTreeMap;
 
@@ -265,6 +265,20 @@ pub async fn pick(
         && let Some(problem) = found.first_problem()
     {
         return Err(TransitionError::Guard(problem.to_owned()));
+    }
+    // The item flags and the documents of the vertical (`MFG.ACL.11`), on the
+    // day of the pick.
+    if dispatch.status == DispatchStatus::Draft
+        && user.has_permission_in(permissions::DISPATCH_MANAGE, &dispatch.scope())
+    {
+        crate::dispatch_guard::check(
+            state,
+            crate::dispatch_guard::PICK,
+            &dispatch,
+            Some(user.id),
+            today(),
+        )
+        .await?;
     }
     let _outcome = dispatch
         .transition(PICK)

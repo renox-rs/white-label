@@ -1654,3 +1654,42 @@ pub fn dispatch_directory(state: &AppState) -> Arc<dyn DispatchDirectory> {
         None => Arc::new(NoDispatchDirectory),
     }
 }
+
+/// The item-flag guard of a dispatch (wl-inventory §4 *Dispatch* rows `pick`
+/// and `dispatch`, STK.DSP.01; 07 `MFG.ACL.11`): the vertical says why the
+/// goods on a dispatch may not be picked or may not leave, with no override.
+/// The default blocks nothing. The refusal is a 422 with the words it gives;
+/// the dispatch can still be cancelled.
+pub trait DispatchGuard: Send + Sync + 'static {
+    /// Why `dispatch` may not take the step `guarded` (`dispatch.pick` or
+    /// `dispatch.dispatch`) on `on` (Asia/Dubai); `None` when it may.
+    fn blocked<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _dispatch: &'a DispatchFacts,
+        _guarded: &'a str,
+        _on: NaiveDate,
+    ) -> TraceFuture<'a, Option<String>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The guard when no vertical provides one: nothing is blocked.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoDispatchGuard;
+
+impl DispatchGuard for NoDispatchGuard {}
+
+/// Makes `guard` the app's [`DispatchGuard`].
+pub fn provide_dispatch_guard(app: &mut Registry, guard: impl DispatchGuard) {
+    let guard: Arc<dyn DispatchGuard> = Arc::new(guard);
+    app.provide(guard);
+}
+
+/// The app's [`DispatchGuard`], or [`NoDispatchGuard`] when none is provided.
+pub fn dispatch_guard(state: &AppState) -> Arc<dyn DispatchGuard> {
+    match state.provided::<Arc<dyn DispatchGuard>>() {
+        Some(guard) => Arc::clone(&guard),
+        None => Arc::new(NoDispatchGuard),
+    }
+}

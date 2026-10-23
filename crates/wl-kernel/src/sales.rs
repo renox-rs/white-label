@@ -1327,6 +1327,185 @@ pub fn order_fulfilment(state: &AppState) -> Arc<dyn OrderFulfilment> {
     }
 }
 
+/// Where the goods of a sales order are delivered, for a vertical that treats
+/// export differently from domestic delivery (07 single-use plastics:
+/// *export only* items). `wl-sales` provides it; the default knows nothing.
+pub trait DeliveryDestination: Send + Sync + 'static {
+    /// Whether the delivery address of `order` (`sales.sales_order:5`) has the
+    /// VAT category *export*; `None` when the order or its address is not
+    /// known.
+    fn is_export<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _order: &'a Subject,
+    ) -> SalesFuture<'a, Option<bool>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The destination when the `sales` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoDeliveryDestination;
+
+impl DeliveryDestination for NoDeliveryDestination {}
+
+/// Makes `destination` the app's [`DeliveryDestination`]; `wl-sales` calls it
+/// in `register`.
+pub fn provide_delivery_destination(app: &mut Registry, destination: impl DeliveryDestination) {
+    let destination: Arc<dyn DeliveryDestination> = Arc::new(destination);
+    app.provide(destination);
+}
+
+/// The app's [`DeliveryDestination`], or [`NoDeliveryDestination`] when none
+/// is provided.
+pub fn delivery_destination(state: &AppState) -> Arc<dyn DeliveryDestination> {
+    match state.provided::<Arc<dyn DeliveryDestination>>() {
+        Some(destination) => Arc::clone(&destination),
+        None => Arc::new(NoDeliveryDestination),
+    }
+}
+
+/// A confirmed sales order line promised for a day, as the look-ahead of a
+/// document that expires reads it (wl-documents `DOC.RUL.02`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PromisedLine {
+    /// The order.
+    pub order: SalesOrderId,
+    /// The sale line (its id in `wl-sales`).
+    pub line: i64,
+    /// The number of the order, `SO-2026-0050`.
+    pub number: Option<String>,
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The day the line is promised for (Asia/Dubai).
+    pub promised: NaiveDate,
+}
+
+/// The confirmed order lines not yet picked (wl-sales §6 `PromisedLines`).
+/// `wl-sales` provides it; the default has none.
+pub trait PromisedLines: Send + Sync + 'static {
+    /// The confirmed lines of `item` that no dispatch picked yet and that are
+    /// promised on or after `from`, oldest promise first.
+    fn of_item<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _item: &'a Subject,
+        _from: NaiveDate,
+    ) -> SalesFuture<'a, Vec<PromisedLine>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// The promised lines when the `sales` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoPromisedLines;
+
+impl PromisedLines for NoPromisedLines {}
+
+/// Makes `lines` the app's [`PromisedLines`]; `wl-sales` calls it in
+/// `register`.
+pub fn provide_promised_lines(app: &mut Registry, lines: impl PromisedLines) {
+    let lines: Arc<dyn PromisedLines> = Arc::new(lines);
+    app.provide(lines);
+}
+
+/// The app's [`PromisedLines`], or [`NoPromisedLines`] when none is provided.
+pub fn promised_lines(state: &AppState) -> Arc<dyn PromisedLines> {
+    match state.provided::<Arc<dyn PromisedLines>>() {
+        Some(lines) => Arc::clone(&lines),
+        None => Arc::new(NoPromisedLines),
+    }
+}
+
+/// What a vertical refuses on a sales order line at `submit` and `amend`
+/// (07: a domestic line for an *export only* item). The vertical provides it;
+/// `wl-sales` asks it for each line; the default refuses nothing.
+pub trait OrderLineRules: Send + Sync + 'static {
+    /// The words that refuse `item` on an order whose delivery is domestic
+    /// (`domestic`) or export; `None` when the line is accepted.
+    fn refuse_line<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _item: &'a Subject,
+        _domestic: bool,
+    ) -> SalesFuture<'a, Option<String>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The line rules when no vertical provides any.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoOrderLineRules;
+
+impl OrderLineRules for NoOrderLineRules {}
+
+/// Makes `rules` the app's [`OrderLineRules`]; a vertical calls it in
+/// `register`.
+pub fn provide_order_line_rules(app: &mut Registry, rules: impl OrderLineRules) {
+    let rules: Arc<dyn OrderLineRules> = Arc::new(rules);
+    app.provide(rules);
+}
+
+/// The app's [`OrderLineRules`], or [`NoOrderLineRules`] when none is
+/// provided.
+pub fn order_line_rules(state: &AppState) -> Arc<dyn OrderLineRules> {
+    match state.provided::<Arc<dyn OrderLineRules>>() {
+        Some(rules) => Arc::clone(&rules),
+        None => Arc::new(NoOrderLineRules),
+    }
+}
+
+/// The order that already holds a customer PO number: its number and status
+/// in words, nothing else (what a buyer on the portal may be told).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PoHolder {
+    /// The number of the existing order, `SO-2026-0070`.
+    pub number: String,
+    /// Its status in words.
+    pub status: String,
+}
+
+/// Whether a customer PO number is used already (wl-sales `BL-SAL-18`,
+/// setting *Unique customer PO number per customer*). `wl-sales` provides it;
+/// the default says nobody holds any number, so a portal upload is not
+/// refused without it.
+pub trait CustomerPoCheck: Send + Sync + 'static {
+    /// The order of `customer` that holds `po` with `call_off` (trimmed and
+    /// case-insensitive; a cancelled order still holds it); `None` when the
+    /// setting is off, the number is empty or free.
+    fn holder<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _customer: PartyId,
+        _po: &'a str,
+        _call_off: &'a str,
+    ) -> SalesFuture<'a, Option<PoHolder>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The check when the `sales` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoCustomerPoCheck;
+
+impl CustomerPoCheck for NoCustomerPoCheck {}
+
+/// Makes `check` the app's [`CustomerPoCheck`]; `wl-sales` calls it in
+/// `register`.
+pub fn provide_customer_po_check(app: &mut Registry, check: impl CustomerPoCheck) {
+    let check: Arc<dyn CustomerPoCheck> = Arc::new(check);
+    app.provide(check);
+}
+
+/// The app's [`CustomerPoCheck`], or [`NoCustomerPoCheck`] when none is
+/// provided.
+pub fn customer_po_check(state: &AppState) -> Arc<dyn CustomerPoCheck> {
+    match state.provided::<Arc<dyn CustomerPoCheck>>() {
+        Some(check) => Arc::clone(&check),
+        None => Arc::new(NoCustomerPoCheck),
+    }
+}
+
 /// Why the credit check failed (`SAL.ACL.03`, `SAL.RUL.05`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

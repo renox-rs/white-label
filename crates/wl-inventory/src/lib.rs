@@ -13,6 +13,7 @@ pub mod dispatch_deliver;
 mod dispatch_deliver_pages;
 pub mod dispatch_directory;
 mod dispatch_events;
+pub mod dispatch_guard;
 pub mod dispatch_loss;
 mod dispatch_pages;
 pub mod dispatch_pick;
