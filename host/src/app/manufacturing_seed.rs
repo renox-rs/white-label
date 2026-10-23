@@ -718,4 +718,14 @@ pub fn grant_roles(client_app: &str) {
     for role in [STOREKEEPER, SUPERVISOR, LINE_OPERATOR] {
         super::roles::grant_extra(role, &[tickets::VIEW, tickets::WORK]);
     }
+    // `MFG.RUL.08`: the export exit evidence is the accountant's document
+    // (the kind's responsible role); the export evidence page links to the
+    // dispatch's documents, so the accountant may open and fill them.
+    super::roles::grant_extra(
+        ACCOUNTANT,
+        &[
+            wl_documents::permissions::VIEW,
+            wl_documents::permissions::UPLOAD,
+        ],
+    );
 }

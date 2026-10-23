@@ -142,3 +142,21 @@ async fn every_screen_of_the_map_opens_for_its_owner_in_words() {
         assert!(!screen.what.is_empty());
     }
 }
+
+/// The accountant follows the exports and attaches the exit evidence: the
+/// "Attach evidence" link of the export evidence page opens for that login.
+#[renox::test]
+async fn the_accountant_opens_the_documents_of_an_export_dispatch() {
+    let app = demo().await;
+    let accountant = "accountant@emiratespack.example";
+    let page = browse(&app, accountant, "/manufacturing/exports").await;
+    assert_eq!(page.status.as_u16(), 200);
+    let html = page.text();
+    let link = html
+        .split('"')
+        .find(|part| part.starts_with("/documents/of/inventory.dispatch/"))
+        .expect("an Attach evidence link")
+        .to_owned();
+    let response = browse(&app, accountant, &link).await;
+    assert_eq!(response.status.as_u16(), 200, "{link} as the accountant");
+}
