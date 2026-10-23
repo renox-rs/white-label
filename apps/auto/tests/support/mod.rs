@@ -9,6 +9,7 @@
 use std::sync::{Arc, Mutex};
 
 use auto::JobCardCancelled;
+use auto::fleet_contract::FleetContractTerminated;
 use auto::job_card::JobCard;
 use auto::labour_line::{LabourLine, LabourPricing, LineStatus};
 use auto::part_line::{PartCondition, PartLine};
@@ -202,6 +203,8 @@ pub struct Garage {
     pub cancelled: Recorded<JobCardCancelled>,
     /// `RecordVoided`.
     pub voided: Recorded<RecordVoided>,
+    /// `FleetContractTerminated`.
+    pub terminated: Recorded<FleetContractTerminated>,
     who: Arc<Mutex<Option<renox::AuthUser>>>,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
@@ -226,6 +229,7 @@ pub async fn boot() -> Garage {
     }
     let cancelled = Recorded::<JobCardCancelled>::new();
     let voided = Recorded::<RecordVoided>::new();
+    let terminated = Recorded::<FleetContractTerminated>::new();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -246,6 +250,7 @@ pub async fn boot() -> Garage {
         });
     let app = record(app, &cancelled);
     let app = record(app, &voided);
+    let app = record(app, &terminated);
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -267,6 +272,7 @@ pub async fn boot() -> Garage {
         returns,
         cancelled,
         voided,
+        terminated,
         who,
         _views: views,
     }

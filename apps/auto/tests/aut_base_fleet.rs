@@ -883,9 +883,9 @@ async fn aut_base_the_daily_run_flags_the_renewal_and_ends_the_contract_after_it
 
 /// A termination is declared: the notice and effective dates are required, the
 /// effective date is not before the notice nor inside an invoiced period; the
-/// owner's approval and the effects are the issue's.
+/// request waits for the owner (BL-AUT-12 tests the rest).
 #[renox::test]
-async fn aut_base_terminate_is_declared_with_its_dates_and_the_owner_approval_slot() {
+async fn aut_base_terminate_is_declared_with_its_dates_and_the_owner_approval() {
     let t = boot().await;
     let (contract, _van, _plan) = active_contract(&t, 50_100).await;
     let fatima = fatima(&t).await;
@@ -897,7 +897,7 @@ async fn aut_base_terminate_is_declared_with_its_dates_and_the_owner_approval_sl
         .into_iter()
         .map(str::to_owned)
         .collect();
-    assert_eq!(guards, ["termination_dates", "owner_approval"]);
+    assert_eq!(guards, ["termination_dates", "not_scheduled", "owner_approval"]);
 
     let backwards = fleet_contracts::terminate(
         t.state(),
@@ -906,6 +906,7 @@ async fn aut_base_terminate_is_declared_with_its_dates_and_the_owner_approval_sl
         "Fleet sold",
         day(10),
         day(5),
+        false,
     )
     .await
     .unwrap_err();
@@ -913,10 +914,17 @@ async fn aut_base_terminate_is_declared_with_its_dates_and_the_owner_approval_sl
         backwards.to_string().contains("before the notice date"),
         "{backwards}"
     );
-    let no_reason =
-        fleet_contracts::terminate(t.state(), &fatima, contract.id, " ", day(1), day(20))
-            .await
-            .unwrap_err();
+    let no_reason = fleet_contracts::terminate(
+        t.state(),
+        &fatima,
+        contract.id,
+        " ",
+        day(1),
+        day(20),
+        false,
+    )
+    .await
+    .unwrap_err();
     assert!(
         no_reason.to_string().to_lowercase().contains("reason"),
         "{no_reason}"
@@ -940,6 +948,7 @@ async fn aut_base_terminate_is_declared_with_its_dates_and_the_owner_approval_sl
         "Fleet sold",
         day(-20),
         day(-15),
+        false,
     )
     .await
     .unwrap_err();
@@ -948,20 +957,19 @@ async fn aut_base_terminate_is_declared_with_its_dates_and_the_owner_approval_sl
         "{invoiced}"
     );
 
-    let ended = fleet_contracts::terminate(
+    let asked = fleet_contracts::terminate(
         t.state(),
         &fatima,
         contract.id,
         "Fleet sold",
         day(1),
         day(20),
+        false,
     )
     .await
     .unwrap();
-    assert_eq!(ended.status, FleetStatus::Ended);
-    assert_eq!(ended.termination_reason.as_deref(), Some("Fleet sold"));
-    assert_eq!(
-        (ended.notice_date, ended.effective_date),
-        (Some(day(1)), Some(day(20)))
-    );
+    assert!(asked.approval_request.is_some(), "the owner decides");
+    assert_eq!(asked.contract.status, FleetStatus::Active);
+    assert!(!asked.contract.termination_scheduled, "nothing before the approval");
+    assert!(asked.contract.termination_reason.is_none());
 }

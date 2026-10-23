@@ -47,7 +47,13 @@ fn aut_base_the_reason_codes() {
         .collect();
     assert_eq!(
         codes,
-        ["estimate_declined", "duplicate_check_in", "job_stopped"]
+        [
+            "estimate_declined",
+            "duplicate_check_in",
+            "job_stopped",
+            "fleet_contract_ended",
+            "fleet_suspended"
+        ]
     );
 }
 

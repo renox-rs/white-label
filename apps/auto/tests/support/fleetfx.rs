@@ -6,8 +6,9 @@
 
 use auto::fleet_contracts::{self, NewContract};
 use auto::fleet_services::{self, NewPlan};
+use auto::job_cards::{self, Delivery, NewJobCard, NewLabour, Promise};
 use auto::vehicles::{self, NewVehicle};
-use auto::{Emirate, FleetContract, FleetService, Vehicle};
+use auto::{Emirate, FleetContract, FleetService, JobCard, Vehicle, WorkStatus};
 use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_scheduling::{AvailabilityRule, Resource, ResourceType, ServiceType, resource};
@@ -124,4 +125,100 @@ pub async fn active_contract(t: &Garage, odometer: i64) -> (FleetContract, Vehic
     let van = Vehicle::find_or_404(t.db(), van.id).await.unwrap();
     let plan = FleetService::find_or_404(t.db(), plan.id).await.unwrap();
     (active, van, plan)
+}
+
+/// The user who approves a termination: the owner (`fleet_contracts.approve`),
+/// who does not manage the contracts.
+pub async fn omar(t: &Garage) -> User {
+    t.user(
+        "Omar",
+        &[
+            auto::permissions::FLEET_CONTRACTS_APPROVE,
+            auto::permissions::VEHICLES_VIEW,
+            auto::permissions::JOB_CARDS_VIEW,
+        ],
+    )
+    .await
+}
+
+/// A job card of `van` under its contract, checked in, with one hourly labour
+/// line of `hours_milli` at `rate` fils that the customer approved: in
+/// progress. Answers the job card and the labour line.
+pub async fn job_in_progress(
+    t: &Garage,
+    van: &Vehicle,
+    hours_milli: i64,
+    rate: i64,
+) -> (JobCard, i64) {
+    let sami = t.advisor().await;
+    let tareq_user = t.technician_user("Tareq").await;
+    let tareq = t.technician("Tareq").await;
+    let card = job_cards::check_in(
+        t.state(),
+        &sami,
+        NewJobCard::new(van.id, "Periodic service")
+            .odometer(van.odometer_km + 10)
+            .condition("Clean")
+            .acknowledged_by("Hamdan Saeed")
+            .technician(tareq_user.id),
+    )
+    .await
+    .expect("the van is checked in");
+    job_cards::start_inspection(t.state(), &tareq, card.id)
+        .await
+        .unwrap();
+    let line = job_cards::add_labour(
+        t.state(),
+        &tareq,
+        card.id,
+        NewLabour::hourly("Periodic service", hours_milli, rate),
+    )
+    .await
+    .unwrap();
+    job_cards::send_estimate(t.state(), &sami, card.id, Promise::default())
+        .await
+        .unwrap();
+    let round = job_cards::pending_round(t.db(), card.id)
+        .await
+        .unwrap()
+        .unwrap();
+    job_cards::approve_by_link(t.state(), &round.token, "Hamdan Saeed", None, true)
+        .await
+        .unwrap();
+    (t.reload(card.id).await, line.id)
+}
+
+/// The work of `line_id` is done, the job card passes its quality control and
+/// is delivered to the customer: delivered.
+pub async fn finish_and_deliver(t: &Garage, card_id: i64, line_id: i64) -> JobCard {
+    let sami = t.advisor().await;
+    let tareq = t.technician("Tareq").await;
+    job_cards::record_work(t.state(), &tareq, line_id, WorkStatus::Done, None)
+        .await
+        .unwrap();
+    job_cards::finish_work(t.state(), &tareq, card_id)
+        .await
+        .unwrap();
+    let waleed = t.qc().await;
+    let all: Vec<String> = auto::job_card::QC_KEYS
+        .iter()
+        .map(|k| (*k).to_owned())
+        .collect();
+    job_cards::save_qc(t.state(), &waleed, card_id, &all)
+        .await
+        .unwrap();
+    job_cards::pass_qc(t.state(), &waleed, card_id)
+        .await
+        .unwrap();
+    job_cards::deliver(
+        t.state(),
+        &sami,
+        card_id,
+        Delivery {
+            delivered_to: "Hamdan Saeed".to_owned(),
+            ..Delivery::default()
+        },
+    )
+    .await
+    .expect("the job card is delivered")
 }
