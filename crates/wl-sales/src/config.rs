@@ -136,6 +136,9 @@ pub struct SalesConfig {
     /// The days after the programme is turned off that points can still be
     /// redeemed.
     pub programme_closing_days: i64,
+    /// The order channels whose lines without stock are back-ordered
+    /// (§7 *Back-orders allowed per channel*). Empty: none.
+    pub back_order_channels: Vec<String>,
 }
 
 impl Default for SalesConfig {

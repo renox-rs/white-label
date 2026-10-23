@@ -151,7 +151,7 @@ fn yes(flag: bool) -> &'static str {
 fn void_from<M: StateMachine>() -> String {
     M::machine()
         .find("void")
-        .map_or_else(|| "none".to_owned(), |t| t.from_states().join(", "))
+        .map_or_else(|_| "none".to_owned(), |t| t.from_states().join(", "))
 }
 
 /// The rows of the read-only money settings page for the 08 client: what the
