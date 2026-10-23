@@ -18,14 +18,28 @@ async fn scene() -> (Booted, Plant, User) {
     let t = boot().await;
     let plant = t.plant("Plant 1").await;
     let qc = t.inspector("Ines", &plant).await;
-    t.lots.put(77, "L-77", Some(SUPPLIER), false, 100_000, 3_000, "quarantine");
-    t.lots.put(78, "F-78", None, true, 100_000, 3_000, "quarantine");
+    t.lots.put(
+        77,
+        "L-77",
+        Some(SUPPLIER),
+        false,
+        100_000,
+        3_000,
+        "quarantine",
+    );
+    t.lots
+        .put(78, "F-78", None, true, 100_000, 3_000, "quarantine");
     (t, plant, qc)
 }
 
 async fn february(t: &Booted) -> Vec<wl_kernel::inventory::SupplierIncident> {
     supplier_incidents(t.state())
-        .incidents(t.db(), PartyId(SUPPLIER), date(2027, 2, 1), date(2027, 2, 28))
+        .incidents(
+            t.db(),
+            PartyId(SUPPLIER),
+            date(2027, 2, 1),
+            date(2027, 2, 28),
+        )
         .await
         .unwrap()
 }
@@ -53,7 +67,12 @@ async fn an_incoming_ncr_is_one_incident_on_the_day_it_was_raised() {
     assert_eq!(found[0].supplier, PartyId(SUPPLIER));
     assert_eq!(found[0].reference, ncr.subject());
     let march = supplier_incidents(t.state())
-        .incidents(t.db(), PartyId(SUPPLIER), date(2027, 3, 1), date(2027, 3, 31))
+        .incidents(
+            t.db(),
+            PartyId(SUPPLIER),
+            date(2027, 3, 1),
+            date(2027, 3, 31),
+        )
         .await
         .unwrap();
     assert!(march.is_empty(), "the disposition date does not count");
@@ -111,9 +130,14 @@ async fn cancelled_own_production_and_unknown_cause_are_not_incidents() {
     let unknown = t
         .at(date(2027, 2, 12), 9, 0, t.ncr(&qc, &plant, 77, "5"))
         .await;
-    t.ncr_act(&qc, &unknown, "cause", &[("cause", "unknown"), ("reason", "not sure")])
-        .await
-        .assert_status(303);
+    t.ncr_act(
+        &qc,
+        &unknown,
+        "cause",
+        &[("cause", "unknown"), ("reason", "not sure")],
+    )
+    .await
+    .assert_status(303);
 
     t.ncr_act(&qc, &cancelled, "cancel", &[("reason", "raised twice")])
         .await
