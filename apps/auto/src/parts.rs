@@ -308,3 +308,38 @@ pub async fn return_unfitted(state: &AppState, job_card_id: i64) -> Result<Vec<P
     }
     Ok(back)
 }
+
+/// Records the day the part of the line `line_id` is expected, as the
+/// purchaser knows it: the customer is told this date when the wait for parts
+/// nears its legal date (`AUT.RUL.16`). Blank clears it.
+///
+/// # Errors
+///
+/// A 403 for someone who may not issue parts or advise; a 422 for a line of a
+/// job card that is over.
+pub async fn set_expected(
+    state: &AppState,
+    by: &AuthUser,
+    line_id: i64,
+    expected: Option<renox::chrono::NaiveDate>,
+) -> Result<PartLine> {
+    let line = PartLine::find_or_404(&state.db, line_id).await?;
+    let card = JobCard::find_or_404(&state.db, line.job_card_id).await?;
+    if !(may_issue(by, &card)
+        || by.has_permission(permissions::JOB_CARDS_ADVISE)
+        || by.has_permission(permissions::JOB_CARDS_APPROVE))
+    {
+        return Err(Error::Forbidden);
+    }
+    if card.status.is_closed() {
+        return Err(refused(english("auto.parts.problem.over", &[])));
+    }
+    PartLine::query()
+        .where_(PartLine::ID.eq(line.id))
+        .update(
+            &state.db,
+            &[("expected_date", &expected), ("updated_at", &now())],
+        )
+        .await?;
+    PartLine::find_or_404(&state.db, line.id).await
+}

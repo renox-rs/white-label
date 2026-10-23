@@ -213,7 +213,37 @@
           <rx-input name="quantity" :label="tx['jobs.quantity']" value="1" :id="'job-part-quantity-' ~ id" required/>
           <rx-input name="unit_price" :label="tx['jobs.unit_price']" :hint="tx['jobs.money_hint']" :id="'job-part-price-' ~ id" required/>
           <rx-select name="condition" :label="tx['jobs.part_condition']" :options="condition_options" :selected="'new'" :id="'job-part-condition-' ~ id"/>
+          <rx-select name="source" :label="tx['parts.source']" :options="source_options" :selected="'stock'" :id="'job-part-source-' ~ id"/>
           <rx-checkbox name="special_order" :label="tx['jobs.special_order']" :hint="tx['jobs.special_order_hint']" :id="'job-part-special-' ~ id"/>
+        </rx-action-sheet>
+      </rx-toolbar>
+    </rx-card>
+    <rx-card rx-if="wait" :title="tx['parts.wait_title']">
+      <rx-table :rows="wait" as="row" :key="row[0]" :caption="tx['parts.wait_title']">
+        <rx-column :label="tx['jobs.what']">{{ row[0] }}</rx-column>
+        <rx-column :label="tx['stop.entry.value']">{{ row[1] }}</rx-column>
+      </rx-table>
+    </rx-card>
+    <rx-card rx-if="substitute.shown" :title="tx['substitute.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['substitute.status']" :value="substitute.status"/>
+        <rx-entry :label="tx['substitute.plate']" :value="substitute.plate"/>
+        <rx-entry :label="tx['substitute.period']" :value="substitute.period"/>
+      </rx-infolist>
+      <rx-toolbar>
+        <rx-action-sheet rx-if="substitute.can_record" :id="'substitute-record-' ~ id" :label="tx['substitute.record']" :action="route('auto.job_card_substitute', id)"
+                         :title="tx['substitute.record']" :description="tx['substitute.record_description']" :submit-label="tx['substitute.record']" icon="truck">
+          <rx-input name="plate" :label="tx['substitute.plate']" :id="'substitute-plate-' ~ id" required/>
+          <rx-input name="from" type="date" :label="tx['substitute.from']" :value="substitute.today" :id="'substitute-from-' ~ id"/>
+          <rx-input name="to" type="date" :label="tx['substitute.to']" :id="'substitute-to-' ~ id"/>
+        </rx-action-sheet>
+        <rx-action-sheet rx-if="substitute.can_record" :id="'substitute-refuse-' ~ id" :label="tx['substitute.refuse']" :action="route('auto.job_card_substitute_refuse', id)"
+                         :title="tx['substitute.refuse']" :description="tx['substitute.refuse_description']" :submit-label="tx['substitute.refuse']" icon="x">
+          <rx-textarea name="reason" :label="tx['substitute.reason']" :id="'substitute-reason-' ~ id" required/>
+        </rx-action-sheet>
+        <rx-action-sheet rx-if="substitute.can_return" :id="'substitute-return-' ~ id" :label="tx['substitute.return']" :action="route('auto.job_card_substitute_return', id)"
+                         :title="tx['substitute.return']" :description="tx['substitute.return_description']" :submit-label="tx['substitute.return']" icon="check">
+          <rx-input name="to" type="date" :label="tx['substitute.to']" :value="substitute.today" :id="'substitute-return-to-' ~ id"/>
         </rx-action-sheet>
       </rx-toolbar>
     </rx-card>

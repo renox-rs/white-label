@@ -35,12 +35,16 @@ pub mod labour_operation;
 pub mod pages;
 pub mod part_line;
 pub mod parts;
+pub mod parts_delays;
+pub mod parts_wait;
 pub mod permissions;
 pub mod reasons;
 pub mod release;
 pub mod seed;
 pub mod stop;
 pub mod stop_billing;
+pub mod substitute;
+pub mod supply;
 pub mod supplier_claim;
 pub mod supplier_claim_machine;
 pub mod supplier_claims;
@@ -218,7 +222,10 @@ impl Module for Auto {
             .model::<FleetService>()
             .model::<FleetJob>()
             .model::<FleetInvoice>()
-            .model::<SupplierClaim>();
+            .model::<SupplierClaim>()
+            .model::<parts_wait::PartsWait>()
+            .model::<substitute::Substitute>()
+            .model::<supply::SupplyPeriod>();
         // The job card: the machine, and the job card that the check-in of a
         // workshop booking opens.
         job_card_machine::register();
@@ -231,6 +238,9 @@ impl Module for Auto {
         // A job card declined: the inspection fee, the booking and the
         // message asking the customer to collect; the hourly expiry check.
         declines::register(app);
+        // The legal period to supply parts and the substitute vehicle of a
+        // warranty repair (compliance-critical).
+        parts_delays::register(app);
         // The insurance claim: the machine, and the listeners that settle it
         // when its invoices are paid.
         claim_machine::register();

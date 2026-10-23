@@ -634,6 +634,8 @@ pub struct NewPart {
     pub condition: PartCondition,
     /// Ordered for this job.
     pub special_order: bool,
+    /// Where it comes from ([`crate::supply::SOURCES`]).
+    pub source: String,
 }
 
 impl NewPart {
@@ -646,7 +648,15 @@ impl NewPart {
             unit_price,
             condition: PartCondition::New,
             special_order: false,
+            source: crate::supply::STOCK.to_owned(),
         }
+    }
+
+    /// Coming from `source` ([`crate::supply::SOURCES`]).
+    #[must_use]
+    pub fn from_source(mut self, source: &str) -> Self {
+        self.source = source.trim().to_owned();
+        self
     }
 
     /// Of the stock item `code`.
@@ -775,6 +785,9 @@ pub async fn add_part(state: &AppState, by: &AuthUser, id: i64, new: NewPart) ->
     if new.quantity_milli <= 0 || new.unit_price < 0 {
         return Err(refused(english("auto.jobs.problem.line_part", &[])));
     }
+    if !crate::supply::SOURCES.contains(&crate::supply::clean_source(&new.source).as_str()) {
+        return Err(refused(english("auto.supply.problem.source", &[])));
+    }
     let mut line = PartLine {
         job_card_id: card.id,
         item_code: new.item_code.clone(),
@@ -783,6 +796,7 @@ pub async fn add_part(state: &AppState, by: &AuthUser, id: i64, new: NewPart) ->
         unit_price: new.unit_price,
         part_condition: new.condition,
         special_order: new.special_order,
+        source: crate::supply::clean_source(&new.source),
         approval: LineStatus::Draft,
         line_no: next_line_no(&state.db, card.id).await?,
         created_by: Some(by.id),
@@ -1070,7 +1084,20 @@ pub async fn void(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> Res
 /// A 403 for someone who may not work the job card; a 422 in another state.
 pub async fn wait_parts(state: &AppState, by: &AuthUser, id: i64) -> Result<JobCard> {
     let card = load_for_work(state, by, id).await?;
-    run(state, by, &card, WAIT_PARTS, None, input_for(by)).await
+    let estimate = Estimate::load(&state.db, card.id).await?;
+    // The parts requested: approved lines whose part is not all issued.
+    let wanted: Vec<&PartLine> = estimate
+        .parts
+        .iter()
+        .filter(|line| line.approval == LineStatus::Approved && line.outstanding_milli() > 0)
+        .collect();
+    let sources: Vec<String> = wanted.iter().map(|line| line.source.clone()).collect();
+    let (legal_date, source) = crate::supply::legal_date(&state.db, today(), &sources).await?;
+    let mut input = input_for(by);
+    input.parts_requested = Some(i64::try_from(wanted.len()).unwrap_or(i64::MAX));
+    input.legal_date = Some(legal_date);
+    input.wait_source = Some(source);
+    run(state, by, &card, WAIT_PARTS, None, input).await
 }
 
 /// Records how much of the approved labour line `line_id` was done. `Done`
@@ -1239,6 +1266,7 @@ pub async fn deliver(
     let estimate = Estimate::load(&state.db, card.id).await?;
     let mut input = input_for(by);
     input.added_open = Some(i64::try_from(estimate.unanswered()).unwrap_or(i64::MAX));
+    input.substitute_open = Some(crate::substitute::is_open(&state.db, card.id).await?);
     input.delivered_to = Some(recipient);
     input.odometer_out = delivery.odometer_out;
     input.next_service_date = delivery.next_service_date;

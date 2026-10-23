@@ -8,12 +8,12 @@
 //! | [`APPROVE`] / [`APPROVE_SYSTEM`] | awaiting_approval | in_progress | `job_cards.advise` (recorded approval) / system (the customer's link, a claim) | `estimate_pending`, `police_report` (slot) |
 //! | [`DECLINE`] / [`DECLINE_SYSTEM`] | checked_in, inspecting, awaiting_approval | declined | `job_cards.advise` / system (estimate expired) | `nothing_approved`, `nothing_recorded` |
 //! | [`DECLINE_ADDED`] / [`DECLINE_ADDED_SYSTEM`] | awaiting_approval | in_progress | `job_cards.advise` / system (the customer's link) | `work_approved` |
-//! | [`WAIT_PARTS`] | in_progress | awaiting_parts | `job_cards.work` | `parts_requested` (slot) |
+//! | [`WAIT_PARTS`] | in_progress | awaiting_parts | `job_cards.work` | `parts_requested` |
 //! | [`PARTS_ARRIVED`] | awaiting_parts | in_progress | system (stock issued) | `stock_issued` (slot) |
 //! | [`FINISH_WORK`] | in_progress | quality_check | `job_cards.work` | `labour_done` |
 //! | [`PASS_QC`] | quality_check | ready | `job_cards.qc` | `qc_checklist_complete`, `qc_findings_closed` (slot) |
 //! | [`FAIL_QC`] | quality_check | in_progress | `job_cards.qc` | a reason (the findings) |
-//! | [`DELIVER`] | ready | delivered | `job_cards.advise` | `qc_checklist_complete`, `added_work_approved`, `substitute_closed` and `payment_cleared` (slots) |
+//! | [`DELIVER`] | ready | delivered | `job_cards.advise` | `qc_checklist_complete`, `added_work_approved`, `substitute_closed` and `payment_cleared` (slot) |
 //! | [`CANCEL`] / [`CANCEL_APPROVED`] / [`CANCEL_SYSTEM`] | inspecting, awaiting_approval, in_progress, awaiting_parts, quality_check | cancelled | `job_cards.advise`, approved by the branch manager (`AUT.ACL.21`) / the kernel after the approval / system (a claim) | a reason; `work_done_recorded`, `acknowledged`, `approved_if_below_work_done` |
 //! | [`VOID`] / `void_approved` | checked_in | voided | `job_cards.advise` (the kernel's void) | a reason; no labour or part line and no open claim (the reverse handler, [`crate::job_void`]) |
 //!
@@ -29,7 +29,7 @@
 //!   declined, the job goes on) are two transitions of the one `decline` of the
 //!   spec table.
 //! - The guards marked *slot* pass for now: they are the places where the
-//!   issues of the negative flows add their rules (BL-AUT-03 `decline`, BL-AUT-04 `wait_parts` and `parts_arrived`,
+//!   issues of the negative flows add their rules (BL-AUT-04 `parts_arrived`,
 //!   BL-AUT-05 .. BL-AUT-07 `deliver`, `pass_qc` and `approve`). A slot keeps
 //!   its name so that a test names the guard that refused. The three guards of
 //!   `cancel` (BL-AUT-01) read what the service recorded in the input
@@ -58,6 +58,7 @@ use crate::db::set_job_card;
 use crate::job_card::{JobCard, JobCardStatus, QcCheck};
 use crate::labour_line::{LabourLine, LineStatus};
 use crate::part_line::PartLine;
+use crate::parts_wait::PartsWait;
 use crate::permissions;
 use crate::stop::StopRecord;
 use crate::texts::english;
@@ -169,6 +170,19 @@ pub struct JobInput {
     /// `estimate_declined` or `no_response`.
     #[serde(default)]
     pub code: Option<String>,
+    /// How many approved part lines still wait for their part
+    /// ([`WAIT_PARTS`]).
+    #[serde(default)]
+    pub parts_requested: Option<i64>,
+    /// The legal supply date of the wait ([`WAIT_PARTS`]).
+    #[serde(default)]
+    pub legal_date: Option<NaiveDate>,
+    /// The source that gave the shortest supply period ([`WAIT_PARTS`]).
+    #[serde(default)]
+    pub wait_source: Option<String>,
+    /// A substitute vehicle is open ([`DELIVER`]).
+    #[serde(default)]
+    pub substitute_open: Option<bool>,
     /// What the advisor recorded for a stopped job ([`CANCEL`]).
     #[serde(default)]
     pub stop: Option<StopRecord>,
@@ -519,29 +533,71 @@ fn decline_added(name: &'static str, system: bool) -> Transition<JobCard> {
         })
 }
 
-/// `wait_parts`: the job waits for parts; the wait starts now (`AUT.RUL.16`).
+/// `wait_parts`: the job waits for parts; the wait starts now and the legal
+/// supply date is recorded: the start plus the shortest supply period among the
+/// sources of the parts requested (`AUT.RUL.16`). Neither is edited by hand.
 fn wait_parts() -> Transition<JobCard> {
-    let transition = Transition::new(WAIT_PARTS)
+    Transition::new(WAIT_PARTS)
         .label("Wait for parts")
         .permission(permissions::JOB_CARDS_WORK)
         .from([JobCardStatus::InProgress])
-        .to(JobCardStatus::AwaitingParts);
-    slot(transition, "parts_requested").effect(|c: &JobCard, _ctx, tx| {
-        let id = c.id;
-        Box::pin(
-            async move { set_job_card(tx, id, &[("parts_wait_started_at", &Some(now()))]).await },
-        )
-    })
+        .to(JobCardStatus::AwaitingParts)
+        .guard("parts_requested", |_c: &JobCard, ctx| {
+            let input = input_of(ctx);
+            let ok = input.parts_requested.is_some_and(|n| n > 0) && input.legal_date.is_some();
+            Box::pin(async move { check(ok, "auto.parts.problem.no_request") })
+        })
+        .effect(|c: &JobCard, ctx, tx| {
+            let id = c.id;
+            let input = input_of(ctx);
+            Box::pin(async move {
+                let started = now();
+                set_job_card(
+                    tx,
+                    id,
+                    &[
+                        ("parts_wait_started_at", &Some(started)),
+                        ("legal_supply_date", &input.legal_date),
+                    ],
+                )
+                .await?;
+                if let Some(legal_date) = input.legal_date {
+                    let mut wait = PartsWait {
+                        job_card_id: id,
+                        started_at: started,
+                        legal_date,
+                        source: input.wait_source.clone().unwrap_or_default(),
+                        ..PartsWait::default()
+                    };
+                    wait.insert(&mut *tx).await?;
+                }
+                Ok(())
+            })
+        })
 }
 
-/// `parts_arrived`: the parts were issued; the job goes on.
+/// `parts_arrived`: the parts were issued; the job goes on and the wait ends.
 fn parts_arrived() -> Transition<JobCard> {
     let transition = Transition::new(PARTS_ARRIVED)
         .label("Parts arrived")
         .system()
         .from([JobCardStatus::AwaitingParts])
         .to(JobCardStatus::InProgress);
-    slot(transition, "stock_issued")
+    slot(transition, "stock_issued").effect(|c: &JobCard, _ctx, tx| {
+        let id = c.id;
+        Box::pin(async move {
+            let stamp = now();
+            PartsWait::query()
+                .where_(PartsWait::JOB_CARD_ID.eq(id))
+                .where_(PartsWait::ENDED_AT.is_null())
+                .update(
+                    &mut *tx,
+                    &[("ended_at", &Some(stamp)), ("updated_at", &stamp)],
+                )
+                .await?;
+            Ok(())
+        })
+    })
 }
 
 /// `finish_work`: every approved labour line is done; the QC checklist starts.
@@ -632,7 +688,10 @@ fn deliver() -> Transition<JobCard> {
             let ok = input_of(ctx).added_open == Some(0);
             Box::pin(async move { check(ok, "auto.jobs.problem.added_work_open") })
         });
-    let transition = slot(transition, "substitute_closed");
+    let transition = transition.guard("substitute_closed", |_c: &JobCard, ctx| {
+        let ok = input_of(ctx).substitute_open != Some(true);
+        Box::pin(async move { check(ok, "auto.substitute.problem.open") })
+    });
     slot(transition, "payment_cleared").effect(|c: &JobCard, ctx, tx| {
         let card = c.clone();
         let input = input_of(ctx);

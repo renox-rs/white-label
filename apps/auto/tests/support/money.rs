@@ -11,6 +11,7 @@ use wl_kernel::Subject;
 use wl_kernel::invoicing::{
     InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
 };
+use wl_kernel::notify::{ContactKind, PartyContactPoint, PartyContacts};
 use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary};
 
 /// The parties the workshop knows, with the ones blocked.
@@ -18,6 +19,7 @@ use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, Pa
 pub struct People {
     names: Arc<Mutex<BTreeMap<i64, String>>>,
     blocked: Arc<Mutex<Vec<i64>>>,
+    no_mobile: Arc<Mutex<Vec<i64>>>,
 }
 
 impl People {
@@ -31,6 +33,15 @@ impl People {
         let mut all = self.blocked.lock().unwrap();
         all.retain(|party| *party != id);
         if blocked {
+            all.push(id);
+        }
+    }
+
+    /// Party `id` has no mobile number (`true`) or has one (`false`).
+    pub fn set_no_mobile(&self, id: i64, none: bool) {
+        let mut all = self.no_mobile.lock().unwrap();
+        all.retain(|party| *party != id);
+        if none {
             all.push(id);
         }
     }
@@ -107,6 +118,33 @@ impl PartyDirectory for People {
     ) -> PartyFuture<'a, Option<String>> {
         let name = self.names.lock().unwrap().get(&party.0).cloned();
         Box::pin(async move { Ok(name) })
+    }
+
+    fn contacts<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+    ) -> PartyFuture<'a, Option<PartyContacts>> {
+        let known = self.names.lock().unwrap().contains_key(&party.0);
+        let mobile = !self.no_mobile.lock().unwrap().contains(&party.0);
+        let found = known.then(|| PartyContacts {
+            party,
+            language: "en".to_owned(),
+            preferred_channel: None,
+            points: if mobile {
+                vec![PartyContactPoint {
+                    id: party.0,
+                    kind: ContactKind::Mobile,
+                    address: "+971500000000".to_owned(),
+                    primary: true,
+                    verified: true,
+                    valid: true,
+                }]
+            } else {
+                Vec::new()
+            },
+        });
+        Box::pin(async move { Ok(found) })
     }
 
     fn status<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {

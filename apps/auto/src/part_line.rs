@@ -9,6 +9,7 @@
 //! quantity, which wl-inventory keeps as a pending issue. What was issued and
 //! not fitted goes **back** to stock when the job stops.
 
+use renox::chrono::NaiveDate;
 use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -76,6 +77,12 @@ pub struct PartLine {
     pub fitted_milli: i64,
     /// The quantity given back.
     pub returned_milli: i64,
+    /// Where the part comes from: `stock`, `other_branch`, `local_supplier` or
+    /// `import` (the supply period of the legal rule depends on it,
+    /// `AUT.RUL.16`).
+    pub source: String,
+    /// The day the part is expected, as the purchaser entered it.
+    pub expected_date: Option<NaiveDate>,
     /// When a special-order part billed on a stopped job was handed over with
     /// the vehicle.
     pub handed_over_at: Option<DateTime>,

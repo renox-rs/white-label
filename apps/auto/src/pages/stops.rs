@@ -22,8 +22,10 @@ use serde::Serialize;
 use wl_kernel::documents::dubai_text;
 
 use super::{
-    invalid, parse_milli, parse_money, parse_optional_id, text, ticked,
+    invalid, parse_milli, parse_money, parse_optional_date, parse_optional_id, text, ticked,
 };
+use crate::parts_wait::PartsWait;
+use crate::substitute::{self, Substitute};
 use crate::estimate::Estimate;
 use crate::job_card::{JobCard, JobCardStatus};
 use crate::job_stops::{self, StopRequest};
@@ -47,6 +49,14 @@ pub fn routes() -> Routes {
         .name("auto.job_card_on_account")
         .post("/auto/job-cards/{id}/parts/{line}/order", order)
         .name("auto.job_card_part_order")
+        .post("/auto/job-cards/{id}/parts/{line}/expected", expected)
+        .name("auto.job_card_part_expected")
+        .post("/auto/job-cards/{id}/substitute", substitute_record)
+        .name("auto.job_card_substitute")
+        .post("/auto/job-cards/{id}/substitute/refuse", substitute_refuse)
+        .name("auto.job_card_substitute_refuse")
+        .post("/auto/job-cards/{id}/substitute/return", substitute_return)
+        .name("auto.job_card_substitute_return")
         .require_auth()
 }
 
@@ -273,6 +283,92 @@ pub(crate) fn view_of(
     }
 }
 
+/// What the page shows of the substitute vehicle of a job card.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct SubstituteView {
+    /// Whether one was asked for (the warranty task is open or closed).
+    pub shown: bool,
+    /// Where it stands, in words.
+    pub status: String,
+    /// The plate lent, or a dash.
+    pub plate: String,
+    /// The days lent: from, to.
+    pub period: String,
+    /// Whether the advisor can record the car or the refusal.
+    pub can_record: bool,
+    /// Whether the advisor can record its return.
+    pub can_return: bool,
+    /// Today, as the default day of the forms.
+    pub today: String,
+}
+
+/// The wait for parts of `card`: its start and its legal supply date, as label
+/// and value; empty when it never waited.
+pub(crate) async fn wait_rows(
+    state: &AppState,
+    lang: &Lang,
+    card: &JobCard,
+) -> Result<Vec<[String; 2]>> {
+    let mut rows = Vec::new();
+    if let (Some(started), Some(legal)) = (card.parts_wait_started_at, card.legal_supply_date) {
+        rows.push([text(lang, "parts.wait_started"), dubai_text(started)]);
+        rows.push([text(lang, "parts.legal_date"), legal.to_string()]);
+        if let Some(wait) = PartsWait::open_of(&state.db, card.id).await? {
+            let source = text(lang, &format!("supply.source.{}", wait.source));
+            rows.push([text(lang, "parts.legal_source"), source]);
+        }
+    }
+    Ok(rows)
+}
+
+/// The substitute vehicle of `card` for `user`.
+pub(crate) async fn substitute_view(
+    state: &AppState,
+    lang: &Lang,
+    user: &AuthUser,
+    card: &JobCard,
+) -> Result<SubstituteView> {
+    let advises = user.has_permission(permissions::JOB_CARDS_ADVISE) && card.status.is_open();
+    let row = Substitute::of_job_card(&state.db, card.id).await?;
+    let none = || text(lang, "none");
+    let view = match row {
+        None => SubstituteView {
+            shown: false,
+            status: String::new(),
+            plate: none(),
+            period: none(),
+            can_record: false,
+            can_return: false,
+            today: substitute::default_day().to_string(),
+        },
+        Some(row) => {
+            let status = if row.lent() && row.to_date.is_some() {
+                "returned"
+            } else if row.lent() {
+                "lent"
+            } else if row.refused() {
+                "refused"
+            } else {
+                "requested"
+            };
+            SubstituteView {
+                shown: true,
+                status: text(lang, &format!("substitute.status.{status}")),
+                plate: row.plate.clone().unwrap_or_else(none),
+                period: match (row.from_date, row.to_date) {
+                    (Some(from), Some(to)) => format!("{from} → {to}"),
+                    (Some(from), None) => format!("{from} →"),
+                    _ => row.refused_reason.clone().unwrap_or_else(none),
+                },
+                can_record: advises && row.requested_only(),
+                can_return: advises && row.lent() && row.to_date.is_none(),
+                today: substitute::default_day().to_string(),
+            }
+        }
+    };
+    Ok(view)
+}
+
 /// A field of the form, trimmed; `None` when blank.
 fn field(form: &BTreeMap<String, String>, name: &str) -> Option<String> {
     form.get(name)
@@ -386,6 +482,79 @@ async fn order(
     job_stops::link_purchase_order(&state, &user, line, number).await?;
     Ok((
         Toast::success(text(&lang, "stop.order_saved")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /auto/job-cards/{id}/parts/{line}/expected`: `expected`, a date,
+/// blank to clear it.
+async fn expected(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path((_id, line)): Path<(i64, i64)>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let day = parse_optional_date(form.get("expected").map_or("", String::as_str))?;
+    crate::parts::set_expected(&state, &user, line, day).await?;
+    Ok((
+        Toast::success(text(&lang, "parts.expected_saved")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /auto/job-cards/{id}/substitute`: `plate`, `from`, `to`.
+async fn substitute_record(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let from = parse_optional_date(form.get("from").map_or("", String::as_str))?
+        .unwrap_or_else(substitute::default_day);
+    let to = parse_optional_date(form.get("to").map_or("", String::as_str))?;
+    let plate = field(&form, "plate").unwrap_or_default();
+    substitute::record(&state, &user, id, &plate, from, to).await?;
+    Ok((
+        Toast::success(text(&lang, "substitute.saved")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /auto/job-cards/{id}/substitute/refuse`: `reason`.
+async fn substitute_refuse(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let reason = field(&form, "reason").unwrap_or_default();
+    substitute::refuse(&state, &user, id, &reason).await?;
+    Ok((
+        Toast::success(text(&lang, "substitute.saved")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /auto/job-cards/{id}/substitute/return`: `to`.
+async fn substitute_return(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let to = parse_optional_date(form.get("to").map_or("", String::as_str))?
+        .unwrap_or_else(substitute::default_day);
+    substitute::return_vehicle(&state, &user, id, to).await?;
+    Ok((
+        Toast::success(text(&lang, "substitute.saved")),
         renox::HxRefresh,
     )
         .into_response())

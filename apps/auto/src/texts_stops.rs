@@ -214,6 +214,125 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "auto.decline.message_failed",
         "The message asking the customer to collect the vehicle was not delivered. Call the customer.",
     ),
+    // The wait for parts and the substitute vehicle (`AUT.RUL.16`).
+    ("auto.parts.wait_title", "Wait for parts"),
+    ("auto.parts.wait_started", "Waiting for parts since"),
+    ("auto.parts.legal_date", "Legal supply date"),
+    ("auto.parts.legal_source", "Supply period of the part from"),
+    ("auto.parts.source", "Where the part comes from"),
+    ("auto.parts.expected_saved", "Expected day saved."),
+    (
+        "auto.parts.problem.no_request",
+        "Raise a parts request first: an approved part that is not issued yet.",
+    ),
+    ("auto.supply.source.stock", "Our stock"),
+    ("auto.supply.source.other_branch", "Another branch"),
+    ("auto.supply.source.local_supplier", "A local supplier"),
+    ("auto.supply.source.import", "Import"),
+    (
+        "auto.supply.problem.source",
+        "Pick where the part comes from: our stock, another branch, a local supplier or import.",
+    ),
+    (
+        "auto.supply.problem.days",
+        "The legal supply period is 7, 14 or 30 days.",
+    ),
+    (
+        "auto.parts.advisor_title",
+        "Parts for :job: legal supply date :date",
+    ),
+    (
+        "auto.parts.advisor_body",
+        "The parts requested for :job (:plate) must be supplied by :date, the end of the legal supply period. The customer is told the new date.",
+    ),
+    (
+        "auto.parts.manager_title",
+        "Legal supply date reached: :job",
+    ),
+    (
+        "auto.parts.manager_body",
+        ":job (:plate) has waited for parts since :since, and the legal supply date is :date. Act now.",
+    ),
+    ("auto.parts.date_unknown", "we will confirm the date"),
+    (
+        "auto.parts.task_date",
+        "Find out when the parts for :job arrive",
+    ),
+    (
+        "auto.parts.task_call",
+        "Call :customer: the parts for :job, expected :date",
+    ),
+    (
+        "auto.parts.sms_en",
+        "{{ workshop }}: the parts for your vehicle {{ plate }} (job {{ job }}) are expected: {{ date }}.",
+    ),
+    (
+        "auto.parts.sms_ar",
+        "{{ workshop }}: موعد وصول قطع مركبتك {{ plate }} (بطاقة العمل {{ job }}): {{ date }}.",
+    ),
+    ("auto.substitute.title", "Substitute vehicle"),
+    ("auto.substitute.status", "Where it stands"),
+    ("auto.substitute.plate", "Plate"),
+    ("auto.substitute.period", "Lent"),
+    ("auto.substitute.from", "Lent on"),
+    ("auto.substitute.to", "Back on"),
+    ("auto.substitute.reason", "Why the customer refused"),
+    ("auto.substitute.record", "Record the substitute vehicle"),
+    (
+        "auto.substitute.record_description",
+        "The car lent to the customer: its plate and the day it was lent. This closes the task.",
+    ),
+    ("auto.substitute.refuse", "The customer refused"),
+    (
+        "auto.substitute.refuse_description",
+        "The customer does not want a substitute vehicle; give the reason. This closes the task.",
+    ),
+    ("auto.substitute.return", "The car came back"),
+    (
+        "auto.substitute.return_description",
+        "The day the substitute vehicle was returned. The job card cannot be delivered before.",
+    ),
+    ("auto.substitute.saved", "Saved."),
+    ("auto.substitute.status.requested", "Waiting for the advisor"),
+    ("auto.substitute.status.lent", "Lent to the customer"),
+    ("auto.substitute.status.returned", "Returned"),
+    ("auto.substitute.status.refused", "Refused by the customer"),
+    (
+        "auto.substitute.task_title",
+        "Provide a substitute vehicle for :job",
+    ),
+    (
+        "auto.substitute.task_body",
+        "This warranty repair is not ready 7 days after check-in. Record the substitute vehicle (plate, from, to), or the customer's refusal with a reason: the task closes only then, whatever was offered by word.",
+    ),
+    (
+        "auto.substitute.problem.plate",
+        "Give the plate of the substitute vehicle.",
+    ),
+    (
+        "auto.substitute.problem.dates",
+        "The car cannot come back before the day it was lent.",
+    ),
+    (
+        "auto.substitute.problem.refused",
+        "The customer refused a substitute vehicle; it cannot be recorded as lent.",
+    ),
+    (
+        "auto.substitute.problem.lent",
+        "A substitute vehicle was recorded as lent; the customer cannot have refused it.",
+    ),
+    (
+        "auto.substitute.problem.none_lent",
+        "No substitute vehicle was recorded as lent on this job card.",
+    ),
+    (
+        "auto.substitute.problem.reason",
+        "Give the reason the customer refused the substitute vehicle.",
+    ),
+    (
+        "auto.substitute.problem.open",
+        "A substitute vehicle is still open on this job card: record the day it came back, or the customer's refusal, before it is delivered.",
+    ),
     // Voiding a job card opened in error.
     (
         "auto.void.problem.recorded",

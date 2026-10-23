@@ -13,12 +13,21 @@ use wl_kernel::notify::{
 
 /// The notifications asked of the notifier.
 #[derive(Clone, Default)]
-pub struct Messages(Arc<Mutex<Vec<NotifyRequest>>>, Arc<Mutex<bool>>);
+pub struct Messages(
+    Arc<Mutex<Vec<NotifyRequest>>>,
+    Arc<Mutex<bool>>,
+    Arc<Mutex<Vec<String>>>,
+);
 
 impl Messages {
     /// Makes every further notification fail (or work again).
     pub fn fail(&self, failing: bool) {
         *self.1.lock().unwrap() = failing;
+    }
+
+    /// Notifications of the type `key` work even while the notifier fails.
+    pub fn always_works(&self, key: &str) {
+        self.2.lock().unwrap().push(key.to_owned());
     }
 
     /// The notifications sent so far, oldest first.
@@ -76,7 +85,8 @@ impl Notifier for Messages {
         _state: &'a AppState,
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>> {
-        if *self.1.lock().unwrap() {
+        let exempt = self.2.lock().unwrap().contains(&request.type_key);
+        if *self.1.lock().unwrap() && !exempt {
             return Box::pin(async { Err(Error::permanent_message("the notifier is down")) });
         }
         let mut sent = self.0.lock().unwrap();

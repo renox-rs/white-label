@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::documents::dubai_text;
 
-use super::stops::{self, StopView};
+use super::stops::{self, StopView, SubstituteView};
 use super::vehicles::{HistoryRow, km_text, vehicle_text};
 use super::{
     Texts, parse_km, parse_milli, parse_money, parse_number_or_zero, parse_optional_date,
@@ -713,6 +713,10 @@ pub(crate) struct ShowPage {
     stop: StopView,
     cancel_waits: bool,
     approvals: Vec<ApprovalCard>,
+    // The wait for parts and the substitute vehicle (BL-AUT-04).
+    wait: Vec<[String; 2]>,
+    source_options: Vec<[String; 2]>,
+    substitute: SubstituteView,
 }
 
 /// Whether a user sees the customer's name on a job card.
@@ -1086,6 +1090,12 @@ async fn show(
         stop,
         cancel_waits,
         approvals: approval_cards,
+        wait: stops::wait_rows(&state, &lang, &card).await?,
+        source_options: crate::supply::SOURCES
+            .iter()
+            .map(|source| [(*source).to_owned(), text(&lang, &format!("supply.source.{source}"))])
+            .collect(),
+        substitute: stops::substitute_view(&state, &lang, &user, &card).await?,
     }))
 }
 
@@ -1341,6 +1351,9 @@ pub struct PartForm {
     /// Ordered for this job.
     #[serde(default)]
     pub special_order: String,
+    /// Where it comes from.
+    #[serde(default)]
+    pub source: String,
 }
 
 /// `POST /auto/job-cards/{id}/parts`.
@@ -1363,6 +1376,9 @@ async fn add_part(
     }
     if ticked(&form.special_order) {
         new = new.special_order();
+    }
+    if !form.source.trim().is_empty() {
+        new = new.from_source(&form.source);
     }
     job_cards::add_part(&state, &user, id, new).await?;
     done(&lang, "jobs.line_added")

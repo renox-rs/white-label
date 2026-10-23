@@ -825,6 +825,8 @@ async fn aut_base_the_transitions_the_issues_extend_are_declared_and_their_slots
 
     // wait_parts and parts_arrived.
     let waiting = t.card_in(&vehicle, JobCardStatus::InProgress).await;
+    t.approved_part(&waiting, "Brake pad set", None, 1_000, 30_000)
+        .await;
     let tareq = t.technician("Tareq").await;
     let parked = job_cards::wait_parts(t.state(), &tareq, waiting.id)
         .await
