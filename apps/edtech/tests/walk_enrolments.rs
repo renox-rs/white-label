@@ -6,7 +6,6 @@ mod support;
 
 use edtech::enrolments::{self, NewEnrolment};
 use edtech::{Batch, EnrolmentStatus, seats};
-use renox::prelude::*;
 use support::{Centre, PRICE, boot, day, next_weekday};
 
 async fn open_batch(t: &Centre) -> Batch {
