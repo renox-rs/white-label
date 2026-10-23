@@ -18,6 +18,7 @@ use std::collections::BTreeMap;
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use wl_kernel::Subject;
+use wl_kernel::backorders::{ArrivedLine, StockArrivalReversed, StockArrived};
 use wl_kernel::inventory::{
     GoodsReceived, GoodsReceivedLine, ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE,
     PurchaseOrderRevised, PurchaseOrderRevisedLine, ReturnOutcome, SupplierReturnCredited,
@@ -28,12 +29,13 @@ use wl_kernel::invoicing::{
 };
 
 use crate::goods_receipt::{GoodsReceipt, GoodsReceiptLine, lines_of};
-use crate::item::value_of;
+use crate::item::{Item, value_of};
 use crate::landed_adjust::{ADJUST, ADJUST_APPROVED};
 use crate::landed_cost::{ALLOCATE, LandedCost};
 use crate::po_revise::{self, PurchaseOrderRevision, RevisionLine};
 use crate::purchase_order::{PurchaseOrder, PurchaseOrderLine, lines_of as order_lines_of};
 use crate::receipt_post::{POST, POST_APPROVED};
+use crate::receipt_reverse::REVERSE;
 use crate::return_credit::{CREDIT, CREDIT_APPROVED, CREDIT_COVERED};
 use crate::return_dispatch::{DISPATCH, DISPATCH_APPROVED};
 use crate::supplier_return::{
@@ -239,6 +241,55 @@ async fn emit_revised(state: &AppState, id: i64) -> Result {
     Ok(())
 }
 
+/// The arrival of `quantities` (item id and thousandths, summed per item),
+/// with the item codes. Empty when nothing arrived.
+async fn arrived_lines(
+    state: &AppState,
+    quantities: impl IntoIterator<Item = (i64, i64)>,
+) -> Result<Vec<ArrivedLine>> {
+    let mut per_item: BTreeMap<i64, i64> = BTreeMap::new();
+    for (item_id, quantity_milli) in quantities {
+        if quantity_milli > 0 {
+            *per_item.entry(item_id).or_insert(0) += quantity_milli;
+        }
+    }
+    let mut lines = Vec::new();
+    for (item_id, quantity_milli) in per_item {
+        if let Some(item) = Item::find(&state.db, item_id).await? {
+            lines.push(ArrivedLine {
+                item: item.subject(),
+                item_code: item.code,
+                quantity_milli,
+            });
+        }
+    }
+    Ok(lines)
+}
+
+/// Emits [`StockArrived`] for stock that entered `location_id` through
+/// `source` (`kind`: `receive` or `transfer_in`), read as committed: wl-sales
+/// reserves it for the oldest back-orders.
+async fn emit_arrived(
+    state: &AppState,
+    source: Subject,
+    kind: &str,
+    location_id: i64,
+    quantities: impl IntoIterator<Item = (i64, i64)>,
+) -> Result {
+    let lines = arrived_lines(state, quantities).await?;
+    if lines.is_empty() {
+        return Ok(());
+    }
+    state
+        .emit(StockArrived {
+            source,
+            kind: kind.to_owned(),
+            location: Subject::new(LOCATION_SUBJECT_TYPE, location_id),
+            lines,
+        })
+        .await
+}
+
 /// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
     app.listen(
@@ -252,6 +303,17 @@ pub(crate) fn register(app: &mut Registry) {
             state.emit(received_event(&receipt, &lines)).await?;
             // What was accepted joins an open hold on the location.
             crate::arrival::on_receipt(&state, &receipt, &lines).await?;
+            // The oldest back-orders of the location are served from it.
+            emit_arrived(
+                &state,
+                receipt.subject(),
+                "receive",
+                receipt.location_id,
+                lines
+                    .iter()
+                    .map(|line| (line.item_id, line.accepted_qty_milli)),
+            )
+            .await?;
             // The goods refused at the door left with the driver as the receipt
             // posted: the system dispatched their return.
             for ret in of_source(&state.db, &receipt.subject()).await? {
@@ -270,6 +332,34 @@ pub(crate) fn register(app: &mut Registry) {
                 }
             }
             Ok(())
+        },
+    );
+    app.listen(
+        |event: Transitioned<GoodsReceipt>, state: AppState| async move {
+            if event.transition != REVERSE {
+                return Ok(());
+            }
+            // The stock left again: the reservations made from it are given
+            // back (BL-SAL-17).
+            let receipt = GoodsReceipt::find_or_404(&state.db, event.key).await?;
+            let lines = lines_of(&state.db, receipt.id).await?;
+            let lines = arrived_lines(
+                &state,
+                lines
+                    .iter()
+                    .map(|line| (line.item_id, line.accepted_qty_milli)),
+            )
+            .await?;
+            if lines.is_empty() {
+                return Ok(());
+            }
+            state
+                .emit(StockArrivalReversed {
+                    source: receipt.subject(),
+                    location: Subject::new(LOCATION_SUBJECT_TYPE, receipt.location_id),
+                    lines,
+                })
+                .await
         },
     );
     app.listen(
@@ -294,7 +384,16 @@ pub(crate) fn register(app: &mut Registry) {
                 return Ok(());
             }
             let transfer = crate::transfer::Transfer::find_or_404(&state.db, event.key).await?;
-            crate::arrival::on_transfer(&state, &transfer).await
+            crate::arrival::on_transfer(&state, &transfer).await?;
+            let lines = crate::transfer::lines_of(&state.db, transfer.id).await?;
+            emit_arrived(
+                &state,
+                transfer.subject(),
+                "transfer_in",
+                transfer.to_location_id,
+                lines.iter().map(|line| (line.item_id, line.quantity_milli)),
+            )
+            .await
         },
     );
     app.listen(

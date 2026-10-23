@@ -3,8 +3,8 @@
 //! lot-tracked item):
 //!
 //! - *on hand*: what arrived less what left;
-//! - *reserved*: set aside for a draft Return to supplier (the other
-//!   reservations come with the issues that build them);
+//! - *reserved*: set aside for a draft Return to supplier, or for a sales
+//!   order line ([`crate::reservation`], BL-SAL-17);
 //! - *on hold*: blocked by an open stock hold: the undecided lines of an open
 //!   hold on whole lots follow the lot wherever it is, those of an open hold
 //!   on a location block that balance only (a line decided `release`,
@@ -136,7 +136,8 @@ pub async fn lot_locations<'c>(db: impl Executor<'c>, lot_id: i64) -> Result<Vec
 }
 
 /// What draft returns to supplier set aside of `item_id` at `location_id`
-/// (of `lot_id` when given), in thousandths.
+/// (of `lot_id` when given), in thousandths, and, when no lot is named, what
+/// sales orders set aside.
 ///
 /// # Errors
 ///
@@ -165,6 +166,12 @@ pub async fn reserved_at<'c>(
             .filter(|line| lot_id.is_none() || line.lot_id == lot_id)
             .map(|line| line.quantity_milli)
             .sum::<i64>();
+    }
+    // What sales orders set aside is by item and location, not by lot
+    // (BL-SAL-17).
+    if lot_id.is_none() {
+        reserved +=
+            crate::reservation::sales_reserved(conn.reborrow(), item_id, location_id).await?;
     }
     Ok(reserved)
 }

@@ -39,6 +39,7 @@ pub mod receipt_post;
 pub mod receipt_reverse;
 mod receipt_screens;
 pub mod reorder;
+pub mod reservation;
 pub mod return_credit;
 pub mod return_dispatch;
 pub mod return_draft;
@@ -522,6 +523,7 @@ impl Module for WlInventory {
         app.model::<RecallLine>();
         app.model::<PendingIssue>();
         app.model::<ShortageAlert>();
+        app.model::<reservation::StockReservation>();
         app.model::<GoodsReceipt>();
         app.model::<GoodsReceiptLine>();
         app.model::<SupplierReturn>();
@@ -646,6 +648,8 @@ impl Module for WlInventory {
         // short part becomes a pending issue. Clearing one above the value
         // (`STK.ACL.02`) needs a second holder of `stock.approve`.
         wl_kernel::inventory::provide_stock_service(app, stock_service::InventoryStock);
+        // Sales order lines set stock aside (BL-SAL-17).
+        wl_kernel::backorders::provide_stock_reservations(app, reservation::InventoryReservations);
         wl_kernel::SubjectMachine::of::<PendingIssue>(
             wl_kernel::inventory::PENDING_ISSUE_SUBJECT_TYPE,
         )

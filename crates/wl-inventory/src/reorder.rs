@@ -27,13 +27,20 @@
 //!   and is kept on the suggestion for the scorecard (who, when, and whether
 //!   it was the preferred supplier that was left).
 //!
+//! - Back-ordered sales order quantity (`wl-sales`, setting *Back-orders
+//!   allowed*, BL-SAL-17) not yet covered by an open purchase order is added
+//!   to the quantity of the item's policy; above its reorder point (or with
+//!   none) the suggestion is the back-ordered quantity alone, and an item
+//!   without a preferred supplier is suggested without a supplier for it. A
+//!   cancelled back-order drops out at the next run.
+//!
 //! Decisions: the quantity at a location is what the movements leave
 //! (reservations and holds come with their own issues), the locations
-//! looked at are those the item has ever moved through, and the suggestion
-//! mode is the default one (draft purchase orders and the back-ordered sales
-//! quantity are not built).
+//! looked at are those the item has ever moved through and those with a
+//! back-order, and the suggestion mode is the default one (draft purchase
+//! orders are not built).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use renox::chrono::{Datelike, NaiveDate};
 use renox::prelude::*;
@@ -50,6 +57,7 @@ use crate::item_supplier::{
 };
 use crate::movement::{self, StockMovement};
 use crate::permissions;
+use crate::purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
 use crate::texts::{english, said};
 
 /// The daily scheduled task that runs [`run`].
@@ -343,9 +351,51 @@ fn json_of<T: Serialize>(value: &T) -> String {
     renox::serde_json::to_string(value).unwrap_or_else(|_| "[]".to_owned())
 }
 
+/// The back-ordered quantity of sales orders for `item` at `location_id` not
+/// yet covered by an open purchase order, in thousandths, from the `demand`
+/// of the sales module (BL-SAL-17). `cover_milli` is what the open purchase
+/// orders of the item still have outstanding; it is used up location by
+/// location, in the order of the ids, so a quantity is covered once.
+pub fn uncovered_milli(demand_milli: i64, cover_milli: &mut i64) -> i64 {
+    let covered = demand_milli.min(*cover_milli).max(0);
+    *cover_milli -= covered;
+    demand_milli - covered
+}
+
+/// What the open purchase orders of `item_id` still have to come, in
+/// thousandths: ordered less accepted, over the lines of orders that are
+/// issued or partly received.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn on_order_milli(db: &Db, item_id: i64) -> Result<i64> {
+    let lines = PurchaseOrderLine::query()
+        .where_(PurchaseOrderLine::ITEM_ID.eq(item_id))
+        .get(db)
+        .await?;
+    let mut open = 0;
+    for line in lines {
+        let Some(order) = PurchaseOrder::find(db, line.purchase_order_id).await? else {
+            continue;
+        };
+        if matches!(
+            order.status,
+            PurchaseOrderStatus::Issued | PurchaseOrderStatus::PartiallyReceived
+        ) {
+            open += line.outstanding_milli();
+        }
+    }
+    Ok(open)
+}
+
 /// Runs `STK.RUL.04` for today: one open suggestion per item and location
-/// that is at or below its reorder point. Returns how many were written
-/// (made or updated).
+/// that is at or below its reorder point, or that sales orders have
+/// back-ordered. The suggested quantity is what the item's policy asks for
+/// (nothing above the reorder point) plus the back-ordered quantity not yet
+/// covered by an open purchase order (BL-SAL-17); an item with a back-order
+/// and no preferred supplier is suggested without a supplier. Returns how
+/// many were written (made or updated).
 ///
 /// # Errors
 ///
@@ -353,12 +403,26 @@ fn json_of<T: Serialize>(value: &T) -> String {
 pub async fn run(state: &AppState) -> Result<usize> {
     let day = today();
     let mut items = Item::query().order_by(Item::ID).get(&state.db).await?;
-    items.retain(|item| item.reorder_point_milli > 0);
+    // The open back-orders of sales orders, per item code and location.
+    let mut back_ordered: BTreeMap<String, BTreeMap<i64, i64>> = BTreeMap::new();
+    for open in wl_kernel::backorders::back_orders(state).open(state).await? {
+        if let Some(location) = open.location {
+            *back_ordered
+                .entry(open.item_code)
+                .or_default()
+                .entry(location.subject_id)
+                .or_insert(0) += open.quantity_milli;
+        }
+    }
+    items.retain(|item| item.reorder_point_milli > 0 || back_ordered.contains_key(&item.code));
     let mut written = 0;
     let mut made: Vec<ReorderSuggestion> = Vec::new();
+    let mut touched: BTreeSet<(i64, i64)> = BTreeSet::new();
     for item in items {
         let rows = item_supplier::rows_of(&state.db, item.id).await?;
-        if !rows.iter().any(|row| row.role == SupplierRole::Preferred) {
+        let has_preferred = rows.iter().any(|row| row.role == SupplierRole::Preferred);
+        let demand = back_ordered.get(&item.code).cloned().unwrap_or_default();
+        if !has_preferred && demand.is_empty() {
             continue;
         }
         let moves = StockMovement::query()
@@ -370,15 +434,30 @@ pub async fn run(state: &AppState) -> Result<usize> {
             locations.extend(moved.to_location_id);
             locations.extend(moved.from_location_id);
         }
+        locations.extend(demand.keys().copied());
+        let mut on_order = if demand.is_empty() {
+            0
+        } else {
+            on_order_milli(&state.db, item.id).await?
+        };
         for location_id in locations {
             let on_hand = movement::on_hand(&state.db, item.id, location_id).await?;
-            if on_hand > item.reorder_point_milli {
-                continue;
-            }
-            let wanted = wanted_milli(&item, on_hand);
+            // The policy asks for stock at or below the reorder point; the
+            // back-ordered quantity is added on top, whatever the stock.
+            let policy = if has_preferred && on_hand <= item.reorder_point_milli {
+                wanted_milli(&item, on_hand)
+            } else {
+                0
+            };
+            let back = uncovered_milli(
+                demand.get(&location_id).copied().unwrap_or(0),
+                &mut on_order,
+            );
+            let wanted = policy + back;
             if wanted == 0 {
                 continue;
             }
+            touched.insert((item.id, location_id));
             let choice = choose(state, &rows).await?;
             let (quantity, from) = rounded_milli(wanted, choice.row.as_ref());
             let warnings = match &choice.row {
@@ -446,8 +525,41 @@ pub async fn run(state: &AppState) -> Result<usize> {
             }
         }
     }
+    drop_cancelled_back_orders(state, day, &touched).await?;
     tell_purchasers(state, &made).await?;
     Ok(written)
+}
+
+/// An item without a reorder point is suggested only for its back-orders: a
+/// suggestion of today that this run did not touch lost its back-order (it
+/// was cancelled, served or covered by a purchase order since the earlier run
+/// today) and is dropped, unless a purchaser already switched its supplier.
+async fn drop_cancelled_back_orders(
+    state: &AppState,
+    day: NaiveDate,
+    touched: &BTreeSet<(i64, i64)>,
+) -> Result {
+    let open = ReorderSuggestion::query()
+        .where_(ReorderSuggestion::RUN_ON.eq(day))
+        .where_(ReorderSuggestion::STATUS.eq(SuggestionStatus::Open))
+        .where_(ReorderSuggestion::SWITCHED_BY.is_null())
+        .get(&state.db)
+        .await?;
+    for suggestion in open {
+        if touched.contains(&(suggestion.item_id, suggestion.location_id)) {
+            continue;
+        }
+        let Some(item) = Item::find(&state.db, suggestion.item_id).await? else {
+            continue;
+        };
+        if item.reorder_point_milli == 0 {
+            ReorderSuggestion::query()
+                .where_(ReorderSuggestion::ID.eq(suggestion.id))
+                .delete(&state.db)
+                .await?;
+        }
+    }
+    Ok(())
 }
 
 /// Tells the holders of the procurement role about the suggestions made.
