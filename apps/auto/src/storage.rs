@@ -225,6 +225,26 @@ async fn unclaim(state: &AppState, id: i64, column: &str) -> Result {
     Ok(())
 }
 
+/// Claims the step stamped in `column`, then does `action`; an `action` that
+/// fails gives the claim back so the next run does the step again.
+async fn once(
+    state: &AppState,
+    id: i64,
+    when: Col<JobCard, Option<NaiveDate>>,
+    column: &str,
+    day: NaiveDate,
+    action: impl std::future::Future<Output = Result>,
+) -> Result {
+    if !claim(state, id, when, column, day).await? {
+        return Ok(());
+    }
+    if let Err(error) = action.await {
+        unclaim(state, id, column).await?;
+        return Err(error);
+    }
+    Ok(())
+}
+
 /// The steps of one job card on `on`. Each is claimed first, then done; a step
 /// that fails is given back so the next run tries it again.
 async fn step_card(state: &AppState, card: &JobCard, on: NaiveDate) -> Result {
@@ -237,33 +257,21 @@ async fn step_card(state: &AppState, card: &JobCard, on: NaiveDate) -> Result {
     let days = (on - start).num_days();
     if days >= REMINDER_DAYS[0] && card.collect_first_on.is_none() {
         let day = start + Duration::days(REMINDER_DAYS[0]);
-        let column = "collect_first_on";
-        if claim(state, card.id, JobCard::COLLECT_FIRST_ON, column, day).await? {
-            if let Err(error) = remind(state, card, 1, REMINDER_DAYS[0]).await {
-                unclaim(state, card.id, column).await?;
-                return Err(error);
-            }
-        }
+        let action = remind(state, card, 1, REMINDER_DAYS[0]);
+        let first = JobCard::COLLECT_FIRST_ON;
+        once(state, card.id, first, "collect_first_on", day, action).await?;
     }
     if days >= REMINDER_DAYS[1] && card.collect_second_on.is_none() {
         let day = start + Duration::days(REMINDER_DAYS[1]);
-        let column = "collect_second_on";
-        if claim(state, card.id, JobCard::COLLECT_SECOND_ON, column, day).await? {
-            if let Err(error) = remind(state, card, 2, REMINDER_DAYS[1]).await {
-                unclaim(state, card.id, column).await?;
-                return Err(error);
-            }
-        }
+        let action = remind(state, card, 2, REMINDER_DAYS[1]);
+        let second = JobCard::COLLECT_SECOND_ON;
+        once(state, card.id, second, "collect_second_on", day, action).await?;
     }
     if days >= MANAGER_DAYS && card.collect_manager_on.is_none() {
         let day = start + Duration::days(MANAGER_DAYS);
-        let column = "collect_manager_on";
-        if claim(state, card.id, JobCard::COLLECT_MANAGER_ON, column, day).await? {
-            if let Err(error) = tell_manager(state, card, MANAGER_DAYS).await {
-                unclaim(state, card.id, column).await?;
-                return Err(error);
-            }
-        }
+        let action = tell_manager(state, card, MANAGER_DAYS);
+        let manager = JobCard::COLLECT_MANAGER_ON;
+        once(state, card.id, manager, "collect_manager_on", day, action).await?;
     }
     Ok(())
 }
