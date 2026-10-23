@@ -601,3 +601,58 @@ async fn a_vertical_automation_places_a_hold_as_the_system() {
             .is_ok_and(|transition| transition.is_system())
     );
 }
+
+/// BL-FNB-12 (#376), `FNB.RUL.05`: the goods receipt into a unit that is on
+/// temperature hold says so ("Fridge 2 is on temperature hold") on its screen,
+/// as a transfer into it does; a receipt into a unit that is not held does not.
+#[renox::test]
+async fn the_goods_receipt_screen_warns_that_the_unit_is_on_temperature_hold() {
+    let t = boot().await;
+    let holder = t.holder("Hal").await;
+    let amal = t.storekeeper("Amal").await;
+    let item = t.item("CREAM").await;
+    let fridge = t.named_location("FRIDGE-2", "Fridge 2").await;
+    let other = t.named_location("FRIDGE-3", "Fridge 3").await;
+    t.stock_in(&item, &fridge, None, 3_000, 100).await;
+    let fridge_id = fridge.id.to_string();
+    t.hold_as(
+        &holder,
+        &[
+            ("reason", "temperature"),
+            ("reference", "fnb.temperature_reading:3"),
+            ("location", fridge_id.as_str()),
+        ],
+    )
+    .await
+    .assert_ok();
+    let (order, line) = t.order(&fridge, &item, 10_000, 1_200).await;
+    let held = t
+        .receipt(
+            &order,
+            &fridge,
+            vec![wl_inventory::goods_receipt::DraftLine::on(
+                line.id, 10_000, 10_000,
+            )],
+        )
+        .await;
+    let (order2, line2) = t.order(&other, &item, 10_000, 1_200).await;
+    let free = t
+        .receipt(
+            &order2,
+            &other,
+            vec![wl_inventory::goods_receipt::DraftLine::on(
+                line2.id, 10_000, 10_000,
+            )],
+        )
+        .await;
+
+    t.app.acting_as(&amal);
+    let page = t.app.get(&format!("/goods-receipts/{}", held.id)).await;
+    page.assert_ok();
+    let body = page.text();
+    assert!(body.contains("Fridge 2 is on temperature hold"), "{body}");
+    let page = t.app.get(&format!("/goods-receipts/{}", free.id)).await;
+    page.assert_ok();
+    let body = page.text();
+    assert!(!body.contains("on temperature hold"), "{body}");
+}
