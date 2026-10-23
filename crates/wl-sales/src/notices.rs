@@ -58,6 +58,10 @@ pub const LOYALTY_CLOSED: &str = "sales.loyalty_closed";
 /// on credit hold (`SAL.RUL.01`).
 pub const ORDER_CREDIT_HOLD: &str = "sales.order_credit_hold";
 
+/// The customer's sales rep and the accountants are told that the account
+/// went on hold after a bounced cheque (`SAL.RUL.05`).
+pub const ACCOUNT_ON_HOLD: &str = "sales.account_on_hold";
+
 /// The owner of a lead is told that its win was reverted.
 pub const LEAD_WIN_REVERTED: &str = "sales.lead_win_reverted";
 
@@ -109,6 +113,7 @@ pub(crate) fn register_types() {
     notify::register_type(english_type(ADJUSTMENT_REJECTED, "adjustment_rejected"));
     notify::register_type(english_type(ADJUSTMENT_RETURNED, "adjustment_returned"));
     notify::register_type(english_type(ORDER_CREDIT_HOLD, "order_credit_hold"));
+    notify::register_type(english_type(ACCOUNT_ON_HOLD, "account_on_hold"));
 }
 
 /// The users told of a credit hold of `party`'s order: the sales rep of its
@@ -128,6 +133,38 @@ async fn credit_audience(state: &AppState, party: i64) -> Result<Vec<i64>> {
         }
     }
     Ok(users)
+}
+
+/// Tells the sales rep and the accountants that `account` is on hold after
+/// the bounced `source` (`SAL.RUL.05`); `orders` of its customer were held.
+pub(crate) async fn account_on_hold(
+    state: &AppState,
+    account: &crate::customer_account::CustomerAccount,
+    source: &str,
+    orders: i64,
+) -> Result {
+    let name = wl_kernel::parties::directory(state)
+        .display_name(&state.db, wl_kernel::PartyId(account.party_id), "en")
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| format!("#{}", account.party_id));
+    let audience = credit_audience(state, account.party_id).await?;
+    if audience.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(ACCOUNT_ON_HOLD, account.subject())
+        .subject_label(&name)
+        .data(json!({
+            "customer": name,
+            "source": source,
+            "orders": orders,
+        }));
+    for user in audience {
+        request = request.to_user(user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
 }
 
 /// Tells the sales rep and the accountants that `order` is on credit hold

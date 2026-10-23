@@ -75,6 +75,9 @@ pub struct CompleteInput {
     pub gross: i64,
     /// The setting *counter sales on account*.
     pub allow_account: bool,
+    /// The customer's account is on hold (`SAL.RUL.05`).
+    #[serde(default)]
+    pub account_on_hold: bool,
 }
 
 /// A guard that fails with the English `key` unless `ok`.
@@ -147,6 +150,19 @@ fn complete() -> Transition<CounterSale> {
                 check(
                     !on_account || (allowed && has_party),
                     "wl_sales.counter.problem.account",
+                )
+            })
+        })
+        .guard("account_not_on_hold", |_s: &CounterSale, ctx| {
+            let input = ctx.input_as::<CompleteInput>().ok();
+            Box::pin(async move {
+                let on_account = input
+                    .as_ref()
+                    .is_some_and(|i| i.tenders.iter().any(|t| t.method == METHOD_ACCOUNT));
+                let on_hold = input.is_some_and(|i| i.account_on_hold);
+                check(
+                    !(on_account && on_hold),
+                    "wl_sales.credit.problem.account_on_hold",
                 )
             })
         })

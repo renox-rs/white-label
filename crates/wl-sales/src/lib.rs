@@ -1,6 +1,8 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod account_hold;
+pub mod account_hold_clearing;
 pub mod acquisition;
 pub mod acquisition_change;
 pub mod acquisition_daily;
@@ -69,6 +71,7 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
+pub use account_hold_clearing::{AccountHoldClearing, ClearingStatus};
 pub use acquisition::{AcquisitionRefused, AcquisitionSale, PartyAcquisition};
 pub use acquisition_change::{
     AcquisitionChange, ChangeRefused, ChangeRequest, ChangeStatus, ChangeTarget,
@@ -627,6 +630,7 @@ impl Module for WlSales {
         app.model::<CreditGroup>();
         app.model::<CustomerAccount>();
         app.model::<AccountHoldSource>();
+        app.model::<AccountHoldClearing>();
         app.model::<SalesOrder>();
         app.model::<FulfilmentRecord>();
         app.model::<SalesReturn>();
@@ -658,6 +662,9 @@ impl Module for WlSales {
         // The sales order: its machine, its events and the kernel's
         // `OrderFulfilment`.
         sales_orders::register(app);
+        // `SAL.RUL.05`: a bounced cheque holds the customer account, and
+        // *Clear account hold* with another releaser's approval.
+        account_hold::register(app);
         // The sales return: its machine and the `ReturnResolved` event.
         sales_returns::register(app);
         // Loyalty points: `SAL.RUL.07` earning and `SAL.RUL.09` reversals.
@@ -763,6 +770,22 @@ impl Module for WlSales {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every `tx['key']` a template reads is a text of the module: a missing
+    /// one is no compile error but a 500 at render time.
+    #[test]
+    fn every_text_a_template_reads_exists() {
+        let mut missing = Vec::new();
+        for (name, source) in VIEWS {
+            for part in source.split("tx['").skip(1) {
+                let key = part.split('\'').next().unwrap_or_default();
+                if texts::english(&format!("wl_sales.{key}"), &[]) == format!("wl_sales.{key}") {
+                    missing.push(format!("{name}: {key}"));
+                }
+            }
+        }
+        assert!(missing.is_empty(), "texts missing: {missing:?}");
+    }
 
     #[test]
     fn the_defaults_are_the_spec_values() {

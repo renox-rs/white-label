@@ -257,6 +257,11 @@ pub struct ReleaseView {
     pub blocked: String,
     /// What the sheet says, with the account hold warning when it applies.
     pub description: String,
+    /// The customer account is on hold: the sheet offers to ask for the
+    /// clearing in the same action.
+    pub account_on_hold: bool,
+    /// The reasons a clearing can give, as (value, words).
+    pub kinds: Vec<(String, String)>,
 }
 
 /// What the order page needs.
@@ -434,10 +439,21 @@ async fn release_view(
             description
         );
     }
+    let kinds = crate::account_hold_clearing::KINDS
+        .iter()
+        .map(|kind| {
+            (
+                (*kind).to_owned(),
+                text(lang, &format!("credit.kind.{kind}")),
+            )
+        })
+        .collect();
     Ok(ReleaseView {
         shown: true,
         blocked,
         description,
+        account_on_hold: on_hold,
+        kinds,
     })
 }
 
@@ -450,8 +466,45 @@ async fn release(
     Found(order): Found<SalesOrder>,
     Form(form): Form<BTreeMap<String, String>>,
 ) -> Result<Response> {
-    let note = form.get("note").map_or("", |v| v.trim());
-    let (_, done) = sales_orders::release(&state, &user, order.id, note).await?;
+    let get = |key: &str| form.get(key).map_or("", |v| v.trim());
+    // The same action may ask to clear the account hold too; its reason is
+    // checked before anything is requested.
+    let clear = matches!(get("clear_hold"), "1" | "on");
+    if clear {
+        if !crate::account_hold_clearing::KINDS.contains(&get("kind")) {
+            return Err(invalid("kind", text(&lang, "orders.errors.choice"), &form));
+        }
+        if get("kind") == crate::account_hold_clearing::KIND_OTHER && get("clear_note").is_empty() {
+            return Err(invalid(
+                "clear_note",
+                text(&lang, "orders.errors.reason"),
+                &form,
+            ));
+        }
+    }
+    let (_, done) = sales_orders::release(&state, &user, order.id, get("note")).await?;
+    if clear
+        && user.has_permission(permissions::CREDIT_RELEASE)
+        && let Some(account) =
+            crate::customer_account::CustomerAccount::of_party(&state.db, order.party_id).await?
+    {
+        for source in account.open_sources(&state.db).await? {
+            // A source whose clearing already waits is left alone.
+            match crate::account_hold::request_clearing(
+                &state,
+                user.id,
+                account.id,
+                source.id,
+                get("kind"),
+                get("clear_note"),
+            )
+            .await
+            {
+                Ok(_) | Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _)) => {}
+                Err(error) => return Err(error),
+            }
+        }
+    }
     let key = if done {
         "credit.released"
     } else {

@@ -7,6 +7,8 @@
 //! | `GET /credit/accounts` | `wl_sales.credit_accounts` | `credit.view` |
 //! | `GET /credit/accounts/{party}` | `wl_sales.credit_account` | `credit.view` |
 //! | `POST /credit/accounts` | `wl_sales.credit_account_save` | `credit.limits.approve` |
+//! | `POST /credit/accounts/{party}/clear-hold` | `wl_sales.credit_account_clear` | `credit.release` |
+//! | `GET /credit/clearings/{id}` | `wl_sales.credit_clearing` | `credit.view` |
 //!
 //! The orders on credit hold are the sales order list with `?view=credit_hold`
 //! (`sales_orders.view`); the reason of a hold is shown only to a holder of
@@ -19,9 +21,11 @@ use renox::validation::{Errors, ValidationError};
 use serde::Serialize;
 use wl_kernel::PartyId;
 
+use crate::account_hold;
+use crate::account_hold_clearing::{AccountHoldClearing, ClearingStatus, KINDS};
 use crate::config::config_of;
 use crate::credit;
-use crate::customer_account::{self, CustomerAccount, Terms};
+use crate::customer_account::{self, AccountHoldSource, CustomerAccount, Terms};
 use crate::notices::aed;
 use crate::pages::campaigns::parse_fils;
 use crate::pages::party_name;
@@ -41,7 +45,15 @@ pub fn routes() -> Routes {
                 .name("wl_sales.credit_accounts")
                 .get("/credit/accounts/{party}", show)
                 .name("wl_sales.credit_account")
+                .get("/credit/clearings/{id}", clearing)
+                .name("wl_sales.credit_clearing")
                 .require_permission(permissions::CREDIT_VIEW),
+        )
+        .merge(
+            Routes::new()
+                .post("/credit/accounts/{party}/clear-hold", clear_hold)
+                .name("wl_sales.credit_account_clear")
+                .require_permission(permissions::CREDIT_RELEASE),
         )
         .merge(
             Routes::new()
@@ -153,11 +165,30 @@ pub struct HeldRow {
     pub returns_to: String,
 }
 
+/// One open source of the account's hold as the account page lists it.
+#[derive(Serialize, Debug, Clone)]
+pub struct SourceRow {
+    /// The source's id.
+    pub id: i64,
+    /// What caused it, in words: *Cheque no. 12*.
+    pub what: String,
+    /// Why, in words.
+    pub reason: String,
+    /// Since when, `18 Oct 2026`.
+    pub since: String,
+    /// Why the clear button is disabled (a clearing waits); empty if not.
+    pub blocked: String,
+}
+
 /// What the account page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-sales/credit_account.html")]
 pub(crate) struct ShowPage {
     tx: Texts,
+    sources: Vec<SourceRow>,
+    approvals: Vec<wl_kernel::approvals::ApprovalCard>,
+    can_clear: bool,
+    kinds: Vec<(String, String)>,
     title: String,
     party: i64,
     account: CustomerAccount,
@@ -222,6 +253,23 @@ async fn show(
             ),
         });
     }
+    let open = account.open_sources(&state.db).await?;
+    let mut sources = Vec::new();
+    let mut cards = Vec::new();
+    for source in &open {
+        let waiting = AccountHoldClearing::query()
+            .where_(AccountHoldClearing::HOLD_SOURCE_ID.eq(source.id))
+            .where_(AccountHoldClearing::STATUS.eq(ClearingStatus::PendingApproval))
+            .get(&state.db)
+            .await?;
+        for clearing in &waiting {
+            cards.extend(
+                wl_kernel::approvals::cards_for(&state.db, &clearing.subject(), &user, &lang)
+                    .await?,
+            );
+        }
+        sources.push(source_row(&lang, source, !waiting.is_empty()));
+    }
     let flag = if account.is_on_hold(&state.db).await? {
         text(&lang, "credit.on_hold")
     } else {
@@ -231,8 +279,21 @@ async fn show(
         || text(&lang, "credit.no_limit"),
         |limit| money(limit - exposure.total()),
     );
+    let kinds = KINDS
+        .iter()
+        .map(|kind| {
+            (
+                (*kind).to_owned(),
+                text(&lang, &format!("credit.kind.{kind}")),
+            )
+        })
+        .collect();
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
+        sources,
+        approvals: cards,
+        can_clear: user.has_permission(permissions::CREDIT_RELEASE),
+        kinds,
         title: party_name(&state, &lang, party).await,
         party,
         limit: limit_text(&lang, account.credit_limit),
@@ -266,6 +327,73 @@ async fn show(
             .unwrap_or_default(),
         account,
     }))
+}
+
+/// One open source of a hold as a row.
+fn source_row(lang: &Lang, source: &AccountHoldSource, waiting: bool) -> SourceRow {
+    let what = match source.source_type.as_str() {
+        wl_kernel::cheques::CHEQUE_SUBJECT_TYPE => texts::t_with(
+            lang,
+            "wl_sales.credit.source_cheque",
+            &[("id", &source.source_id)],
+        ),
+        _ => source.source().to_string(),
+    };
+    SourceRow {
+        id: source.id,
+        what,
+        reason: text(lang, &format!("credit.source.{}", source.reason)),
+        since: source
+            .created_at
+            .map(|at| at.format("%-d %b %Y").to_string())
+            .unwrap_or_default(),
+        blocked: if waiting {
+            text(lang, "credit.clear_waiting")
+        } else {
+            String::new()
+        },
+    }
+}
+
+/// `GET /credit/clearings/{id}`: the page of the account a clearing is about
+/// (where the approval card of a request in "Needs your action" leads).
+async fn clearing(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Response> {
+    let found = AccountHoldClearing::find_or_404(&state.db, id).await?;
+    let account = CustomerAccount::find_or_404(&state.db, found.account_id).await?;
+    Ok(Redirect::route("wl_sales.credit_account", &[&account.party_id])?.into_response())
+}
+
+/// `POST /credit/accounts/{party}/clear-hold`: a credit releaser asks to
+/// clear one open source (`source`) of the hold, with `kind` (cheque
+/// replaced, balance paid, other) and a `note`; another releaser approves.
+async fn clear_hold(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(party): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let get = |key: &str| form.get(key).map_or("", |v| v.trim());
+    let account = CustomerAccount::of_party(&state.db, party)
+        .await?
+        .ok_or(Error::NotFound)?;
+    let source: i64 = get("source")
+        .parse()
+        .map_err(|_| invalid("source", text(&lang, "orders.errors.number"), &form))?;
+    account_hold::request_clearing(
+        &state,
+        user.id,
+        account.id,
+        source,
+        get("kind"),
+        get("note"),
+    )
+    .await?;
+    Ok((
+        Toast::success(text(&lang, "credit.clear_requested")),
+        Redirect::route("wl_sales.credit_account", &[&party])?,
+    )
+        .into_response())
 }
 
 /// The reason of a hold in words.

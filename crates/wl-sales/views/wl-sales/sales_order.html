@@ -47,6 +47,9 @@
           <rx-action-sheet id="release-order" :label="tx['credit.release']" :action="route('wl_sales.sales_order_release', order.id)"
                            :title="tx['credit.release']" :description="release.description" :submit-label="tx['credit.release']" variant="primary" icon="unlock">
             <rx-textarea name="note" :label="tx['credit.release_note']" id="release-order-note"/>
+            <rx-checkbox rx-if="release.account_on_hold" name="clear_hold" :label="tx['credit.release_also_clear']" id="release-order-also-clear"/>
+            <rx-select rx-if="release.account_on_hold" name="kind" :label="tx['credit.clear_reason']" :options="release.kinds" :selected="'cheque_replaced'"/>
+            <rx-textarea rx-if="release.account_on_hold" name="clear_note" :label="tx['credit.clear_note']" id="release-order-clear-note"/>
           </rx-action-sheet>
         </template>
       </template>

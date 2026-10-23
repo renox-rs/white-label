@@ -33,6 +33,28 @@
         <rx-entry :label="tx['credit.available']" :value="available"/>
       </rx-infolist>
     </rx-card>
+    <rx-include template="wl-kernel/approval_card.html"/>
+    <rx-table :rows="sources" as="source" :key="source.id" :caption="tx['credit.sources_title']" card>
+      <rx-column :label="tx['credit.source_what']">{{ source.what }}</rx-column>
+      <rx-column :label="tx['credit.hold_reason']" hide-narrow>{{ source.reason }}</rx-column>
+      <rx-column :label="tx['credit.held_on']" hide-narrow>{{ source.since }}</rx-column>
+      <rx-row-actions>
+        <template rx-if="can_clear">
+          <template rx-if="source.blocked">
+            <rx-button :label="tx['credit.clear']" icon="unlock" :disabled-reason="source.blocked"/>
+          </template>
+          <template rx-else>
+            <rx-action-sheet :id="'clear-hold-' ~ source.id" :label="tx['credit.clear']" :action="route('wl_sales.credit_account_clear', party)"
+                             :title="tx['credit.clear']" :description="tx['credit.clear_description']" :submit-label="tx['credit.clear']" icon="unlock">
+              <input type="hidden" name="source" value="{{ source.id }}"/>
+              <rx-select name="kind" :label="tx['credit.clear_reason']" :options="kinds" :selected="'cheque_replaced'"/>
+              <rx-textarea name="note" :label="tx['credit.clear_note']" :id="'clear-hold-note-' ~ source.id"/>
+            </rx-action-sheet>
+          </template>
+        </template>
+      </rx-row-actions>
+      <rx-slot name="empty"><rx-empty :title="tx['credit.no_sources']" icon="check"/></rx-slot>
+    </rx-table>
     <rx-table :rows="held" as="order" :key="order.id" :caption="tx['credit.held_title']" card>
       <rx-column :label="tx['orders.number']"><a href="{{ route('wl_sales.sales_order', order.id) }}">{{ order.number }}</a></rx-column>
       <rx-column :label="tx['credit.value']">{{ order.value }}</rx-column>

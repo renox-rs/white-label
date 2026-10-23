@@ -80,7 +80,37 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "wl_sales.credit.hold_goods_reserved",
         "The goods stay reserved. No dispatch can leave until a credit releaser releases the order.",
     ),
+    (
+        "wl_sales.credit.sources_title",
+        "Why the account is on hold",
+    ),
+    ("wl_sales.credit.source_what", "Caused by"),
+    ("wl_sales.credit.source_cheque", "Bounced cheque no. :id"),
+    ("wl_sales.credit.source.bounced_cheque", "Bounced cheque"),
+    ("wl_sales.credit.no_sources", "The account is not on hold"),
+    ("wl_sales.credit.clear", "Clear account hold"),
+    (
+        "wl_sales.credit.clear_description",
+        "Another credit releaser must approve. Clearing the hold does not release the held orders: release each one.",
+    ),
+    ("wl_sales.credit.clear_reason", "Why is it cleared?"),
+    ("wl_sales.credit.clear_note", "Note (needed for other)"),
+    ("wl_sales.credit.kind.cheque_replaced", "Cheque replaced"),
+    ("wl_sales.credit.kind.balance_paid", "Balance paid"),
+    ("wl_sales.credit.kind.other", "Other"),
+    (
+        "wl_sales.credit.clear_waiting",
+        "A clearing is waiting for approval.",
+    ),
+    (
+        "wl_sales.credit.clear_requested",
+        "Clearing requested. Another credit releaser must approve it.",
+    ),
     ("wl_sales.credit.release", "Release the order"),
+    (
+        "wl_sales.credit.release_also_clear",
+        "Also ask to clear the account hold (another credit releaser must approve it)",
+    ),
     (
         "wl_sales.credit.release_note",
         "Note for the approver (optional)",
@@ -133,6 +163,38 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     (
         "wl_sales.orders.problem.release_pending",
         "A release is already waiting for approval.",
+    ),
+    (
+        "wl_sales.credit.problem.account_on_hold",
+        "Account on hold: this customer cannot buy on account until the hold is cleared. Cash, card or online payment is still possible.",
+    ),
+    (
+        "wl_sales.credit.problem.kind",
+        "Choose why the hold is cleared: cheque replaced, balance paid or other.",
+    ),
+    (
+        "wl_sales.credit.problem.note",
+        "Say why the hold is cleared when the reason is other.",
+    ),
+    (
+        "wl_sales.credit.problem.no_source",
+        "This hold is not open on the account.",
+    ),
+    (
+        "wl_sales.credit.problem.clearing_pending",
+        "A clearing of this hold is already waiting for approval.",
+    ),
+    (
+        "wl_sales.credit.problem.no_policy",
+        "No approval policy is set for clearing an account hold.",
+    ),
+    (
+        "wl_sales.notices.account_on_hold_subject",
+        "{{ customer }} is on hold",
+    ),
+    (
+        "wl_sales.notices.account_on_hold_body",
+        "The account of {{ customer }} is on hold after a bounced cheque ({{ source }}). {{ orders }} order(s) on account were put on credit hold; new orders and counter sales on account are refused until a credit releaser clears the hold with another's approval.",
     ),
     (
         "wl_sales.notices.order_credit_hold_subject",

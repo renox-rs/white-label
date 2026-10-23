@@ -36,6 +36,16 @@ pub fn release_policy() -> PolicyDefault {
     PolicyDefault::new(RELEASE_ACTION).step_permission(permissions::CREDIT_RELEASE)
 }
 
+/// The approval policies' action key of clearing a customer account's hold
+/// (`SAL.ACL.03`, `PLT.APR.01`).
+pub const CLEAR_HOLD_ACTION: &str = "sales.account_hold_clear";
+
+/// The default policy of *Clear account hold*: one step by a holder of
+/// `credit.release`, never the requester.
+pub fn clear_hold_policy() -> PolicyDefault {
+    PolicyDefault::new(CLEAR_HOLD_ACTION).step_permission(permissions::CREDIT_RELEASE)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -51,6 +61,13 @@ mod tests {
     fn a_release_is_decided_by_another_credit_releaser() {
         let expected = PolicyDefault::new("sales.order_release").step_permission("credit.release");
         assert_eq!(release_policy(), expected);
+    }
+
+    #[test]
+    fn clearing_an_account_hold_is_decided_by_another_credit_releaser() {
+        let expected =
+            PolicyDefault::new("sales.account_hold_clear").step_permission("credit.release");
+        assert_eq!(clear_hold_policy(), expected);
     }
 
     #[test]

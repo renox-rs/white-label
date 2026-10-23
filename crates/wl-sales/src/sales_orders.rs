@@ -163,6 +163,11 @@ pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<SalesOrd
     let order = SalesOrder::find_or_404(&state.db, id).await?;
     let lines = SaleLine::of(&state.db, &order.subject()).await?;
     let t = totals(&lines);
+    // `SAL.RUL.05`: an order on account of a customer whose account is on
+    // hold is refused and stays a draft; cash, card and online still pass.
+    if order.is_on_account() && crate::account_hold::is_on_hold(&state.db, order.party_id).await? {
+        return Err(refused("wl_sales.credit.problem.account_on_hold"));
+    }
     let config = config_of(state);
     let credit_gate = config.credit_check
         && order.is_on_account()
