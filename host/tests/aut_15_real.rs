@@ -10,6 +10,7 @@
 mod support;
 
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use support::{auto_booted, company, count_messages, person};
 use wl_inventory::movement::StockMovement;
@@ -227,7 +228,7 @@ async fn aut_15_real_credit_hold_is_skipped_and_the_same_second_goes_by_order_nu
     let held = w.order("phone", &[("P", 3), ("Q", 1)]).await;
     SalesOrder::query()
         .where_(SalesOrder::ID.eq(held.id))
-        .update(w.app.db(), &[("status", &"credit_hold")])
+        .update(w.app.db(), &[("status", &"credit_hold".to_owned())])
         .await
         .unwrap();
     let three = w.order("phone", &[("P", 1), ("Q", 1)]).await;
@@ -265,7 +266,7 @@ async fn aut_15_real_credit_hold_is_skipped_and_the_same_second_goes_by_order_nu
     w.stock(4).await;
     SalesOrder::query()
         .where_(SalesOrder::ID.eq(held.id))
-        .update(w.app.db(), &[("status", &"confirmed")])
+        .update(w.app.db(), &[("status", &"confirmed".to_owned())])
         .await
         .unwrap();
     let reserved = wl_sales::back_orders::order_released(w.app.state(), held.id)

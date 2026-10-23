@@ -230,7 +230,7 @@ async fn sal_17_an_order_on_credit_hold_is_skipped_and_served_at_release() {
     let held = confirmed(&t, "phone", &[("P", 2), ("Q", 1)]).await;
     SalesOrder::query()
         .where_(SalesOrder::ID.eq(held.id))
-        .update(t.db(), &[("status", &"credit_hold")])
+        .update(t.db(), &[("status", &"credit_hold".to_owned())])
         .await
         .unwrap();
     let one = confirmed(&t, "phone", &[("P", 3), ("Q", 1)]).await;
@@ -241,7 +241,7 @@ async fn sal_17_an_order_on_credit_hold_is_skipped_and_served_at_release() {
     stock.add("P", 1_000);
     SalesOrder::query()
         .where_(SalesOrder::ID.eq(held.id))
-        .update(t.db(), &[("status", &"confirmed")])
+        .update(t.db(), &[("status", &"confirmed".to_owned())])
         .await
         .unwrap();
     let reserved = wl_sales::back_orders::order_released(t.state(), held.id)
