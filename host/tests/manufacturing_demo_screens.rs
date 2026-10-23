@@ -91,6 +91,15 @@ fn no_bare_ids(html: &str, url: &str) {
     }
 }
 
+/// A bare `None` (an empty value printed as a word) is never read on a page.
+fn no_none(html: &str, url: &str) {
+    let text = visible(html);
+    let bare = text
+        .split(|c: char| !c.is_alphanumeric())
+        .any(|word| word == "None");
+    assert!(!bare, "{url} prints `None` for an empty value");
+}
+
 /// Every screen of the map answers 200 for its owner, shows visible words
 /// only, and keeps its tables in their wrappers (390 px).
 #[renox::test]
@@ -146,6 +155,19 @@ async fn every_screen_of_the_map_opens_for_its_owner_in_words() {
         if !screen.url.starts_with("/settings/") {
             no_raw_words(&html, &screen.url);
             no_bare_ids(&html, &screen.url);
+            // The stock pages are wl-inventory's; the invoice grids are not.
+            if [
+                "/stock",
+                "/dispatches",
+                "/manufacturing/",
+                "/boms",
+                "/recalls",
+            ]
+            .iter()
+            .any(|prefix| screen.url.starts_with(prefix))
+            {
+                no_none(&html, &screen.url);
+            }
         }
         // The pages of the vertical keep every table in the kit's wrapper;
         // the shared grids (invoices, stock) are the platform's.

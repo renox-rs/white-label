@@ -5,7 +5,7 @@
 /// Every key of the stock screens, with its English text.
 pub(crate) const STOCK_TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.stock.fields.status", "Status"),
-    ("wl_inventory.stock.none", "None"),
+    ("wl_inventory.stock.none", "-"),
     ("wl_inventory.stock.stock.title", "Stock"),
     ("wl_inventory.stock.stock.store", "Store"),
     ("wl_inventory.stock.stock.show", "Show"),
