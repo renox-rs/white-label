@@ -327,3 +327,54 @@ async fn the_page_offers_void_until_the_statement_is_settled() {
         .assert_ok()
         .assert_see("cannot be voided");
 }
+
+/// AC2 (disputed): voiding a statement that is `disputed` closes its open
+/// follow-up task, and the statement is `voided` once the second holder
+/// approves.
+#[renox::test]
+async fn voiding_a_disputed_statement_closes_the_dispute_task() {
+    let w = boot_own_riders().await;
+    let s = staff(&w).await;
+    completed(&w, "ORD-1001", "60.00").await;
+    import(
+        &w,
+        &s.accountant,
+        "AGG-W43",
+        &file(&["ORD-1001,60.00,12.00,0,25.00,23.00,Food was cold"]),
+    )
+    .await
+    .assert_status(303);
+    let st = statement(&w, "AGG-W43").await;
+    w.post(
+        &s.accountant,
+        &format!("/payouts/{}/match", st.id),
+        &[("x", "")],
+    )
+    .await
+    .assert_status(303);
+    let lines = PayoutLine::of_statement(w.db(), st.id).await.unwrap();
+    let field = format!("line_{}", lines[0].id);
+    w.post(
+        &s.accountant,
+        &format!("/payouts/{}/dispute", st.id),
+        &[("reason", "Commission is wrong"), (field.as_str(), "on")],
+    )
+    .await
+    .assert_status(303);
+    assert_eq!(reload(&w, &st).await.status, PayoutStatus::Disputed);
+    let key = format!("fnb.payout_dispute:{}", st.id);
+    assert_eq!(w.tickets.opened_with(&key).len(), 1, "a follow-up task");
+    assert!(w.tickets.closed().is_empty());
+
+    void(&w, &s.accountant, st.id, "wrong week").await;
+    let requests = ApprovalRequest::pending_about(w.db(), &st.subject())
+        .await
+        .unwrap();
+    assert_eq!(requests.len(), 1);
+    approvals::approve(w.state(), requests[0].id, &s.approver, "")
+        .await
+        .unwrap();
+
+    assert_eq!(reload(&w, &st).await.status, PayoutStatus::Voided);
+    assert_eq!(w.tickets.closed().len(), 1, "the dispute task is closed");
+}
