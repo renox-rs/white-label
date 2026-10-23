@@ -19,6 +19,7 @@ use auto::{Emirate, JobCard, JobCardStatus, LineStatus, PartLine, WorkStatus, pa
 use host::roles::{BRANCH_MANAGER, SERVICE_ADVISOR, TECHNICIAN};
 use renox::chrono::TimeDelta;
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use support::{company, person, tenant};
 use wl_inventory::movement::StockMovement;
