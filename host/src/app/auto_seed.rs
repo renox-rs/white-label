@@ -225,12 +225,16 @@ pub struct Installed {
     pub service_types: usize,
     /// Ticket categories created.
     pub categories: usize,
+    /// What the shared settings stored (BL-AUT-18): lead sources turned off,
+    /// checklists, SOPs, send windows, the loyalty programme, notification
+    /// reactions and budget category owners.
+    pub settings: usize,
 }
 
 impl Installed {
     /// Everything created.
     pub fn total(&self) -> usize {
-        self.service_types + self.categories
+        self.service_types + self.categories + self.settings
     }
 }
 
@@ -252,6 +256,9 @@ pub async fn install(state: &AppState) -> Result<Installed> {
     if on("ticketing") {
         installed.categories = install_categories(&state.db).await?;
     }
+    installed.settings = super::auto_settings::install_for(state, &on)
+        .await?
+        .total();
     Ok(installed)
 }
 
@@ -324,6 +331,25 @@ impl Module for AutoSeed {
             |_args, state: AppState| async move {
                 let installed = install(&state).await?;
                 println!("{} Auto defaults created.", installed.total());
+                Ok(())
+            },
+        );
+        app.command(
+            "auto:storage-fee",
+            "Switch the storage fee of uncollected vehicles on or off (AUT.RUL.18)",
+            |args, state: AppState| async move {
+                let on = match args.positional().first().copied() {
+                    Some("on") => true,
+                    Some("off") => false,
+                    _ => {
+                        return Err(Error::Status(
+                            StatusCode::UNPROCESSABLE_ENTITY,
+                            "usage: auto:storage-fee on|off".to_owned(),
+                        ));
+                    }
+                };
+                super::auto_settings::set_storage_fee(&state.db, on).await?;
+                println!("The storage fee is {}.", if on { "on" } else { "off" });
                 Ok(())
             },
         );

@@ -192,6 +192,8 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // of a manpower agency (BL-MPW-20); the accountant of 04 does not.
     app::manpower_seed::grant_roles(&client_app);
     app::auto_seed::grant_roles(&client_app);
+    // The SMS gateway of an Auto workshop and its manual fallback (BL-AUT-18).
+    app::auto_settings::register_integrations(&client_app);
     // The owner of an EdTech centre decides the override of a document block
     // (BL-EDU-17).
     app::edtech_settings::grant_roles(&client_app);
@@ -375,6 +377,8 @@ fn enable(
         "notify" => {
             let module = if client_app == app::edtech_seed::EDTECH {
                 app::edtech_settings::notify_for()
+            } else if client_app == app::auto_seed::AUTO {
+                app::auto_settings::notify_for()
             } else {
                 app::clinics_seed::notify_for(client_app)
             };
