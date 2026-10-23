@@ -9,6 +9,7 @@ use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::Subject;
 use wl_kernel::documents::{dubai_date, today};
+use wl_kernel::inventory::{LOT_SUBJECT_TYPE, ReturnedGoods, lot_trace};
 use wl_kernel::sales::{
     COUNTER_SALE_SUBJECT_TYPE, ReturnResolved, ReturnReversed, SALES_ORDER_SUBJECT_TYPE,
 };
@@ -40,6 +41,8 @@ pub struct NewReturn {
     pub lines: Vec<(i64, i64)>,
     /// The user who requests it.
     pub requested_by: Option<i64>,
+    /// The lot a customer presents for a sale line: (sale line, lot id).
+    pub lots: Vec<(i64, i64)>,
 }
 
 impl NewReturn {
@@ -51,6 +54,7 @@ impl NewReturn {
             reason: String::new(),
             lines: Vec::new(),
             requested_by: None,
+            lots: Vec::new(),
         }
     }
 
@@ -69,6 +73,12 @@ impl NewReturn {
     /// Taking back `quantity_milli` of the sale line `line`.
     pub fn line(mut self, line: i64, quantity_milli: i64) -> Self {
         self.lines.push((line, quantity_milli));
+        self
+    }
+
+    /// The customer presents lot `lot_id` for the sale line `line`.
+    pub fn lot(mut self, line: i64, lot_id: i64) -> Self {
+        self.lots.push((line, lot_id));
         self
     }
 
@@ -153,6 +163,13 @@ pub async fn request(state: &AppState, new: NewReturn) -> Result<SalesReturn> {
         vat += ratio_half_up(line.vat(), *quantity, line.quantity_milli);
         eligible += line.eligible_net_of(*quantity);
     }
+    if new
+        .lots
+        .iter()
+        .any(|(line, _)| !new.lines.iter().any(|(other, _)| other == line))
+    {
+        return Err(refused("wl_sales.returns.problem.unknown_line"));
+    }
     let number = RETURN_SERIES
         .next_allowing_gaps(&state.db, None, None, today())
         .await?;
@@ -175,12 +192,18 @@ pub async fn request(state: &AppState, new: NewReturn) -> Result<SalesReturn> {
     )
     .await?;
     for (line_id, quantity) in new.lines {
+        let lot_id = new
+            .lots
+            .iter()
+            .find(|(line, _)| *line == line_id)
+            .map(|(_, lot)| *lot);
         SalesReturnLine::create(
             &state.db,
             SalesReturnLine {
                 return_id: created.id,
                 sale_line_id: line_id,
                 quantity_milli: quantity,
+                lot_id,
                 ..SalesReturnLine::default()
             },
         )
@@ -203,8 +226,45 @@ async fn sale_date(state: &AppState, r: &SalesReturn) -> Result<NaiveDate> {
     Ok(at.map_or_else(today, dubai_date))
 }
 
+/// The goods of `r` that are under a recall (BL-SAL-15), each with the recall
+/// it is in: a lot in the scope of an open recall, or an item not tracked by
+/// lot that is in an open recall by received dates and was sold inside its
+/// trace window (`on` is the day of the sale).
+async fn recalled_goods(
+    state: &AppState,
+    r: &SalesReturn,
+    on: NaiveDate,
+) -> Result<(Vec<(ReturnedGoods, Subject)>, usize)> {
+    let lines = r.lines(&state.db).await?;
+    let trace = lot_trace(state);
+    let mut found = Vec::new();
+    for line in &lines {
+        let Some(sold) = SaleLine::find(&state.db, line.sale_line_id).await? else {
+            continue;
+        };
+        let mut goods = ReturnedGoods::new(&sold.item_code, line.quantity_milli, r.subject())
+            .sold_on(on);
+        if let Some(lot_id) = line.lot_id {
+            goods = goods.lot(Subject::new(LOT_SUBJECT_TYPE, lot_id));
+        }
+        if let Some(recall) = trace.recall_of(state, &goods).await? {
+            found.push((goods, recall));
+        }
+    }
+    Ok((found, lines.len()))
+}
+
 /// The goods of return `id` are back (`receive`); `approved` accepts them
-/// outside the return window.
+/// outside the return window. Goods under an open recall are always accepted
+/// (no approval, whatever the window): they go to quarantine and onto the
+/// recall's stock hold through the kernel's `LotTrace`, the return links to the
+/// recall, and the recall decides their outcome (BL-SAL-15). Resolving such a
+/// return credits or refunds the customer but never restores stock
+/// ([`SalesReturn::stock_follows_the_return`]).
+///
+/// A return with some lines under a recall and some not needs the approval for
+/// the window as before; only the recalled lines join the hold. Receiving the
+/// ordinary lines into quarantine is BL-SAL-22's.
 pub async fn receive(
     state: &AppState,
     by: &AuthUser,
@@ -213,10 +273,11 @@ pub async fn receive(
 ) -> Result<SalesReturn> {
     let r = SalesReturn::find_or_404(&state.db, id).await?;
     let on = sale_date(state, &r).await?;
+    let (recalled, total) = recalled_goods(state, &r, on).await?;
     let input = ReceiveInput {
         days_since_sale: (today() - on).num_days(),
         window_days: config_of(state).return_window_days,
-        approved,
+        approved: approved || (total > 0 && recalled.len() == total),
     };
     let _ = r
         .transition(RECEIVE)
@@ -225,6 +286,19 @@ pub async fn receive(
         .run(state)
         .await
         .map_err(|e| e.into_error())?;
+    let trace = lot_trace(state);
+    let mut joined = None;
+    for (goods, recall) in &recalled {
+        if trace.receive_returned(state, recall, goods).await? {
+            joined = joined.or(Some(recall.subject_id));
+        }
+    }
+    if let Some(recall_id) = joined {
+        SalesReturn::query()
+            .where_(SalesReturn::ID.eq(id))
+            .update(&state.db, &[("recall_id", &Some(recall_id))])
+            .await?;
+    }
     SalesReturn::find_or_404(&state.db, id).await
 }
 

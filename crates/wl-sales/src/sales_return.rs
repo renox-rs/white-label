@@ -109,6 +109,9 @@ pub struct SalesReturn {
     pub eligible_net: i64,
     /// The credit note issued for it.
     pub credit_note_id: Option<i64>,
+    /// The recall (`inventory.recall:N`) the goods joined when they were
+    /// received (BL-SAL-15): the recall, not the return, decides their outcome.
+    pub recall_id: Option<i64>,
     /// The complaint category (no goods).
     pub complaint_category: Option<String>,
     /// The responsible party (no goods).
@@ -150,6 +153,18 @@ impl SalesReturn {
     /// The customer, when the sale names one.
     pub fn party(&self) -> Option<PartyId> {
         self.party_id.map(PartyId)
+    }
+
+    /// The recall the goods joined, as a kernel subject.
+    pub fn recall(&self) -> Option<Subject> {
+        self.recall_id
+            .map(|id| Subject::new(wl_kernel::inventory::RECALL_SUBJECT_TYPE, id))
+    }
+
+    /// Whether resolving the return restores or writes off stock: not for
+    /// goods under a recall, which the recall decides (BL-SAL-15).
+    pub fn stock_follows_the_return(&self) -> bool {
+        self.recall_id.is_none()
     }
 
     /// The returns of the sale `sale`, oldest first.
@@ -197,6 +212,9 @@ pub struct SalesReturnLine {
     pub sale_line_id: i64,
     /// The quantity, in thousandths.
     pub quantity_milli: i64,
+    /// The lot (`inventory.lot:N`, its id) the customer presents, for an item
+    /// tracked by lot: a lot under an open recall is recalled goods.
+    pub lot_id: Option<i64>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
