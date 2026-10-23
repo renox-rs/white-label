@@ -30,7 +30,8 @@ use wl_kernel::documents::{
     NoDocuments, RecordFlag, Validity,
 };
 use wl_kernel::inventory::{
-    DispatchDelivered, DispatchLost, DispatchReversed, DispatchSent, GoodsReceived,
+    DispatchDelivered, DispatchDiscarded, DispatchGoodsQuarantined, DispatchLost, DispatchReturned,
+    DispatchReversed, DispatchSent, GoodsReceived,
     LandedCostAdjusted, LandedCostAllocated, LotDiscarded, LotHeld, LotReleased,
     PendingIssueClosed, PreferredSupplierChanged, PurchaseOrderRevised, RecallClosed, RecallOpened,
     RecallTraced, StockHoldClosed, StockHoldPlaced, StockNegative, SupplierReturnCredited,
@@ -840,6 +841,9 @@ struct Fakes {
     delivered: Arc<Mutex<Vec<DispatchDelivered>>>,
     lost: Arc<Mutex<Vec<DispatchLost>>>,
     reopened: Arc<Mutex<Vec<DispatchReversed>>>,
+    discarded_dispatches: Arc<Mutex<Vec<DispatchDiscarded>>>,
+    returned: Arc<Mutex<Vec<DispatchReturned>>>,
+    quarantined: Arc<Mutex<Vec<DispatchGoodsQuarantined>>>,
     credit: CreditDesk,
     deliveries: DeliveryDesk,
 }
@@ -884,6 +888,9 @@ impl Module for Fakes {
         record(app, &self.delivered);
         record(app, &self.lost);
         record(app, &self.reopened);
+        record(app, &self.discarded_dispatches);
+        record(app, &self.returned);
+        record(app, &self.quarantined);
         wl_kernel::sales::provide_credit_checker(app, self.credit.clone());
         wl_kernel::delivery::provide_requester(app, self.deliveries.clone());
         wl_kernel::inventory::provide_trace_party_resolver(app, self.trace_parties.clone());
@@ -967,6 +974,12 @@ pub struct Booted {
     pub lost: Recorded<DispatchLost>,
     /// Every `DispatchReversed`.
     pub reopened: Recorded<DispatchReversed>,
+    /// Every `DispatchDiscarded`.
+    pub discarded_dispatches: Recorded<DispatchDiscarded>,
+    /// Every `DispatchReturned`.
+    pub returned: Recorded<DispatchReturned>,
+    /// Every `DispatchGoodsQuarantined`.
+    pub quarantined: Recorded<DispatchGoodsQuarantined>,
     /// The credit control of the orders on account.
     pub credit: CreditDesk,
     /// The deliveries asked of wl-delivery.
@@ -2012,6 +2025,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     let delivered = Arc::new(Mutex::new(Vec::new()));
     let lost = Arc::new(Mutex::new(Vec::new()));
     let reopened = Arc::new(Mutex::new(Vec::new()));
+    let discarded_dispatches = Arc::new(Mutex::new(Vec::new()));
+    let returned = Arc::new(Mutex::new(Vec::new()));
+    let quarantined = Arc::new(Mutex::new(Vec::new()));
     let credit = CreditDesk::default();
     let deliveries = DeliveryDesk::default();
     // What wl-parties registers: an exception to a block is decided by the
@@ -2076,6 +2092,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         delivered: delivered.clone(),
         lost: lost.clone(),
         reopened: reopened.clone(),
+        discarded_dispatches: discarded_dispatches.clone(),
+        returned: returned.clone(),
+        quarantined: quarantined.clone(),
         credit: credit.clone(),
         deliveries: deliveries.clone(),
     });
@@ -2229,6 +2248,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         delivered: Recorded(delivered),
         lost: Recorded(lost),
         reopened: Recorded(reopened),
+        discarded_dispatches: Recorded(discarded_dispatches),
+        returned: Recorded(returned),
+        quarantined: Recorded(quarantined),
         credit,
         deliveries,
         clock_days: std::sync::atomic::AtomicI64::new(0),
@@ -2438,6 +2460,39 @@ impl Booted {
                 run: None,
                 claim_ticket: None,
                 lines: Vec::new(),
+            })
+            .await
+            .unwrap();
+    }
+
+    /// `DeliveryDiscarded` for the delivery of `dispatch`.
+    pub async fn emit_discarded(
+        &self,
+        dispatch: &wl_inventory::Dispatch,
+        reason: &str,
+        photo: Option<&str>,
+    ) {
+        self.state()
+            .emit(wl_kernel::delivery::DeliveryDiscarded {
+                delivery: DeliveryId(1),
+                source: dispatch.subject(),
+                reason: reason.to_owned(),
+                photo: photo.map(str::to_owned),
+                wastage: None,
+                value: 0,
+                lines: Vec::new(),
+            })
+            .await
+            .unwrap();
+    }
+
+    /// `DeliveryReturned` for the delivery of `dispatch`.
+    pub async fn emit_returned(&self, dispatch: &wl_inventory::Dispatch, reason: &str) {
+        self.state()
+            .emit(wl_kernel::delivery::DeliveryReturned {
+                delivery: DeliveryId(1),
+                source: dispatch.subject(),
+                reason: reason.to_owned(),
             })
             .await
             .unwrap();

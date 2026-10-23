@@ -16,9 +16,11 @@ mod dispatch_deliver_pages;
 pub mod dispatch_directory;
 mod dispatch_events;
 pub mod dispatch_guard;
+pub mod dispatch_discard;
 pub mod dispatch_loss;
 mod dispatch_pages;
 pub mod dispatch_pick;
+pub mod dispatch_return;
 pub mod dispatch_reverse;
 mod dispatch_screens;
 pub mod dispatch_send;
@@ -768,6 +770,8 @@ impl Module for WlInventory {
         dispatch_events::register(app);
         dispatch_deliver::register(app);
         dispatch_loss::register(app);
+        dispatch_discard::register(app);
+        dispatch_return::register(app);
         dispatch_reverse::register(app);
         // BL-STK-26: a cancelled order line gives its goods back or scraps them.
         sales_cancel::register(app);

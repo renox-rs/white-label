@@ -48,7 +48,10 @@ use renox::state_machine::Transitioned;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::delivery::DeliveryDelivered;
-use wl_kernel::inventory::DispatchDelivered;
+use wl_kernel::Subject;
+use wl_kernel::inventory::{
+    DispatchDelivered, DispatchGoodsQuarantined, ITEM_SUBJECT_TYPE, LOT_SUBJECT_TYPE, QuarantinedLine,
+};
 use wl_kernel::invoicing::{PostCost, post_cost};
 use wl_kernel::tickets::{Assignee, OpenTicket, TASK_CATEGORY, task_creator};
 
@@ -338,6 +341,8 @@ pub struct ReceivedOutcome {
     pub missing_milli: i64,
     /// The value written off, in fils.
     pub loss_fils: i64,
+    /// What was posted into quarantine: the line and the quantity.
+    pub quarantined: Vec<(i64, i64)>,
 }
 
 /// Takes the refused goods of dispatch `id` back: `return_in` into
@@ -441,6 +446,9 @@ pub async fn receive_refused(
             )
             .await?;
         outcome.received_milli += entry.received_milli;
+        if entry.received_milli > 0 {
+            outcome.quarantined.push((line.id, entry.received_milli));
+        }
         if entry.missing_milli > 0 {
             outcome.missing_milli += entry.missing_milli;
             outcome.loss_fils += value_of(entry.missing_milli, line.unit_cost);
@@ -462,7 +470,45 @@ pub async fn receive_refused(
     if outcome.missing_milli > 0 {
         open_missing_task(state, &dispatch, &outcome).await?;
     }
+    if !outcome.quarantined.is_empty() {
+        announce_quarantine(state, &dispatch, &outcome).await?;
+    }
     Ok(outcome)
+}
+
+/// Says that refused goods were booked into quarantine
+/// (`DispatchGoodsQuarantined`), so a vertical can inspect each lot.
+async fn announce_quarantine(
+    state: &AppState,
+    dispatch: &Dispatch,
+    outcome: &ReceivedOutcome,
+) -> Result<()> {
+    let lines = lines_of(&state.db, dispatch.id).await?;
+    let booked: Vec<QuarantinedLine> = outcome
+        .quarantined
+        .iter()
+        .filter_map(|(id, quantity)| {
+            let line = lines.iter().find(|line| line.id == *id)?;
+            Some(QuarantinedLine {
+                line: line.subject(),
+                item: Subject::new(ITEM_SUBJECT_TYPE, line.item_id),
+                lot: line.lot_id.map(|id| Subject::new(LOT_SUBJECT_TYPE, id)),
+                source_line: line.source_line(),
+                quantity_milli: *quantity,
+                reason: line.refusal_reason.clone(),
+            })
+        })
+        .collect();
+    state
+        .emit(DispatchGoodsQuarantined {
+            dispatch: dispatch.subject(),
+            source: dispatch.source(),
+            recipient: recipient(dispatch),
+            returned: false,
+            complaint: None,
+            lines: booked,
+        })
+        .await
 }
 
 /// The dispatcher's task for goods missing on return: one open task per

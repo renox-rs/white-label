@@ -6,6 +6,7 @@
 //!                   \--cancel--> cancelled   \--cancel--> cancelled
 //! dispatched --mark_lost--> lost --found--> dispatched
 //! delivered --mark_lost--> lost        delivered --reverse--> dispatched
+//! dispatched --return--> returned      dispatched --discard--> discarded
 //! ```
 //!
 //! What is built here, with the issue that asked for it:
@@ -18,6 +19,8 @@
 //! | `confirm_delivery` per line and the refused goods received back into quarantine | [`crate::dispatch_deliver`] | #241 |
 //! | `mark_lost` and `found` (the loss pending the claim) | [`crate::dispatch_loss`] | #243 |
 //! | `reverse` (a delivery reversal reopens the dispatch) | [`crate::dispatch_reverse`] | #244 |
+//! | `discard` (a perishable dispatch destroyed by wl-delivery: wastage, no movement) | [`crate::dispatch_discard`] | #242 |
+//! | `return` (a dispatch that came back: whole quantity into quarantine, a complaint ticket) | [`crate::dispatch_return`] | the returned delivery of #388 and #132 |
 //! | the kernel events and the listeners of `wl-delivery`'s events | [`crate::dispatch_events`] | all |
 //! | `cancel_by_system`, `started_lines`, the sale line a line fulfils | [`crate::dispatch_pick`], this file | BL-STK-26 (#245) |
 //!
@@ -25,11 +28,6 @@
 //! `Dispatch` is this one. The sale line a dispatch line fulfils is its source
 //! line of type [`SALE_LINE_SUBJECT_TYPE`] (the base's `sale_line_id`, moved by
 //! migration `20261114000000`); `cancel` needs a reason, as the base's did.
-//!
-//! Not built here: `return` (comes with the dispatch return issue) and
-//! `discard` (BL-STK-23, #242, which needs `DeliveryDiscarded` of BL-DLV-07).
-//! The states `returned` and `discarded` are declared so those issues add only
-//! their transitions.
 //!
 //! *Reserved* stock: the lines of the dispatches that are `picked` at their
 //! location count as reserved in [`crate::balance::reserved_at`]; a dispatch
@@ -198,6 +196,16 @@ pub struct Dispatch {
     pub loss_open: bool,
     /// Why it was cancelled.
     pub cancel_reason: Option<String>,
+    /// Why it came back (`return`).
+    pub return_reason: Option<String>,
+    /// The complaint ticket the return opened (`wl-ticketing`).
+    pub complaint_ticket_id: Option<i64>,
+    /// Why it was discarded (`discard`).
+    pub discard_reason: Option<String>,
+    /// The photo of the discarded goods.
+    pub discard_photo: Option<String>,
+    /// The value posted as wastage, in fils.
+    pub discard_fils: i64,
     /// The user who made it.
     pub created_by: Option<i64>,
     /// When the row was created.
@@ -564,6 +572,8 @@ impl StateMachine for Dispatch {
         let machine = crate::dispatch_send::add_to(machine);
         let machine = crate::dispatch_deliver::add_to(machine);
         let machine = crate::dispatch_loss::add_to(machine);
+        let machine = crate::dispatch_discard::add_to(machine);
+        let machine = crate::dispatch_return::add_to(machine);
         crate::dispatch_reverse::add_to(machine)
     }
 }

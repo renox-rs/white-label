@@ -149,6 +149,14 @@ pub(crate) const DISPATCH_TEXTS: &[(&str, &str)] = &[
         "wl_inventory.dispatch.missing_approval",
         "The loss is above the limit: a second person must approve it (STK.ACL.02).",
     ),
+    (
+        "wl_inventory.dispatch.complaint_title",
+        "Returned delivery: dispatch {{ number }}",
+    ),
+    (
+        "wl_inventory.dispatch.complaint_body",
+        "Dispatch {{ number }} came back. Reason: {{ reason }}. The goods are in quarantine and wait for an inspection; sales decides whether to deliver again or cancel.",
+    ),
     // Words.
     ("wl_inventory.dispatch.ui.status.draft", "Draft"),
     ("wl_inventory.dispatch.ui.status.picked", "Picked"),
@@ -248,6 +256,21 @@ pub(crate) const DISPATCH_TEXTS: &[(&str, &str)] = &[
         "The goods are not sent and the reservation is released.",
     ),
     ("wl_inventory.dispatch.ui.cancel_reason", "Why"),
+    ("wl_inventory.dispatch.ui.return", "Return"),
+    (
+        "wl_inventory.dispatch.ui.return_description",
+        "The goods came back to the store. They go into quarantine and a complaint is opened.",
+    ),
+    ("wl_inventory.dispatch.ui.return_reason", "Why it came back"),
+    ("wl_inventory.dispatch.ui.returned_done", "The dispatch is returned."),
+    (
+        "wl_inventory.dispatch.ui.discarded_note",
+        "Destroyed after a failed delivery: {{ value }} written off as wastage. {{ reason }}",
+    ),
+    (
+        "wl_inventory.dispatch.ui.returned_note",
+        "Came back: {{ reason }}. The goods are in quarantine.",
+    ),
     ("wl_inventory.dispatch.ui.confirm", "Confirm delivery"),
     (
         "wl_inventory.dispatch.ui.confirm_description",

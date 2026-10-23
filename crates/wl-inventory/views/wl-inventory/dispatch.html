@@ -62,6 +62,12 @@
           </rx-action-sheet>
         </template>
       </template>
+      <template rx-if="actions.return_back.shown">
+        <rx-action-sheet id="return-dispatch" :label="tx['return']" :action="route('wl_inventory.dispatch_return', id)"
+                         :title="tx['return']" :description="tx['return_description']" :submit-label="tx['return']" icon="undo-2" danger>
+          <rx-input name="reason" :label="tx['return_reason']" id="return-dispatch-reason" required/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="actions.cancel.shown">
         <rx-action-sheet id="cancel-dispatch" :label="tx['cancel']" :action="route('wl_inventory.dispatch_cancel', id)"
                          :title="tx['cancel']" :description="tx['cancel_description']" :submit-label="tx['cancel']" icon="circle-x" danger>

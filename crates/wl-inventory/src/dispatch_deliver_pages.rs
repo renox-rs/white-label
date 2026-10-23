@@ -6,6 +6,7 @@
 //! |---|---|---|
 //! | `POST /dispatches/{id}/confirm` | `wl_inventory.dispatch_confirm` | `dispatch.manage` at the location |
 //! | `POST /dispatches/{id}/refused-back` | `wl_inventory.dispatch_refused_back` | `dispatch.manage` at the location |
+//! | `POST /dispatches/{id}/return` | `wl_inventory.dispatch_return` | `dispatch.manage` at the location (field `reason`) |
 //!
 //! The routes carry no permission guard of their own (the guard counts global
 //! roles only); the transition and the handler check it in the scope of the
@@ -30,6 +31,8 @@ pub fn routes() -> Routes {
         .name("wl_inventory.dispatch_confirm")
         .post("/dispatches/{id}/refused-back", refused_back)
         .name("wl_inventory.dispatch_refused_back")
+        .post("/dispatches/{id}/return", return_back)
+        .name("wl_inventory.dispatch_return")
         .require_auth()
 }
 
@@ -106,4 +109,20 @@ async fn refused_back(
     }
     receive_refused(&state, Some(user.id), id, &entries, true).await?;
     Ok(done(&lang, "received"))
+}
+
+/// `POST /dispatches/{id}/return`: the goods of a dispatch that left came
+/// back; they go into quarantine and a complaint is opened.
+async fn return_back(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let reason = form.get("reason").map_or("", |reason| reason.trim());
+    crate::dispatch_return::return_dispatch(&state, &user, id, reason)
+        .await
+        .map_err(failed)?;
+    Ok(done(&lang, "returned_done"))
 }

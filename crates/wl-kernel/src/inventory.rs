@@ -1760,6 +1760,92 @@ pub struct DispatchReversed {
 
 impl Event for DispatchReversed {}
 
+/// A dispatch came back (`return`, `DispatchReturned`): refused or returned
+/// whole. Its goods are in quarantine and a complaint ticket was opened; the
+/// source keeps its reservation request and tells the rep and the customer
+/// (wl-sales `return_delivery`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchReturned {
+    /// The dispatch.
+    pub dispatch: Subject,
+    /// The record it fulfils.
+    pub source: Subject,
+    /// The recipient, when it is a party.
+    pub recipient: Option<PartyId>,
+    /// Why it came back.
+    pub reason: String,
+    /// The complaint ticket opened by the return, when ticketing is on.
+    #[serde(default)]
+    pub complaint: Option<Subject>,
+    /// The lines.
+    pub lines: Vec<DispatchedLine>,
+}
+
+impl Event for DispatchReturned {}
+
+/// A perishable dispatch was destroyed after a failed attempt (`discard`,
+/// `DispatchDiscarded`): its value went to wastage and no stock moved.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchDiscarded {
+    /// The dispatch.
+    pub dispatch: Subject,
+    /// The record it fulfils.
+    pub source: Subject,
+    /// The recipient, when it is a party.
+    pub recipient: Option<PartyId>,
+    /// The reason the driver gave.
+    pub reason: String,
+    /// The photo of the discarded goods.
+    pub photo: Option<String>,
+    /// The value posted as wastage, in fils.
+    pub value: i64,
+    /// The lines.
+    pub lines: Vec<DispatchedLine>,
+}
+
+impl Event for DispatchDiscarded {}
+
+/// Goods of a dispatch that came back and were booked into quarantine: the
+/// whole quantity of a returned dispatch, or the refused quantity received
+/// back at run close (`DeliveryRefusedReceived`, or by hand for a courier).
+/// The vertical inspects each lot (07 `MFG.RUL.10`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchGoodsQuarantined {
+    /// The dispatch.
+    pub dispatch: Subject,
+    /// The record it fulfils.
+    pub source: Subject,
+    /// The recipient, when it is a party.
+    pub recipient: Option<PartyId>,
+    /// Whether the whole dispatch came back (`return`); false for refused
+    /// lines of a delivered dispatch.
+    pub returned: bool,
+    /// The complaint ticket of a returned dispatch, when there is one.
+    #[serde(default)]
+    pub complaint: Option<Subject>,
+    /// What was booked: one entry per line.
+    pub lines: Vec<QuarantinedLine>,
+}
+
+impl Event for DispatchGoodsQuarantined {}
+
+/// The quantity of one dispatch line booked into quarantine.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuarantinedLine {
+    /// The dispatch line, `inventory.dispatch_line:4`.
+    pub line: Subject,
+    /// The item.
+    pub item: Subject,
+    /// The lot the goods were picked from (and are held as in quarantine).
+    pub lot: Option<Subject>,
+    /// The line of the source it fulfils (a sales order line).
+    pub source_line: Option<Subject>,
+    /// The quantity booked, in thousandths.
+    pub quantity_milli: i64,
+    /// The refusal or return reason.
+    pub reason: Option<String>,
+}
+
 /// A dispatch as the verticals read it (wl-inventory §6 `DispatchDirectory`):
 /// who it goes to, where it stands and what is on it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

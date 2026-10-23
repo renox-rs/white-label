@@ -243,6 +243,7 @@ pub struct Actions {
     cancel: Act,
     confirm: Act,
     receive_back: Act,
+    return_back: Act,
 }
 
 /// One line of the record page.
@@ -437,6 +438,11 @@ async fn show(
             } else {
                 Act::hidden()
             },
+            return_back: if manage && status == DispatchStatus::Dispatched {
+                Act::ready()
+            } else {
+                Act::hidden()
+            },
             receive_back: if manage
                 && matches!(
                     status,
@@ -461,6 +467,27 @@ async fn show(
             String::new()
         };
         let mut notes = alerts;
+        if status == DispatchStatus::Discarded {
+            notes.push(said(
+                "wl_inventory.dispatch.ui.discarded_note",
+                &[
+                    ("value", &crate::po_revise::money_text(dispatch.discard_fils)),
+                    (
+                        "reason",
+                        dispatch.discard_reason.as_deref().unwrap_or_default(),
+                    ),
+                ],
+            ));
+        }
+        if status == DispatchStatus::Returned {
+            notes.push(said(
+                "wl_inventory.dispatch.ui.returned_note",
+                &[(
+                    "reason",
+                    dispatch.return_reason.as_deref().unwrap_or_default(),
+                )],
+            ));
+        }
         if in_return > 0 && status != DispatchStatus::Picked {
             let unit = rows.first().map(|row| row.unit.clone()).unwrap_or_default();
             let quantity = quantity_with_unit(in_return, &unit);
