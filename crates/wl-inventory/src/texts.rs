@@ -886,6 +886,14 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.recall.no_receipt",
         "No receipt of {{ item }} from that supplier falls in the received date range: check the item, the supplier and the dates.",
     ),
+    (
+        "wl_inventory.recall.return_item",
+        "{{ item }} is not an item of the stock: the returned goods cannot join the recall.",
+    ),
+    (
+        "wl_inventory.recall.return_hold",
+        "The stock hold of this recall is not open: the returned goods cannot join it.",
+    ),
     ("wl_inventory.recall.opened", "Recall opened."),
     (
         "wl_inventory.recall.opened_subject",

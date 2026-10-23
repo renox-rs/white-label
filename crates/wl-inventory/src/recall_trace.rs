@@ -836,6 +836,32 @@ impl LotTrace for InventoryTrace {
         })
     }
 
+    fn recall_of<'a>(
+        &'a self,
+        state: &'a AppState,
+        goods: &'a wl_kernel::inventory::ReturnedGoods,
+    ) -> TraceFuture<'a, Option<Subject>> {
+        Box::pin(async move {
+            Ok(crate::recall_return::recall_of(&state.db, goods)
+                .await?
+                .map(|recall| recall.subject()))
+        })
+    }
+
+    fn receive_returned<'a>(
+        &'a self,
+        state: &'a AppState,
+        recall: &'a Subject,
+        goods: &'a wl_kernel::inventory::ReturnedGoods,
+    ) -> TraceFuture<'a, bool> {
+        Box::pin(async move {
+            if recall.subject_type != RECALL_SUBJECT_TYPE {
+                return Ok(false);
+            }
+            crate::recall_return::receive_returned(&state.db, recall.subject_id, goods).await
+        })
+    }
+
     fn places<'a>(
         &'a self,
         state: &'a AppState,

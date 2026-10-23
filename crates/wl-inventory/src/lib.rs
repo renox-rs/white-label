@@ -32,6 +32,7 @@ pub mod recall_close;
 pub mod recall_line;
 pub mod recall_notice;
 mod recall_pages;
+pub mod recall_return;
 mod recall_screens;
 pub mod recall_trace;
 pub mod receipt_post;
