@@ -352,3 +352,47 @@ async fn the_dashboard_shows_the_figures_of_the_centre() {
         .assert_dont_see("Enrolments waiting for payment")
         .assert_dont_see("Certificates to issue");
 }
+
+/// The enrolment form refuses in sentences: a package without its sessions, an
+/// amount that is not a number.
+#[renox::test]
+async fn the_enrolment_form_refuses_in_words() {
+    let w = boot().await;
+    let (dina_user, _) = w.staff("Dina", COUNSELLOR).await;
+    let sara = tenant(&w.app, "Sara Ali").await;
+    w.app.acting_as(&dina_user);
+    let student = sara.0.to_string();
+    w.app
+        .htmx()
+        .post(
+            "/edtech/enrolments",
+            &[
+                ("kind", "package"),
+                ("student", student.as_str()),
+                ("item_code", "PT-8"),
+                ("price", "2400"),
+            ],
+        )
+        .await
+        .assert_status(422)
+        .assert_see("at least one session");
+    w.app
+        .htmx()
+        .post(
+            "/edtech/enrolments",
+            &[
+                ("kind", "package"),
+                ("student", student.as_str()),
+                ("price", "abc"),
+            ],
+        )
+        .await
+        .assert_status(422)
+        .assert_see("Give the amount in dirhams");
+    w.app
+        .htmx()
+        .post("/edtech/enrolments", &[("price", "100")])
+        .await
+        .assert_status(422)
+        .assert_see("Pick the person from the list");
+}

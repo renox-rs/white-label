@@ -199,7 +199,7 @@ pub(crate) fn parse_money(text: &str) -> std::result::Result<i64, Error> {
     if cleaned.is_empty() {
         return Ok(0);
     }
-    let bad = || invalid("amount: 2520 or 2520.50");
+    let bad = || invalid("Give the amount in dirhams, for example 2520 or 2520.50.");
     let (whole, cents) = match cleaned.split_once('.') {
         Some((whole, cents)) => (whole, cents),
         None => (cleaned.as_str(), ""),

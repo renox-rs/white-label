@@ -334,7 +334,11 @@ async fn create(
             student,
             form.item_code.trim(),
             name,
-            parse_number(&form.credits)?,
+            if form.credits.trim().is_empty() {
+                0
+            } else {
+                parse_number(&form.credits)?
+            },
             price,
         ),
         "membership" => NewEnrolment::membership(student, form.item_code.trim(), name, price),
