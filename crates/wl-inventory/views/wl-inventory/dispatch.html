@@ -11,6 +11,7 @@
                     :badge="status" :badge-kind="status_kind"/>
     <rx-form-errors/>
     <rx-alert rx-for="note in alerts" kind="warning" :message="note"/>
+    <rx-alert rx-if="loss" kind="error" :message="loss"/>
     {#- A disabled button says why only in a tooltip, which a phone never shows: say it in words too. -#}
     <rx-alert rx-if="actions.confirm.shown and actions.confirm.blocked" kind="info" :message="actions.confirm.blocked"/>
     <rx-alert rx-if="actions.receive_back.shown and actions.receive_back.blocked" kind="info" :message="actions.receive_back.blocked"/>

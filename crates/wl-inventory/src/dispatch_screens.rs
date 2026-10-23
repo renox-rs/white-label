@@ -287,6 +287,7 @@ pub(crate) struct DispatchPage {
     picked_at: String,
     dispatched_at: String,
     delivered_at: String,
+    loss: String,
     alerts: Vec<String>,
     lines: Vec<LineRow>,
     actions: Actions,
@@ -451,6 +452,14 @@ async fn show(
                 Act::hidden()
             },
         };
+        let loss = if dispatch.loss_open {
+            said(
+                "wl_inventory.dispatch.ui.lost",
+                &[("value", &crate::po_revise::money_text(dispatch.loss_fils))],
+            )
+        } else {
+            String::new()
+        };
         let mut notes = alerts;
         if in_return > 0 && status != DispatchStatus::Picked {
             let unit = rows.first().map(|row| row.unit.clone()).unwrap_or_default();
@@ -486,6 +495,7 @@ async fn show(
             picked_at: dispatch.picked_at.map(dubai_text).unwrap_or_default(),
             dispatched_at: dispatch.dispatched_at.map(dubai_text).unwrap_or_default(),
             delivered_at: dispatch.delivered_at.map(dubai_text).unwrap_or_default(),
+            loss,
             alerts: notes,
             lines: rows,
             actions,
