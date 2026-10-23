@@ -418,3 +418,73 @@ async fn use_as_is_releases_the_real_lot_after_the_approval() {
     );
     let _ = PartyId(SUPPLIER);
 }
+
+/// BL-MFG-08 AC7 (#389): 30 kg of lot L9 (100 kg) are returned: the lot cannot
+/// be released while the Return to supplier is a draft; when procurement
+/// dispatches it the lot holds 70 kg, is still in quarantine, nothing keeps it
+/// from release any more and QC releases it for real.
+#[renox::test]
+async fn after_the_dispatch_of_a_partial_return_the_lot_keeps_70_kg_and_qc_releases_it() {
+    let app = boot().await;
+    let f = floor(&app).await;
+    let qc = person(&app, "Ines", QC_INSPECTOR, Some(f.plant.scope())).await;
+    let keeper = person(&app, "Karim", PROCUREMENT, None).await;
+    let lot = received(&app, &f, "L9", 3_000, LotStatus::Quarantine).await;
+    let subject = Subject::new("inventory.lot", lot.id);
+    let ncr = raise(&app, &f, &qc, &lot, "30").await;
+    post(
+        &app,
+        &qc,
+        &format!("/manufacturing/ncrs/{}/disposition", ncr.id),
+        &[("disposition", "return_to_supplier"), ("outcome", "credit")],
+    )
+    .await
+    .assert_status(303);
+    let ret = supplier_return::of_source(app.db(), &ncr.subject())
+        .await
+        .unwrap()
+        .remove(0);
+    assert!(
+        lot_release_blocked(app.state(), &subject)
+            .await
+            .unwrap()
+            .is_some(),
+        "kept from release while the return is a draft"
+    );
+
+    post(
+        &app,
+        &keeper,
+        &format!("/supplier-returns/{}/dispatch", ret.id),
+        &[("proof_kind", "driver_signature"), ("proof_ref", "SIG-9")],
+    )
+    .await
+    .assert_ok();
+
+    let sent = SupplierReturn::find_or_404(app.db(), ret.id).await.unwrap();
+    assert_eq!(sent.status, ReturnStatus::Dispatched);
+    assert_eq!(
+        wl_inventory::balance::lot_left(app.db(), lot.id)
+            .await
+            .unwrap(),
+        70_000,
+        "the lot holds what was not returned"
+    );
+    assert_eq!(lot_status(&app, lot.id).await, LotStatus::Quarantine);
+    assert_eq!(
+        lot_release_blocked(app.state(), &subject).await.unwrap(),
+        None,
+        "nothing keeps the lot from release once the return is out"
+    );
+    assert!(
+        wl_kernel::lot_disposal::lot_disposal(app.state())
+            .release(app.state(), &subject)
+            .await
+            .unwrap()
+    );
+    assert_eq!(lot_status(&app, lot.id).await, LotStatus::Released);
+}
+
+async fn lot_status(app: &TestApp, id: i64) -> LotStatus {
+    Lot::find_or_404(app.db(), id).await.unwrap().status
+}
