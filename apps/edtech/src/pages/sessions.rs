@@ -25,7 +25,10 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
 use wl_kernel::integrations::web::banner_for;
 
-use super::{Texts, invalid, parse_date, parse_local_time, parse_number, require, text};
+use super::{
+    Names, Texts, invalid, names_of, parse_date, parse_local_time, parse_number, require,
+    resource_text, text,
+};
 use crate::attendance::Mark;
 use crate::batch::Batch;
 use crate::defaults;
@@ -88,13 +91,6 @@ pub(crate) fn time_range(session: &Session) -> String {
 }
 
 /// A resource as the page reads it: `Resource 12`, or a dash.
-fn resource_text(lang: &Lang, id: Option<i64>) -> String {
-    id.map_or_else(
-        || text(lang, "none"),
-        |id| format!("{} {id}", text(lang, "batches.resource")),
-    )
-}
-
 /// One session of a list.
 #[derive(Serialize, Debug, Clone)]
 pub struct SessionRow {
@@ -124,15 +120,15 @@ pub struct SessionRow {
 }
 
 /// The row of `session` of batch `batch`.
-pub(crate) fn row_of(lang: &Lang, session: &Session, batch: &str) -> SessionRow {
+pub(crate) fn row_of(lang: &Lang, names: &Names, session: &Session, batch: &str) -> SessionRow {
     SessionRow {
         id: session.id,
         number: session.number,
         batch: batch.to_owned(),
         date: session.session_date.to_string(),
         time: time_range(session),
-        tutor: resource_text(lang, session.tutor_resource_id),
-        room: resource_text(lang, session.room_resource_id),
+        tutor: resource_text(lang, names, session.tutor_resource_id),
+        room: resource_text(lang, names, session.room_resource_id),
         make_up: if session.make_up {
             text(lang, "sessions.make_up_yes")
         } else {
@@ -170,6 +166,13 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .get(&state.db)
         .await?;
     let batches = Batch::query().get(&state.db).await?;
+    let names = names_of(
+        &state,
+        coming
+            .iter()
+            .flat_map(|s| [s.tutor_resource_id, s.room_resource_id]),
+    )
+    .await;
     let rows = coming
         .iter()
         .map(|s| {
@@ -177,7 +180,7 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
                 .iter()
                 .find(|b| b.id == s.batch_id)
                 .map_or_else(|| format!("#{}", s.batch_id), Batch::number);
-            row_of(&lang, s, &batch)
+            row_of(&lang, &names, s, &batch)
         })
         .collect();
     Ok(View::typed(IndexPage {
@@ -280,6 +283,11 @@ async fn show(
     require(&user, permissions::SESSIONS_VIEW)?;
     let session = Session::find_or_404(&state.db, id).await?;
     let batch = Batch::find_or_404(&state.db, session.batch_id).await?;
+    let names = names_of(
+        &state,
+        [session.tutor_resource_id, session.room_resource_id],
+    )
+    .await;
     let scheduled = session.status == SessionStatus::Scheduled;
     let students = roster::roster(&state.db, &session).await?;
     let mut student_rows = Vec::new();
@@ -384,8 +392,8 @@ async fn show(
         batch: batch.number(),
         date: session.session_date.to_string(),
         time: time_range(&session),
-        tutor: resource_text(&lang, session.tutor_resource_id),
-        room: resource_text(&lang, session.room_resource_id),
+        tutor: resource_text(&lang, &names, session.tutor_resource_id),
+        room: resource_text(&lang, &names, session.room_resource_id),
         status: status_text(&lang, session.status),
         status_kind: status_kind(session.status),
         cancel_reason: session

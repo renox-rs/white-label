@@ -30,6 +30,7 @@ use super::{
     Texts, optional_party_of, parse_date, parse_number, parse_optional_id, parse_weekdays,
     party_of, require, text,
 };
+use super::{names_of, resource_text};
 use crate::batch::{Batch, BatchStatus};
 use crate::batches::{self, NewBatch};
 use crate::course::Course;
@@ -332,13 +333,6 @@ pub struct TutorRow {
 }
 
 /// A resource as the page reads it: `Resource 12`, or a dash.
-fn resource_text(lang: &Lang, id: Option<i64>) -> String {
-    id.map_or_else(
-        || text(lang, "none"),
-        |id| format!("{} {id}", text(lang, "batches.resource")),
-    )
-}
-
 /// `GET /edtech/batches/{id}`.
 async fn show(
     State(state): State<AppState>,
@@ -351,12 +345,24 @@ async fn show(
     let course = Course::find_or_404(&state.db, batch.course_id).await?;
     let number = batch.number();
     let planned = Session::of_batch(&state.db, batch.id).await?;
-    let rows = planned.iter().map(|s| row_of(&lang, s, &number)).collect();
-    let history = tutors::history(&state.db, batch.id)
-        .await?
+    let assignments = tutors::history(&state.db, batch.id).await?;
+    let names = names_of(
+        &state,
+        planned
+            .iter()
+            .flat_map(|s| [s.tutor_resource_id, s.room_resource_id])
+            .chain(assignments.iter().map(|a| Some(a.tutor_resource_id)))
+            .chain([batch.tutor_resource_id, batch.room_resource_id]),
+    )
+    .await;
+    let rows = planned
+        .iter()
+        .map(|s| row_of(&lang, &names, s, &number))
+        .collect();
+    let history = assignments
         .into_iter()
         .map(|a| TutorRow {
-            tutor: resource_text(&lang, Some(a.tutor_resource_id)),
+            tutor: resource_text(&lang, &names, Some(a.tutor_resource_id)),
             scope: match a.session_id {
                 Some(session) => format!("{} {session}", text(&lang, "tutors.session")),
                 None => text(&lang, "tutors.batch"),
@@ -441,8 +447,8 @@ async fn show(
         pattern: pattern_text(&lang, &batch),
         seats: seats_text(&lang, &batch),
         free_seats: seats::free(&batch),
-        tutor: resource_text(&lang, batch.tutor_resource_id),
-        room: resource_text(&lang, batch.room_resource_id),
+        tutor: resource_text(&lang, &names, batch.tutor_resource_id),
+        room: resource_text(&lang, &names, batch.room_resource_id),
         sessions: rows,
         tutor_history: history,
         waiting: waiting_rows,

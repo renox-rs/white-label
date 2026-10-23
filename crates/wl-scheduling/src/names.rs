@@ -4,9 +4,9 @@
 use std::collections::BTreeMap;
 
 use renox::prelude::*;
-use wl_kernel::scheduling::{SchedulingFuture, ServiceNames};
+use wl_kernel::scheduling::{ResourceNames, SchedulingFuture, ServiceNames};
 
-use crate::resource::ServiceType;
+use crate::resource::{Resource, ServiceType};
 
 /// The name of `service` in `locale`: the Arabic one when the page is Arabic
 /// and the type has it, else the English one.
@@ -33,6 +33,30 @@ impl ServiceNames for ServiceTypeNames {
                 .await?
                 .into_iter()
                 .map(|service| (service.code.clone(), name_in(&service, locale)))
+                .collect())
+        })
+    }
+}
+
+/// The resources of this module as the app's resource names.
+pub struct ResourceTypeNames;
+
+impl ResourceNames for ResourceTypeNames {
+    fn names<'a>(
+        &'a self,
+        state: &'a AppState,
+        ids: &'a [i64],
+    ) -> SchedulingFuture<'a, BTreeMap<i64, String>> {
+        Box::pin(async move {
+            if ids.is_empty() {
+                return Ok(BTreeMap::new());
+            }
+            Ok(Resource::query()
+                .where_(Resource::ID.is_in(ids.to_vec()))
+                .get(&state.db)
+                .await?
+                .into_iter()
+                .map(|resource| (resource.id, resource.name))
                 .collect())
         })
     }

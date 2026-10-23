@@ -19,6 +19,36 @@ use crate::texts;
 /// The texts a template reads as `tx['courses.title']`.
 pub(crate) type Texts = BTreeMap<&'static str, String>;
 
+/// The names of resources (tutors, rooms) by id, for a page.
+pub(crate) type Names = BTreeMap<i64, String>;
+
+/// The names of the resources `ids` (those that have one).
+pub(crate) async fn names_of(
+    state: &AppState,
+    ids: impl IntoIterator<Item = Option<i64>>,
+) -> Names {
+    let mut ids: Vec<i64> = ids.into_iter().flatten().collect();
+    ids.sort_unstable();
+    ids.dedup();
+    wl_kernel::scheduling::resource_names(state)
+        .names(state, &ids)
+        .await
+        .unwrap_or_default()
+}
+
+/// A resource as a page names it: its name, else `Resource 7`; a dash for none.
+pub(crate) fn resource_text(lang: &Lang, names: &Names, id: Option<i64>) -> String {
+    id.map_or_else(
+        || text(lang, "none"),
+        |id| {
+            names
+                .get(&id)
+                .cloned()
+                .unwrap_or_else(|| format!("{} {id}", text(lang, "batches.resource")))
+        },
+    )
+}
+
 /// The routes of the pages.
 pub fn routes() -> Routes {
     Routes::new()

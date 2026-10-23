@@ -417,6 +417,41 @@ pub fn service_names(state: &AppState) -> Arc<dyn ServiceNames> {
     }
 }
 
+/// The names of the resources a module books (a tutor, a room), by id: what a
+/// vertical shows where it holds only a resource's id. The default knows none,
+/// so the page falls back to the number.
+pub trait ResourceNames: Send + Sync + 'static {
+    /// The name of each of `ids` that exists.
+    fn names<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _ids: &'a [i64],
+    ) -> SchedulingFuture<'a, std::collections::BTreeMap<i64, String>> {
+        Box::pin(async { Ok(std::collections::BTreeMap::new()) })
+    }
+}
+
+/// The strategy when no module provides one: no names.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoResourceNames;
+
+impl ResourceNames for NoResourceNames {}
+
+/// Makes `names` the app's [`ResourceNames`]; the scheduling module calls it
+/// in `register`.
+pub fn provide_resource_names(app: &mut Registry, names: impl ResourceNames) {
+    let names: Arc<dyn ResourceNames> = Arc::new(names);
+    app.provide(names);
+}
+
+/// The app's [`ResourceNames`], or [`NoResourceNames`].
+pub fn resource_names(state: &AppState) -> Arc<dyn ResourceNames> {
+    match state.provided::<Arc<dyn ResourceNames>>() {
+        Some(found) => Arc::clone(&found),
+        None => Arc::new(NoResourceNames),
+    }
+}
+
 /// What a [`ResourceEligibility`] asks about.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EligibilityQuery {
