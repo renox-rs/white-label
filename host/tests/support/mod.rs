@@ -392,11 +392,15 @@ pub async fn tenant_with_mobile(app: &TestApp, name: &str, mobile: &str) -> Part
             legal_name_en: name.into(),
             person: Some(PersonDetails::default()),
             contacts: vec![
-                email_of(name),
+                ContactPoint {
+                    verified_at: Some(renox::db::now()),
+                    ..email_of(name)
+                },
                 ContactPoint {
                     contact_type: ContactType::Mobile,
                     value: mobile.into(),
                     is_primary: true,
+                    verified_at: Some(renox::db::now()),
                     ..Default::default()
                 },
             ],

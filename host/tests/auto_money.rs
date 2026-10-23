@@ -104,9 +104,10 @@ async fn aut_18_every_write_off_needs_approval_and_a_drivers_cheque_waits_for_th
     assert_eq!(payments.cash_manager_role, "branch_manager");
 }
 
-/// Stock: an adjustment of AED 1,100 is above the AED 1,000 limit and a Return
-/// to supplier of AED 5,100 above the AED 5,000 one, so each needs a second
-/// person; a return is chased after 30 days.
+/// Stock: the stored limits (AED 1,000 and AED 5,000) and the chase of a
+/// return after 30 days. That AED 1,100 and AED 5,100 wait for a second person
+/// and the limits themselves do not is run on the real returns in
+/// `auto_negative_flow_real.rs`.
 #[renox::test]
 async fn aut_18_a_stock_write_off_of_aed_1100_and_a_return_of_aed_5100_need_approval() {
     let app = auto_booted().await;
@@ -115,9 +116,7 @@ async fn aut_18_a_stock_write_off_of_aed_1100_and_a_return_of_aed_5100_need_appr
         .provided::<InventoryConfig>()
         .expect("inventory");
     assert_eq!(inventory.wastage_approval_fils, 100_000);
-    assert!(110_000 > inventory.wastage_approval_fils);
     assert_eq!(inventory.return_approval_fils, 500_000);
-    assert!(510_000 > inventory.return_approval_fils);
     assert_eq!(inventory.return_chase_days, 30);
 }
 
@@ -159,9 +158,9 @@ async fn aut_18_a_b2b_buyer_can_dispute_an_invoice_in_the_portal() {
     assert_eq!(invoicing.payer_follow_up_days, 30);
 }
 
-/// Cash-flow forecast: AED 99,999 projected in week 5 is under the AED 100,000
-/// threshold and alerts the Owner / GM and the accountant at 06:00; AED 100,000
-/// does not; 13 weekly buckets from Monday.
+/// Cash-flow forecast: the stored values (AED 100,000 per legal entity, 13
+/// weekly buckets from Monday, the Owner / GM and the accountant at 06:00). The
+/// run at AED 99,999 and AED 100,000 is in `auto_negative_flow_real.rs`.
 #[renox::test]
 async fn aut_18_the_cash_flow_forecast_alerts_below_aed_100000_over_13_weeks_from_monday() {
     let app = auto_booted().await;
@@ -179,7 +178,6 @@ async fn aut_18_the_cash_flow_forecast_alerts_below_aed_100000_over_13_weeks_fro
     for entity in entities {
         let threshold = invoicing.cash_threshold_of(&entity.code);
         assert_eq!(threshold, 10_000_000, "{}", entity.code);
-        assert!(9_999_900 < threshold && 10_000_000 >= threshold);
     }
 }
 

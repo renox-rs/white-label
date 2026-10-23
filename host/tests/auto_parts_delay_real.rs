@@ -269,3 +269,151 @@ async fn aut_04_real_a_missed_run_alerts_the_owner_with_a_message_and_a_task() {
         "the owner has a real task"
     );
 }
+
+/// The run of `AUT.RUL.16` fails (the notice cannot be stored): after the fifth
+/// attempt the Owner / GM and the company admin are told through the real
+/// notifier and the owner has a real task; the rerun by the admin closes both
+/// and the notice goes out (point 6, failed run).
+#[renox::test]
+async fn aut_04_real_a_failed_run_alerts_the_owner_and_the_admin_and_a_rerun_closes_it() {
+    use host::roles::ADMIN;
+    use renox::state_machine::StateMachine;
+    use wl_kernel::automation::{MAX_ATTEMPTS, RuleRun, transitions};
+    use wl_kernel::compliance::schedule_subject;
+
+    let w = boot().await;
+    let (_, sami) = w.staff("Sami", SERVICE_ADVISOR).await;
+    let tareq = w.staff("Tareq", TECHNICIAN).await;
+    let (_, basma) = w.staff("Basma", BRANCH_MANAGER).await;
+    let (owner_user, _) = w.staff("Omar", OWNER).await;
+    let (admin_user, admin) = w.staff("Ada", ADMIN).await;
+    let owner = tenant_with_mobile(&w.app, "Mona Hassan", "+971501234567").await;
+    supply::set_period(w.state(), &basma, "import", 14)
+        .await
+        .unwrap();
+    let card = inspected_card(
+        &w,
+        &sami,
+        &tareq,
+        owner,
+        "12345",
+        0,
+        vec![NewLabour::hourly("Fit", 1_000, 20_000)],
+        false,
+    )
+    .await;
+    job_cards::add_part(
+        w.state(),
+        &tareq.1,
+        card.id,
+        NewPart::new("Gearbox mount", 1_000, 30_000).from_source("import"),
+    )
+    .await
+    .unwrap();
+    job_cards::send_estimate(w.state(), &sami, card.id, job_cards::Promise::default())
+        .await
+        .unwrap();
+    let round = job_cards::pending_round(w.db(), card.id)
+        .await
+        .unwrap()
+        .unwrap();
+    job_cards::approve_by_link(w.state(), &round.token, "Mona Hassan", None, true)
+        .await
+        .unwrap();
+    job_cards::wait_parts(w.state(), &tareq.1, card.id)
+        .await
+        .unwrap();
+    let on = today() + Days::days(12);
+
+    renox::db::sql(
+        "CREATE TRIGGER refuse_notice BEFORE INSERT ON wl_notify_messages WHEN NEW.type_key = 'auto.parts_notice' \
+         BEGIN SELECT RAISE(ABORT, 'refused for the test'); END",
+    )
+    .execute(w.db())
+    .await
+    .unwrap();
+    for attempt in 0..MAX_ATTEMPTS {
+        parts_delays::run_daily(w.state(), on).await.unwrap();
+        if attempt + 1 < MAX_ATTEMPTS {
+            assert!(
+                ComplianceAlert::open(w.db())
+                    .await
+                    .unwrap()
+                    .iter()
+                    .all(|a| a.rule != RULE),
+                "no alert before the fifth failure"
+            );
+        }
+        RuleRun::query()
+            .update(
+                w.db(),
+                &[(
+                    "next_attempt_at",
+                    &Some(renox::db::now() - TimeDelta::hours(1)),
+                )],
+            )
+            .await
+            .unwrap();
+    }
+    let alerts: Vec<_> = ComplianceAlert::open(w.db())
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|a| a.rule == RULE)
+        .collect();
+    assert_eq!(alerts.len(), 1, "{alerts:?}");
+    assert_eq!(alerts[0].kind, AlertKind::Failed);
+    let told = sent_of(&w, wl_kernel::compliance::service::NOTIFICATION_TYPE).await;
+    let recipients: Vec<_> = told.iter().filter_map(|m| m.user_id).collect();
+    assert!(
+        recipients.contains(&owner_user.id) && recipients.contains(&admin_user.id),
+        "the owner and the company admin: {recipients:?}"
+    );
+    let owner_task = || async {
+        wl_ticketing::Ticket::query()
+            .get(w.db())
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|t| t.assignee_user_id == Some(owner_user.id))
+            .expect("the owner has a task")
+    };
+    assert!(!matches!(
+        owner_task().await.status,
+        wl_ticketing::TicketStatus::Closed | wl_ticketing::TicketStatus::Resolved
+    ));
+
+    renox::db::sql("DROP TRIGGER refuse_notice")
+        .execute(w.db())
+        .await
+        .unwrap();
+    let failed =
+        RuleRun::find_occurrence(w.db(), RULE, &schedule_subject(), &occurrence_key(RULE, on))
+            .await
+            .unwrap()
+            .expect("the run is kept");
+    let _outcome = failed
+        .transition(transitions::RERUN)
+        .by(&admin)
+        .run(w.state())
+        .await
+        .unwrap();
+    parts_delays::run_daily(w.state(), on).await.unwrap();
+    assert!(
+        ComplianceAlert::open(w.db())
+            .await
+            .unwrap()
+            .into_iter()
+            .all(|a| a.rule != RULE),
+        "the rerun closed the alert"
+    );
+    assert!(matches!(
+        owner_task().await.status,
+        wl_ticketing::TicketStatus::Closed | wl_ticketing::TicketStatus::Resolved
+    ));
+    assert_eq!(
+        sent_of(&w, NOTICE_TYPE).await.len(),
+        1,
+        "the notice went out"
+    );
+}

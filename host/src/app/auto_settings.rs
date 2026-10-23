@@ -789,10 +789,10 @@ mod tests {
 
     #[test]
     fn aut_18_the_notify_and_sales_modules_have_the_08_values() {
-        // wl-notify keeps its numbers private; the builder takes the same two.
-        let _notify = notify_for();
-        assert_eq!(defaults::MARKETING_CAP, 2);
-        assert_eq!(defaults::BROADCAST_APPROVAL_ABOVE, 200);
+        // wl-notify keeps its numbers private: what the module does with the
+        // cap of 2 a week, the limit of 200 recipients, the window and the
+        // opt-in is run in `host/tests/auto_marketing_real.rs`. Here only the
+        // sales values, which the module shows.
         let module = sales(WlSales::new());
         let config = module.config();
         assert!(config.over_budget_approval);
