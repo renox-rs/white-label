@@ -47,4 +47,13 @@ Comes with other issues (the states they need are declared):
 | BL-MFG-10 | `TracePartyResolver`: a work order, its issues and its output lot are the genealogy | `issue`, `work_order` |
 | The shortage list at release, the schedule board, `MFG.RUL.01`, `02`, `05`, `06` | | `work_orders::release` |
 
+The BOM base is wl-inventory's (`crates/wl-inventory/src/bom.rs`) and is kept to what the work order
+release and the F7 issues need. Left out, to come when an issue needs it: sub-BOMs and recipes with
+yield by step, the routing (the work order needs the standard hours of the version only), the
+explosion of a BOM against stock (`BomExplosion`, the shortage list at release), the Excel import of
+BOMs, and a picker for the BOM version on the new work order sheet (it takes the number shown on the
+BOM page). The void and the production manager: the approval of the void of a report is looked for in
+the scope of the report's line, so a production manager assigned to the plant only is not found there;
+assign the role on the line or globally.
+
 Decisions where the spec is silent are in the module headers.
