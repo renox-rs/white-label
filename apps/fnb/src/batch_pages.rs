@@ -103,7 +103,7 @@ pub(crate) struct BatchesPage {
 }
 
 async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<Response> {
-    if !user.has_permission(permissions::PRODUCTION_VIEW) {
+    if !user.has_permission_anywhere(permissions::PRODUCTION_VIEW) {
         return Err(Error::Forbidden);
     }
     let recipes = BatchRecipe::query()
@@ -146,7 +146,7 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             .map(|r| [r.id.to_string(), r.name])
             .collect(),
         outlets,
-        can_manage: user.has_permission(permissions::PRODUCTION_MANAGE),
+        can_manage: user.has_permission_anywhere(permissions::PRODUCTION_MANAGE),
     })
     .into_response())
 }
@@ -243,11 +243,11 @@ async fn show(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !user.has_permission(permissions::PRODUCTION_VIEW) {
+    if !user.has_permission_anywhere(permissions::PRODUCTION_VIEW) {
         return Err(Error::Forbidden);
     }
     let batch = ProductionBatch::find_or_404(&state.db, id).await?;
-    let manager = user.has_permission(permissions::PRODUCTION_MANAGE);
+    let manager = user.has_permission_anywhere(permissions::PRODUCTION_MANAGE);
     let recipe = BatchRecipe::find(&state.db, batch.recipe_id).await?;
     let mut inputs = Vec::new();
     for input in batch.inputs(&state.db).await? {

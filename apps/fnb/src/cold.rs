@@ -299,7 +299,7 @@ pub struct UnitAsk {
 }
 
 fn require(user: &AuthUser, permission: &str) -> Result {
-    if user.has_permission(permission) {
+    if user.has_permission_anywhere(permission) {
         Ok(())
     } else {
         Err(Error::Forbidden)

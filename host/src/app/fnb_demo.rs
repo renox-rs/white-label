@@ -90,7 +90,7 @@ pub const LOGINS: &[Login] = &[
         name: "Chef Samir Nasr",
         email: "chef@zaatar.example",
         role: HEAD_CHEF,
-        label: "Head chef (Marina Kitchen)",
+        label: "Head chef (Marina Kitchen and the central kitchen)",
     },
     Login {
         name: "Chef Hana Saleh",
@@ -321,7 +321,8 @@ async fn sharjah_stock(db: &Db) -> Result {
 }
 
 /// Assigns the head chefs made now their role in the scope of their outlet:
-/// `chef@` cooks at Marina, `chef.sharjah@` at Sharjah.
+/// `chef@` cooks at Marina and is the central kitchen's chef too (the batches
+/// are made there), `chef.sharjah@` at Sharjah.
 async fn scope_chefs(db: &Db, chefs: &[User]) -> Result {
     for chef in chefs {
         let code = if chef.email == "chef.sharjah@zaatar.example" {
@@ -329,8 +330,14 @@ async fn scope_chefs(db: &Db, chefs: &[User]) -> Result {
         } else {
             "marina"
         };
-        if let Some(outlet) = Outlet::by_code(db, code).await? {
-            chef.assign_role_in(db, HEAD_CHEF, &outlet.scope()).await?;
+        let mut codes = vec![code];
+        if code == "marina" {
+            codes.push("central");
+        }
+        for code in codes {
+            if let Some(outlet) = Outlet::by_code(db, code).await? {
+                chef.assign_role_in(db, HEAD_CHEF, &outlet.scope()).await?;
+            }
         }
     }
     Ok(())

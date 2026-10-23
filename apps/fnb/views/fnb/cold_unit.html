@@ -26,7 +26,7 @@
         <rx-entry :label="tx['cold.range']" :value="range"/>
         <rx-entry :label="tx['cold.hold']" :value="hold_number" :placeholder="tx['none']"/>
         <rx-entry :label="tx['cold.ticket']" :value="unit.ticket_number" :placeholder="tx['none']"/>
-        <rx-entry :label="tx['cold.out_since']" rx-if="unit.out_since" :value="unit.out_since"/>
+        <rx-entry :label="tx['cold.out_since']" rx-if="out_since" :value="out_since"/>
       </rx-infolist>
     </rx-card>
     <rx-card rx-if="lines" :title="tx['cold.lines']">

@@ -35,6 +35,10 @@ pub(crate) const BATCH_TEXTS: &[(&str, &str)] = &[
         "Enter the expiry day of the lot the batch made.",
     ),
     (
+        "fnb.batch.problem.expiry_past",
+        "The expiry {{ expiry }} has passed: enter the day the batch can be used until.",
+    ),
+    (
         "fnb.batch.problem.expiry_later",
         "The expiry {{ expiry }} is later than {{ earliest }}, the earliest expiry of the ingredient lots used.",
     ),

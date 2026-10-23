@@ -98,7 +98,7 @@ pub struct Proposal {
 }
 
 fn require(user: &AuthUser, permission: &str) -> Result {
-    if user.has_permission(permission) {
+    if user.has_permission_anywhere(permission) {
         Ok(())
     } else {
         Err(Error::Forbidden)
@@ -352,6 +352,12 @@ pub async fn finish(
     let Some(expiry) = ask.expiry else {
         return Err(refused(english("fnb.batch.problem.expiry_needed", &[])));
     };
+    if expiry < today() {
+        return Err(refused(english(
+            "fnb.batch.problem.expiry_past",
+            &[("expiry", &expiry)],
+        )));
+    }
     let inputs = batch.inputs(&state.db).await?;
     let mut earliest: Option<NaiveDate> = None;
     for input in &inputs {

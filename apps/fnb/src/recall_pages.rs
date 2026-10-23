@@ -127,7 +127,7 @@ async fn show(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !user.has_permission(permissions::RECALL_TRACE_VIEW) {
+    if !user.has_permission_anywhere(permissions::RECALL_TRACE_VIEW) {
         return Err(Error::Forbidden);
     }
     let found = recall::trace(&state, id).await?;
@@ -210,7 +210,7 @@ async fn show(
     } else {
         notes.push(t(&lang, "fnb.screen.recall.note_authority"));
     }
-    let decide = user.has_permission(permissions::RECALL_TRACE_DECIDE);
+    let decide = user.has_permission_anywhere(permissions::RECALL_TRACE_DECIDE);
     Ok(View::typed(RecallTracePage {
         tx: tx(&lang),
         recall_id: id,

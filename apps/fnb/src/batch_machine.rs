@@ -97,6 +97,15 @@ pub struct BatchRun {
     pub by: Option<i64>,
 }
 
+/// The scope of a batch for who may run it: the kitchen that makes it (a head
+/// chef holds their role in the scope of their outlet), else every outlet.
+fn kitchen_of(batch: &ProductionBatch) -> renox::auth::permissions::Scope {
+    match batch.outlet_id {
+        Some(id) => renox::auth::permissions::Scope::new(crate::catalogue::OUTLET_SUBJECT_TYPE, id),
+        None => renox::auth::permissions::Scope::global(),
+    }
+}
+
 fn run_of(ctx: &TransitionCtx) -> BatchRun {
     ctx.input_as::<BatchRun>().unwrap_or_default()
 }
@@ -105,7 +114,7 @@ fn start() -> Transition<ProductionBatch> {
     Transition::new(START)
         .label("Start")
         .tone("primary")
-        .permission(permissions::PRODUCTION_MANAGE)
+        .permission_in(permissions::PRODUCTION_MANAGE, kitchen_of)
         .from([BatchStatus::Planned])
         .to(BatchStatus::InProduction)
         .guard("lots_are_usable", |_batch: &ProductionBatch, ctx| {
@@ -145,7 +154,7 @@ fn finish() -> Transition<ProductionBatch> {
     Transition::new(FINISH)
         .label("Finish")
         .tone("success")
-        .permission(permissions::PRODUCTION_MANAGE)
+        .permission_in(permissions::PRODUCTION_MANAGE, kitchen_of)
         .from([BatchStatus::InProduction])
         .to(BatchStatus::Produced)
         .guard("yield_recorded", |_batch: &ProductionBatch, ctx| {
@@ -268,7 +277,7 @@ fn discard() -> Transition<ProductionBatch> {
         Transition::new(DISCARD)
             .label("Discard")
             .tone("danger")
-            .permission(permissions::PRODUCTION_MANAGE)
+            .permission_in(permissions::PRODUCTION_MANAGE, kitchen_of)
             .reason_required()
             .from([BatchStatus::Produced])
             .to(BatchStatus::Discarded),

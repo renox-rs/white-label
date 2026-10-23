@@ -99,7 +99,7 @@ pub(crate) struct ColdUnitsPage {
 }
 
 async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<Response> {
-    if !user.has_permission(permissions::TEMPERATURE_VIEW) {
+    if !user.has_permission_anywhere(permissions::TEMPERATURE_VIEW) {
         return Err(Error::Forbidden);
     }
     let mut rows = Vec::new();
@@ -147,8 +147,8 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         units: rows,
         kinds: kind_options(&lang),
         locations,
-        can_manage: user.has_permission(permissions::COLD_UNITS_MANAGE),
-        can_log: user.has_permission(permissions::TEMPERATURE_LOG),
+        can_manage: user.has_permission_anywhere(permissions::COLD_UNITS_MANAGE),
+        can_log: user.has_permission_anywhere(permissions::TEMPERATURE_LOG),
     })
     .into_response())
 }
@@ -223,6 +223,7 @@ pub(crate) struct ShowColdUnitPage {
     unit: ColdUnit,
     kind_label: String,
     range: String,
+    out_since: String,
     on_hold: bool,
     hold_number: String,
     hold_open: bool,
@@ -240,7 +241,7 @@ async fn show(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !user.has_permission(permissions::TEMPERATURE_VIEW) {
+    if !user.has_permission_anywhere(permissions::TEMPERATURE_VIEW) {
         return Err(Error::Forbidden);
     }
     let unit = ColdUnit::find_or_404(&state.db, id).await?;
@@ -303,6 +304,10 @@ async fn show(
         tx: tx(&lang),
         kind_label: t(&lang, &format!("fnb.screen.cold.kind.{}", unit.kind)),
         range: unit.range_text(),
+        out_since: unit
+            .out_since
+            .map(wl_kernel::documents::dubai_text)
+            .unwrap_or_default(),
         on_hold,
         hold_number: hold.as_ref().map(|v| v.number.clone()).unwrap_or_default(),
         hold_open: on_hold,
@@ -310,8 +315,8 @@ async fn show(
         lines,
         decisions,
         notes,
-        can_log: user.has_permission(permissions::TEMPERATURE_LOG),
-        can_decide: user.has_permission(permissions::LOTS_RELEASE),
+        can_log: user.has_permission_anywhere(permissions::TEMPERATURE_LOG),
+        can_decide: user.has_permission_anywhere(permissions::LOTS_RELEASE),
         unit,
     })
     .into_response())
