@@ -8,7 +8,9 @@ use edtech::seed::{POLICE_CLEARANCE_KIND, STUDENT_ID_KIND, TUTOR_PERMIT_KIND};
 use renox::chrono::{Days, Duration, NaiveDate};
 use renox::prelude::*;
 use wl_documents::{Document, DocumentKind, DocumentStatus};
-use wl_hr::{EmployeeStatus, EmploymentType, NewEmployee, NewQualification, SalaryStructure, employees};
+use wl_hr::{
+    EmployeeStatus, EmploymentType, NewEmployee, NewQualification, SalaryStructure, employees,
+};
 use wl_kernel::workforce::EmployeeId;
 use wl_kernel::{PartyId, PartyKind, Subject};
 use wl_parties::relationships::{NewRelationship, RelationshipType, relate};
@@ -72,26 +74,134 @@ pub(crate) const NOOR: usize = 19;
 
 /// The students, in the order of the constants above.
 pub(crate) const STUDENTS: &[Person] = &[
-    person("Amal Al Hammadi", "أمل الحمادي", (1993, 2, 14), "AE", Language::Ar),
+    person(
+        "Amal Al Hammadi",
+        "أمل الحمادي",
+        (1993, 2, 14),
+        "AE",
+        Language::Ar,
+    ),
     person("Priya Nair", "بريا ناير", (1990, 11, 2), "IN", Language::En),
-    person("James Carter", "جيمس كارتر", (1985, 6, 21), "GB", Language::En),
-    person("Fatima Al Zaabi", "فاطمة الزعابي", (1996, 7, 25), "AE", Language::Ar),
-    person("Arjun Patel", "أرجون باتل", (1992, 3, 9), "IN", Language::En),
-    person("Elena Petrova", "إيلينا بتروفا", (1991, 12, 21), "RU", Language::En),
+    person(
+        "James Carter",
+        "جيمس كارتر",
+        (1985, 6, 21),
+        "GB",
+        Language::En,
+    ),
+    person(
+        "Fatima Al Zaabi",
+        "فاطمة الزعابي",
+        (1996, 7, 25),
+        "AE",
+        Language::Ar,
+    ),
+    person(
+        "Arjun Patel",
+        "أرجون باتل",
+        (1992, 3, 9),
+        "IN",
+        Language::En,
+    ),
+    person(
+        "Elena Petrova",
+        "إيلينا بتروفا",
+        (1991, 12, 21),
+        "RU",
+        Language::En,
+    ),
     person("Hassan Raza", "حسن رضا", (1988, 9, 8), "PK", Language::En),
-    person("Maria Santos", "ماريا سانتوس", (1994, 5, 30), "PH", Language::En),
-    person("Khalid Bin Saeed", "خالد بن سعيد", (1989, 4, 4), "AE", Language::Ar),
-    person("Nadia Farouk", "نادية فاروق", (1997, 1, 18), "EG", Language::Ar),
-    person("Daniel Okoye", "دانيال أوكوي", (1986, 10, 3), "NG", Language::En),
-    person("Rania Aziz", "رانيا عزيز", (1979, 2, 19), "EG", Language::Ar),
-    person("Lucas Meyer", "لوكاس ماير", (1995, 8, 12), "DE", Language::En),
-    person("Sofia Garcia", "صوفيا غارسيا", (1999, 8, 14), "ES", Language::En),
-    person("Yousef Al Suwaidi", "يوسف السويدي", (2017, 6, 9), "AE", Language::Ar),
-    person("Mona Al Suwaidi", "منى السويدي", (2019, 3, 3), "AE", Language::Ar),
-    person("Aarav Menon", "آراف مينون", (2016, 9, 27), "IN", Language::En),
-    person("Layan Haddad", "لين حداد", (2010, 4, 11), "JO", Language::Ar),
-    person("Kofi Mensah", "كوفي منساه", (2015, 1, 5), "GH", Language::En),
-    person("Noor Haddad", "نور حداد", (2012, 10, 21), "JO", Language::Ar),
+    person(
+        "Maria Santos",
+        "ماريا سانتوس",
+        (1994, 5, 30),
+        "PH",
+        Language::En,
+    ),
+    person(
+        "Khalid Bin Saeed",
+        "خالد بن سعيد",
+        (1989, 4, 4),
+        "AE",
+        Language::Ar,
+    ),
+    person(
+        "Nadia Farouk",
+        "نادية فاروق",
+        (1997, 1, 18),
+        "EG",
+        Language::Ar,
+    ),
+    person(
+        "Daniel Okoye",
+        "دانيال أوكوي",
+        (1986, 10, 3),
+        "NG",
+        Language::En,
+    ),
+    person(
+        "Rania Aziz",
+        "رانيا عزيز",
+        (1979, 2, 19),
+        "EG",
+        Language::Ar,
+    ),
+    person(
+        "Lucas Meyer",
+        "لوكاس ماير",
+        (1995, 8, 12),
+        "DE",
+        Language::En,
+    ),
+    person(
+        "Sofia Garcia",
+        "صوفيا غارسيا",
+        (1999, 8, 14),
+        "ES",
+        Language::En,
+    ),
+    person(
+        "Yousef Al Suwaidi",
+        "يوسف السويدي",
+        (2017, 6, 9),
+        "AE",
+        Language::Ar,
+    ),
+    person(
+        "Mona Al Suwaidi",
+        "منى السويدي",
+        (2019, 3, 3),
+        "AE",
+        Language::Ar,
+    ),
+    person(
+        "Aarav Menon",
+        "آراف مينون",
+        (2016, 9, 27),
+        "IN",
+        Language::En,
+    ),
+    person(
+        "Layan Haddad",
+        "لين حداد",
+        (2010, 4, 11),
+        "JO",
+        Language::Ar,
+    ),
+    person(
+        "Kofi Mensah",
+        "كوفي منساه",
+        (2015, 1, 5),
+        "GH",
+        Language::En,
+    ),
+    person(
+        "Noor Haddad",
+        "نور حداد",
+        (2012, 10, 21),
+        "JO",
+        Language::Ar,
+    ),
 ];
 
 pub(crate) const AHMED: usize = 0;
@@ -101,10 +211,28 @@ pub(crate) const GRACE: usize = 3;
 
 /// The guardians, in the order of the constants above.
 pub(crate) const GUARDIANS: &[Person] = &[
-    person("Ahmed Al Suwaidi", "أحمد السويدي", (1984, 3, 12), "AE", Language::Ar),
-    person("Sunita Menon", "سونيتا مينون", (1987, 8, 1), "IN", Language::En),
+    person(
+        "Ahmed Al Suwaidi",
+        "أحمد السويدي",
+        (1984, 3, 12),
+        "AE",
+        Language::Ar,
+    ),
+    person(
+        "Sunita Menon",
+        "سونيتا مينون",
+        (1987, 8, 1),
+        "IN",
+        Language::En,
+    ),
     person("Omar Haddad", "عمر حداد", (1981, 12, 5), "JO", Language::Ar),
-    person("Grace Mensah", "غريس منساه", (1986, 6, 16), "GH", Language::En),
+    person(
+        "Grace Mensah",
+        "غريس منساه",
+        (1986, 6, 16),
+        "GH",
+        Language::En,
+    ),
 ];
 
 /// The guardian of a child student (index of [`STUDENTS`] to [`GUARDIANS`]).
@@ -316,10 +444,7 @@ impl Seed {
                     role_key: "corporate_client".to_owned(),
                     ..PartyRole::default()
                 }],
-                contacts: vec![contact(
-                    ContactType::Email,
-                    "training@najm-cargo.example",
-                )],
+                contacts: vec![contact(ContactType::Email, "training@najm-cargo.example")],
                 source: "seed".to_owned(),
                 ..NewParty::default()
             },

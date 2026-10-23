@@ -108,48 +108,249 @@ impl Enrol {
 /// The enrolments, batch by batch.
 pub(crate) const ENROLS: &[Enrol] = &[
     // A completed English course.
-    e("eng.amal", "eng_done", AMAL, 1890, -57, Pay::Full(Cash, -56)).registration(100).instalments(2),
-    e("eng.priya", "eng_done", PRIYA, 1890, -56, Pay::Full(Card, -55)),
-    e("eng.james", "eng_done", JAMES, 1890, -55, Pay::Full(Transfer, -54)),
-    e("eng.fatima", "eng_done", FATIMA, 1890, -54, Pay::Full(Card, -53)),
-    e("eng.elena", "eng_done", ELENA, 1890, -53, Pay::Full(Cash, -52)),
+    e(
+        "eng.amal",
+        "eng_done",
+        AMAL,
+        1890,
+        -57,
+        Pay::Full(Cash, -56),
+    )
+    .registration(100)
+    .instalments(2),
+    e(
+        "eng.priya",
+        "eng_done",
+        PRIYA,
+        1890,
+        -56,
+        Pay::Full(Card, -55),
+    ),
+    e(
+        "eng.james",
+        "eng_done",
+        JAMES,
+        1890,
+        -55,
+        Pay::Full(Transfer, -54),
+    ),
+    e(
+        "eng.fatima",
+        "eng_done",
+        FATIMA,
+        1890,
+        -54,
+        Pay::Full(Card, -53),
+    ),
+    e(
+        "eng.elena",
+        "eng_done",
+        ELENA,
+        1890,
+        -53,
+        Pay::Full(Cash, -52),
+    ),
     // Excel, paid for by the employer.
-    e("xl.khalid", "xl_done", KHALID, 840, -36, Pay::Full(Transfer, -27)).company(),
-    e("xl.daniel", "xl_done", DANIEL, 840, -36, Pay::Full(Transfer, -27)).company(),
+    e(
+        "xl.khalid",
+        "xl_done",
+        KHALID,
+        840,
+        -36,
+        Pay::Full(Transfer, -27),
+    )
+    .company(),
+    e(
+        "xl.daniel",
+        "xl_done",
+        DANIEL,
+        840,
+        -36,
+        Pay::Full(Transfer, -27),
+    )
+    .company(),
     // The kids' coding batch that is terminated.
-    e("code.yousef", "code_term", YOUSEF, 1050, -31, Pay::Full(Card, -30)).guardian(AHMED),
-    e("code.aarav", "code_term", AARAV, 1050, -30, Pay::Full(Cash, -29)).guardian(SUNITA),
-    e("code.kofi", "code_term", KOFI, 1050, -29, Pay::Full(Card, -28)).guardian(GRACE),
+    e(
+        "code.yousef",
+        "code_term",
+        YOUSEF,
+        1050,
+        -31,
+        Pay::Full(Card, -30),
+    )
+    .guardian(AHMED),
+    e(
+        "code.aarav",
+        "code_term",
+        AARAV,
+        1050,
+        -30,
+        Pay::Full(Cash, -29),
+    )
+    .guardian(SUNITA),
+    e(
+        "code.kofi",
+        "code_term",
+        KOFI,
+        1050,
+        -29,
+        Pay::Full(Card, -28),
+    )
+    .guardian(GRACE),
     // The Excel batch that is terminated.
-    e("xlt.hassan", "xl_term", HASSAN, 840, -27, Pay::Full(Cash, -26)),
-    e("xlt.maria", "xl_term", MARIA, 840, -26, Pay::Full(Transfer, -25)),
+    e(
+        "xlt.hassan",
+        "xl_term",
+        HASSAN,
+        840,
+        -27,
+        Pay::Full(Cash, -26),
+    ),
+    e(
+        "xlt.maria",
+        "xl_term",
+        MARIA,
+        840,
+        -26,
+        Pay::Full(Transfer, -25),
+    ),
     // The French batch that is cancelled before it starts.
-    e("frc.arjun", "fr_cancel", ARJUN, 1575, -28, Pay::Full(Card, -27)),
-    e("frc.lucas", "fr_cancel", LUCAS, 1575, -27, Pay::Full(Cash, -26)),
+    e(
+        "frc.arjun",
+        "fr_cancel",
+        ARJUN,
+        1575,
+        -28,
+        Pay::Full(Card, -27),
+    ),
+    e(
+        "frc.lucas",
+        "fr_cancel",
+        LUCAS,
+        1575,
+        -27,
+        Pay::Full(Cash, -26),
+    ),
     e("frc.sofia", "fr_cancel", SOFIA, 1575, -20, Pay::Unpaid),
     // IELTS, running.
-    e("ielts.james", "ielts_run", JAMES, 2520, -25, Pay::Full(Card, -24)).instalments(3),
-    e("ielts.nadia", "ielts_run", NADIA, 2520, -25, Pay::Full(Transfer, -24)),
-    e("ielts.maria", "ielts_run", MARIA, 2520, -24, Pay::Full(Cash, -23)).registration(105),
-    e("ielts.rania", "ielts_run", RANIA, 2520, -23, Pay::Full(Cash, -22)),
-    e("ielts.daniel", "ielts_run", DANIEL, 2520, -23, Pay::Full(Card, -22)),
-    e("ielts.khalid", "ielts_run", KHALID, 2520, -22, Pay::Full(Cash, -21)),
-    e("ielts.fatima", "ielts_run", FATIMA, 2520, -21, Pay::Gateway(-20, "GW-88231")),
+    e(
+        "ielts.james",
+        "ielts_run",
+        JAMES,
+        2520,
+        -25,
+        Pay::Full(Card, -24),
+    )
+    .instalments(3),
+    e(
+        "ielts.nadia",
+        "ielts_run",
+        NADIA,
+        2520,
+        -25,
+        Pay::Full(Transfer, -24),
+    ),
+    e(
+        "ielts.maria",
+        "ielts_run",
+        MARIA,
+        2520,
+        -24,
+        Pay::Full(Cash, -23),
+    )
+    .registration(105),
+    e(
+        "ielts.rania",
+        "ielts_run",
+        RANIA,
+        2520,
+        -23,
+        Pay::Full(Cash, -22),
+    ),
+    e(
+        "ielts.daniel",
+        "ielts_run",
+        DANIEL,
+        2520,
+        -23,
+        Pay::Full(Card, -22),
+    ),
+    e(
+        "ielts.khalid",
+        "ielts_run",
+        KHALID,
+        2520,
+        -22,
+        Pay::Full(Cash, -21),
+    ),
+    e(
+        "ielts.fatima",
+        "ielts_run",
+        FATIMA,
+        2520,
+        -21,
+        Pay::Gateway(-20, "GW-88231"),
+    ),
     // Python, with a sixteen-year-old and her father as guardian.
     e("py.arjun", "py_run", ARJUN, 2100, -21, Pay::Full(Card, -20)),
     e("py.layan", "py_run", LAYAN, 2100, -20, Pay::Full(Card, -19)).guardian(OMAR_H),
-    e("py.priya", "py_run", PRIYA, 2100, -19, Pay::Full(Transfer, -18)).instalments(2),
+    e(
+        "py.priya",
+        "py_run",
+        PRIYA,
+        2100,
+        -19,
+        Pay::Full(Transfer, -18),
+    )
+    .instalments(2),
     // Arabic for kids.
     e("arb.mona", "arb_run", MONA, 1260, -31, Pay::Full(Card, -30)).guardian(AHMED),
-    e("arb.yousef", "arb_run", YOUSEF, 1260, -31, Pay::Full(Card, -30)).guardian(AHMED),
-    e("arb.aarav", "arb_run", AARAV, 1260, -30, Pay::Full(Cash, -29)).guardian(SUNITA),
+    e(
+        "arb.yousef",
+        "arb_run",
+        YOUSEF,
+        1260,
+        -31,
+        Pay::Full(Card, -30),
+    )
+    .guardian(AHMED),
+    e(
+        "arb.aarav",
+        "arb_run",
+        AARAV,
+        1260,
+        -30,
+        Pay::Full(Cash, -29),
+    )
+    .guardian(SUNITA),
     // GMAT.
-    e("gmat.amal", "gmat_run", AMAL, 3150, -24, Pay::Full(Transfer, -22)),
-    e("gmat.arjun", "gmat_run", ARJUN, 3150, -23, Pay::Full(Card, -21)),
+    e(
+        "gmat.amal",
+        "gmat_run",
+        AMAL,
+        3150,
+        -24,
+        Pay::Full(Transfer, -22),
+    ),
+    e(
+        "gmat.arjun",
+        "gmat_run",
+        ARJUN,
+        3150,
+        -23,
+        Pay::Full(Card, -21),
+    ),
     // French, with a fourteen-year-old.
     e("fr.noor", "fr_run", NOOR, 1575, -26, Pay::Full(Cash, -25)).guardian(OMAR_H),
     e("fr.sofia", "fr_run", SOFIA, 1575, -25, Pay::Full(Card, -24)),
-    e("fr.maria", "fr_run", MARIA, 1575, -24, Pay::Full(Transfer, -23)),
+    e(
+        "fr.maria",
+        "fr_run",
+        MARIA,
+        1575,
+        -24,
+        Pay::Full(Transfer, -23),
+    ),
     // The open French batch with three seats: two of them here, the third by
     // the transfer of the cancelled batch.
     e("fro.nadia", "fr_open", NADIA, 1575, -5, Pay::Full(Cash, -4)),
@@ -157,6 +358,7 @@ pub(crate) const ENROLS: &[Enrol] = &[
     // The weekend IELTS batch: one seat held for 48 hours that nobody paid
     // for, one that waits for the centre manager to approve a discount.
     e("ieltso.lucas", "ielts_open", LUCAS, 2520, -5, Pay::Unpaid),
+    e("ieltso.sofia", "ielts_open", SOFIA, 2520, -5, Pay::Unpaid),
     e("ieltso.elena", "ielts_open", ELENA, 2520, -1, Pay::Unpaid).discount(400),
 ];
 

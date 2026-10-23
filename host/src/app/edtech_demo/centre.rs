@@ -27,14 +27,94 @@ pub(crate) type CoursePlan = (
 
 /// The courses: language, IT, exam preparation and kids.
 pub(crate) const COURSES: &[CoursePlan] = &[
-    ("IELTS-B2", "IELTS Preparation (Academic)", "التحضير لاختبار الآيلتس", "Exam preparation", "B2", 40, "in_person", false, "KHDA-DEMO-0101"),
-    ("ENG-A2", "General English A2", "اللغة الإنجليزية العامة A2", "Language", "A2", 48, "in_person", false, ""),
-    ("FR-A1", "French for Beginners A1", "الفرنسية للمبتدئين A1", "Language", "A1", 30, "in_person", false, ""),
-    ("ARB-KIDS", "Arabic for Kids (6-10)", "العربية للأطفال (6-10)", "Kids", "", 24, "hybrid", true, ""),
-    ("CODE-KIDS", "Young Coders (8-12)", "المبرمجون الصغار (8-12)", "Kids", "", 20, "in_person", true, "KHDA-DEMO-0207"),
-    ("PY-101", "Python Programming Foundations", "أساسيات البرمجة بلغة بايثون", "IT", "Beginner", 36, "online", false, ""),
-    ("XL-BIZ", "Excel for Business", "إكسل للأعمال", "IT", "Intermediate", 12, "in_person", false, ""),
-    ("GMAT-P", "GMAT Intensive", "دورة الجي مات المكثفة", "Exam preparation", "Advanced", 30, "in_person", false, ""),
+    (
+        "IELTS-B2",
+        "IELTS Preparation (Academic)",
+        "التحضير لاختبار الآيلتس",
+        "Exam preparation",
+        "B2",
+        40,
+        "in_person",
+        false,
+        "KHDA-DEMO-0101",
+    ),
+    (
+        "ENG-A2",
+        "General English A2",
+        "اللغة الإنجليزية العامة A2",
+        "Language",
+        "A2",
+        48,
+        "in_person",
+        false,
+        "",
+    ),
+    (
+        "FR-A1",
+        "French for Beginners A1",
+        "الفرنسية للمبتدئين A1",
+        "Language",
+        "A1",
+        30,
+        "in_person",
+        false,
+        "",
+    ),
+    (
+        "ARB-KIDS",
+        "Arabic for Kids (6-10)",
+        "العربية للأطفال (6-10)",
+        "Kids",
+        "",
+        24,
+        "hybrid",
+        true,
+        "",
+    ),
+    (
+        "CODE-KIDS",
+        "Young Coders (8-12)",
+        "المبرمجون الصغار (8-12)",
+        "Kids",
+        "",
+        20,
+        "in_person",
+        true,
+        "KHDA-DEMO-0207",
+    ),
+    (
+        "PY-101",
+        "Python Programming Foundations",
+        "أساسيات البرمجة بلغة بايثون",
+        "IT",
+        "Beginner",
+        36,
+        "online",
+        false,
+        "",
+    ),
+    (
+        "XL-BIZ",
+        "Excel for Business",
+        "إكسل للأعمال",
+        "IT",
+        "Intermediate",
+        12,
+        "in_person",
+        false,
+        "",
+    ),
+    (
+        "GMAT-P",
+        "GMAT Intensive",
+        "دورة الجي مات المكثفة",
+        "Exam preparation",
+        "Advanced",
+        30,
+        "in_person",
+        false,
+        "",
+    ),
 ];
 
 /// The rooms and their seats.
@@ -79,7 +159,9 @@ impl Seed {
             self.tutors.push((email, id));
         }
         for (name, seats) in ROOMS {
-            let id = self.resource(name, ResourceType::Room, None, *seats).await?;
+            let id = self
+                .resource(name, ResourceType::Room, None, *seats)
+                .await?;
             self.rooms.insert(name, id);
         }
         // The centre permit of the regulator ends in 45 days: the batches that
@@ -111,7 +193,9 @@ impl Seed {
                 form.push(("approval_no", approval));
             }
             at!(self, day(-120), {
-                self.driver.post(COORDINATOR, "/edtech/courses", &form).await
+                self.driver
+                    .post(COORDINATOR, "/edtech/courses", &form)
+                    .await
             })?;
             let course = edtech::Course::by_code(self.db(), code)
                 .await?

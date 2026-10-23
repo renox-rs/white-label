@@ -13,9 +13,7 @@ use wl_payments::Payment;
 
 use super::super::demo_data::{at, day};
 use super::hold::offset;
-use super::{
-    ACCOUNTANT_LOGIN, ADMIN_LOGIN, COORDINATOR, COUNSELLOR_LOGIN, MANAGER, Seed,
-};
+use super::{ACCOUNTANT_LOGIN, ADMIN_LOGIN, COORDINATOR, COUNSELLOR_LOGIN, MANAGER, Seed};
 
 impl Seed {
     /// A request to the router on day `on` as `who`.
@@ -44,8 +42,13 @@ impl Seed {
             else {
                 return Ok(());
             };
-            self.act(on, MANAGER, &format!("/approvals/{}/approve", request.id), &[])
-                .await?;
+            self.act(
+                on,
+                MANAGER,
+                &format!("/approvals/{}/approve", request.id),
+                &[],
+            )
+            .await?;
         }
     }
 
@@ -70,7 +73,9 @@ impl Seed {
     async fn complete_all(&self, keys: &[&str], on: i64) -> Result {
         for key in keys {
             let id = self.enrolment(key);
-            at!(self, day(on), { edtech::enrolments::complete(&self.state, id).await })?;
+            at!(self, day(on), {
+                edtech::enrolments::complete(&self.state, id).await
+            })?;
         }
         Ok(())
     }
@@ -161,7 +166,13 @@ impl Seed {
         .await?;
         let last = self.after_session(key, 6).await?;
         self.complete_all(
-            &["eng.amal", "eng.priya", "eng.james", "eng.fatima", "eng.elena"],
+            &[
+                "eng.amal",
+                "eng.priya",
+                "eng.james",
+                "eng.fatima",
+                "eng.elena",
+            ],
             last,
         )
         .await?;
@@ -201,7 +212,10 @@ impl Seed {
             "revoke",
             last + 6,
             ADMIN_LOGIN,
-            &[("reason", "Issued in error: the final assessment was not sat")],
+            &[(
+                "reason",
+                "Issued in error: the final assessment was not sat",
+            )],
         )
         .await?;
         Ok(())
@@ -223,7 +237,10 @@ impl Seed {
             "revoke",
             last + 3,
             ADMIN_LOGIN,
-            &[("reason", "The employer withdrew the nomination: duplicate record")],
+            &[(
+                "reason",
+                "The employer withdrew the nomination: duplicate record",
+            )],
         )
         .await
     }
@@ -233,7 +250,11 @@ impl Seed {
     async fn coding_terminated(&mut self) -> Result {
         let key = "code_term";
         for index in 0..3 {
-            let marks: &[(&str, &str)] = if index == 1 { &[("code.kofi", "late")] } else { &[] };
+            let marks: &[(&str, &str)] = if index == 1 {
+                &[("code.kofi", "late")]
+            } else {
+                &[]
+            };
             self.hold(key, index, marks).await?;
         }
         let on = self.after_session(key, 3).await?;
@@ -241,16 +262,30 @@ impl Seed {
         let target = self.batches["code_open"].to_string();
         let choices = [
             (format!("choice_{}", self.enrolment("code.yousef")), target),
-            (format!("choice_{}", self.enrolment("code.aarav")), "withdraw".into()),
-            (format!("choice_{}", self.enrolment("code.kofi")), "withdraw".into()),
+            (
+                format!("choice_{}", self.enrolment("code.aarav")),
+                "withdraw".into(),
+            ),
+            (
+                format!("choice_{}", self.enrolment("code.kofi")),
+                "withdraw".into(),
+            ),
         ];
         let mut form: Vec<(&str, &str)> = vec![
             ("reason", "tutor_unavailable"),
-            ("note", "The tutor has left the centre; no cover with the same clearance."),
+            (
+                "note",
+                "The tutor has left the centre; no cover with the same clearance.",
+            ),
         ];
         form.extend(choices.iter().map(|(k, v)| (k.as_str(), v.as_str())));
-        self.act(on, COORDINATOR, &format!("/edtech/batches/{id}/terminate"), &form)
-            .await?;
+        self.act(
+            on,
+            COORDINATOR,
+            &format!("/edtech/batches/{id}/terminate"),
+            &form,
+        )
+        .await?;
         self.approve_waiting(on).await
     }
 

@@ -316,7 +316,7 @@ extension gets its own binary: `host` + the `ext/` crate linked at build time.
 | **F7 — Manufacturing** | BOMs, lots and quality in `wl-inventory` + `apps/manufacturing` | Work order to finished stock with landed cost |
 | **F8 — Auto** | Orders and POS in `wl-sales` (if not done in F6), job cards + `apps/auto` | Job card to invoice, insurance repair |
 | **F9 — Manpower** | The rest of `wl-hr` (visas, leave, payroll, WPS, final settlement) + `apps/manpower` | Deployment to client timesheet to WPS payroll |
-| **F10 — EdTech** (**built**: `apps/edtech`, `clients/demo-edtech`, the settings of `host/src/app/edtech_*.rs`; the demo command `edtech:demo` is later work) | Batches, enrolments, tutors, certificates on `wl-scheduling` + `apps/edtech` | Enrolment to attendance to certificate |
+| **F10 — EdTech** (**built**: `apps/edtech`, `clients/demo-edtech`, the settings of `host/src/app/edtech_*.rs`; the demo command `edtech:demo` in `host/src/app/edtech_demo`) | Batches, enrolments, tutors, certificates on `wl-scheduling` + `apps/edtech` | Enrolment to attendance to certificate |
 | **Rollout track** (after F1, before the second paying client) | `deploy/rollout`, tested backup/restore, R8 `rnx new --from`, client onboarding in < 1 day | A new client goes live from `client.toml` alone |
 
 ## 10. Risks and items to verify

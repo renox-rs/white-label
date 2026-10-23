@@ -64,12 +64,14 @@ use std::collections::BTreeMap;
 
 use renox::Environment;
 use renox::prelude::*;
-use wl_kernel::workforce::EmployeeId;
 use wl_kernel::PartyId;
+use wl_kernel::workforce::EmployeeId;
 
 use super::demo_data::clock::Clock;
 use super::demo_data::driver::Driver;
-use super::roles::{ACADEMIC_COORDINATOR, ACCOUNTANT, ADMIN, CENTRE_MANAGER, COUNSELLOR, OWNER, TUTOR};
+use super::roles::{
+    ACADEMIC_COORDINATOR, ACCOUNTANT, ADMIN, CENTRE_MANAGER, COUNSELLOR, OWNER, TUTOR,
+};
 use super::seed::PASSWORD;
 
 /// The command that fills a local database with the demo centre.

@@ -10,7 +10,7 @@ use wl_kernel::{BusinessCalendar, PartyId, Subject};
 
 use super::super::demo_data::day;
 use super::people::{ELENA, HASSAN, LAYAN};
-use super::{COORDINATOR, COUNSELLOR_LOGIN, MANAGER, ACCOUNTANT_LOGIN, Seed};
+use super::{COORDINATOR, COUNSELLOR_LOGIN, MANAGER, Seed};
 
 impl Seed {
     async fn ticket(&self, ticket: OpenTicket) -> Result {
@@ -28,7 +28,8 @@ impl Seed {
     }
 
     fn due(&self, days: i64, hour: u32) -> renox::db::DateTime {
-        BusinessCalendar::default().from_local(day(days).and_hms_opt(hour, 0, 0).unwrap_or_default())
+        BusinessCalendar::default()
+            .from_local(day(days).and_hms_opt(hour, 0, 0).unwrap_or_default())
     }
 
     pub(crate) async fn notes(&mut self) -> Result {
@@ -55,7 +56,7 @@ impl Seed {
                 "Why was a credit of the private tutoring package used for an absence?",
             )
             .requester_party(hassan)
-            .assign_to(self.assignee(ACCOUNTANT_LOGIN))
+            .assign_to(self.assignee(MANAGER))
             .due_at(self.due(3, 11)),
         )
         .await?;
