@@ -30,6 +30,7 @@ async fn boot_on() -> (Booted, Credit, User) {
                 perm::SALES_ORDERS_VIEW,
                 perm::SALES_ORDERS_CREATE,
                 perm::SALES_ORDERS_CANCEL,
+                perm::SALES_ORDERS_AMEND,
             ],
         )
         .await;
@@ -234,6 +235,59 @@ async fn changing_the_reference_to_a_used_number_is_refused() {
         )
         .await
         .assert_status(422);
+}
+
+/// AC5: amending SO-72 of customer C to "PO-8812", which SO-70 of C holds,
+/// is refused (422) naming SO-70; SO-72 keeps its number. A free number is
+/// accepted as a new revision and the key moves with it, so the old number
+/// is free again.
+#[renox::test]
+async fn amending_an_order_to_a_number_another_order_holds_is_refused_naming_it() {
+    let (t, _credit, by) = boot_on().await;
+    let so70 = placed(&t, &by, CUSTOMER, "PO-8812", "").await;
+    let so72 = placed(&t, &by, CUSTOMER, "PO-9000", "").await;
+    let amend = format!("/sales-orders/{}/amend", so72.id);
+
+    let refused = t
+        .app
+        .post(
+            &amend,
+            &[
+                ("reason", "The buyer corrected it"),
+                ("customer_po", "po-8812 "),
+            ],
+        )
+        .await;
+    refused.assert_status(422);
+    assert!(refused.text().contains(&so70.number), "{}", refused.text());
+    let kept = reload(&t, so72.id).await;
+    assert_eq!(kept.customer_po.as_deref(), Some("PO-9000"));
+    assert_eq!(kept.revision, so72.revision, "nothing was amended");
+
+    t.app
+        .post(
+            &amend,
+            &[
+                ("reason", "The buyer corrected it"),
+                ("customer_po", "PO-9001"),
+            ],
+        )
+        .await
+        .assert_status(303);
+    let amended = reload(&t, so72.id).await;
+    assert_eq!(amended.customer_po.as_deref(), Some("PO-9001"));
+    assert_eq!(amended.revision, so72.revision + 1);
+    let keys: Vec<String> = PoKey::query()
+        .where_(PoKey::ORDER_ID.eq(so72.id))
+        .get(t.db())
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|k| k.po_key)
+        .collect();
+    assert_eq!(keys, ["po-9001"], "the key moved with the number");
+    // The old number is free again for another order of the customer.
+    placed(&t, &by, CUSTOMER, "PO-9000", "").await;
 }
 
 /// AC6: with the setting off the second "PO-8812" order is accepted, and

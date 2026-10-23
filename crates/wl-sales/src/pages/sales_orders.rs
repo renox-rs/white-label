@@ -16,7 +16,7 @@
 //! | `POST /sales-orders/{id}/cancel-line` | `wl_sales.sales_order_cancel_line` | `sales_orders.cancel` (fields `line_no`, `quantity`, `reason`, `outcome`, `fee`, `waive_fee`) |
 //! | `POST /sales-orders/{id}/cancel-remaining` | `wl_sales.sales_order_cancel_remaining` | `sales_orders.cancel` (fields `reason`, `line_<id>_outcome`, `line_<id>_fee`, `line_<id>_waive`) |
 //! | `POST /sales-orders/{id}/refund` | `wl_sales.sales_order_refund` | `returns.request` (fields `reason`, `category`, `party`, `ticket`, `line_<id>_refund`): a refund after completion with nothing returned (`SAL.ACL.06`) |
-//! | `POST /sales-orders/{id}/amend` | `wl_sales.sales_order_amend` | `sales_orders.amend` (fields `revision`, `reason`, `line_<id>_quantity`, `_price`, `_discount`, `add_item`, `add_quantity`, `add_price`) |
+//! | `POST /sales-orders/{id}/amend` | `wl_sales.sales_order_amend` | `sales_orders.amend` (fields `revision`, `reason`, `line_<id>_quantity`, `_price`, `_discount`, `add_item`, `add_quantity`, `add_price`, `customer_po`, `call_off`) |
 //! | `GET /sales-orders/{id}/revisions/{revision}` | `wl_sales.sales_order_revision` | `sales_orders.view`: an earlier revision, read-only |
 //! | `POST /sales-orders/{id}/resend-link` | `wl_sales.sales_order_resend_link` | `sales_orders.amend` |
 //! | `POST /sales-orders/{id}/amend-back` | `wl_sales.sales_order_amend_back` | `sales_orders.amend` |
@@ -1342,7 +1342,8 @@ async fn cancel_remaining(
 /// Fields: `revision` (the one the form was opened on), `reason`, per item
 /// line `line_<id>_quantity` (units), `line_<id>_price` and
 /// `line_<id>_discount` (AED), and optionally a line to add: `add_item`,
-/// `add_quantity`, `add_price`.
+/// `add_quantity`, `add_price`; and `customer_po` (with `call_off`) to change the
+/// customer PO number.
 async fn amend_order(
     State(state): State<AppState>,
     user: AuthUser,
@@ -1376,6 +1377,12 @@ async fn amend_order(
             })?,
         };
         input = input.line(line.id, quantity, price, discount);
+    }
+    if form.contains_key("customer_po") {
+        input = input.po(
+            get("customer_po"),
+            form.contains_key("call_off").then(|| get("call_off")),
+        );
     }
     if !get("add_item").is_empty() {
         let quantity = match get("add_quantity") {

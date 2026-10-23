@@ -42,6 +42,12 @@
 //!   share of the line before the discount; there is no price list yet, so
 //!   "below list" is not checked.
 //! - One request waits at a time per order and action.
+//! - The customer PO number and the call-off number may be changed too
+//!   (BL-SAL-18): with *Unique customer PO number per customer* on the new
+//!   number is checked with `po_number::ensure_free`, the amended order being
+//!   the exception, and the order's PoKey moves with it; a number another
+//!   order holds is refused (422, naming that order) before anything is
+//!   written. At the last approval the unique index still guards the number.
 //! - A prepaid increase holds the added quantity back from fulfilment until
 //!   the payment link is paid ([`SaleLine::held_milli`]); see
 //!   [`crate::settle`].
@@ -56,6 +62,7 @@ use wl_kernel::sales::{AmendedLine, SALES_ORDER_SUBJECT_TYPE, fulfilment_progres
 use crate::config::config_of;
 use crate::order_change::{KIND_AMEND, OrderChange, OrderRevision, RevisionLine};
 use crate::permissions;
+use crate::po_number::{PoKey, Reference};
 use crate::sale_line::{KIND_ITEM, SaleLine, ratio_half_up, totals};
 use crate::sales_order::{OrderPaymentStatus, PAYMENT_ONLINE, SalesOrder, SalesOrderStatus};
 use crate::texts::english;
@@ -131,6 +138,13 @@ pub struct AmendInput {
     pub added: Vec<AddedLine>,
     /// The revision the user saw; 0 when not given.
     pub base_revision: i64,
+    /// The new customer PO reference; `None` leaves it as it is.
+    pub customer_po: Option<String>,
+    /// The new call-off number; `None` leaves it as it is.
+    pub call_off: Option<String>,
+    /// Whether the PO key of the order is kept (the setting *Unique customer
+    /// PO number per customer* was on when the amendment was asked).
+    pub keep_po_key: bool,
     /// Skip the money of the change (an amendment back after an unpaid
     /// payment link: the increase is removed, nothing is charged or refunded).
     pub no_money: bool,
@@ -188,6 +202,14 @@ impl AmendInput {
         self
     }
 
+    /// Changes the customer PO reference (and the call-off number, when
+    /// given) of the order.
+    pub fn po(mut self, customer_po: &str, call_off: Option<&str>) -> Self {
+        self.customer_po = Some(customer_po.trim().to_owned());
+        self.call_off = call_off.map(|c| c.trim().to_owned());
+        self
+    }
+
     /// Seen at revision `revision`.
     pub fn seen_at(mut self, revision: i64) -> Self {
         self.base_revision = revision;
@@ -228,6 +250,28 @@ fn discount_bps(unit_price: i64, quantity_milli: i64, discount: i64) -> i64 {
         return 0;
     }
     ratio_half_up(discount, 10_000, before)
+}
+
+/// The customer PO reference and call-off number the order has after
+/// `input`, trimmed; empty for none.
+fn po_after(order: &SalesOrder, input: &AmendInput) -> (String, String) {
+    let pick = |new: &Option<String>, old: &Option<String>| {
+        new.as_deref()
+            .unwrap_or_else(|| old.as_deref().unwrap_or_default())
+            .trim()
+            .to_owned()
+    };
+    (
+        pick(&input.customer_po, &order.customer_po),
+        pick(&input.call_off, &order.call_off),
+    )
+}
+
+/// Whether `input` changes the PO reference or the call-off number.
+fn po_changed(order: &SalesOrder, input: &AmendInput) -> bool {
+    let (po, call_off) = po_after(order, input);
+    let was = |old: &Option<String>| old.as_deref().unwrap_or_default().trim().to_owned();
+    po != was(&order.customer_po) || call_off != was(&order.call_off)
 }
 
 /// The amendment `asked` checked against the order and its `lines`, with the
@@ -342,6 +386,7 @@ pub fn evaluate(order: &SalesOrder, lines: &[SaleLine], asked: &AmendInput) -> A
             ..SaleLine::default()
         });
     }
+    changed |= po_changed(order, &input);
     if !changed {
         first(&mut problem, english("wl_sales.amend.problem.nothing", &[]));
     }
@@ -481,6 +526,9 @@ async fn amend_in(tx: &mut Transaction, order: SalesOrder, run: &AmendInput) -> 
         && order.payment_status == OrderPaymentStatus::Received;
     let hold = prepaid && found.new_gross > found.old_gross && !run.no_money;
     let stamp = renox::db::now();
+    if po_changed(&order, run) {
+        move_po(tx, &order, run, &stamp).await?;
+    }
     let mut report = Vec::new();
     for change in &run.changes {
         let Some(line) = before.iter().find(|l| l.id == change.line) else {
@@ -584,6 +632,47 @@ async fn amend_in(tx: &mut Transaction, order: SalesOrder, run: &AmendInput) -> 
     Ok(())
 }
 
+/// Writes the new PO reference and call-off number of the order and moves
+/// its PO key (the order keeps no key when the setting was off).
+async fn move_po(
+    tx: &mut Transaction,
+    order: &SalesOrder,
+    run: &AmendInput,
+    stamp: &renox::db::DateTime,
+) -> Result {
+    let (po, call_off) = po_after(order, run);
+    let value = |text: &str| (!text.is_empty()).then(|| text.to_owned());
+    SalesOrder::query()
+        .where_(SalesOrder::ID.eq(order.id))
+        .update(
+            &mut *tx,
+            &[
+                ("customer_po", &value(&po)),
+                ("call_off", &value(&call_off)),
+                ("updated_at", stamp),
+            ],
+        )
+        .await?;
+    if run.keep_po_key {
+        PoKey::query()
+            .where_(PoKey::ORDER_ID.eq(order.id))
+            .delete(&mut *tx)
+            .await?;
+        if let Some(reference) = Reference::of(&po, &call_off) {
+            PoKey {
+                order_id: order.id,
+                party_id: order.party_id,
+                po_key: reference.po_key,
+                call_off_key: reference.call_off_key,
+                ..PoKey::default()
+            }
+            .insert(&mut *tx)
+            .await?;
+        }
+    }
+    Ok(())
+}
+
 /// What [`amend`] did.
 #[derive(Debug, Clone)]
 pub enum AmendOutcome {
@@ -638,9 +727,17 @@ pub async fn amend(
     asked.started_lines = fulfilment_progress(state)
         .started_lines(state, order.order_id(), &item_ids)
         .await?;
+    asked.keep_po_key = crate::po_number::is_on(state);
     let found = evaluate(&order, &lines, &asked);
     if let Some(problem) = found.problem.clone() {
         return Err(refused(problem));
+    }
+    // The new number must not be held by another order of the customer
+    // (BL-SAL-18): this order is the exception.
+    if found.keep_po_key && po_changed(&order, &found) {
+        let (po, call_off) = po_after(&order, &found);
+        crate::po_number::ensure_free(&state.db, order.party_id, &po, &call_off, Some(order.id))
+            .await?;
     }
     let reason = found.reason.clone();
     if let Some(request) = crate::order_changes::request_or_run(

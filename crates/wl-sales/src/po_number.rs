@@ -17,9 +17,9 @@
 //!   like any other duplicate.
 //! - A draft's reference is editable ([`set_reference`]) and checked when
 //!   changed, as an early warning; the key is claimed at `submit`.
-//! - `amend` (BL-SAL-05) changes the key of a submitted order; it is not in
-//!   this branch. It calls [`ensure_free`] with the order it amends as the
-//!   exception and moves the key, as `submit` does for a draft.
+//! - `amend` (BL-SAL-05) changes the number of a submitted order: it calls
+//!   [`ensure_free`] with the order it amends as the exception and moves the
+//!   key, as `submit` does for a draft (`amend::AmendInput::po`).
 //! - The portal upload screen of 07 (BL-MFG-06) shows [`buyer_refusal`]: the
 //!   number and the status of the existing order, nothing else.
 
