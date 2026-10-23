@@ -41,6 +41,9 @@ pub mod claimfx;
 /// The fixtures of the fleet contract tests.
 pub mod fleetfx;
 
+/// The fixtures of the claims that end before the repair is paid.
+pub mod stopfx;
+
 /// The stand-ins of the payer bills and the rate cards.
 pub mod payer;
 

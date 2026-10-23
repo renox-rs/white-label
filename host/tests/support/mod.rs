@@ -4,6 +4,8 @@
 
 #![allow(dead_code)]
 
+pub mod autofx;
+
 use renox::chrono::{Days, NaiveDate, NaiveDateTime};
 use renox::prelude::*;
 use renox::testing::TestApp;
