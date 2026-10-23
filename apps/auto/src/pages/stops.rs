@@ -252,6 +252,22 @@ pub(crate) fn view_of(
             ]);
         }
     }
+    // The reminders to collect the vehicle and its storage (`AUT.RUL.18`).
+    if let Some(first) = card.collect_first_on {
+        summary.push([text(lang, "storage.first"), first.to_string()]);
+    }
+    if let Some(second) = card.collect_second_on {
+        summary.push([text(lang, "storage.second"), second.to_string()]);
+    }
+    if let Some(manager) = card.collect_manager_on {
+        summary.push([text(lang, "storage.manager"), manager.to_string()]);
+    }
+    if card.storage_days > 0 {
+        summary.push([text(lang, "storage.days"), card.storage_days.to_string()]);
+    }
+    if let Some(invoice) = card.storage_invoice_id {
+        summary.push([text(lang, "storage.invoice"), format!("#{invoice}")]);
+    }
     StopView {
         labour,
         parts,

@@ -243,6 +243,19 @@ pub struct JobCard {
     /// When the message asking the customer to collect the vehicle gave up
     /// (`AUT.RUL.17`): the advisor sees "message not delivered".
     pub collect_message_failed_at: Option<DateTime>,
+    /// The day the first reminder to collect the vehicle fell due; the storage
+    /// fee runs from it (`AUT.RUL.18`).
+    pub collect_first_on: Option<NaiveDate>,
+    /// The day the second reminder fell due.
+    pub collect_second_on: Option<NaiveDate>,
+    /// The day the branch manager's task fell due (day 30).
+    pub collect_manager_on: Option<NaiveDate>,
+    /// The days of storage invoiced at release.
+    pub storage_days: i64,
+    /// The invoice of the storage fee, raised at release.
+    pub storage_invoice_id: Option<i64>,
+    /// When the storage fee was invoiced.
+    pub storage_invoiced_at: Option<DateTime>,
     /// When the booking was cancelled with the job card.
     pub booking_cancelled_at: Option<DateTime>,
     /// When the vehicle was released.

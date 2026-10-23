@@ -18,8 +18,8 @@
 //!   contract's monthly invoice is on account.
 //! - A job card billed nothing (a waived bill, a decline with no fee) has
 //!   nothing to pay.
-//! - Closing the storage fee at release (`AUT.RUL.18`) is BL-AUT-05's: it reads
-//!   `released_at`.
+//! - The storage fee is invoiced at release ([`crate::storage::bill_release`],
+//!   `AUT.RUL.18`, BL-AUT-05).
 
 use renox::db::now;
 use renox::prelude::*;
@@ -199,6 +199,8 @@ pub async fn release(
     if claimed == 0 {
         return Err(refused(english("auto.release.problem.released", &[])));
     }
+    // The storage fee of the days the vehicle stayed (`AUT.RUL.18`).
+    crate::storage::bill_release(state, id).await?;
     JobCard::find_or_404(&state.db, id).await
 }
 

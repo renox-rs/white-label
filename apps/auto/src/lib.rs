@@ -45,7 +45,9 @@ pub mod permissions;
 pub mod reasons;
 pub mod release;
 pub mod seed;
+pub mod settings;
 pub mod stop;
+pub mod storage;
 pub mod stop_billing;
 pub mod substitute;
 pub mod supply;
@@ -62,6 +64,7 @@ mod texts_incidents;
 mod texts_jobs;
 mod texts_police;
 mod texts_stops;
+mod texts_storage;
 mod texts_supplier;
 mod texts_vehicles;
 pub mod vehicle;
@@ -236,6 +239,7 @@ impl Module for Auto {
             .model::<parts_wait::PartsWait>()
             .model::<substitute::Substitute>()
             .model::<supply::SupplyPeriod>()
+            .model::<settings::Setting>()
             .model::<TestDrive>()
             .model::<Incident>();
         // The job card: the machine, and the job card that the check-in of a
@@ -250,6 +254,8 @@ impl Module for Auto {
         documents::register();
         // The liability of a vehicle incident is decided on the job card.
         incidents::register();
+        // The reminders to collect a vehicle and the storage fee (`AUT.RUL.18`).
+        storage::register(app);
         job_void::listen(app);
         // A job card declined: the inspection fee, the booking and the
         // message asking the customer to collect; the hourly expiry check.

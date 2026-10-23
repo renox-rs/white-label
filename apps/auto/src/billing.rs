@@ -47,6 +47,8 @@ pub async fn after_deliver(state: &AppState, card: &JobCard) -> Result {
             .await;
     }
     bill(state, card.id).await?;
+    // The storage fee of a vehicle that waited ready (`AUT.RUL.18`).
+    crate::storage::bill_release(state, card.id).await?;
     Ok(())
 }
 
