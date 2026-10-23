@@ -1170,7 +1170,10 @@ pub async fn save_qc(state: &AppState, by: &AuthUser, id: i64, done: &[String]) 
 /// A 403 without `job_cards.qc`; a 422 while a check is not done.
 pub async fn pass_qc(state: &AppState, by: &AuthUser, id: i64) -> Result<JobCard> {
     let card = load(state, by, id, permissions::JOB_CARDS_QC).await?;
-    run(state, by, &card, PASS_QC, None, input_for(by)).await
+    let ready = run(state, by, &card, PASS_QC, None, input_for(by)).await?;
+    // The insurance claim the job card fills is ready for billing.
+    crate::claims::on_job_ready(state, ready.id).await?;
+    JobCard::find_or_404(&state.db, ready.id).await
 }
 
 /// `fail_qc`: the QC found something to put right; `findings` is the reason.

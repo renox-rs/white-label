@@ -1,0 +1,35 @@
+{#- auto: one insurer: its claim email, surveyors, payment terms, the rates
+    agreed, the payer agreement and the rate card version in force, and the
+    actions that change the terms and stop or resume new claims. Replace it
+    with resources/views/auto/insurer.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="name">
+  <rx-stack>
+    <rx-page-header :title="name" :subtitle="tx['insurers.subtitle_one']" :back="route('auto.insurers')" :back-label="tx['insurers.title']">
+      <rx-action-sheet :id="'insurer-edit-' ~ id" :label="tx['insurers.edit']" :action="route('auto.insurer_update', id)"
+                       :title="tx['insurers.edit']" :description="tx['insurers.edit_description']" :submit-label="tx['insurers.edit']" icon="pencil">
+        <rx-input name="agreement" type="number" :label="tx['insurers.agreement']" :hint="tx['insurers.agreement_hint']" :value="raw_agreement" :id="'insurer-edit-agreement-' ~ id"/>
+        <rx-input name="email" :label="tx['insurers.email']" :value="raw_email" :id="'insurer-edit-email-' ~ id"/>
+        <rx-textarea name="surveyors" :label="tx['insurers.surveyors']" :value="raw_surveyors" :id="'insurer-edit-surveyors-' ~ id"/>
+        <rx-input name="terms" type="number" :label="tx['insurers.terms']" :hint="tx['insurers.terms_hint']" :value="raw_terms" :id="'insurer-edit-terms-' ~ id"/>
+        <rx-input name="labour_rate" :label="tx['insurers.labour_rate']" :hint="tx['insurers.money_hint']" :value="raw_labour_rate" :id="'insurer-edit-labour-' ~ id"/>
+        <rx-input name="storage_rate" :label="tx['insurers.storage_rate']" :hint="tx['insurers.money_hint']" :value="raw_storage_rate" :id="'insurer-edit-storage-' ~ id"/>
+      </rx-action-sheet>
+      <rx-confirm :id="'insurer-active-' ~ id" :label="active ? tx['insurers.stop'] : tx['insurers.resume']" :action="route('auto.insurer_active', id)" method="POST"
+                  :title="active ? tx['insurers.stop'] : tx['insurers.resume']" :message="active ? tx['insurers.stop_message'] : tx['insurers.resume_message']"
+                  :confirm-label="active ? tx['insurers.stop'] : tx['insurers.resume']" :cancel-label="tx['button_cancel']" icon="refresh-cw"/>
+    </rx-page-header>
+    <rx-alert rx-if="not active" kind="info" :message="tx['insurers.stopped_message']"/>
+    <rx-card :title="tx['insurers.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['insurers.name']" :value="name"/>
+        <rx-entry :label="tx['insurers.email']" :value="email"/>
+        <rx-entry :label="tx['insurers.surveyors']" :value="surveyors"/>
+        <rx-entry :label="tx['insurers.terms']" :value="terms"/>
+        <rx-entry :label="tx['insurers.labour_rate']" :value="labour_rate"/>
+        <rx-entry :label="tx['insurers.storage_rate']" :value="storage_rate"/>
+        <rx-entry :label="tx['insurers.agreement']" :value="agreement"/>
+        <rx-entry :label="tx['insurers.rate_card']" :value="rate_card"/>
+      </rx-infolist>
+    </rx-card>
+  </rx-stack>
+</rx-page>

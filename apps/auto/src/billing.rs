@@ -136,6 +136,13 @@ pub async fn bill(state: &AppState, job_card_id: i64) -> Result<Option<InvoiceId
     if card.status != JobCardStatus::Delivered {
         return Err(refused(english("auto.billing.problem.not_delivered", &[])));
     }
+    // An insurance claim that funds the job card bills it (the insurer's
+    // payer bill and the customer's excess and private items,
+    // `AUT.INS.04`); a fleet contract bills it in its monthly invoice
+    // (`FIN.USG.01`).
+    if crate::claims::funds_job_card(&state.db, card.id).await? {
+        return Ok(None);
+    }
     let estimate = Estimate::load(&state.db, card.id).await?;
     let Some(draft) = draft_of(&card, &estimate) else {
         return Ok(None);

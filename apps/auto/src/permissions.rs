@@ -31,6 +31,9 @@ pub const INSURANCE_MANAGE: &str = "insurance.manage";
 pub const FLEET_CONTRACTS_MANAGE: &str = "fleet_contracts.manage";
 /// Raise and recover supplier warranty claims (`AUT.WAR.02`).
 pub const SUPPLIER_CLAIMS_MANAGE: &str = "supplier_claims.manage";
+/// Issue the invoices of a claim or of a fleet contract: wl-invoicing's own
+/// permission (`invoices.issue`), which the accountant holds (`AUT.INS.04`).
+pub const INVOICES_ISSUE: &str = "invoices.issue";
 /// Issue parts from stock to a job card: wl-inventory's own permission
 /// (`stock.issue`), which the storekeeper holds, is enough besides
 /// `job_cards.work` and `job_cards.advise`.

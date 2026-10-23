@@ -13,6 +13,13 @@ pub const JOB_CARD_SUBJECT_TYPE: &str = "auto.job_card";
 /// with the claims.
 pub const INSURANCE_CLAIM_SUBJECT_TYPE: &str = "auto.insurance_claim";
 
+/// The subject type of an insurer (`auto.insurer:7`): the source of its rate
+/// card in wl-invoicing (`FIN.RAT.01`).
+pub const INSURER_SUBJECT_TYPE: &str = "auto.insurer";
+
+/// The subject type of a supplier warranty claim (`auto.supplier_claim:7`).
+pub const SUPPLIER_CLAIM_SUBJECT_TYPE: &str = "auto.supplier_claim";
+
 /// The subject type of a fleet contract (`auto.fleet_contract:7`), built with
 /// the fleet contracts.
 pub const FLEET_CONTRACT_SUBJECT_TYPE: &str = "auto.fleet_contract";
@@ -151,6 +158,8 @@ mod tests {
             JOB_CARD_SUBJECT_TYPE,
             INSURANCE_CLAIM_SUBJECT_TYPE,
             FLEET_CONTRACT_SUBJECT_TYPE,
+            INSURER_SUBJECT_TYPE,
+            SUPPLIER_CLAIM_SUBJECT_TYPE,
         ] {
             assert!(subject.starts_with("auto."), "{subject}");
         }

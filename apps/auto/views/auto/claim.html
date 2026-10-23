@@ -1,0 +1,125 @@
+{#- auto: one insurance repair claim: the insurer, the policy and claim number,
+    the vehicle and job card it funds, the police report, the excess, what was
+    asked of the insurer and what it approved line by line, the split billing,
+    and the actions of the coordinator, the advisor and the accountant by
+    state. Replace it with resources/views/auto/claim.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="insurer ~ ' · ' ~ plate" :badge="status" :badge-kind="status_kind" :back="route('auto.claims')" :back-label="tx['claims.title']">
+      <template rx-if="can_police">
+        <rx-action-sheet :id="'claim-police-' ~ id" :label="tx['claims.police']" :action="route('auto.claim_police', id)"
+                         :title="tx['claims.police']" :description="tx['claims.police_description']" :submit-label="tx['claims.police']" icon="file-text">
+          <rx-input name="number" :label="tx['claims.police_report']" :value="raw_police_report" :id="'claim-police-no-' ~ id" required/>
+          <rx-input name="date" type="date" :label="tx['claims.police_date']" :value="raw_police_date" :id="'claim-police-date-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_survey">
+        <rx-confirm :id="'claim-survey-' ~ id" :label="tx['claims.survey']" :action="route('auto.claim_survey', id)" method="POST"
+                    :title="tx['claims.survey']" :message="tx['claims.survey_message']" :confirm-label="tx['claims.survey']" :cancel-label="tx['button_cancel']" icon="search"/>
+      </template>
+      <template rx-if="can_submit">
+        <rx-confirm :id="'claim-submit-' ~ id" :label="tx['claims.submit']" :action="route('auto.claim_submit', id)" method="POST"
+                    :title="tx['claims.submit']" :message="tx['claims.submit_message']" :confirm-label="tx['claims.submit']" :cancel-label="tx['button_cancel']" icon="send"/>
+      </template>
+      <template rx-if="can_approve">
+        <rx-action-sheet :id="'claim-approve-' ~ id" :label="tx['claims.approve']" :action="route('auto.claim_approve', id)"
+                         :title="tx['claims.approve']" :description="tx['claims.approve_description']" :submit-label="tx['claims.approve']" icon="check">
+          <rx-input name="reference" :label="tx['claims.reference']" :hint="tx['claims.reference_hint']" :id="'claim-approve-reference-' ~ id" required/>
+          <rx-input name="document" :label="tx['claims.document']" :hint="tx['claims.document_hint']" :id="'claim-approve-document-' ~ id" required/>
+          <rx-input name="excess" :label="tx['claims.excess']" :hint="tx['claims.money_hint']" :value="raw_excess" :id="'claim-approve-excess-' ~ id"/>
+          <rx-stack rx-for="line in estimate_lines">
+            <rx-input :name="line.field" :label="line.description ~ ': ' ~ tx['claims.line_approved']" :hint="tx['claims.line_price'] ~ ': ' ~ line.price" :value="line.value" :id="'claim-approve-' ~ line.field"/>
+          </rx-stack>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_reject">
+        <rx-action-sheet :id="'claim-reject-' ~ id" :label="tx['claims.reject']" :action="route('auto.claim_reject', id)"
+                         :title="tx['claims.reject']" :description="tx['claims.reject_description']" :submit-label="tx['claims.reject']" icon="x">
+          <rx-textarea name="reason" :label="tx['claims.insurer_reason']" :id="'claim-reject-reason-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_supplementary">
+        <rx-action-sheet :id="'claim-supplementary-' ~ id" :label="tx['claims.supplementary']" :action="route('auto.claim_supplementary', id)"
+                         :title="tx['claims.supplementary']" :description="tx['claims.supplementary_description']" :submit-label="tx['claims.supplementary']" icon="triangle-alert">
+          <rx-textarea name="findings" :label="tx['claims.findings']" :hint="tx['claims.findings_hint']" :id="'claim-supplementary-findings-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_supp_answer">
+        <rx-action-sheet :id="'claim-supp-approve-' ~ id" :label="tx['claims.supp_approve']" :action="route('auto.claim_supp_approve', id)"
+                         :title="tx['claims.supp_approve']" :description="tx['claims.approve_description']" :submit-label="tx['claims.supp_approve']" icon="check">
+          <rx-input name="reference" :label="tx['claims.reference']" :id="'claim-supp-reference-' ~ id" required/>
+          <rx-input name="document" :label="tx['claims.document']" :hint="tx['claims.document_hint']" :id="'claim-supp-document-' ~ id" required/>
+          <rx-stack rx-for="line in supplementary_lines">
+            <rx-input :name="line.field" :label="line.description ~ ': ' ~ tx['claims.line_approved']" :hint="tx['claims.line_price'] ~ ': ' ~ line.price" :value="line.value" :id="'claim-supp-' ~ line.field"/>
+          </rx-stack>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'claim-supp-decline-' ~ id" :label="tx['claims.supp_decline']" :action="route('auto.claim_supp_decline', id)"
+                         :title="tx['claims.supp_decline']" :description="tx['claims.supp_decline_description']" :submit-label="tx['claims.supp_decline']" icon="x">
+          <rx-textarea name="reason" :label="tx['claims.insurer_reason']" :id="'claim-supp-decline-reason-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_invoice">
+        <rx-confirm :id="'claim-invoice-' ~ id" :label="tx['claims.invoice']" :action="route('auto.claim_invoice', id)" method="POST"
+                    :title="tx['claims.invoice']" :message="tx['claims.invoice_message']" :confirm-label="tx['claims.invoice']" :cancel-label="tx['button_cancel']" icon="receipt"/>
+      </template>
+      <template rx-if="can_total_loss">
+        <rx-action-sheet :id="'claim-total-loss-' ~ id" :label="tx['claims.total_loss_action']" :action="route('auto.claim_total_loss', id)"
+                         :title="tx['claims.total_loss_action']" :description="tx['claims.total_loss_description']" :submit-label="tx['claims.total_loss_action']" icon="triangle-alert">
+          <rx-input name="document" :label="tx['claims.total_loss_notice']" :hint="tx['claims.document_hint']" :id="'claim-total-loss-document-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_cancel">
+        <rx-action-sheet :id="'claim-cancel-' ~ id" :label="tx['claims.cancel']" :action="route('auto.claim_cancel', id)"
+                         :title="tx['claims.cancel']" :description="tx['claims.cancel_description']" :submit-label="tx['claims.cancel']" icon="trash">
+          <rx-textarea name="reason" :label="tx['claims.reason']" :id="'claim-cancel-reason-' ~ id" required/>
+          <rx-input name="document" :label="tx['claims.withdrawal']" :hint="tx['claims.document_hint']" :id="'claim-cancel-document-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_void">
+        <rx-action-sheet :id="'claim-void-' ~ id" :label="tx['claims.void']" :action="route('auto.claim_void', id)"
+                         :title="tx['claims.void']" :description="tx['claims.void_description']" :submit-label="tx['claims.void']" icon="trash">
+          <rx-textarea name="reason" :label="tx['claims.reason']" :id="'claim-void-reason-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-alert rx-if="closed_reason" kind="info" :message="tx['claims.closed_because'] ~ ' ' ~ closed_reason"/>
+    <rx-card :title="tx['claims.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['claims.insurer']" :value="insurer"/>
+        <rx-entry :label="tx['claims.customer']" :value="customer"/>
+        <rx-entry :label="tx['claims.policy_no']" :value="policy_no"/>
+        <rx-entry :label="tx['claims.claim_no']" :value="claim_no"/>
+        <rx-entry :label="tx['vehicles.plate']" :value="plate"/>
+        <rx-entry :label="tx['claims.job_card']" :value="job_card"/>
+        <rx-entry :label="tx['claims.accident']" :value="accident"/>
+        <rx-entry :label="tx['claims.police_report']" :value="police_report"/>
+        <rx-entry :label="tx['claims.repair']" :value="repair"/>
+        <rx-entry :label="tx['claims.excess']" :value="excess"/>
+        <rx-entry :label="tx['claims.estimate']" :value="estimate"/>
+        <rx-entry :label="tx['claims.approved']" :value="approved"/>
+        <rx-entry :label="tx['claims.rate_card']" :value="rate_card"/>
+        <rx-entry :label="tx['claims.total_loss_notice']" :value="total_loss"/>
+        <rx-entry :label="tx['claims.withdrawal']" :value="withdrawal"/>
+        <rx-entry :label="tx['claims.payer_bill']" :value="payer_bill"/>
+        <rx-entry :label="tx['claims.customer_invoice']" :value="customer_invoice"/>
+      </rx-infolist>
+      <template rx-if="job_card_id">
+        <rx-toolbar>
+          <rx-link-button :href="route('auto.job_card', job_card_id)" :label="tx['claims.open_job_card']" icon="wrench" variant="secondary"/>
+        </rx-toolbar>
+      </template>
+    </rx-card>
+    <rx-card :title="tx['claims.requests']">
+      <rx-table :rows="approvals" as="row" :key="row.round" :caption="tx['claims.requests']">
+        <rx-column :label="tx['claims.request']">{{ row.kind }} #{{ row.round }}</rx-column>
+        <rx-column :label="tx['claims.asked']" align="num">{{ row.asked }}</rx-column>
+        <rx-column :label="tx['fields.status']"><rx-badge :kind="row.outcome_kind" :text="row.outcome"/></rx-column>
+        <rx-column :label="tx['claims.reference']" hide-narrow>{{ row.reference }}</rx-column>
+        <rx-column :label="tx['claims.approved']" align="num">{{ row.approved }}</rx-column>
+        <rx-column :label="tx['claims.document']" hide-narrow>{{ row.document }}</rx-column>
+        <rx-column :label="tx['claims.insurer_reason']" hide-narrow>{{ row.reason }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['claims.requests_empty']" icon="send"/></rx-slot>
+      </rx-table>
+    </rx-card>
+  </rx-stack>
+</rx-page>

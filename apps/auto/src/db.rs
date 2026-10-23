@@ -3,6 +3,7 @@
 use renox::db::{ToDbValue, Transaction, now};
 use renox::prelude::*;
 
+use crate::claim::InsuranceClaim;
 use crate::job_card::JobCard;
 
 /// A 422 with `message`, like a refused guard.
@@ -22,6 +23,23 @@ pub(crate) async fn set_job_card(
     all.push(("updated_at", &stamp));
     JobCard::query()
         .where_(JobCard::ID.eq(id))
+        .update(&mut *tx, &all)
+        .await?;
+    Ok(())
+}
+
+/// Sets columns of insurance claim `id` other than the status (the machine
+/// owns it) and stamps `updated_at`.
+pub(crate) async fn set_claim(
+    tx: &mut Transaction,
+    id: i64,
+    columns: &[(&str, &(dyn ToDbValue + Sync))],
+) -> Result {
+    let mut all: Vec<(&str, &(dyn ToDbValue + Sync))> = columns.to_vec();
+    let stamp = now();
+    all.push(("updated_at", &stamp));
+    InsuranceClaim::query()
+        .where_(InsuranceClaim::ID.eq(id))
         .update(&mut *tx, &all)
         .await?;
     Ok(())

@@ -157,6 +157,18 @@ pub fn register_documents(client_app: &str) {
     );
 }
 
+/// Gives the accountant `invoices.issue` in an Auto deployment: the split
+/// billing of an insurance claim (`AUT.INS.04`) and the monthly invoice of a
+/// fleet contract (`FIN.USG.01`) are issued by the accountant (08 §3.1). The
+/// roles table is shared by every vertical, so this is a grant of this
+/// client only (see `roles::grant_extra`).
+pub fn grant_roles(client_app: &str) {
+    if client_app != AUTO {
+        return;
+    }
+    super::roles::grant_extra(ACCOUNTANT_ROLE, &[auto::permissions::INVOICES_ISSUE]);
+}
+
 /// The scheduling module with the Auto client's values (§7.1 *Booking*,
 /// §7.2): D = 30 days for `SCH.RUL.05`, H = 2 hours for `SCH.RUL.06`, the
 /// reminder 24 hours before (`SCH.RUL.01`), the workshop manager told of an
