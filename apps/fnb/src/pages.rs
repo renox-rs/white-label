@@ -58,6 +58,7 @@ use crate::refunds::{self, RefundAsk};
 use crate::texts::{every, t};
 use crate::ticket::{BUMP, KitchenTicket, START, TicketStatus};
 use crate::{close, failed, fulfilment, pickup, placing};
+use wl_kernel::documents::dubai_text;
 
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
@@ -86,6 +87,62 @@ pub(crate) const VIEWS: &[(&str, &str)] = &[
 pub(crate) type Texts = BTreeMap<&'static str, String>;
 
 const PREFIX: &str = "fnb.screen.";
+
+/// The moments of an order, in Dubai time, as the page shows them.
+#[derive(Serialize, Debug, Clone, Default)]
+pub(crate) struct OrderTimes {
+    failed: String,
+    closed: String,
+    ready: String,
+    pickup_alert: String,
+    pickup_task: String,
+    reversed: String,
+    cancelled: String,
+}
+
+impl OrderTimes {
+    fn of(order: &FnbOrder) -> Self {
+        let text = |at: Option<renox::db::DateTime>| at.map(dubai_text).unwrap_or_default();
+        Self {
+            failed: text(order.failed_at),
+            closed: text(order.closed_at),
+            ready: text(order.ready_at),
+            pickup_alert: text(order.pickup_alert_at),
+            pickup_task: text(order.pickup_task_at),
+            reversed: text(order.reversed_at),
+            cancelled: text(order.cancelled_at),
+        }
+    }
+}
+
+/// The words of a transition of the order's history (`mark_ready` is "Marked
+/// ready"); one with no words shows its name spelled out.
+fn transition_word(lang: &Lang, name: &str) -> String {
+    let key = format!("fnb.screen.transition.{name}");
+    let word = t(lang, &key);
+    if word == key { spelled(name) } else { word }
+}
+
+/// A code spelled out for people: `not_home` is "Not home".
+fn spelled(code: &str) -> String {
+    let words = code.replace('_', " ");
+    let mut chars = words.chars();
+    chars
+        .next()
+        .map(|c| c.to_uppercase().collect::<String>() + chars.as_str())
+        .unwrap_or_default()
+}
+
+/// The words of a sales channel (`aggregator_a` is "Aggregator A"); a channel
+/// with no words shows its code.
+pub(crate) fn channel_label(lang: &Lang, code: &str) -> String {
+    let key = format!("fnb.screen.channels.paper_channel.{code}");
+    let word = t(lang, &key);
+    if word == key { code.to_owned() } else { word }
+}
+
+/// wl-delivery's permission to open a delivery's screen.
+const DELIVERIES_VIEW: &str = "deliveries.view";
 
 /// wl-delivery's permission to put a delivery under review and close the
 /// review (`WRK.ACL.10` is `deliveries.reverse`).
@@ -219,7 +276,7 @@ pub(crate) struct IndexPage {
 }
 
 async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<Response> {
-    if !user.has_permission(permissions::ORDERS_VIEW) {
+    if !user.has_permission_anywhere(permissions::ORDERS_VIEW) {
         return Err(Error::Forbidden);
     }
     let orders = FnbOrder::newest(&state.db, 200)
@@ -230,7 +287,7 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             number: o.number.clone(),
             recipient: o.recipient_name.clone(),
             area: o.area.clone(),
-            channel: o.channel.clone(),
+            channel: channel_label(&lang, &o.channel),
             kind: t(&lang, &format!("fnb.screen.kind.{}", o.kind)),
             payment: t(&lang, &format!("fnb.screen.payment.{}", o.payment_mode)),
             total: o.total,
@@ -259,6 +316,8 @@ pub(crate) struct LineRow {
     description: String,
     quantity: String,
     gross: i64,
+    /// The whole line was cancelled.
+    cancelled: bool,
 }
 
 /// A ticket of the page.
@@ -296,6 +355,8 @@ pub(crate) struct ShowPage {
     status_label: String,
     status_kind: &'static str,
     kind_label: String,
+    channel_label: String,
+    at: OrderTimes,
     payment_label: String,
     lines: Vec<LineRow>,
     tickets: Vec<TicketRow>,
@@ -378,7 +439,7 @@ async fn show(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !user.has_permission(permissions::ORDERS_VIEW) {
+    if !user.has_permission_anywhere(permissions::ORDERS_VIEW) {
         return Err(Error::Forbidden);
     }
     let order = FnbOrder::find_or_404(&state.db, id).await?;
@@ -417,6 +478,7 @@ async fn show(
                 description: line.description.clone(),
                 quantity: format!("{}", line.quantity_milli / 1_000),
                 gross: line.gross,
+                cancelled: line.cancelled_milli >= line.quantity_milli,
             })
             .collect(),
         None => Vec::new(),
@@ -505,7 +567,7 @@ async fn show(
             None => String::new(),
         };
         changes.push(ChangeRow {
-            at: note.created_at.map(|at| at.to_string()).unwrap_or_default(),
+            at: note.created_at.map(dubai_text).unwrap_or_default(),
             what: t(&lang, &format!("fnb.screen.change.{}", note.kind)),
             by,
             reason: note.reason.clone(),
@@ -564,8 +626,8 @@ async fn show(
         .await?
         .into_iter()
         .map(|row| HistoryRow {
-            at: row.at.to_string(),
-            what: row.transition,
+            at: dubai_text(row.at),
+            what: transition_word(&lang, &row.transition),
             to: t(&lang, &format!("fnb.screen.status.{}", row.to_state)),
             reason: row.reason.unwrap_or_default(),
         })
@@ -577,7 +639,7 @@ async fn show(
             amount: ask.amount,
             reason: ask.reason.clone(),
             approved: ask.approved_at.is_some(),
-            at: ask.created_at.map(|at| at.to_string()).unwrap_or_default(),
+            at: ask.created_at.map(dubai_text).unwrap_or_default(),
         })
         .collect();
     let word = |prefix: &str, value: &Option<String>| {
@@ -591,17 +653,25 @@ async fn show(
         status_label: status_word(&lang, order.status),
         status_kind: status_kind(order.status),
         kind_label: t(&lang, &format!("fnb.screen.kind.{}", order.kind)),
+        channel_label: channel_label(&lang, &order.channel),
+        at: OrderTimes::of(&order),
         payment_label: t(&lang, &format!("fnb.screen.payment.{}", order.payment_mode)),
         lines,
         tickets,
         history,
         refunds: asked,
+        // The delivery screen is for the roles that hold `deliveries.view`.
         delivery_url: order
             .delivery_id
+            .filter(|_| user.has_permission_anywhere(DELIVERIES_VIEW))
             .map(|id| format!("/deliveries/{id}"))
             .unwrap_or_default(),
         failure_label: word("reason", &order.failure_reason),
-        delivery_reason_label: order.delivery_reason.clone().unwrap_or_default(),
+        delivery_reason_label: order
+            .delivery_reason
+            .as_deref()
+            .map(spelled)
+            .unwrap_or_default(),
         side_label: word("side", &order.failure_side),
         party_label: word("party", &order.responsible_party),
         decision_label: word("decision", &order.refund_decision),
@@ -971,6 +1041,8 @@ pub(crate) struct MyOrderPage {
     lines: Vec<LineRow>,
     can_cancel: bool,
     accepted: bool,
+    subtitle: String,
+    cancelled: bool,
 }
 
 /// `GET /my/orders/{id}`: the signed-in customer's own order, with Cancel
@@ -995,6 +1067,7 @@ async fn my_order(
                 description: line.description.clone(),
                 quantity: format!("{}", line.quantity_milli / 1_000),
                 gross: line.gross,
+                cancelled: line.cancelled_milli >= line.quantity_milli,
             })
             .collect(),
         None => Vec::new(),
@@ -1005,6 +1078,19 @@ async fn my_order(
         status_kind: status_kind(order.status),
         lines,
         can_cancel: order.status == FnbOrderStatus::Placed,
+        // The promise to cancel is made only while the order can be cancelled.
+        subtitle: t(
+            &lang,
+            if order.status == FnbOrderStatus::Placed {
+                "fnb.screen.my_subtitle"
+            } else {
+                "fnb.screen.my_subtitle_now"
+            },
+        ),
+        cancelled: matches!(
+            order.status,
+            FnbOrderStatus::Cancelled | FnbOrderStatus::Rejected
+        ),
         accepted: matches!(
             order.status,
             FnbOrderStatus::Accepted | FnbOrderStatus::Preparing | FnbOrderStatus::Ready
@@ -1053,7 +1139,7 @@ pub(crate) struct KitchenPage {
 }
 
 async fn kitchen(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<Response> {
-    if !user.has_permission(permissions::KDS_WORK) {
+    if !user.has_permission_anywhere(permissions::KDS_WORK) {
         return Err(Error::Forbidden);
     }
     let mut tickets = Vec::new();
@@ -1063,7 +1149,7 @@ async fn kitchen(State(state): State<AppState>, user: AuthUser, lang: Lang) -> R
             id: ticket.id,
             order: order.as_ref().map(|o| o.number.clone()).unwrap_or_default(),
             // The kitchen screen shows no customer details (`FNB.ACL.01`).
-            order_url: if user.has_permission(permissions::ORDERS_VIEW) {
+            order_url: if user.has_permission_anywhere(permissions::ORDERS_VIEW) {
                 format!("/orders/{}", ticket.order_id)
             } else {
                 String::new()
@@ -1170,7 +1256,7 @@ async fn cod_customers(
         customers.push(CodRow {
             party: flag.party_id,
             customer: name,
-            off_at: flag.cod_off_at.map(|at| at.to_string()).unwrap_or_default(),
+            off_at: flag.cod_off_at.map(dubai_text).unwrap_or_default(),
             order: order.as_ref().map(|o| o.number.clone()).unwrap_or_default(),
             order_url: order
                 .map(|o| format!("/orders/{}", o.id))
@@ -1222,7 +1308,9 @@ async fn checkout_payment(
     Query(query): Query<BTreeMap<String, String>>,
 ) -> Result<Response> {
     let customer = match query.get("party").and_then(|p| p.parse::<i64>().ok()) {
-        Some(party) if user.has_permission(permissions::ORDERS_VIEW) => Some(PartyId(party)),
+        Some(party) if user.has_permission_anywhere(permissions::ORDERS_VIEW) => {
+            Some(PartyId(party))
+        }
         _ => cod::customer_of(&state, &user).await?,
     };
     let options = match customer {

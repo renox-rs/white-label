@@ -6,14 +6,14 @@
     Replace it with resources/views/fnb/payout.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="statement.number">
   <rx-stack>
-    <rx-page-header :title="statement.number" :subtitle="statement.aggregator ~ ' / ' ~ statement.reference" :back="route('fnb.payouts')" :back-label="tx['payout.title']"
+    <rx-page-header :title="statement.number" :subtitle="aggregator_label ~ ' / ' ~ statement.reference" :back="route('fnb.payouts')" :back-label="tx['payout.title']"
                     :badge="status_label" :badge-kind="status_kind">
       <rx-confirm rx-if="can_match" :id="'match-' ~ statement.id" :label="tx['payout.match']" :action="route('fnb.payout_match', statement.id)" method="POST"
                   :title="tx['payout.match_title']" :message="tx['payout.match_message']" :confirm-label="tx['payout.match']"/>
       <rx-action-sheet rx-if="can_dispute" :id="'dispute-' ~ statement.id" :label="tx['payout.dispute']" :action="route('fnb.payout_dispute', statement.id)"
                        :title="tx['payout.dispute_title']" :description="tx['payout.dispute_description']" :submit-label="tx['payout.dispute']" icon="triangle-alert" variant="danger" danger>
         <rx-textarea name="reason" :label="tx['reason']" :id="'dispute-reason-' ~ statement.id" required/>
-        <rx-checkbox rx-for="line in disputable" :name="'line_' ~ line.id" :label="line.order_number ~ ' / ' ~ line.net" :id="'dispute-line-' ~ line.id"/>
+        <rx-checkbox rx-for="line in disputable" :name="'line_' ~ line.id" :label="line.order_number ~ ' / ' ~ (line.net | money(currency='AED'))" :id="'dispute-line-' ~ line.id"/>
       </rx-action-sheet>
       <rx-action-sheet rx-if="can_resolve" :id="'resolve-' ~ statement.id" :label="tx['payout.resolve']" :action="route('fnb.payout_resolve', statement.id)"
                        :title="tx['payout.resolve_title']" :description="tx['payout.resolve_description']" :submit-label="tx['payout.resolve']" icon="check">
@@ -41,7 +41,7 @@
     <rx-card :title="tx['payout.details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['payout.number']" :value="statement.number" copyable/>
-        <rx-entry :label="tx['payout.aggregator']" :value="statement.aggregator"/>
+        <rx-entry :label="tx['payout.aggregator']" :value="aggregator_label"/>
         <rx-entry :label="tx['payout.reference']" :value="statement.reference" copyable/>
         <rx-entry :label="tx['payout.period']" :value="period" :placeholder="tx['none']"/>
         <rx-entry :label="tx['payout.file_name']" :value="statement.file_name" :placeholder="tx['none']"/>

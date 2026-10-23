@@ -85,10 +85,18 @@ pub fn tenths_text(tenths: i64) -> String {
     }
 }
 
-/// Fils as text: `AED 25.00`.
+/// Fils as text: `AED 25.00`, with a comma between the thousands: `AED 5,040.00`.
 pub fn aed(fils: i64) -> String {
     let sign = if fils < 0 { "-" } else { "" };
-    format!("AED {sign}{}.{:02}", fils.abs() / 100, fils.abs() % 100)
+    let whole = (fils.abs() / 100).to_string();
+    let mut grouped = String::new();
+    for (at, digit) in whole.chars().enumerate() {
+        if at > 0 && (whole.len() - at) % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(digit);
+    }
+    format!("AED {sign}{grouped}.{:02}", fils.abs() % 100)
 }
 
 /// The VAT rate of the F&B client's sales: 5% (UAE).
@@ -139,6 +147,9 @@ mod tests {
     fn fils_are_written_as_dirhams() {
         assert_eq!(aed(8_500), "AED 85.00");
         assert_eq!(aed(-5), "AED -0.05");
+        assert_eq!(aed(504_000), "AED 5,040.00");
+        assert_eq!(aed(-123_456_789), "AED -1,234,567.89");
+        assert_eq!(aed(99_999), "AED 999.99");
     }
 
     #[test]

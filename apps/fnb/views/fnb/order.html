@@ -89,7 +89,7 @@
     <rx-card :title="tx['details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['number']" :value="order.number" copyable/>
-        <rx-entry :label="tx['channel']" :value="order.channel"/>
+        <rx-entry :label="tx['channel']" :value="channel_label"/>
         <rx-entry :label="tx['kind']" :value="kind_label"/>
         <rx-entry :label="tx['payment']" :value="payment_label"/>
         <rx-entry :label="tx['total']" :value="order.total" format="money"/>
@@ -99,7 +99,7 @@
         <rx-entry :label="tx['phone']" :value="order.recipient_phone" :placeholder="tx['none']"/>
         <rx-entry :label="tx['address']" :value="order.address" :placeholder="tx['none']"/>
         <rx-entry :label="tx['area']" :value="order.area" :placeholder="tx['none']"/>
-        <rx-entry :label="tx['delivery']" rx-if="delivery_url" :value="delivery_url" :url="delivery_url"/>
+        <rx-entry :label="tx['delivery']" rx-if="delivery_url" :value="tx['delivery_open']" :url="delivery_url"/>
       </rx-infolist>
     </rx-card>
     <rx-card rx-if="order.failure_reason" :title="tx['failure']">
@@ -109,7 +109,7 @@
         <rx-entry :label="tx['side']" :value="side_label"/>
         <rx-entry :label="tx['party']" :value="party_label"/>
         <rx-entry :label="tx['attempt']" :value="order.failure_attempt"/>
-        <rx-entry :label="tx['failed_at']" :value="order.failed_at"/>
+        <rx-entry :label="tx['failed_at']" :value="at.failed"/>
         <rx-entry :label="tx['party_note']" rx-if="order.responsible_note" :value="order.responsible_note" span="full"/>
       </rx-infolist>
     </rx-card>
@@ -117,16 +117,16 @@
       <rx-infolist columns="2">
         <rx-entry :label="tx['decision']" :value="decision_label"/>
         <rx-entry :label="tx['refunded']" :value="order.refund_amount" format="money"/>
-        <rx-entry :label="tx['closed_at']" :value="order.closed_at"/>
-        <rx-entry :label="tx['wastage']" :value="order.wastage_ref" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['closed_at']" :value="at.closed"/>
+        <rx-entry :label="tx['wastage']" :value="order.wastage_ref or (tx['yes'] if order.wastage_posted else '')" :placeholder="tx['none']"/>
         <rx-entry :label="tx['refund_left']" rx-if="can_refund" :value="refund_left" format="money"/>
       </rx-infolist>
     </rx-card>
     <rx-card rx-if="aggregator_waiting" :title="tx['pickup']">
       <rx-infolist columns="2">
-        <rx-entry :label="tx['ready_at']" :value="order.ready_at" :placeholder="tx['none']"/>
-        <rx-entry :label="tx['pickup_alert_at']" :value="order.pickup_alert_at" :placeholder="tx['none']"/>
-        <rx-entry :label="tx['pickup_task_at']" :value="order.pickup_task_at" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['ready_at']" :value="at.ready" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['pickup_alert_at']" :value="at.pickup_alert" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['pickup_task_at']" :value="at.pickup_task" :placeholder="tx['none']"/>
       </rx-infolist>
     </rx-card>
     <rx-card rx-if="order.reversal_return_id" :title="tx['reversal']">
@@ -135,7 +135,7 @@
         <rx-entry :label="tx['reversal_resolution']" :value="reversal_resolution_label"/>
         <rx-entry :label="tx['party']" :value="reversal_party_label"/>
         <rx-entry :label="tx['reversal_amount']" :value="order.reversal_amount" format="money"/>
-        <rx-entry :label="tx['reversed_at']" :value="order.reversed_at"/>
+        <rx-entry :label="tx['reversed_at']" :value="at.reversed"/>
         <rx-entry :label="tx['refunded_after']" :value="refunded_after" format="money"/>
       </rx-infolist>
     </rx-card>
@@ -144,7 +144,7 @@
         <rx-entry :label="tx['reason']" :value="cancel_reason_label"/>
         <rx-entry :label="tx['party']" :value="cancel_party_label"/>
         <rx-entry :label="tx['cancelled_by']" :value="cancelled_by_label" :placeholder="tx['none']"/>
-        <rx-entry :label="tx['cancelled_at']" :value="order.cancelled_at"/>
+        <rx-entry :label="tx['cancelled_at']" :value="at.cancelled"/>
         <rx-entry :label="tx['decision']" rx-if="order.refund_decision" :value="decision_label"/>
         <rx-entry :label="tx['refunded']" :value="order.refund_amount" format="money"/>
         <rx-entry :label="tx['wastage']" rx-if="order.wastage_posted" :value="tx['yes']"/>
@@ -152,7 +152,7 @@
       </rx-infolist>
     </rx-card>
     <rx-table :rows="lines" as="line" :key="line.description" :caption="tx['lines']" card>
-      <rx-column :label="tx['item']">{{ line.description }}</rx-column>
+      <rx-column :label="tx['item']">{{ line.description }} <rx-badge rx-if="line.cancelled" kind="error" :text="tx['line_cancelled']"/></rx-column>
       <rx-column :label="tx['quantity']" align="num">{{ line.quantity }}</rx-column>
       <rx-column :label="tx['amount']" align="num">{{ line.gross | money(currency='AED') }}</rx-column>
     </rx-table>

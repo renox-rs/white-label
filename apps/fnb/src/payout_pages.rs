@@ -25,6 +25,7 @@ use renox::state_machine::StateMachine;
 use serde::Serialize;
 
 use crate::money::parse_dirhams;
+use crate::pages::channel_label;
 use crate::pages::{Fields, Texts, field, tx};
 use crate::payout::{ImportPreset, PayoutLine, PayoutStatement, PayoutStatus, line_state};
 use crate::payouts::{
@@ -151,7 +152,7 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .map(|s| StatementRow {
             id: s.id,
             number: s.number.clone(),
-            aggregator: s.aggregator.clone(),
+            aggregator: channel_label(&lang, &s.aggregator),
             reference: s.reference.clone(),
             period: period_text(s),
             lines: s.line_count,
@@ -258,6 +259,7 @@ pub(crate) struct ShowPayoutPage {
     disputable: Vec<LineView>,
     reversible: Vec<LineView>,
     aggregator: String,
+    aggregator_label: String,
     today: String,
 }
 
@@ -417,6 +419,7 @@ async fn show(
         disputable,
         reversible,
         aggregator: statement.aggregator.clone(),
+        aggregator_label: channel_label(&lang, &statement.aggregator),
         today: wl_kernel::documents::today().to_string(),
         statement,
     })
