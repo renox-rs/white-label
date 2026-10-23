@@ -92,7 +92,7 @@ pub fn collect_type() -> NotificationTypeDef {
 }
 
 /// The workshop's name, address and phone for a message.
-fn workshop_contact(state: &AppState) -> (String, String, String) {
+pub(crate) fn workshop_contact(state: &AppState) -> (String, String, String) {
     let Some(config) = state.provided::<Arc<ClientConfig>>() else {
         return (String::new(), String::new(), String::new());
     };

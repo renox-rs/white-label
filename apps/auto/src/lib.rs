@@ -17,6 +17,7 @@ pub mod claim_withdrawal;
 pub mod claims;
 mod db;
 pub mod declines;
+pub mod defaults;
 pub mod documents;
 pub mod estimate;
 pub mod export_rule;
@@ -46,6 +47,9 @@ pub mod job_void;
 pub mod labour_line;
 pub mod labour_menu;
 pub mod labour_operation;
+pub mod late_times;
+pub mod money_defaults;
+pub mod notices;
 pub mod pages;
 pub mod part_line;
 pub mod parts;
@@ -77,6 +81,7 @@ mod texts_claims;
 mod texts_export;
 mod texts_fleet;
 mod texts_incidents;
+mod texts_notices;
 mod texts_jobs;
 mod texts_police;
 mod texts_recalls;
@@ -288,6 +293,8 @@ impl Module for Auto {
         // A job card declined: the inspection fee, the booking and the
         // message asking the customer to collect; the hourly expiry check.
         declines::register(app);
+        notices::register(app);
+        late_times::register();
         // The legal period to supply parts and the substitute vehicle of a
         // warranty repair (compliance-critical).
         parts_delays::register(app);

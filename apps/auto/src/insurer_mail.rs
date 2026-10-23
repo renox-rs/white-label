@@ -25,7 +25,8 @@ use renox::prelude::*;
 use renox::serde_json::{Value, json};
 use wl_kernel::PartyId;
 use wl_kernel::notify::{
-    self, GROUP_DOCUMENTS, GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRecipient,
+    self, GROUP_DOCUMENTS, GROUP_SIGNATURES, GiveUpReaction, NotificationTypeDef, NotifyChannel,
+    NotifyRecipient,
     NotifyRequest, notifier,
 };
 use wl_kernel::parties::directory;
@@ -37,27 +38,43 @@ use crate::permissions;
 use crate::texts::english;
 
 /// The email asking the insurer's surveyor to inspect.
-pub const SURVEY_TYPE: &str = "auto.claim_survey";
+pub const SURVEY_TYPE: &str = "auto.insurer_request";
 /// The letter telling the insurer the customer withdrew the claim.
-pub const WITHDRAWAL_TYPE: &str = "auto.claim_withdrawal";
+pub const WITHDRAWAL_TYPE: &str = "auto.claim_withdrawal_letter";
 /// The SMS telling the customer the insurer declared a total loss.
 pub const TOTAL_LOSS_TYPE: &str = "auto.claim_total_loss";
 
-/// A type of email to the insurer, with its texts under `texts` in English.
+/// A type of email to the insurer, with its texts under `texts` in English:
+/// 08 §7.1 *Notification types registered by 08* puts the request to the
+/// insurer in the group *Portal invitations, document requests, signature
+/// requests*; a message that gives up marks the contact invalid and gives the
+/// insurance coordinator a task.
 fn insurer_type(key: &str, texts: &str) -> NotificationTypeDef {
     let subject = english(&format!("auto.mail.{texts}_subject"), &[]);
     let body = english(&format!("auto.mail.{texts}_body"), &[]);
     NotificationTypeDef::new(key, "auto")
-        .group(GROUP_DOCUMENTS)
-        .give_up(&[GiveUpReaction::StaffTask])
+        .group(GROUP_SIGNATURES)
+        .give_up(&[
+            GiveUpReaction::MarkContactInvalid,
+            GiveUpReaction::StaffTask,
+        ])
         .staff_role(permissions::INSURANCE_COORDINATOR_ROLE)
         .channels(&[NotifyChannel::Email])
         .template(NotifyChannel::Email, "en", Some(&subject), &body)
 }
 
-/// The notification type of the withdrawal letter.
+/// The notification type of the withdrawal letter: a statutory notice (08
+/// marks it so); a letter that gives up marks the contact invalid and gives
+/// the insurance coordinator the `statutory_notice` task.
 pub fn withdrawal_type() -> NotificationTypeDef {
-    insurer_type(WITHDRAWAL_TYPE, "withdrawal")
+    let subject = english("auto.mail.withdrawal_subject", &[]);
+    let body = english("auto.mail.withdrawal_body", &[]);
+    NotificationTypeDef::new(WITHDRAWAL_TYPE, "auto")
+        .group("statutory")
+        .statutory(true)
+        .staff_role(permissions::INSURANCE_COORDINATOR_ROLE)
+        .channels(&[NotifyChannel::Email])
+        .template(NotifyChannel::Email, "en", Some(&subject), &body)
 }
 
 /// The notification type of the survey request.

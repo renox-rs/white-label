@@ -37,8 +37,7 @@ use wl_kernel::approvals::{ApprovalDecided, ApprovalEnd};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{DraftLine, InvoiceDraft, VatCategory, invoicer};
 use wl_kernel::notify::{
-    self, Category, GROUP_BOOKINGS, GiveUpReaction, NotificationTypeDef, NotifyChannel,
-    NotifyRequest, notifier,
+    self, Category, GROUP_BOOKINGS, NotificationTypeDef, NotifyChannel, NotifyRequest, notifier,
 };
 use wl_kernel::role_tasks::{self, RoleTask};
 use wl_kernel::PartyId;
@@ -59,17 +58,48 @@ use crate::permissions;
 use crate::reasons::FLEET_CONTRACT_ENDED;
 use crate::texts::english;
 
-/// The notification type of the notices to the fleet contact.
-pub const NOTICE_TYPE: &str = "auto.fleet_notice";
+/// The notification type of the notice that a fleet contract ended (08 §7.1
+/// *Notification types registered by 08*, group *Booking confirmations and
+/// reminders*).
+pub const NOTICE_TYPE: &str = "auto.fleet_contract_ended";
 
-/// The notification type of the notice to the fleet contact: an email; a
-/// message that gives up gives the fleet account manager a task to call.
+/// The notification type of the notice that a fleet contract was terminated:
+/// a statutory notice (08 marks it so), whose give-up marks the contact invalid
+/// and gives the Owner / GM the `statutory_notice` task.
+pub const TERMINATION_TYPE: &str = "auto.fleet_termination_notice";
+
+/// The notification type of the notice that the contract ended: an email, the
+/// group's default reaction (the contact is marked invalid, no task); the
+/// notice is also kept as the fleet account manager's task when it cannot be
+/// queued at all.
 pub fn notice_type() -> NotificationTypeDef {
     NotificationTypeDef::new(NOTICE_TYPE, "auto")
         .group(GROUP_BOOKINGS)
         .category(Category::Transactional)
-        .give_up(&[GiveUpReaction::StaffTask])
-        .staff_role(permissions::FLEET_ACCOUNT_MANAGER_ROLE)
+        .channels(&[NotifyChannel::Email])
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some("{{ title }}"),
+            "{{ body }}",
+        )
+        .template(
+            NotifyChannel::Email,
+            "ar",
+            Some("{{ title }}"),
+            "{{ body }}",
+        )
+}
+
+/// The notification type of the notice that the contract was terminated: a
+/// statutory notice, an email; a message that gives up marks the contact
+/// invalid and gives the Owner / GM the `statutory_notice` task.
+pub fn termination_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(TERMINATION_TYPE, "auto")
+        .group("statutory")
+        .statutory(true)
+        .category(Category::Transactional)
+        .staff_role(permissions::OWNER_ROLE)
         .channels(&[NotifyChannel::Email])
         .template(
             NotifyChannel::Email,
@@ -238,7 +268,12 @@ async fn tell_contact(
         )
     };
     let party = PartyId(contract.contact_party_id.unwrap_or(contract.fleet_party_id));
-    let request = NotifyRequest::new(NOTICE_TYPE, contract.subject())
+    let type_key = if terminated {
+        TERMINATION_TYPE
+    } else {
+        NOTICE_TYPE
+    };
+    let request = NotifyRequest::new(type_key, contract.subject())
         .subject_label(&number)
         .to_party(party)
         .data(json!({ "title": title, "body": body }));
@@ -349,6 +384,7 @@ pub async fn on_decided(state: &AppState, event: &ApprovalDecided) -> Result {
 /// Registers the notification type and the listeners.
 pub(crate) fn register(app: &mut Registry) {
     notify::register_type(notice_type());
+    notify::register_type(termination_type());
     app.listen(
         |event: Transitioned<FleetContract>, state: AppState| async move {
             match event.transition.as_str() {
@@ -372,12 +408,29 @@ pub(crate) fn register(app: &mut Registry) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wl_kernel::notify::GiveUpReaction;
 
     #[test]
-    fn the_notice_is_an_email_and_a_give_up_gives_the_account_manager_a_task() {
+    fn the_notice_is_an_email_in_the_bookings_group() {
         let def = notice_type();
         assert_eq!(def.channels, [NotifyChannel::Email]);
         assert!(def.template_for(NotifyChannel::Email, "ar").is_some());
-        assert_eq!(def.staff_role.as_deref(), Some("fleet_account_manager"));
+        assert_eq!(def.group, GROUP_BOOKINGS);
+        assert!(!def.statutory);
+    }
+
+    #[test]
+    fn aut_18_the_termination_notice_is_statutory_and_tells_the_owner_on_give_up() {
+        let def = termination_type();
+        assert!(def.statutory);
+        assert_eq!(def.staff_role.as_deref(), Some("owner"));
+        let reactions = wl_kernel::notify::default_give_up(&def).reactions;
+        assert_eq!(
+            reactions,
+            [
+                GiveUpReaction::MarkContactInvalid,
+                GiveUpReaction::StatutoryNotice
+            ]
+        );
     }
 }

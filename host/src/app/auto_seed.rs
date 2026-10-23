@@ -169,6 +169,19 @@ pub fn grant_roles(client_app: &str) {
         return;
     }
     super::roles::grant_extra(ACCOUNTANT_ROLE, &[auto::permissions::INVOICES_ISSUE]);
+    // A test drive entered more than 24 hours late waits for the workshop
+    // manager or the branch manager (`PLT.ACL.10`, 08 §7.1 settings *Late
+    // entry*, BL-AUT-18); the approvals page shows what waits. The owner
+    // decides the override of a document block and sees the approvals.
+    for role in [WORKSHOP_MANAGER_ROLE, BRANCH_MANAGER_ROLE] {
+        super::roles::grant_extra(
+            role,
+            &[
+                wl_kernel::permissions::LATE_ENTRIES_APPROVE,
+                wl_kernel::permissions::APPROVALS_VIEW,
+            ],
+        );
+    }
 }
 
 /// The scheduling module with the Auto client's values (§7.1 *Booking*,

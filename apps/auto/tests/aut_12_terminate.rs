@@ -17,7 +17,7 @@ use std::time::Duration;
 use auto::fleet_billing;
 use auto::fleet_contracts::{self, Termination};
 use auto::fleet_daily::run_daily_on;
-use auto::fleet_end::NOTICE_TYPE;
+use auto::fleet_end::TERMINATION_TYPE;
 use auto::fleet_invoice::{FleetInvoice, KIND_FINAL, KIND_MONTHLY};
 use auto::fleet_services;
 use auto::{FleetContract, FleetJob, FleetService, FleetStatus, JobCardStatus};
@@ -211,7 +211,7 @@ async fn aut_12_a_terminated_contract_ends_on_the_run_after_the_effective_date()
     assert_eq!(ended.termination_fee_invoice_id, Some(fee.id));
 
     // The fleet contact is told, and the event is emitted, once.
-    let told = t.messages.of_type(NOTICE_TYPE);
+    let told = t.messages.of_type(TERMINATION_TYPE);
     assert_eq!(told.len(), 1);
     assert!(support::Messages::told_party(&told[0], CONTACT));
     let events = t.terminated.all();

@@ -18,7 +18,7 @@ use auto::blocked::{
     mark_safety,
 };
 use auto::fleet_daily::run_daily_on;
-use auto::fleet_end::NOTICE_TYPE;
+use auto::fleet_end::TERMINATION_TYPE;
 use auto::fleet_invoice::{FleetInvoice, KIND_FINAL};
 use auto::job_cards::{self, Delivery, NewJobCard, NewLabour, NewPart, Promise};
 use auto::{
@@ -181,7 +181,7 @@ async fn aut_17_the_owner_terminates_the_contract_of_a_blocked_fleet() {
     let done = FleetContract::find_or_404(t.db(), contract.id).await.unwrap();
     assert!(done.wound_down_at.is_some());
     assert!(done.termination_fee_invoice_id.is_some());
-    assert_eq!(t.messages.of_type(NOTICE_TYPE).len(), 1);
+    assert_eq!(t.messages.of_type(TERMINATION_TYPE).len(), 1);
     let periods = FleetInvoice::of_contract(t.db(), contract.id).await.unwrap();
     assert!(periods.iter().any(|p| p.kind == KIND_FINAL));
     assert_eq!(t.terminated.all().len(), 1);

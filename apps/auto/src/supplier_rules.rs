@@ -32,7 +32,7 @@ use renox::serde_json::json;
 use wl_kernel::documents::{dubai_date, today};
 use wl_kernel::inventory::{DraftReturn, stock_service, supplier_return_drafts};
 use wl_kernel::notify::{
-    self, GROUP_DOCUMENTS, GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRequest,
+    self, GROUP_SIGNATURES, GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRequest,
     notifier,
 };
 use wl_kernel::parties::directory;
@@ -69,8 +69,11 @@ pub fn supplier_claim_type() -> NotificationTypeDef {
     let subject = english("auto.supplier_mail.subject", &[]);
     let body = english("auto.supplier_mail.body", &[]);
     NotificationTypeDef::new(SUPPLIER_CLAIM_TYPE, "auto")
-        .group(GROUP_DOCUMENTS)
-        .give_up(&[GiveUpReaction::StaffTask])
+        .group(GROUP_SIGNATURES)
+        .give_up(&[
+            GiveUpReaction::MarkContactInvalid,
+            GiveUpReaction::StaffTask,
+        ])
         .staff_role(permissions::PURCHASER_ROLE)
         .channels(&[NotifyChannel::Email])
         .template(NotifyChannel::Email, "en", Some(&subject), &body)

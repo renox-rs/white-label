@@ -77,6 +77,33 @@ pub async fn record(
     job_card_id: i64,
     new: NewDrive,
 ) -> Result<TestDrive> {
+    let (card, out_at) = check_new(state, by, job_card_id, &new).await?;
+    let mut drive = TestDrive {
+        job_card_id: card.id,
+        driver_user_id: by.id,
+        out_at,
+        odometer_out: new.odometer_out,
+        in_at: new.in_at,
+        odometer_in: new.odometer_in,
+        ..TestDrive::default()
+    };
+    drive.save(&state.db).await?;
+    Ok(drive)
+}
+
+/// What [`record`] and the late entry of a drive ([`crate::late_times`])
+/// check before a drive is written: the job card, the user's right to work it,
+/// the mileage and the times. Returns the job card and the time out.
+///
+/// # Errors
+///
+/// The errors [`record`] lists.
+pub(crate) async fn check_new(
+    state: &AppState,
+    by: &AuthUser,
+    job_card_id: i64,
+    new: &NewDrive,
+) -> Result<(JobCard, DateTime)> {
     let card = JobCard::find_or_404(&state.db, job_card_id).await?;
     if !may_work(by, &card) {
         return Err(Error::Forbidden);
@@ -99,17 +126,7 @@ pub async fn record(
         (Some(back_at), Some(back_km)) => check_return(out_at, new.odometer_out, back_at, back_km)?,
         _ => return Err(refused(english("auto.drives.problem.half_return", &[]))),
     }
-    let mut drive = TestDrive {
-        job_card_id: card.id,
-        driver_user_id: by.id,
-        out_at,
-        odometer_out: new.odometer_out,
-        in_at: new.in_at,
-        odometer_in: new.odometer_in,
-        ..TestDrive::default()
-    };
-    drive.save(&state.db).await?;
-    Ok(drive)
+    Ok((card, out_at))
 }
 
 /// The return must be after the departure and the mileage not lower.
