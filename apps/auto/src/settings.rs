@@ -1,6 +1,8 @@
 //! The workshop's switches (08 §7.1 settings): small values the client sets at
-//! onboarding, kept in `auto_settings` as text. The page that edits them is
-//! BL-AUT-18's; until then the services read them with their defaults.
+//! onboarding, kept in `auto_settings` as text. The settings page
+//! `/settings/compliance` shows them (BL-AUT-18, `host/src/app/auto_settings.rs`)
+//! and the command `auto:storage-fee on|off` sets the storage fee switch; the
+//! services read them with their defaults.
 
 use renox::db::{DateTime, now};
 use renox::prelude::*;
