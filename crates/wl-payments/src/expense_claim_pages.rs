@@ -17,14 +17,16 @@
 use std::collections::BTreeMap;
 
 use renox::chrono::NaiveDate;
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::state_machine::TransitionError;
 use serde::Serialize;
 use wl_kernel::LegalEntity;
 
 use crate::expense_category::ExpenseCategory;
 use crate::expense_claim::{
-    self, ClaimDrawing, ClaimStatus, ExpenseClaim, LineInput, drawing_problem, total_text,
+    self, ClaimDrawing, ClaimStatus, ExpenseClaim, LineInput, drawing_problem,
 };
 use crate::pages::{invalid, parse_amount, texts_in};
 use crate::permissions;
@@ -62,18 +64,84 @@ pub fn routes() -> Routes {
         )
 }
 
-/// One claim of the table.
-#[derive(Serialize)]
-struct Row {
-    id: i64,
-    entity: String,
-    title: String,
-    total: String,
-    status: String,
-    status_kind: &'static str,
-    note: String,
-    can_submit: bool,
-    can_decide: bool,
+/// The claims grid: search on the title and the claimant, filters by entity
+/// and status, sums of the total and the VAT. The note and the actions
+/// (submit, approve, return, reject) are drawn by the template (`custom`).
+pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = texts_in(lang);
+    let statuses: Vec<(String, String)> = ["draft", "submitted", "approved", "rejected"]
+        .iter()
+        .map(|code| {
+            (
+                (*code).to_owned(),
+                t(&format!("expense_claims.status.{code}")),
+            )
+        })
+        .collect();
+    let grid = Grid::new("wl-payments-expense-claims")
+        .title(&t("expense_claims.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("title", &t("expense_claims.claim_title"))
+                .frozen()
+                .mobile()
+                .searchable(),
+        )
+        .column(
+            Column::related(
+                "claimant",
+                &t("expense_claims.claimant"),
+                "users",
+                "claimant_id",
+                "name",
+            )
+            .mobile()
+            .searchable(),
+        )
+        .column(Column::related(
+            "entity",
+            &t("fields.entity"),
+            "wl_legal_entities",
+            "legal_entity_id",
+            "code",
+        ))
+        .column(
+            Column::money("total", &t("expense_claims.total"))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("vat_total", &t("expense_claims.vat"))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("drawing_amount", &t("expense_claims.drawing"))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("draft", "neutral"),
+                    ("submitted", "info"),
+                    ("approved", "success"),
+                    ("rejected", "neutral"),
+                ])
+                .mobile(),
+        )
+        .column(Column::custom("note", &t("expense_claims.note")))
+        .column(Column::datetime("created_at", &t("fields.created_at")).hidden())
+        .column(Column::custom("actions", &t("expense_claims.actions")).mobile())
+        .sort_by("-id")
+        .cards_on_mobile()
+        .empty_state(
+            &t("expense_claims.empty"),
+            Some(&t("expense_claims.empty_hint")),
+        );
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the page needs.
@@ -81,34 +149,34 @@ struct Row {
 #[view(template = "wl-payments/expense_claims.html")]
 pub(crate) struct IndexPage {
     tx: BTreeMap<&'static str, String>,
-    rows: Vec<Row>,
+    claims: GridPage<ExpenseClaim>,
+    /// The ids of the claims on the page that can be decided, for their sheets.
+    deciding: Vec<i64>,
+    /// The ids of the claims on the page that can be submitted.
+    submitting: Vec<i64>,
     entities: Vec<(i64, String)>,
     categories: Vec<(String, String)>,
     slots: Vec<usize>,
     can_submit: bool,
-    can_approve: bool,
 }
 
-fn status_code(status: ClaimStatus) -> &'static str {
-    match status {
-        ClaimStatus::Draft => "draft",
-        ClaimStatus::Submitted => "submitted",
-        ClaimStatus::Approved => "approved",
-        ClaimStatus::Rejected => "rejected",
+/// `GET /expense-claims`: the claims, newest first, and the sheet of a new
+/// one; or their export (`?export=`, for approvers).
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
+    let can_submit = user.has_permission(permissions::EXPENSES_SUBMIT);
+    let can_approve = user.has_permission(permissions::EXPENSES_APPROVE);
+    let grid = grid(&lang, can_approve);
+    if request.param("export").is_some() && !can_approve {
+        return Err(Error::Forbidden);
     }
-}
-
-fn status_kind(status: ClaimStatus) -> &'static str {
-    match status {
-        ClaimStatus::Draft | ClaimStatus::Rejected => "neutral",
-        ClaimStatus::Submitted => "info",
-        ClaimStatus::Approved => "success",
+    if let Some(file) = grid.export(ExpenseClaim::query(), &request).await? {
+        return Ok(file);
     }
-}
-
-/// `GET /expense-claims`: the claims, newest first, and the form of a new one.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
-    let t = texts_in(&lang);
     let entities: Vec<(i64, String)> = LegalEntity::query()
         .where_(LegalEntity::STATUS.eq("active"))
         .order_by(LegalEntity::CODE)
@@ -125,55 +193,53 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .into_iter()
         .map(|c| (c.code, c.name_en))
         .collect();
-    let can_submit = user.has_permission(permissions::EXPENSES_SUBMIT);
-    let can_approve = user.has_permission(permissions::EXPENSES_APPROVE);
-    let rows = ExpenseClaim::query()
-        .order_by_desc(ExpenseClaim::ID)
-        .get(&state.db)
-        .await?
-        .into_iter()
-        .map(|claim| {
-            // What holds a submitted claim back, or why it was refused.
-            let note = if claim.status == ClaimStatus::Submitted {
-                drawing_problem(&claim).unwrap_or_default()
-            } else {
-                claim.decision_reason.clone().unwrap_or_default()
-            };
-            let waiting = claim.drawing_status == Some(ClaimDrawing::Requested);
-            Row {
-                id: claim.id,
-                entity: entities
-                    .iter()
-                    .find(|(id, _)| *id == claim.legal_entity_id)
-                    .map(|(_, label)| label.clone())
-                    .unwrap_or_default(),
-                title: claim.title.clone(),
-                total: total_text(&claim),
-                status: t(&format!(
-                    "expense_claims.status.{}",
-                    status_code(claim.status)
-                )),
-                status_kind: status_kind(claim.status),
-                note,
-                can_submit: can_submit
-                    && claim.status == ClaimStatus::Draft
-                    && claim.claimant_id == user.id,
-                can_decide: can_approve
-                    && claim.status == ClaimStatus::Submitted
-                    && claim.claimant_id != user.id
-                    && !waiting,
-            }
-        })
+    let claims = grid.page(ExpenseClaim::query(), &request).await?;
+    // What the user may do with a claim of the page.
+    let may_submit = |claim: &ExpenseClaim| {
+        can_submit && claim.status == ClaimStatus::Draft && claim.claimant_id == user.id
+    };
+    let may_decide = |claim: &ExpenseClaim| {
+        can_approve
+            && claim.status == ClaimStatus::Submitted
+            && claim.claimant_id != user.id
+            && claim.drawing_status != Some(ClaimDrawing::Requested)
+    };
+    let deciding = claims
+        .items()
+        .iter()
+        .filter(|claim| may_decide(claim))
+        .map(|claim| claim.id)
         .collect();
+    let submitting = claims
+        .items()
+        .iter()
+        .filter(|claim| may_submit(claim))
+        .map(|claim| claim.id)
+        .collect();
+    let claims = claims.extend(|claim| {
+        // What holds a submitted claim back, or why it was refused.
+        let note = if claim.status == ClaimStatus::Submitted {
+            drawing_problem(claim).unwrap_or_default()
+        } else {
+            claim.decision_reason.clone().unwrap_or_default()
+        };
+        json!({
+            "note": note,
+            "can_submit": may_submit(claim),
+            "can_decide": may_decide(claim),
+        })
+    });
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        rows,
+        claims,
+        deciding,
+        submitting,
         entities,
         categories,
         slots: (1..=SLOTS).collect(),
         can_submit,
-        can_approve,
-    }))
+    })
+    .into_response())
 }
 
 /// The line rows of the form: a row with no category and no amount is
