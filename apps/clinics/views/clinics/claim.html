@@ -132,5 +132,6 @@
       <rx-column :label="tx['claim.recoup_code']" hide-narrow>{{ answer.code }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['claim.answers_empty']" icon="receipt"/></rx-slot>
     </rx-table>
+    <div id="related-panel" hx-get="/related/clinics.claim:{{ id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

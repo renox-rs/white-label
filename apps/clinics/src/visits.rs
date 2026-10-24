@@ -61,6 +61,7 @@ pub async fn on_checked_in(state: &AppState, event: &BookingCheckedIn) -> Result
     visit
         .insert_in_state(&mut tx, VisitStatus::CheckedIn, CHECK_IN)
         .await?;
+    crate::search::index_with_patient_in(&mut tx, &visit.subject(), visit.patient_party_id).await?;
     tx.commit().await?;
     // What the receptionist recorded before the check-in moves to the visit.
     crate::coverage::move_to_visit(state, &visit).await?;

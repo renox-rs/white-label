@@ -140,5 +140,6 @@
       <rx-column :label="tx['visits.history_by']" hide-narrow>{{ row.by }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['visits.history_empty']" icon="history"/></rx-slot>
     </rx-table>
+    <div id="related-panel" hx-get="/related/clinics.visit:{{ id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

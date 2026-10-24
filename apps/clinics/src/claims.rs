@@ -126,6 +126,8 @@ pub async fn create_for_visit(
         .save(&state.db)
         .await?;
     }
+    crate::search::index_with_patient(&state.db, &claim.subject(), Some(claim.patient_party_id))
+        .await?;
     Ok(claim)
 }
 

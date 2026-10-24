@@ -115,6 +115,12 @@ pub async fn create(
         ..PriorAuthorisation::default()
     };
     authorisation.save(&state.db).await?;
+    crate::search::index_with_patient(
+        &state.db,
+        &authorisation.subject(),
+        Some(authorisation.patient_party_id),
+    )
+    .await?;
     Ok(authorisation)
 }
 

@@ -46,5 +46,6 @@
         <rx-entry :label="tx['authorisation.denial_reason']" :value="denial_reason"/>
       </rx-infolist>
     </rx-card>
+    <div id="related-panel" hx-get="/related/clinics.prior_authorisation:{{ id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

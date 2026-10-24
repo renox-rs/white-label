@@ -41,6 +41,7 @@ pub mod prior_auth_rules;
 pub mod reasons;
 pub mod recall_notice;
 pub mod recalls;
+pub mod search;
 pub mod seed;
 pub mod service_names;
 pub mod split;
@@ -162,6 +163,9 @@ impl Module for Clinics {
     }
 
     fn register(&self, app: &mut Registry) {
+        // The records in the global search and the Related panel (BL-AGT-12).
+        search::register();
+        search::listen(app);
         app.view_data::<pages::policies::IndexPage>()
             .view_data::<pages::appointments::IndexPage>()
             .view_data::<pages::appointments::ShowPage>()
