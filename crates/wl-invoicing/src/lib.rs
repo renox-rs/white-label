@@ -6,6 +6,7 @@ mod agent;
 mod ageing_pages;
 pub mod allocate;
 pub mod allocation;
+mod connector_fields;
 pub mod bad_debt_relief;
 pub mod bill_allocation;
 mod bill_events;

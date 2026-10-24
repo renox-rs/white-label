@@ -66,6 +66,7 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: Transitioned<Ticket>, state: AppState| async move {
         index(&state.db, event.key).await
     });
+    crate::connector_fields::register();
 }
 
 /// The search document of `ticket`.

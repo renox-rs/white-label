@@ -19,6 +19,7 @@ pub mod chase_holds;
 pub mod cheques;
 pub mod compliance;
 pub mod config;
+pub mod connector;
 pub mod consents;
 pub mod custody;
 pub mod deadlines;
@@ -459,6 +460,8 @@ impl Module for WlKernel {
             // user sees is filtered per request.
             .merge(search::web::routes())
             .merge(related::web::routes())
+            // The AI connector (BL-AGT-07): `POST /mcp`, for API tokens only.
+            .merge(connector::routes())
             // The agent tools over JSON (BL-AGT-08, BL-AGT-09); refused
             // while the company's agent policy is off.
             .merge(agent::web::routes())
@@ -487,6 +490,7 @@ impl Module for WlKernel {
         digest::register(app);
         search::register(app);
         related::register_module(app);
+        connector::register(app);
         agent::register(app);
         // In the admin group of the staff sidebar; the label is the app's
         // `nav.legal_entities` text.

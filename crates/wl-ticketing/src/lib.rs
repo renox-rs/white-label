@@ -8,6 +8,7 @@ pub mod category_pages;
 pub mod charge;
 pub mod comments;
 pub mod config;
+pub mod connector_fields;
 pub mod contract;
 pub mod contract_end;
 mod contract_machine;

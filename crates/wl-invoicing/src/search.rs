@@ -60,6 +60,8 @@ pub(crate) fn register(app: &mut Registry) {
             index(&state.db, &[Subject::new(CREDIT_NOTE_SUBJECT_TYPE, event.key)]).await
         },
     );
+    // What an AI assistant reads of an invoice (BL-AGT-07).
+    crate::connector_fields::register();
 }
 
 /// The search document of `invoice`: its number (or "Draft invoice #id"
