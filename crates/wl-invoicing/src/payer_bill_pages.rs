@@ -200,10 +200,42 @@ pub(crate) struct IndexPage {
     rows: GridPage<PayerBill>,
 }
 
-/// The payer bills grid: search on the number, filters by state, sums of the
-/// claimed and open amounts, in each bill's currency. The payer, customer
-/// and source record are drawn by the template (`custom`).
-pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+/// The payer column as SQL: each payer of `payers` (`(party id, name)`) by
+/// name, so the column searches, sorts and exports by the payer's name
+/// although the names live in the party directory and not in a table this
+/// crate reads. A payer missing from `payers` shows its id, `#7`.
+fn payer_name_sql(payers: &[(i64, String)]) -> String {
+    let cases: String = payers
+        .iter()
+        .map(|(id, name)| format!(" WHEN {id} THEN '{}'", name.replace('\'', "''")))
+        .collect();
+    let fallback = "'#' || {T}.\"payer_party_id\"";
+    if cases.is_empty() {
+        fallback.to_owned()
+    } else {
+        format!("CASE {{T}}.\"payer_party_id\"{cases} ELSE {fallback} END")
+    }
+}
+
+/// The payers of the agreements, once each, with their names.
+async fn payers(state: &AppState) -> Result<Vec<(i64, String)>> {
+    let mut ids: Vec<i64> = PayerAgreement::query()
+        .pluck::<i64, _>(&state.db, "payer_party_id")
+        .await?;
+    ids.sort_unstable();
+    ids.dedup();
+    let mut payers = Vec::with_capacity(ids.len());
+    for id in ids {
+        payers.push((id, party_name(state, wl_kernel::PartyId(id)).await?));
+    }
+    Ok(payers)
+}
+
+/// The payer bills grid: search on the number and the payer, filters by
+/// state, sums of the claimed and open amounts, in each bill's currency.
+/// `payers` name the payer column ([`payer_name_sql`]); the customer and the
+/// source record are drawn by the template (`custom`).
+pub fn grid(lang: &Lang, can_export: bool, payers: &[(i64, String)]) -> Grid {
     let statuses: Vec<(String, String)> = PayerBillStatus::ALL
         .iter()
         .map(|s| {
@@ -230,8 +262,15 @@ pub fn grid(lang: &Lang, can_export: bool) -> Grid {
                 .link("/payer-bills/{id}"),
         )
         // The names come from the party directory, which this crate reads
-        // through the kernel and not from a table: the template draws them.
-        .column(Column::custom("payer", &text(lang, "payer_bill.fields.payer")).mobile())
+        // through the kernel and not from a table: the payers (a few
+        // insurers) are written into the SQL, the customers are drawn by the
+        // template.
+        .column(
+            Column::text("payer", &text(lang, "payer_bill.fields.payer"))
+                .computed(&payer_name_sql(payers))
+                .mobile()
+                .searchable(),
+        )
         .column(Column::custom(
             "customer",
             &text(lang, "payer_bill.fields.customer"),
@@ -292,12 +331,13 @@ pub fn grid(lang: &Lang, can_export: bool) -> Grid {
 }
 
 /// The record a bill comes from, named for people (`VIS-0009`) when its module
-/// registered a label for the type, else `type:id`.
+/// registered a label for the type, else in words (`Visit #9`), never
+/// `type:id`.
 async fn source_label(state: &AppState, bill: &PayerBill) -> Result<String> {
     let source = bill.source();
     Ok(wl_kernel::documents::subject_label(&state.db, &source)
         .await?
-        .unwrap_or_else(|| source.to_string()))
+        .unwrap_or_else(|| source.words()))
 }
 
 /// `GET /payer-bills`: the grid, or its export (`?export=csv|xlsx|print`,
@@ -309,7 +349,8 @@ async fn index(
     request: GridRequest,
 ) -> Result<Response> {
     let can_export = crate::may_export(&user, permissions::PAYER_BILLS_ISSUE);
-    let grid = grid(&lang, can_export);
+    let payers = payers(&state).await?;
+    let grid = grid(&lang, can_export, &payers);
     if request.param("export").is_some() && !can_export {
         return Err(Error::Forbidden);
     }
@@ -323,15 +364,14 @@ async fn index(
         names.insert(
             bill.id,
             (
-                party_name(&state, bill.payer()).await?,
                 party_name(&state, bill.customer()).await?,
                 source_label(&state, bill).await?,
             ),
         );
     }
     let rows = page.extend(|bill| {
-        let (payer, customer, source) = names.get(&bill.id).cloned().unwrap_or_default();
-        json!({ "payer": payer, "customer": customer, "source": source })
+        let (customer, source) = names.get(&bill.id).cloned().unwrap_or_default();
+        json!({ "customer": customer, "source": source })
     });
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),

@@ -505,6 +505,42 @@ async fn the_board_lists_the_transmissions_for_those_who_may_see_them() {
         .await
         .assert_ok()
         .assert_dont_see(&invoice.number.clone().unwrap());
+    // The page's former filters still work in a link.
+    let number = invoice.number.clone().unwrap();
+    t.app
+        .get("/einvoices?status=rejected")
+        .await
+        .assert_ok()
+        .assert_dont_see(&number);
+    t.app
+        .get("/einvoices?status=submitted")
+        .await
+        .assert_ok()
+        .assert_see(&number);
+    let entity = invoice.legal_entity_id.unwrap();
+    t.app
+        .get(&format!("/einvoices?entity={entity}"))
+        .await
+        .assert_ok()
+        .assert_see(&number);
+    t.app
+        .get(&format!("/einvoices?entity={}", entity + 1000))
+        .await
+        .assert_ok()
+        .assert_dont_see(&number);
+    // Search, sort and the page size of the grid.
+    let found = t.app.get(&format!("/einvoices?search={number}")).await;
+    found.assert_ok().assert_see(&number).assert_see("1–1 of 1");
+    t.app
+        .get("/einvoices?search=no-such-document")
+        .await
+        .assert_ok()
+        .assert_dont_see(&number);
+    t.app
+        .get("/einvoices?sort=-queued_at&per_page=10&page=1")
+        .await
+        .assert_ok()
+        .assert_see(&number);
     let nobody = t.helper("Nobody", &[wl_invoicing::permissions::VIEW]).await;
     t.app.acting_as(&nobody);
     t.app.get("/einvoices").await.assert_forbidden();

@@ -122,11 +122,20 @@ async fn the_pages_show_the_subscription() {
     bill(&t, d("2027-01-01")).await;
     let admin = t.admin_a().await;
     t.app.acting_as(&admin);
-    t.app
-        .get("/subscriptions")
-        .await
-        .assert_ok()
-        .assert_see("Retainer");
+    let list = t.app.get("/subscriptions").await;
+    list.assert_ok();
+    let html = list.text();
+    assert!(html.contains("Retainer"));
+    // The source column reads as words, never as `type:id`.
+    assert!(html.contains("Engagement #5"), "the source in words");
+    assert!(!html.contains("accounting.engagement:5"));
+    let found = t.app.get("/subscriptions?search=engagement").await.text();
+    assert!(found.contains("Retainer"), "a search on the source in words");
+    let none = t.app.get("/subscriptions?search=nothing-like-it").await.text();
+    assert!(!none.contains("Engagement #5"));
+    let sorted = t.app.get("/subscriptions?sort=source&per_page=10").await;
+    sorted.assert_ok();
+    assert!(sorted.text().contains("Engagement #5"));
     t.app
         .get(&format!("/subscriptions/{}", sub.id))
         .await

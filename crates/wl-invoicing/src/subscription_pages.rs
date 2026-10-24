@@ -94,9 +94,48 @@ pub(crate) struct IndexPage {
     rows: GridPage<Subscription>,
 }
 
-/// The subscriptions grid: search on the plan, filters by
-/// state and cycle, the price in each subscription's currency.
-pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+/// The source column in words, as SQL: each source type of `types` as its
+/// entity and number ("Engagement #9", as [`wl_kernel::Subject::words`]
+/// writes it), so the column reads, sorts, searches and exports as words and
+/// never as `accounting.engagement:9`. A type missing from `types` (a row
+/// saved while the page was built) shows its number alone, `#9`.
+fn source_words_sql(types: &[String]) -> String {
+    let cases: String = types
+        .iter()
+        .filter(|t| {
+            t.chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.')
+        })
+        .map(|t| {
+            let words = wl_kernel::subject::words_of(t, 0);
+            let prefix = words.strip_suffix('0').unwrap_or(&words);
+            format!(
+                " WHEN '{t}' THEN '{}' || {{T}}.\"source_id\"",
+                prefix.replace('\'', "''")
+            )
+        })
+        .collect();
+    if cases.is_empty() {
+        "'#' || {T}.\"source_id\"".to_owned()
+    } else {
+        format!("CASE {{T}}.\"source_type\"{cases} ELSE '#' || {{T}}.\"source_id\" END")
+    }
+}
+
+/// The source types the subscriptions have, once each.
+async fn source_types(db: &Db) -> Result<Vec<String>> {
+    let mut types: Vec<String> = Subscription::query()
+        .pluck::<String, _>(db, "source_type")
+        .await?;
+    types.sort();
+    types.dedup();
+    Ok(types)
+}
+
+/// The subscriptions grid: search on the plan and the source (in words),
+/// filters by state and cycle, the price in each subscription's currency.
+/// `source_types` are the types the source column names in words.
+pub fn grid(lang: &Lang, can_export: bool, source_types: &[String]) -> Grid {
     let statuses: Vec<(String, String)> = SubscriptionStatus::ALL
         .iter()
         .map(|s| {
@@ -131,7 +170,7 @@ pub fn grid(lang: &Lang, can_export: bool) -> Grid {
         .column(Column::custom("party", &text(lang, "subscription.fields.party")).mobile())
         .column(
             Column::text("source", &text(lang, "subscription.fields.source"))
-                .computed("{T}.\"source_type\" || ':' || {T}.\"source_id\"")
+                .computed(&source_words_sql(source_types))
                 .searchable(),
         )
         .column(
@@ -184,7 +223,8 @@ async fn index(
     request: GridRequest,
 ) -> Result<Response> {
     let can_export = crate::may_export(&user, permissions::SUBSCRIPTIONS_MANAGE);
-    let grid = grid(&lang, can_export);
+    let types = source_types(&state.db).await?;
+    let grid = grid(&lang, can_export, &types);
     if request.param("export").is_some() && !can_export {
         return Err(Error::Forbidden);
     }
@@ -306,7 +346,7 @@ async fn show(
         ),
         status_kind: status_kind(subscription.status),
         party: party_name(&state, subscription.party()).await?,
-        source: subscription.source().to_string(),
+        source: subscription.source().words(),
         price: amount_text(&subscription.currency, subscription.unit_price),
         cycle: text(
             &lang,
@@ -368,4 +408,26 @@ async fn cancel(
         Err(other) => return Err(other.into_error()),
     };
     Ok((toast, back).into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_source_column_names_each_type_in_words() {
+        let sql = source_words_sql(&["accounting.engagement".to_owned()]);
+        assert_eq!(
+            sql,
+            "CASE {T}.\"source_type\" WHEN 'accounting.engagement' THEN 'Engagement #' || {T}.\"source_id\" \
+             ELSE '#' || {T}.\"source_id\" END"
+        );
+        assert!(!sql.contains("':'"), "never type:id");
+        assert_eq!(source_words_sql(&[]), "'#' || {T}.\"source_id\"");
+        // A value that is not a subject type is left out of the SQL.
+        assert_eq!(
+            source_words_sql(&["x'; DROP".to_owned()]),
+            "'#' || {T}.\"source_id\""
+        );
+    }
 }

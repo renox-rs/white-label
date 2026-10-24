@@ -925,6 +925,11 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.task.statement_balance_stale",
         "The balance of bank account {{ account }} of {{ entity }} is missing or old (latest: {{ as_of }}, limit {{ days }} days). Import a statement or enter a balance.",
     ),
+    ("wl_invoicing.report.export", "Export CSV"),
+    ("wl_invoicing.report.sort", "Sort by"),
+    ("wl_invoicing.report.own_order", "The report's order"),
+    ("wl_invoicing.report.up", "lowest or A first"),
+    ("wl_invoicing.report.down", "highest or Z first"),
     ("wl_invoicing.einvoice.title", "E-invoices"),
     (
         "wl_invoicing.einvoice.subtitle",
@@ -944,6 +949,8 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.einvoice.attempt", "Attempt"),
     ("wl_invoicing.einvoice.reference", "ASP reference"),
     ("wl_invoicing.einvoice.problem", "Error"),
+    ("wl_invoicing.einvoice.queued_at", "Queued on"),
+    ("wl_invoicing.einvoice.submitted_at", "Submitted on"),
     ("wl_invoicing.einvoice.empty", "No e-invoice transmissions"),
     (
         "wl_invoicing.einvoice.empty_hint",

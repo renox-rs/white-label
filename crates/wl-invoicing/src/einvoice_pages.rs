@@ -85,14 +85,22 @@ pub fn grid(lang: &Lang, entities: Vec<(String, String)>, can_export: bool) -> G
             )
         })
         .collect();
-    // The number of the invoice or credit note sent, else its reference.
+    // The number of the invoice or credit note sent, else the document in
+    // words (`Invoice #12`), never `type:id`.
+    let words = |subject_type: &str| {
+        let words = wl_kernel::subject::words_of(subject_type, 0);
+        words.strip_suffix('0').unwrap_or(&words).to_owned()
+    };
     let document = format!(
         "COALESCE(CASE {{T}}.\"document_type\" \
-         WHEN '{}' THEN (SELECT \"number\" FROM \"wl_invoicing_invoices\" WHERE \"id\" = {{T}}.\"document_id\") \
-         WHEN '{}' THEN (SELECT \"number\" FROM \"wl_invoicing_credit_notes\" WHERE \"id\" = {{T}}.\"document_id\") END, \
-         {{T}}.\"document_type\" || ':' || {{T}}.\"document_id\")",
-        crate::einvoice::INVOICE,
-        crate::einvoice::CREDIT_NOTE
+         WHEN '{invoice}' THEN (SELECT \"number\" FROM \"wl_invoicing_invoices\" WHERE \"id\" = {{T}}.\"document_id\") \
+         WHEN '{credit}' THEN (SELECT \"number\" FROM \"wl_invoicing_credit_notes\" WHERE \"id\" = {{T}}.\"document_id\") END, \
+         CASE {{T}}.\"document_type\" WHEN '{invoice}' THEN '{invoice_words}' WHEN '{credit}' THEN '{credit_words}' ELSE '#' END \
+         || {{T}}.\"document_id\")",
+        invoice = crate::einvoice::INVOICE,
+        credit = crate::einvoice::CREDIT_NOTE,
+        invoice_words = words(crate::einvoice::INVOICE),
+        credit_words = words(crate::einvoice::CREDIT_NOTE),
     );
     let grid = Grid::new("wl-invoicing-einvoices")
         .title(&t("einvoice.title"))
@@ -109,7 +117,8 @@ pub fn grid(lang: &Lang, entities: Vec<(String, String)>, can_export: bool) -> G
         )
         .column(Column::select("legal_entity_id", &t("einvoice.entity"), entities).mobile())
         .column(Column::text("recipient_id", &t("einvoice.recipient")).searchable())
-        .column(Column::number("attempt", &t("einvoice.attempt")))
+        .column(Column::datetime("queued_at", &t("einvoice.queued_at")))
+        .column(Column::number("attempt", &t("einvoice.attempt")).hidden())
         .column(
             Column::select("status", &t("einvoice.status"), statuses)
                 .badges(&[
@@ -121,8 +130,14 @@ pub fn grid(lang: &Lang, entities: Vec<(String, String)>, can_export: bool) -> G
                 ])
                 .mobile(),
         )
-        .column(Column::text("asp_reference", &t("einvoice.reference")).searchable())
+        .column(
+            Column::text("asp_reference", &t("einvoice.reference"))
+                .searchable()
+                .hidden(),
+        )
         .column(Column::custom("problem", &t("einvoice.problem")).mobile())
+        .column(Column::datetime("submitted_at", &t("einvoice.submitted_at")).hidden())
+        .column(Column::datetime("created_at", &t("fields.created_at")).hidden())
         .column(Column::custom("actions", ""))
         .sort_by("-id")
         .cards_on_mobile()
@@ -167,6 +182,27 @@ fn problem_of(t: &EInvoiceTransmission) -> String {
     }
 }
 
+/// The page's former filters, `?entity=3` and `?status=rejected`, still
+/// applied when a link or a bookmark carries them; the grid's own filters
+/// (`?in.legal_entity_id=`, `?in.status=`) are the ones its toolbar writes.
+fn legacy_filters(
+    mut query: renox::db::Query<EInvoiceTransmission>,
+    request: &GridRequest,
+) -> renox::db::Query<EInvoiceTransmission> {
+    if let Some(entity) = request
+        .param("entity")
+        .and_then(|e| e.trim().parse::<i64>().ok())
+    {
+        query = query.where_(EInvoiceTransmission::LEGAL_ENTITY_ID.eq(entity));
+    }
+    if let Some(status) = request.param("status").map(str::trim).filter(|s| !s.is_empty())
+        && let Some(status) = TransmissionStatus::ALL.iter().find(|s| s.as_str() == status)
+    {
+        query = query.where_(EInvoiceTransmission::STATUS.eq(*status));
+    }
+    query
+}
+
 /// `GET /einvoices`: the transmissions, or their export (`?export=csv|xlsx|print`,
 /// with `einvoices.manage`).
 async fn index(
@@ -188,10 +224,11 @@ async fn index(
     if request.param("export").is_some() && !can_manage {
         return Err(Error::Forbidden);
     }
-    if let Some(file) = grid.export(EInvoiceTransmission::query(), &request).await? {
+    let query = || legacy_filters(EInvoiceTransmission::query(), &request);
+    if let Some(file) = grid.export(query(), &request).await? {
         return Ok(file);
     }
-    let page = grid.page(EInvoiceTransmission::query(), &request).await?;
+    let page = grid.page(query(), &request).await?;
     let resubmit: Vec<i64> = page
         .items()
         .iter()
