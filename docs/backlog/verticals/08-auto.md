@@ -1,6 +1,6 @@
 # Epic: 08 Auto — negative flows
 
-> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
+> Status: in use (F1–F10 built; open items in [README](../README.md) §7) · Last updated: 2026-10-24
 
 This epic builds the negative flows that belong to the [08 Auto](../../verticals/08-auto.md)
 vertical itself: job card cancellation after work started, void, estimate expiry, the parts-wait
@@ -132,6 +132,8 @@ the invoice is issued (not left in draft) when the transition runs.
 - [ ] Given the customer refuses to sign, A records *refused to sign* with witness W; the cancel waits for branch manager B's approval.
 - [ ] Given an open supplier PO for a special-order part on JC-10, the PO is unchanged after the cancel and the purchaser has a task to revise it.
 
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
+
 #### Out of scope
 Booking cancel guard (BL-SCH-03); claim-driven cancels (BL-AUT-08, BL-AUT-09); uncollected vehicles (BL-AUT-05).
 
@@ -194,6 +196,8 @@ or `cancel` it, which declines the job card); its booking is cancelled by staff 
 - [ ] Given JC-22 `inspecting`, void is not offered.
 - [ ] Given JC-23 `checked_in` linked to claim CL-20 `registered` with nothing sent, void of JC-23 is refused; after CL-20 is voided (JC-23 unlinked), void of JC-23 succeeds.
 - [ ] No "unlink claim" action is offered on a job card.
+
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
 
 #### Out of scope
 Claim void (BL-AUT-10).
@@ -261,6 +265,8 @@ invoices the inspection fee when one was agreed at check-in.
 - [ ] Given JC-31 `awaiting_approval` for added work after an approved estimate, nothing happens on day 7.
 - [ ] Given JC-32 linked to an open claim, nothing happens on day 7.
 - [ ] Given JC-33 `inspecting` with no labour or parts, when the customer leaves and advisor A runs `decline`, JC-33 is `declined` and its booking `cancelled`.
+
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
 
 #### Out of scope
 Collection reminders (BL-AUT-05).
@@ -339,6 +345,8 @@ onboarding `⚠ open: lawyer (L-35)`.
 - [ ] Given the 2026-11-13 08:00 run of `AUT.RUL.16` ends `failed` (test: the job raises an error), the Owner / GM role and the company admin are alerted and the owner has a task; given no run exists for 2026-11-14, the alert comes at the 09:00 or 09:15 check.
 - [ ] Given JC-40 and no run on 2026-11-13 and 2026-11-14, the 2026-11-15 run sends the N-day notice and then the legal-date notice to the branch manager.
 
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
+
 #### Out of scope
 Which period applies to which part (L-35, onboarding).
 
@@ -411,6 +419,8 @@ release.
 - [ ] Given storage on and agreed, and JC-52 `cancelled` with reason *total loss*, release on 2026-11-10 invoices no `AUT.RUL.18` storage fee.
 - [ ] Given release recorded on 2026-11-02, no reminder is sent.
 - [ ] Given JC-51 `declined` with the invoice unpaid and the customer on cash terms, *release vehicle* is refused; *as is* without a signature is refused.
+
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
 
 #### Out of scope
 Abandoned vehicle disposal (L-36).
@@ -487,6 +497,8 @@ manager or the owner decides; the advisor informs the customer.
 - [ ] Given a test drive without mileage in, `pass_qc` is refused.
 - [ ] Given branch manager B drove the test drive, B cannot resolve the incident; branch manager C or the owner can.
 
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
+
 #### Out of scope
 Police report guard (BL-AUT-07).
 
@@ -562,6 +574,8 @@ manager's approval (not the requester), and never while a claim is linked.
 - [ ] No override request can be created for this kind.
 - [ ] Given JC-71 without the flag, `approve` needs no report.
 - [ ] Given JC-70 linked to CL-7, clearing its accident flag is refused; on JC-72 (no claim) it needs the workshop manager's approval.
+
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
 
 #### Out of scope
 Generic guard engine (BL-DOC-01).
@@ -643,6 +657,8 @@ privately on a new private estimate or stops, and the work done is billed to the
 - [ ] Given CL-9 cancelled with an inspection fee of AED 150 agreed at check-in, the fee invoice is addressed to the customer, not to the insurer.
 - [ ] Given CL-8 `approved` without a written withdrawal, `cancel` is refused.
 
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
+
 #### Out of scope
 Total loss (BL-AUT-09); job card billing (BL-AUT-01).
 
@@ -716,6 +732,8 @@ required and is enough, paid or not.
 - [ ] Given CL-12 `awaiting_survey` with JC-102 `checked_in`, `declare_total_loss` makes JC-102 `declined`.
 - [ ] Given the client's `AUT.RUL.18` storage fee on and agreed at check-in for JC-100, the release after the total loss creates no `AUT.RUL.18` storage invoice; storage appears only on the claim's charges.
 
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
+
 #### Out of scope
 Salvage handling (excluded from the MVP); insurer short payment (`FIN.TPP.01`, base).
 
@@ -767,6 +785,8 @@ insurer; its job card is unlinked and carries on as a private job or is voided s
 - [ ] Given CL-12 `registered` and nothing sent, when A voids with reason "duplicate", CL-12 is `voided`, its job card is unlinked and `RecordVoided` is emitted.
 - [ ] Given CL-13 `registered` with a survey email sent, void is refused.
 - [ ] Given CL-12's job card JC-121 `inspecting` with two estimate lines, after the void both lines have payer = customer and none is approved.
+
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
 
 #### Out of scope
 Job card void (BL-AUT-02).
@@ -855,6 +875,8 @@ to the claim amount.
 - [ ] Given terms of 12 months / 20,000 km and a part fitted at 40,000 km that fails at 65,000 km within 12 months, `raise` is refused with "mileage out of terms"; at 58,000 km it is allowed.
 - [ ] Given *labour included* on and AED 180 labour on the replacement job card, the claim amount is part cost + AED 180.
 
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
+
 #### Out of scope
 RTS dispatch, credit and replacement receipt (BL-STK-03, BL-STK-05, BL-STK-06).
 
@@ -916,6 +938,8 @@ early termination fee is invoiced when the contract has one.
 - [ ] Between O's approval and the 2026-11-21 00:30 run, FC-1 stays `active` with "termination scheduled" shown and `AUT.RUL.04` creates no booking request dated after 2026-11-20.
 - [ ] Given FC-5 (invoiced to 2026-10-31) with notice 2026-11-20 and effective date 2026-11-24, approved on 2026-11-25, FC-5 is `ended` at approval; with effective date 2026-11-25 approved the same day, FC-5 ends on the 2026-11-26 00:30 run.
 
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
+
 #### Out of scope
 Suspend and natural end (BL-AUT-13); party block review (BL-AUT-17).
 
@@ -969,6 +993,8 @@ the last consolidated invoice is drafted and the fleet contact told.
 - [ ] Given FC-3 ending 2026-12-31, it is still `active` on 2026-12-31 and on the 2027-01-01 00:30 run it is `ended`, its future bookings are cancelled, the last invoice is drafted and the fleet contact is notified.
 - [ ] `end` is not offered to users.
 - [ ] Given FC-2 has a booking for 2026-11-10 when suspended, it is kept and listed for the advisor to confirm or cancel.
+
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
 
 #### Out of scope
 Termination (BL-AUT-12).
@@ -1025,6 +1051,8 @@ recharging the VAT where the sale terms allow. The rule is compliance-critical.
 - [ ] Given INV-140 zero-rated AED 25,000 supplied 2026-08-01 with no evidence, the accountant is notified on 2026-09-30 and on 2026-10-30 the invoice is flagged and a correction task exists.
 - [ ] Given a bill of lading attached on 2026-08-20, nothing fires; the same with an airway bill.
 - [ ] Given the 2026-10-30 08:00 run ends `failed` (test: the job raises an error), the Owner / GM role and the company admin are alerted and the owner has a task; a successful rerun closes it.
+
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
 
 #### Out of scope
 Restoring the zero rate (A-12).
@@ -1108,6 +1136,8 @@ counter, phone and sales rep channels.
 - [ ] Given SO-1 on `credit_hold` with 3 P back-ordered and 4 P unreserved in the branch when it is released, 3 P are reserved for SO-1 at `release`.
 - [ ] Given SO-3 and SO-4 lines confirmed at the same second, a receipt of 1 P reserves it for the lower order number.
 
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
+
 #### Out of scope
 The back-order mechanism in wl-sales (BL-SAL-17); reorder suggestion engine (base `STK.RUL.04`).
 
@@ -1175,6 +1205,8 @@ chooses the receipts that start the trace).
 - [ ] Given receipts of P on 2026-08-20 and 2026-09-01 and a scope received 2026-09-01–2026-09-30, a sale on 2026-08-30 is not listed and a sale on 2026-09-02 is; with a scope received 2026-08-01–2026-08-31 the 2026-08-30 sale is listed.
 - [ ] Given JC-152 for a vehicle whose fleet contract has `ended`, the line names the vehicle owner.
 
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
+
 #### Out of scope
 Recall open, hold, notices and close (BL-STK-14–BL-STK-17).
 
@@ -1237,6 +1269,8 @@ reason *party blocked* (not billed), so the job card can go on to `finish_work`.
 - [ ] Given customer C blocked with JC-170 `in_progress`, the branch manager gets a review task and new estimate approvals on JC-170 are refused.
 - [ ] Given JC-170 with "brake pads" (safety work, not started) and "paint touch-up" (not started), when the branch manager chooses *finish safety lines only*, "paint touch-up" is removed with reason *party blocked* and not invoiced, and `finish_work` is allowed once "brake pads" is done.
 - [ ] Given insurer I blocked, claims of I keep their state and a remittance from I is recorded.
+
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
 
 #### Out of scope
 Sales order hold (Epic wl-sales: order hold on block).
@@ -1395,6 +1429,8 @@ minimal staff records (`HRM.EMP.01`, MVP since 2026-10-16).
 - [ ] Given a parts delivery with 3 lines, when the driver records 1 line refused with a reason at
       proof of delivery on the field PWA, then the delivery is accepted for 2 lines only and the
       refused line goes back to quarantine at run close.
+
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
 
 #### Out of scope
 The mechanisms themselves (module epics listed in Depends on).

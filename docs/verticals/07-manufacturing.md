@@ -1,6 +1,8 @@
 # 07 — Light Manufacturing & Assembly
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
+> Spec: accepted · Reviewed: 2026-10-15 · Spec text last changed: 2026-10-16
+
+**Build status (2026-10-24):** Built in F7 (#521), merged. **Built:** the Work order and NCR machines of §7.1, BOM and lot checks, material issue, production reports and late entries, credit hold and release, dispatch lifecycle, recall trace, export evidence (`MFG.RUL.04`, `MFG.RUL.08`), the customer PO upload in the portal, the Manufacturing demo (`manufacturing:demo`). **Not built (MVP items still open):** the schedule board per line and the shortage list at release, `MFG.RUL.01`, `02`, `03`, `05` and `06`; the deferred rows are listed in `apps/manufacturing/README.md` and `docs/progress/f7-manufacturing.md` (invoice already issued, calibration certificates, signed checklists `WRK.CHK.01`, scanner or import entry, server-side price dispute lines). **Machines in code but not in the spec:** `ProductionReport` (README). See [STATUS.md](STATUS.md) and [apps/manufacturing/README.md](../../apps/manufacturing/README.md).
 
 ## 1. Summary
 

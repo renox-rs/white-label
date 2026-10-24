@@ -1,6 +1,8 @@
 # 05 — Private Clinics
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
+> Spec: accepted · Reviewed: 2026-10-15 · Spec text last changed: 2026-10-16
+
+**Build status (2026-10-24):** Built in F5 (#499, #514, #515), merged. **Built:** the Prior authorisation and Claim machines of §7.1 (with technical rejection, recoupment, late closing and void), check-in with eligibility and the coverage outcomes, the Appointment on wl-scheduling, recalls traced to patients, remittance recording per claim, the Clinics demo (`clinics:demo`). **Not built or not found (MVP items still open):** patient portal (only the card-request route exists), patient feedback after a visit (`WRK.FBK.01`), waiting list, bank-side matching of remittances. Online payment and prepaid packages belong to wl-payments and wl-sales and are not clinic-specific. **Machines in code but not in the spec:** `Visit` (opened by check-in; states `checked_in`, `in_progress`, `completed`, `cancelled`, all system-driven) and `RecallNotice` (README). See [STATUS.md](STATUS.md) and [apps/clinics/README.md](../../apps/clinics/README.md).
 
 ## 1. Summary
 

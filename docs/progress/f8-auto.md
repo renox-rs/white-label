@@ -1,6 +1,6 @@
-# F8 (vertical 08, Auto): progress and hand-over
+# F8 (vertical 08, Auto): progress
 
-Branch `feat/f8-auto-issues` (from main `ee32e4c6`). Milestone "Launch 08": 22 issues
+Built on branch `feat/f8-auto-issues` (from main `ee32e4c6`), merged in #522 and #561. Milestone "Launch 08": 22 issues
 #397-#414 (BL-AUT-01..18), #134 (BL-SAL-15), #136 (BL-SAL-17), #111 (BL-PAY-18), #236 (BL-STK-17).
 Run with the `build-issues` skill (`.claude/skills/build-issues/SKILL.md`). Deferred points: `docs/progress/f8-auto-deferred.md`
 (`#N point | what is missing | provider | why`).
@@ -22,17 +22,23 @@ Run with the `build-issues` skill (`.claude/skills/build-issues/SKILL.md`). Defe
   showed that the lists of the claims, fleet contracts and supplier claims failed (500) in the host's layout, which has a `tabs`
   of its own: the page variable is now `status_tabs`.
 
-## Open at hand-over
-1. Host tests that expect a real message to be sent fail when the machine clock is in the quiet hours of wl-notify
-   (21:00-08:00 Asia/Dubai). Make them clock-independent (travel to noon with `app.travel` + `at_travelled_time`, see
-   `host/tests/auto_marketing_real.rs`). Then re-run every host test file alone.
-2. MSRV check (`cargo +1.94 check --workspace --locked`) not yet run on the final head.
-3. Branch not pushed yet; no pull request (the owner opens it). CI only runs on a pull request.
-4. The 22 GitHub issues are not updated yet: tick `- [x]` for DONE points, add `**Deferred:**` lines from the deferred
-   file, one `**Verification summary**` comment each, then a sweep. Audit reports: `scratchpad/f8/audit/G1.md`..`G3.md`
-   (session scratchpad, not in the repo); the DONE/PARTIAL totals were G1 34/18, G2 18/13, G3 mostly DONE.
-5. Branch `origin/feat/f6-fnb-issues` (F6) will conflict with wl-sales (`back_orders`, BL-SAL-07..12 seams:
-   `back_orders::order_released`, `on_ended`, `reduce`).
+## State after the merge
+F8 is merged: #522 `feat/f8-auto-issues` (2026-10-24, the 22 issues, all closed as completed) and #561 `feat/f8-auto-demo-and-grids`
+(2026-10-24, the `auto:demo` company and the grid conversion of the screens).
+
+## Open items of the hand-over
+1. Clock-dependent host tests (not verified as closed): tests that expect a real message fail when the machine clock is in the quiet hours of
+   wl-notify (21:00-08:00 Asia/Dubai). The fix is to travel to noon (`app.travel` + `at_travelled_time`); `auto_marketing_real.rs`,
+   `auto_fleet_end_real.rs` and `auto_parts_delay_real.rs` do it. Other `host/tests/auto_*` files were not re-checked in this pass.
+2. MSRV check: CI builds the workspace on Rust 1.94 (`.github/workflows/ci.yml`), which replaces the manual `cargo +1.94 check`.
+3. The branch was pushed and the pull requests opened: #522 and #561.
+4. The 22 GitHub issues are closed; their `**Deferred:**` lines come from `docs/progress/f8-auto-deferred.md`, which stays as the list of
+   what is not built (`#N point | what is missing | provider | why`).
+5. The F6 conflict with wl-sales (`back_orders`) was resolved in the merge of `origin/main` into the branch (`8ed6d0de`).
+
+Still open after F8 (not issues of F8): the part master with cross-references, fitment and price tiers, the B2B portal, counter POS and
+`AUT.RUL.10`/`14` of spec 08 §12 (see [../verticals/STATUS.md](../verticals/STATUS.md)); issue `#558` (the 500 on `/auto/claims` in the demo,
+fixed by `status_tabs` above) can be closed.
 
 ## Rules that must hold
 - Commits authored only by `renox-rs <developer@renoxium.com>`; no tool name, trailer or attribution in commits, code,

@@ -1,6 +1,8 @@
 # wl-parties
 
-> Status: draft · Last updated: 2026-10-16
+> Status: specification, partly built; the build ledger is [crates/wl-parties/README.md](../../crates/wl-parties/README.md) · Last updated: 2026-10-24
+
+**Build status (2026-10-24):** Built: parties (person and company details, roles, contact points, relationships), the Party machine (`block`, `unblock`, `restore`), block records and effects, `BlockGuard`, screening against sanctions lists with candidates, tasks and freshness alerts, compliance and review tasks, the e-invoicing identifiers. Not built (later): `archive` and `merge` of a party (the states `archived` and `merged` exist; no transition reaches them from `active`), Consent (§4, §5.5: no table; the kernel `Consents` trait has no production provider), and the consent purposes setting. List screens use the standard Renox grid (`renox::grid::Grid`).
 
 ## 1. Purpose
 
@@ -88,9 +90,9 @@ MRN and insurance cards, or a worker's trade. They do not add columns to Party.
 |---|---|---|---|---|---|
 | `block` | active | blocked | `parties.block`, or system (screening `confirm_match`) | reason code and note given; a restricted reason code needs `parties.block_reason.view` (`PTY.ACL.02`) | Block record kept; event `PartyBlocked` with the display reason (the neutral code `on_hold` when the real code is restricted); modules refuse new orders, leases, bookings and invoices for the party and apply the block effect per active agreement ([§5.6](#56-block-a-party)); money out to the party stopped (`PTY.ACL.03`); no automatic message to the party |
 | `unblock` | blocked | active | `parties.block`; for a restricted reason code also `parties.block_reason.view` | reason given; approver ≠ the user who blocked each open Block record (`SOD`; for a block made by `confirm_match`, the reviewer who ran `confirm_match`); for a sanctions block, the party is no longer listed or the match was found false (note and evidence recorded) | every open Block record closed; event `PartyUnblocked`; agreements paused by the block resume and agreements under review are returned to their deciders ([§5.6](#56-block-a-party)) |
-| `archive` | active | archived | `parties.archive` | no open records in any module (modules answer through the `PartyUsage` service) | portal access grants closed; event `PartyArchived` |
+| `archive` (not built) | active | archived | `parties.archive` | no open records in any module (modules answer through the `PartyUsage` service) | portal access grants closed; event `PartyArchived` |
 | `restore` | archived | active, or blocked when the party has an open Block record | `parties.archive` | — | event `PartyRestored`; when it lands in `blocked`, also `PartyBlocked` with the display reason, and only `unblock` (with its guards) makes the party `active` |
-| `merge` | active, archived | merged | `parties.merge` | survivor chosen; survivor is not `merged`; same kind | references in every module moved to the survivor; event `PartiesMerged` |
+| `merge` (not built) | active, archived | merged | `parties.merge` | survivor chosen; survivor is not `merged`; same kind | references in every module moved to the survivor; event `PartiesMerged` |
 
 ```mermaid
 stateDiagram-v2
@@ -137,6 +139,8 @@ stateDiagram-v2
 A new screening run creates a new Screening record. The history of runs is the screening log.
 
 ### Consent
+
+**Build status (2026-10-24):** Not built (later): no consent table exists.
 
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|

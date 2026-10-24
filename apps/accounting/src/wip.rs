@@ -2,8 +2,9 @@
 //! BL-ACC-06).
 //!
 //! The unbilled time of an engagement lives in the module that records time
-//! (`wl-attendance`, `HRM.TMS.01`, not built yet), reached through the
-//! kernel's [`UnbilledTime`](wl_kernel::wip::UnbilledTime) seam; without it
+//! (`wl-attendance`, `HRM.TMS.01`; it exists but does not yet implement the
+//! seam), reached through the kernel's
+//! [`UnbilledTime`](wl_kernel::wip::UnbilledTime) seam; without a provider
 //! the WIP is zero. A manager writes off up to a share of the engagement's
 //! WIP ([`SHARE_BPS`], 10%); above it the write-off waits for a partner:
 //! the same transition, deferred by the kernel's approval interceptor

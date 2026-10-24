@@ -16,7 +16,7 @@ App::new().module(property::Property)
 # ;
 ```
 
-What is here so far:
+What is here:
 
 | Part | Spec | Module |
 |---|---|---|
@@ -61,6 +61,8 @@ What is here so far:
 | Tasks for a role in a building: a task for "the property manager of the lease" goes to a holder of the role in the lease's building first, and only then to the kernel's `role_tasks` choice (any holder, or the company admin) | §3.2, §7.2 | `tasks` |
 | The events `LeaseActivated`, `LeaseAmended`, `LeaseCancelled`, `LeaseForceTerminated`, `LeaseNoticeWithdrawn` and `LeaseTerminated` | §7.1 | `events` |
 | The portfolio, the building, the leases and the lease pages | §3, §4 | `pages` |
+
+Not built (MVP items of the spec §12, see [`docs/verticals/STATUS.md`](../../docs/verticals/STATUS.md)): the tenant portal, the rent roll report (`PRP.RPT.01`), the EN/AR contract PDF and the portfolio migration from Excel (`PLT.IMP.01`). Reservations and the other items of the spec's Excluded list are Later.
 
 The app owns `src/texts.rs`, the English texts (`property.*`). A client changes or translates them in
 `resources/lang/{locale}.json`.

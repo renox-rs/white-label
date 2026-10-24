@@ -1,6 +1,6 @@
 # Epic: wl-hr — negative flows
 
-> Status: draft · Last updated: 2026-10-20 · Spec version: same commit as this file
+> Status: in use (F1–F10 built; open items in [README](../README.md) §7) · Last updated: 2026-10-24
 
 This epic builds the HR and payroll negative flows added by the review fix X-15 and the wl-hr
 part of X-13: the qualification guard and expiry event, same-day sick leave, visa rejection,
@@ -50,7 +50,7 @@ supports 05-N8-a, 10-N8-c and 04-N8-d. BL-HRM-26 to 29 add staff onboarding chec
 ### BL-HRM-01 — wl-hr: answer `qualification_valid` and emit `QualificationExpired` (`HRM.RUL.10`)
 
 **Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:system` · **Milestone:** Launch 02 · **Size:** m
-**Depends on:** Base: wl-hr Qualification records · Epic wl-documents: `document_valid`, `DocumentExpired`, `DocumentExpiring` (with `affected`), `DocumentAccepted` · **Blocks:** BL-ATT-04, BL-SCH-07, BL-SCH-08, BL-ACC-19, BL-ACC-23, BL-CLN-12, BL-CON-18, BL-EDU-08, BL-EDU-10, BL-LOG-25, BL-MPW-08, BL-MPW-11
+**Depends on:** Base: wl-hr Qualification records · Epic wl-documents: `document_valid`, `DocumentExpired`, `DocumentExpiring` (with `affected`), `DocumentAccepted` · **Blocks:** BL-ATT-04, BL-SCH-07, BL-SCH-08, BL-ACC-19, BL-ACC-23, BL-CLN-12, BL-CON-18, BL-EDU-08, BL-EDU-10, BL-LOG-25, BL-MPW-08, BL-MPW-11, BL-MPW-31
 **Review items:** X-13, 05-N8-a, 09-N8-b, 10-N8-c, 04-N8-d
 
 #### Goal
@@ -303,7 +303,7 @@ current visa expires."
 ### BL-HRM-04 — wl-hr: approve non-standard exits by a second user (`HRM.ACL.07`)
 
 **Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
-**Depends on:** Base: wl-hr Employee lifecycle · Epic wl-kernel: approval requests (approval returned or rejected sends the record back) · **Blocks:** BL-HRM-05, BL-HRM-06, BL-HRM-07, BL-HRM-08, BL-HRM-09, BL-CON-18, BL-MPW-21
+**Depends on:** Base: wl-hr Employee lifecycle · Epic wl-kernel: approval requests (approval returned or rejected sends the record back) · **Blocks:** BL-HRM-05, BL-HRM-06, BL-HRM-07, BL-HRM-08, BL-HRM-09, BL-CON-18, BL-MPW-21, BL-MPW-29
 **Review items:** X-15
 
 #### Goal
@@ -534,7 +534,7 @@ Approval mechanics (BL-HRM-04).
 ### BL-HRM-07 — wl-hr: report an employee as absconded (`report_absconding`)
 
 **Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
-**Depends on:** BL-HRM-04 · Epic wl-attendance: attendance records (last attended day) · Epic wl-ticketing: the *absence* ticket the vertical's rule opens (02 `CON.RUL.08`, 09 `MPW.RUL.09`) · **Blocks:** BL-HRM-08, BL-HRM-10, BL-HRM-30, BL-CON-15, BL-CON-18, BL-LOG-13, BL-MPW-13, BL-MPW-17
+**Depends on:** BL-HRM-04 · Epic wl-attendance: attendance records (last attended day) · Epic wl-ticketing: the *absence* ticket the vertical's rule opens (02 `CON.RUL.08`, 09 `MPW.RUL.09`) · **Blocks:** BL-HRM-08, BL-HRM-10, BL-HRM-30, BL-CON-15, BL-CON-18, BL-LOG-13, BL-MPW-13, BL-MPW-17, BL-MPW-25
 **Review items:** X-15, 09-N12-c
 
 #### Goal
@@ -631,7 +631,7 @@ draft and the *cancellation* visa case.
 ### BL-HRM-08 — wl-hr: reinstate an absconded employee (`reinstate`)
 
 **Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
-**Depends on:** BL-HRM-04 · BL-HRM-07 · BL-HRM-18 · BL-HRM-24 · BL-HRM-30 · **Blocks:** BL-MPW-13
+**Depends on:** BL-HRM-04 · BL-HRM-07 · BL-HRM-18 · BL-HRM-24 · BL-HRM-30 · **Blocks:** BL-MPW-13, BL-MPW-25
 **Review items:** X-15, 09-N12-c
 
 #### Goal
@@ -843,7 +843,7 @@ Standard exit (base).
 ### BL-HRM-11 — wl-hr: return a payroll run to draft (`return`)
 
 **Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` · **Milestone:** Launch 09 · **Size:** s
-**Depends on:** Base: wl-hr Payroll run lifecycle · **Blocks:** None
+**Depends on:** Base: wl-hr Payroll run lifecycle · **Blocks:** BL-MPW-30
 **Review items:** X-15
 
 #### Goal
@@ -898,7 +898,7 @@ None.
 ### BL-HRM-12 — wl-hr: record a rejected WPS file and resubmit
 
 **Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
-**Depends on:** Base: wl-hr Payroll run lifecycle (`submit`) · **Blocks:** BL-HRM-13, BL-HRM-14
+**Depends on:** Base: wl-hr Payroll run lifecycle (`submit`) · **Blocks:** BL-HRM-13, BL-HRM-14, BL-MPW-30
 **Review items:** X-15, 09-N7-b
 
 #### Goal
@@ -973,7 +973,7 @@ Partial failure (BL-HRM-13); escalation (BL-HRM-14).
 ### BL-HRM-13 — wl-hr: record a partly failed WPS file and regenerate
 
 **Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` · **Milestone:** Launch 09 · **Size:** m
-**Depends on:** BL-HRM-12 · BL-HRM-18 (held lines, off-cycle) · BL-HRM-20 (account `active` at submit) · BL-HRM-21 (`waive_cooling`) · **Blocks:** BL-HRM-14
+**Depends on:** BL-HRM-12 · BL-HRM-18 (held lines, off-cycle) · BL-HRM-20 (account `active` at submit) · BL-HRM-21 (`waive_cooling`) · **Blocks:** BL-HRM-14, BL-MPW-30
 **Review items:** X-15, 09-N7-b
 
 #### Goal
@@ -1334,7 +1334,7 @@ Off-cycle mechanics (BL-HRM-18).
 ### BL-HRM-18 — wl-hr: release held lines through an off-cycle run (`HRM.RUL.12`)
 
 **Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
-**Depends on:** Base: wl-hr Payroll run lifecycle · Vertical 09: absence case closed (`MPW.RUL.09`) · **Blocks:** BL-HRM-08, BL-HRM-13, BL-HRM-17, BL-HRM-20, BL-MPW-17
+**Depends on:** Base: wl-hr Payroll run lifecycle · Vertical 09: absence case closed (`MPW.RUL.09`) · **Blocks:** BL-HRM-08, BL-HRM-13, BL-HRM-17, BL-HRM-20, BL-MPW-17, BL-MPW-25
 **Review items:** X-15, 09-N3-d
 
 #### Goal
@@ -1404,7 +1404,7 @@ Supplementary positive differences (BL-HRM-17).
 ### BL-HRM-19 — wl-hr: request and approve a new pay account with SMS notice
 
 **Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` · **Milestone:** Launch 09 · **Size:** m
-**Depends on:** Base: wl-hr Employee records · Epic wl-notify: SMS · **Blocks:** BL-HRM-20, BL-HRM-21, BL-MPW-21
+**Depends on:** Base: wl-hr Employee records · Epic wl-notify: SMS · **Blocks:** BL-HRM-20, BL-HRM-21, BL-MPW-21, BL-MPW-31, BL-MPW-34
 **Review items:** X-15, 09-N11-b
 
 #### Goal
@@ -1493,7 +1493,7 @@ Activation (BL-HRM-20); stop and waive (BL-HRM-21).
 ### BL-HRM-20 — wl-hr: activate a pay account after cooling and use it at submit
 
 **Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
-**Depends on:** BL-HRM-19 · BL-HRM-18 · **Blocks:** BL-HRM-13, BL-HRM-21
+**Depends on:** BL-HRM-19 · BL-HRM-18 · **Blocks:** BL-HRM-13, BL-HRM-21, BL-MPW-31
 **Review items:** X-15, 09-N11-b
 
 #### Goal
@@ -1564,7 +1564,7 @@ Stop and waive (BL-HRM-21).
 ### BL-HRM-21 — wl-hr: stop a pay account change, waive cooling, handle undelivered notice
 
 **Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:public` `surface:system` · **Milestone:** Launch 09 · **Size:** m
-**Depends on:** BL-HRM-19 · BL-HRM-20 (`activate`) · Epic wl-ticketing: security tickets · Epic wl-notify: `MessageGaveUp` · Epic wl-kernel: approval requests · **Blocks:** BL-HRM-13
+**Depends on:** BL-HRM-19 · BL-HRM-20 (`activate`) · Epic wl-ticketing: security tickets · Epic wl-notify: `MessageGaveUp` · Epic wl-kernel: approval requests · **Blocks:** BL-HRM-13, BL-MPW-29, BL-MPW-34
 **Review items:** X-15, 09-N11-b
 
 #### Goal
@@ -1651,7 +1651,7 @@ Ticket handling (Epic wl-ticketing).
 ### BL-HRM-22 — wl-hr: dispute and resolve a final settlement
 
 **Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` · **Milestone:** Launch 09 · **Size:** m
-**Depends on:** Base: wl-hr Final settlement lifecycle · Epic wl-ticketing: labour-case tickets · **Blocks:** BL-HRM-25
+**Depends on:** Base: wl-hr Final settlement lifecycle · Epic wl-ticketing: labour-case tickets · **Blocks:** BL-HRM-25, BL-MPW-30
 **Review items:** X-15, 09-N4-b
 
 #### Goal
@@ -2303,7 +2303,7 @@ The statutory items (base Employee lifecycle).
 ### BL-HRM-30 — wl-hr: hold pay, draft the settlement and open the cancellation case when an employee is reported absconded
 
 **Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
-**Depends on:** BL-HRM-07 · Base: wl-hr Payroll run lifecycle · Base: wl-hr Final settlement lifecycle · Base: wl-hr Visa case lifecycle · **Blocks:** BL-HRM-08, BL-HRM-10
+**Depends on:** BL-HRM-07 · Base: wl-hr Payroll run lifecycle · Base: wl-hr Final settlement lifecycle · Base: wl-hr Visa case lifecycle · **Blocks:** BL-HRM-08, BL-HRM-10, BL-MPW-25
 **Review items:** X-15, 09-N12-c
 
 #### Goal

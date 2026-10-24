@@ -1,6 +1,6 @@
 # Epic: search across records and AI agents
 
-> Status: draft · Last updated: 2026-10-24 · Spec version: same commit as this file
+> Status: in use (F1–F10 built; open items in [README](../README.md) §7) · Last updated: 2026-10-24
 
 [Decision 0006](../../decisions/0006-search-and-ai-agents.md): global search and related
 records in `wl-kernel` first (`PLT.SRC.01`, `PLT.REL.01`), then a connection that lets AI
@@ -33,6 +33,14 @@ Not from a review: the **Review items** line names the decision point instead. O
 BL-AGT-11 to -13 were added on 2026-10-24, after F1–F10 were merged: the vertical phases that
 BL-AGT-04 left the other verticals to are already built, so their registrations need issues of
 their own.
+
+**Milestone wording for BL-AGT-11 to -13.** The milestone column keeps the phase whose modules
+the issue registers (Launch 02 for the F2–F5 records, Launch 06 for the F6–F10 records). It does
+not mean "built with that launch": Launch 02 to 10 are already built and merged, and these three
+issues depend on BL-AGT-01 and BL-AGT-03 (Build 1), which are not built. AGT-01 to AGT-13 are one
+track with one order: BL-AGT-01 and -03 first, then BL-AGT-02, -04, -05, then BL-AGT-11, then
+BL-AGT-12 and -13. The five Later issues (BL-AGT-06 to -10) follow in their own order. The GitHub
+milestone of #552–#554 is not changed by this file; read it as "registers the Launch 02/06 records".
 
 ---
 
@@ -571,6 +579,8 @@ The shared modules that F2–F10 built (`wl-attendance`, `wl-inventory`, `wl-del
 order, a lot, a delivery, a booking, an employee or a sales order works in every vertical that
 uses them, and their records show in each other's *Related* panel.
 
+Build order: the milestone **Launch 02** names the records registered, not the time of the build. That launch is already built; this issue waits for BL-AGT-01 and BL-AGT-03 (Build 1, not built).
+
 #### Surfaces
 - **System:** registrations in each module's `register()`; the demo seeds of the ten clients
   end with a full index.
@@ -626,6 +636,8 @@ The records each of these verticals adds become findable by their number or name
 related records: a QS finds an IPA by number, a dispatcher a shipment by its AWB, a partner an
 engagement by the client's name, a receptionist an appointment by the patient's file number.
 
+Build order: the milestone **Launch 02** names the records registered, not the time of the build. That launch is already built; this issue waits for BL-AGT-01 and BL-AGT-03 (Build 1, not built).
+
 #### Surfaces
 - **System:** registrations in `apps/construction`, `apps/logistics`, `apps/accounting`,
   `apps/clinics`.
@@ -675,6 +687,8 @@ The records each of these verticals adds become findable by their number or name
 related records: an outlet manager finds an aggregator order by its platform number, a planner a
 work order, a service advisor a job card by the car's plate, an account manager a deployment, a
 counsellor a student's enrolment.
+
+Build order: the milestone **Launch 06** names the records registered, not the time of the build. That launch is already built; this issue waits for BL-AGT-01 and BL-AGT-03 (Build 1, not built).
 
 #### Surfaces
 - **System:** registrations in `apps/fnb`, `apps/manufacturing`, `apps/auto`, `apps/manpower`,

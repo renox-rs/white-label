@@ -1,6 +1,8 @@
 # 10 — Training Centres & EdTech
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
+> Spec: accepted · Reviewed: 2026-10-15 · Spec text last changed: 2026-10-22
+
+**Build status (2026-10-24):** Built in F10 (#517), merged. **Built:** the Batch, Enrolment, Session and Certificate machines of §7.1, seats, withdrawal with tiered refund approval, freeze and unfreeze, transfer, absence policy and credits, attendance, certificates with public verification, the EdTech demo (`edtech:demo`). **Not built (MVP items still open):** leads, trial classes and the catalogue (left to the shared modules), e-signature of terms and guardian consent (`DOC.SIG.01`), the QR image and PDF of a certificate (`DOC.GEN.01`), `EDU.RUL.01`, `05`, `08`, `09`, tutor timesheets (`EDU.RUL.10`), make-up booking in another batch (`EDU.MKP.01`), the student and guardian portal, the loyalty segments. **Resolved contradiction:** §7.1 specifies a Submission machine and `EDU.ASM.01` and §12 *Included* list "materials, assessments and gradebook", while §12 *Excluded* lists "assignments and submissions". As built, and consistent with `apps/edtech/README.md`, the Submission machine, materials, assessments and the gradebook are **Later**: there is no Submission machine in the app. §7.1 and §12 below carry that marker. Machines in code but not in the spec: none. See [STATUS.md](STATUS.md) and [apps/edtech/README.md](../../apps/edtech/README.md).
 
 ## 1. Summary
 
@@ -300,7 +302,7 @@ comes from party ownership (`OWN`) and guardian links.
 | `EDU.REF.01` | Withdrawal and refund calculation per policy (tiered default template, editable per catalogue item) | specific | apps/edtech | MVP |
 | `EDU.LMS.01` | Learning materials per course and session | specific | apps/edtech | MVP |
 | `EDU.LMS.02` | Assignments, submissions, grading and feedback | specific | apps/edtech | Later |
-| `EDU.ASM.01` | Assessments, exams and gradebook | specific | apps/edtech | MVP |
+| `EDU.ASM.01` | Assessments, exams and gradebook | specific | apps/edtech | MVP (not built; Later, see §12) |
 | `EDU.CRT.01` | Certificates with verification code, QR and public verification page | specific | apps/edtech | MVP |
 | `EDU.PRG.01` | Progress reports for students, guardians and corporate clients | specific | apps/edtech | Later |
 | `EDU.ONL.01` | Online class links per session (Zoom, Teams, Meet) | specific | apps/edtech | Later |
@@ -609,6 +611,8 @@ stateDiagram-v2
 
 #### Submission
 
+*Build status (2026-10-24): Later, not built. The machine below is kept as the specification; there is no Submission machine in `apps/edtech`.*
+
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
 | `assigned` | neutral | no | Set for the student, not handed in |
@@ -903,7 +907,7 @@ coordinator (`EDU.ACL.04`, `EDU.ACL.16`).
 approvals, batches with tutor and room allocation, sessions around holidays, enrolments in
 batches, packages and memberships, e-signed terms and guardian consent, instalments,
 memberships and online payment, discounts with approval, attendance by tutor, make-ups and
-transfers, withdrawal and refund calculation with a tiered default policy, materials, assessments and gradebook,
+transfers, withdrawal and refund calculation with a tiered default policy, materials, assessments and gradebook (*Later, not built: resolved 2026-10-24 to agree with the Excluded list and `apps/edtech/README.md`*),
 certificates with public verification, freelance tutor bills and timesheets, student and
 guardian portal, WhatsApp and email notifications, dashboards and reports. Negative paths
 in the MVP: seat hold lapse and last-seat lock, withdrawal with credit note and cancelled

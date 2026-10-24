@@ -1,6 +1,8 @@
 # 06 — Cloud Kitchens & Local F&B Chains
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
+> Spec: accepted · Reviewed: 2026-10-15 · Spec text last changed: 2026-10-16
+
+**Build status (2026-10-24):** Built in F6 (#520), merged. **Built:** the Order, Kitchen ticket, Production batch, Payout statement and Daily closing machines of §7.1, recalls traced to direct orders, outage and paper orders, refused-food refunds, the F&B demo (`fnb:demo`). **Not built (MVP items still open):** aggregator orders through Deliverect (the name appears only as a fallback label), the branded D2C ordering site with OTP login, `FNB.RUL.02` (prep target highlight), `FNB.RUL.06` (key ingredient at zero), `FNB.RUL.07` (batch expiry look-ahead), `FNB.RUL.09` (food cost variance alert); the authority notification of a recall (open item AU-20) and wastage posting for refused food are also open. `FNB.RUL.11`-`13` are Later. **Machines in code but not in the spec:** `Outage` (README). See [STATUS.md](STATUS.md) and [apps/fnb/README.md](../../apps/fnb/README.md).
 
 ## 1. Summary
 

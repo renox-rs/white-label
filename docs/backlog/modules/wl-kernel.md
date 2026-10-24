@@ -1,6 +1,6 @@
 # Epic: wl-kernel — negative flows
 
-> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
+> Status: in use (F1–F10 built; open items in [README](../README.md) §7) · Last updated: 2026-10-24
 
 The platform patterns every other module uses when something goes wrong
 ([WORKFLOW.md](../../WORKFLOW.md) §8, [wl-kernel](../../modules/wl-kernel.md) §4.1, §4.5,
@@ -28,7 +28,7 @@ every N1 item in the verticals relies on.
 ### BL-KRN-01 — wl-kernel: send the subject back to its stored state when an approval ends without a yes
 
 **Labels:** `module:wl-kernel` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** Base: wl-kernel Approval request lifecycle (`submit`, `approve_step`, `approve`, `reject`, `withdraw`, `expire`, `fail`) · **Blocks:** BL-KRN-02, BL-KRN-03, BL-PTY-04, BL-DOC-06, every module with a waiting state (e.g. `pending_approval`), BL-ACC-14, BL-ACC-19, BL-AUT-01, BL-AUT-12, BL-CLN-08, BL-CLN-09, BL-CON-01, BL-CON-05, BL-CON-11, BL-CON-16, BL-CON-17, BL-EDU-12, BL-LOG-12, BL-LOG-15, BL-LOG-17, BL-MFG-01, BL-MPW-03, BL-MPW-04, BL-MPW-07, BL-PRP-01, BL-PRP-12, BL-PRP-19
+**Depends on:** Base: wl-kernel Approval request lifecycle (`submit`, `approve_step`, `approve`, `reject`, `withdraw`, `expire`, `fail`) · **Blocks:** BL-KRN-02, BL-KRN-03, BL-PTY-04, BL-DOC-06, every module with a waiting state (e.g. `pending_approval`), BL-ACC-14, BL-ACC-19, BL-AUT-01, BL-AUT-12, BL-CLN-08, BL-CLN-09, BL-CON-01, BL-CON-05, BL-CON-11, BL-CON-16, BL-CON-17, BL-EDU-12, BL-LOG-12, BL-LOG-15, BL-LOG-17, BL-MFG-01, BL-MPW-03, BL-MPW-04, BL-MPW-07, BL-PRP-01, BL-PRP-12, BL-PRP-19, BL-MPW-22, BL-MPW-26, BL-MPW-29
 **Review items:** X-19 (approval returned), N1 in every vertical
 
 #### Goal
@@ -171,7 +171,7 @@ each module's declaration of its own back transition and release handlers (modul
 ### BL-KRN-02 — wl-kernel: return an approval request for changes and link the resubmission
 
 **Labels:** `module:wl-kernel` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
-**Depends on:** BL-KRN-01 · Base: wl-kernel Approval request lifecycle · **Blocks:** None.
+**Depends on:** BL-KRN-01 · Base: wl-kernel Approval request lifecycle · **Blocks:** BL-MPW-29
 **Review items:** X-19 (approval returned)
 
 #### Goal

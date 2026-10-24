@@ -1,6 +1,8 @@
 # 08 — Auto Parts Suppliers & Fleet/Workshop Services
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
+> Spec: accepted · Reviewed: 2026-10-15 · Spec text last changed: 2026-10-23
+
+**Build status (2026-10-24):** Built in F8 (#522, #561), merged. **Built:** the Job card, Supplier warranty claim, Fleet contract and Insurance repair claim machines of §7.1, estimate approval by link, parts, storage, recalls, settings, the shared changes in wl-sales, wl-inventory, wl-payments and wl-scheduling, the Auto demo (`auto:demo`). **Not built (MVP items still open):** the part master with cross-references, fitment and price tiers (there is no part catalogue; warranty terms are kept on the claim), Excel import of parts, B2B portal ordering, counter POS, `AUT.RUL.10` and `AUT.RUL.14` (and the sending of `AUT.RUL.11`, `AUT.RUL.13`: the claim reminders and the weekly insurer statement are not sent). The README says the issues BL-AUT-01 to BL-AUT-18 are built; that is true of the issues, not of the head item of §12. Deferred points per issue: `docs/progress/f8-auto-deferred.md`. Machines in code but not in the spec: none. See [STATUS.md](STATUS.md) and [apps/auto/README.md](../../apps/auto/README.md).
 
 ## 1. Summary
 

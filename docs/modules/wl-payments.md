@@ -1,6 +1,8 @@
 # wl-payments
 
-> Status: draft · Last updated: 2026-10-16
+> Status: specification, partly built; the build ledger is [crates/wl-payments/README.md](../../crates/wl-payments/README.md) · Last updated: 2026-10-24
+
+**Build status (2026-10-24):** Built: payments and receipts with allocation, refunds, payment links with the public page, late confirmation and chargebacks (through the `Gateway` trait), cheques, deposits, cash custody (handovers), the part of expense claims that routes an owner drawing (`draft`, `submitted`, `approved`, `rejected`), bank statement imports, set-off. Not built (later): the real gateway adapters (Stripe, N-Genius, Telr, Checkout.com: the crate has only the `Gateway` trait, `NoGateway` and `FakeGateway`; a client's gateway is injected with `WlPayments::gateway`), expense claim `reimburse`, `return` and `cancel`, the Petty cash float and its machine. List screens use the standard Renox grid (`renox::grid::Grid`).
 
 ## 1. Purpose
 
@@ -27,7 +29,7 @@ stay in the client's bank and accounting software.
 | `FIN.BNK.01` | Bank statement import and matching of receipts to open invoices | 01, 04, 09 MVP; 02, 03, 05, 06, 07, 08, 10 Later | MVP |
 
 **Gateways** (decided 2026-10-15 for all verticals, 06 §13 question 8): Stripe and Network
-International N-Genius in the MVP, both in `renox-billing` 1.2 (`Gateway` trait); Telr and
+International N-Genius in the MVP, both in `renox-billing` 1.2 (`Gateway` trait; **adapter not built in this crate**: a client's gateway is injected with `WlPayments::gateway`, the default is `NoGateway`); Telr and
 Checkout.com when a client asks, as our own `Gateway` implementations. Each client uses its own merchant account.
 
 `FIN.CSH.01` is used by 06 for cash on delivery collected by the outlet's own riders
@@ -387,6 +389,8 @@ the party's decision).
 
 ### Expense claim
 
+**Build status (2026-10-24):** Partly built: `draft`, `submitted`, `approved`, `rejected` exist; `reimbursed` and `cancelled` and the transitions `return`, `reimburse` and `cancel` are not built ("reimbursement is not built", `expense_actual.rs`).
+
 Petty cash spending is an expense claim whose reimbursement method is the holder's float: it
 is approved like any claim and reduces the float instead of producing a payment.
 
@@ -423,6 +427,8 @@ stateDiagram-v2
 ```
 
 ### Petty cash float
+
+**Build status (2026-10-24):** Not built (later): no petty cash table or machine exists.
 
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
@@ -738,7 +744,7 @@ their linked documents (lease, enrolment, rental, job).
 `expenses.submit`, `expenses.view`
 (own claims; all claims with `expenses.view_all`), `expenses.approve`, `expenses.reimburse`,
 `expense_categories.manage`, `petty_cash.manage`, `petty_cash.top_up`, `bank.import`,
-`bank.reconcile`.
+`bank.reconcile`, `cash.view` (see cash custody and handovers).
 
 **Access rules owned**
 
@@ -785,7 +791,7 @@ belongs to wl-invoicing and calls `Gateway`.
 | Setting | Default |
 |---|---|
 | Payment methods enabled | cash, transfer, cheque, card at counter (set-off: off; 02: on) |
-| Gateway account per entity (provider: Stripe or N-Genius; credentials, mode) | none (online payment off) |
+| Gateway account per entity (provider: Stripe or N-Genius; credentials, mode) (adapter not built; see §2) | none (online payment off) |
 | Booking or reservation prepayment: forfeit on no-show or late cancellation | per vertical policy (05: off by default, per service type) |
 | Deposit deductions published to the party before refund | on |
 | Deductions dispute by the party in the portal: on/off; dispute window; response window | off; 14 days; 7 days (01: on) |
@@ -822,7 +828,7 @@ belongs to wl-invoicing and calls `Gateway`.
 
 ## 8. Extension points
 
-- **Strategy traits:** gateways are `renox-billing` `Gateway` implementations (Stripe and
+- **Strategy traits:** gateways are `Gateway` implementations (not built in this crate: only `NoGateway` and `FakeGateway` exist; Stripe and
   N-Genius ship with renox-billing 1.2; Telr and Checkout.com are ours, on demand), `AllocationPolicy`, `DeductionPolicy` (which
   deposit deductions are billable and their VAT), `CashExpectation` (how the expected cash
   is computed for a holder and period), `StatementParser` (one per format or bank),
@@ -940,7 +946,7 @@ belongs to wl-invoicing and calls `Gateway`.
    should wl-payments call gateways directly?~~ Decided (2026-10-15): extend renox-billing
    ([ARCHITECTURE.md](../ARCHITECTURE.md) §4a R17). ~~Still open: whether the N-Genius adapter
    is contributed to renox-billing or kept in wl-payments.~~ Answered (2026-10-18): it ships in
-   renox-billing 1.2 (`Billing::ngenius()`). *(us)*
+   renox-billing 1.2 (`Billing::ngenius()`). *(us)* Build status: the adapter is not wired into wl-payments yet (`gateway.rs`: "the real adapter comes in a later issue").
 3. Do clients need direct debit (UAE DDS) for rent and memberships? *(clients)* ✔ Provider
    access: the client itself becomes a UAEDDS originator with a Central Bank originator code
    and a sponsoring bank, and payers sign a direct debit authority; the platform could only

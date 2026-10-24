@@ -1,6 +1,6 @@
 # Epic: wl-sales — negative flows
 
-> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
+> Status: in use (F1–F10 built; open items in [README](../README.md) §7) · Last updated: 2026-10-24
 
 This epic builds the negative flows of the Sales order, Sales return and Package machines in
 [wl-sales](../../modules/wl-sales.md): payment-first online orders and late payments, duplicate
@@ -914,6 +914,8 @@ rep and customer told).
 - [ ] Given a `closed` order, `DispatchReversed` leaves it `closed` and the accountant and sales rep get a task.
 - [ ] Given `DispatchLost` of a `dispatched` dispatch, nothing is fulfilled, the lines show *lost* and the sales rep gets a task; from a `delivered` dispatch, `reverse_fulfilment` runs first.
 
+_Deferred points of this issue: see [docs/progress/f7-manufacturing.md](../../progress/f7-manufacturing.md) and the "Deferred in F7" table of `apps/manufacturing/README.md`._
+
 #### Out of scope
 Dispatch side (BL-STK-22, BL-STK-24, BL-STK-25). Credit notes (Epic wl-invoicing).
 
@@ -1066,6 +1068,8 @@ linked to the recall and held with it; the recall decides their outcome.
 - [ ] Given recall RCL-1 open on lot L7 and a return of 2 units of L7 sold 60 days ago (window 14), when `receive` runs, it is accepted without approval, linked to RCL-1, and the 2 units are in quarantine and on RCL-1's hold.
 - [ ] When the return is resolved with a credit note, no stock is restored.
 - [ ] Given recall RCL-2 on part P (not lot-tracked, received 2026-08-01–2026-08-31, first receipt 2026-08-05, no trace end) and a return of 1 P sold 2026-09-10, it is linked to RCL-2 and joins its hold; a P sold 2026-08-01 is a normal return.
+
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
 
 #### Out of scope
 Recall decisions (BL-STK-16).
@@ -1239,6 +1243,8 @@ the back-ordered quantity alone. A cancelled back-order drops out at the next ru
 - [ ] `cancel_line` on SO-2's back-order needs no outcome and removes it from the next suggestion.
 - [ ] Reversing the 4 P receipt releases the reservations and both lines are back-ordered again.
 - [ ] With the setting off, a line without stock is not back-ordered.
+
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
 
 #### Out of scope
 The 08 settings and screens (BL-AUT-15); the reorder suggestion engine (base `STK.RUL.04`).

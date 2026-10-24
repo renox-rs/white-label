@@ -6,7 +6,7 @@ and location) and the delivered and refused quantity of every line
 ([spec](../../docs/modules/wl-delivery.md)). The module does not know what is delivered: the
 source is a `Subject`, asks for a delivery through the kernel's `DeliveryRequester`, and reacts
 to the delivery events of `wl-kernel` (`DeliveryAssigned`, `DeliveryOutForDelivery`,
-`DeliveryDelivered`, `DeliveryAttemptFailed`, `RunDispatched`, `DeliveryDisputed`, `DeliveryLost`, `RunClosed`, …). No crate depends on this one.
+`DeliveryDelivered`, `DeliveryAttemptFailed`, `RunDispatched`, `DeliveryDisputed`, `DeliveryLost`, `RunClosed`, …). No other `wl-*` crate depends on it in production; the host and the F&B and logistics apps do (`wl-invoicing` has it as a dev-dependency).
 
 The host mounts it when `client.toml` enables `delivery`:
 

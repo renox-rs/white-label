@@ -1,6 +1,8 @@
 # wl-invoicing
 
-> Status: draft · Last updated: 2026-10-16
+> Status: specification, partly built; the build ledger is [crates/wl-invoicing/README.md](../../crates/wl-invoicing/README.md) · Last updated: 2026-10-24
+
+**Build status (2026-10-24):** Built: invoices and lines with UAE VAT categories, credit notes, allocations and unallocation, overdue, reminders, write-offs and bad-debt relief, disputes, subscriptions, usage records and pricing, rate cards, supplier bills with the 3-way match, supplier debit notes, payer agreements and payer bills, e-invoice transmission, VAT summary and adjustments, company budgets and budget vs actual, the cash-flow forecast, owner drawings. Not built (later): Quotation and Quotation line (and the events `QuotationSent`, `QuotationAccepted`, `QuotationRejected`; the kernel has the `Quotations` trait but no module provides it), Charge schedule and Charge, Disbursement, Exchange rate; the events `VatSummaryPrepared`, `VatSummaryLocked`, `VatSummaryReopened`, `BudgetThresholdReached`, `UsageUnpriced` and `SupplierBillMatched` are not emitted under these or any other names (no event struct exists in code). List screens use the standard Renox grid (`renox::grid::Grid`); where this document says `rx-grid` or `rx-table`, read the standard grid.
 
 ## 1. Purpose
 
@@ -48,16 +50,16 @@ the budget lines of a cost object in `FIN.CST.01` (job costing).
 
 | Entity | Description | Important fields |
 |---|---|---|
-| Quotation | A priced offer to a party, with revisions | number, issuing entity, issuer snapshot (when sent), party, source (`Subject`, optional), lines, currency, validity date, terms, revision, status |
-| Quotation line | One priced item | description, catalogue item (optional), quantity, unit, unit price, discount, VAT category, cost code (optional) |
-| Charge schedule | Amounts to bill over time for an agreement | source (`Subject`: lease, engagement, enrolment, contract), party (one billed party in the MVP; billing shares for split invoicing Later, 01 §13 question 2), currency, start, end |
+| Quotation (not built) | A priced offer to a party, with revisions | number, issuing entity, issuer snapshot (when sent), party, source (`Subject`, optional), lines, currency, validity date, terms, revision, status |
+| Quotation line (not built) | One priced item | description, catalogue item (optional), quantity, unit, unit price, discount, VAT category, cost code (optional) |
+| Charge schedule (not built) | Amounts to bill over time for an agreement | source (`Subject`: lease, engagement, enrolment, contract), party (one billed party in the MVP; billing shares for split invoicing Later, 01 §13 question 2), currency, start, end |
 | Charge | One scheduled amount | schedule, due date, charge type, amount, VAT category, issuing entity (from the source's scope, or the charge type's override), invoice (once billed), status |
 | Charge type | An entry in the client's charge catalogue; no charge type is hard-coded (01 §13 question 3). In F1 the lease's charge types and schedule are kept in apps/property (see `ChargeScheduler`, §6) | code, names EN/AR, default VAT category, frequency, basis (fixed or per area), issuing entity override (`PLT.ENT.01`), invoice grouping (own invoice per charge, or combined with the agreement's other charges), account mapping for export, active |
 | Subscription | A recurring plan billed every cycle | party, plan (catalogue item or price), quantity, cycle (week, month, quarter, year), anchor day, start, end, notice period, payment mode (manual / automatic charge), source (`Subject`), status |
 | Rate card | Prices for usage or estimates, per contract | party (customer, or a payer such as an insurer), purpose (customer contract or payer agreement), source contract (`Subject`), currency, service levels (e.g. same day, next day), valid from/to, lines |
 | Rate card line | One price rule | service or role key, pricing model (see below), dimensions (zone, weight band, route, vehicle class, shift…), unit (hour, day, month, item, trip, kg, pallet, CBM, panel), price or price table, price rule (list − %, cost + %), multipliers (overtime, public holiday, rest day, night), minimum quantity or charge (e.g. minimum hours per shift), surcharges (fuel, remote area, COD fee as % of the collected amount with a minimum), default VAT category |
 | Usage record | One priced transaction waiting to be billed | party, issuing entity (from the source, e.g. the worker's sponsoring entity in 09), source (`Subject`: shipment, timesheet entry, job card, storage day), date, rate card line, quantity, amount, VAT category, cost object, billed invoice |
-| Disbursement | A cost paid for a client and recharged at cost | party, source job (`Subject`), payee, supplier bill or receipt (attached), amount, currency, VATP013 checklist (third-party invoice in the client's name, client's authorisation, exact amount without markup), treatment (`out_of_scope` only when every condition is checked, otherwise a reimbursement with the VAT of the main supply), billed invoice |
+| Disbursement (not built) | A cost paid for a client and recharged at cost | party, source job (`Subject`), payee, supplier bill or receipt (attached), amount, currency, VATP013 checklist (third-party invoice in the client's name, client's authorisation, exact amount without markup), treatment (`out_of_scope` only when every condition is checked, otherwise a reimbursement with the VAT of the main supply), billed invoice |
 | Invoice | A tax invoice, simplified tax invoice or commercial invoice | number, kind, issuing entity, issuer snapshot, party (with TRN), billing address, lines, currency, exchange rate, totals per VAT category, AED VAT total, issue date, due date, source (`Subject`), customer PO reference (required when the contract says so, e.g. 08 fleet PO per job or per month), receivable shares (customer and payers, `FIN.TPP.01`), balance, dispute (`disputed` flag, reason, disputed amount, disputed lines (optional), ticket, raised by and at), write-off (amount, reason code, approval, customer notice date, recovered amount), e-invoice status (from the latest transmission), owner (see below), status |
 | Invoice line | One billed amount | description, quantity, unit price, discount, VAT category, VAT amount, zero-rating evidence (documents, when the line's `VatRule` requires it), payer share (`FIN.TPP.01`), cost object, charge type (the key through which the line is mapped to a budget category, `FIN.BUD.01`), origin (charge, usage record, subscription cycle, disbursement, sales order line, payer split line) |
 | Credit note | A tax credit note against an invoice | number, invoice, issuing entity (always the invoice's), issuer snapshot, lines, reason, totals, status |
@@ -68,7 +70,7 @@ the budget lines of a cost object in `FIN.CST.01` (job costing).
 | E-invoice transmission | One sending of an invoice or credit note to the accredited service provider (ASP) | document (invoice or credit note), issuing entity, ASP adapter, recipient identifier (Peppol ID, TRN), payload (structured data and hash), attempt count, submitted at, ASP reference, response at, error codes and messages, replaced by (the credit note and new invoice, when corrected), status |
 | Supplier bill | A bill from a supplier | supplier, receiving entity (defaults from the PO), number, date, due date, lines (with the service date or period for contract and ticket work), VAT, currency, PO and goods-received references, service contract or ticket (wl-ticketing, for vendor bills without a PO), cost code (per line: the key through which the line is mapped to a budget category, `FIN.BUD.01`), landed cost (per line: a freight, duty or clearing line coded to a wl-inventory landed cost of the bill's receiving entity; a landed cost of another entity is refused at `submit`), match result, allocation basis (area, number of units, asset, manual %; default from the service contract), cost allocations, debit notes applied, status |
 | Supplier debit note | The business's claim on a supplier against a supplier bill: goods returned, rejected after billing, short delivery or a price difference | number (receiving entity's own sequence), receiving entity, supplier, supplier bill (empty while the bill has not arrived), source (`Subject`: wl-inventory *Return to supplier*, or manual), lines (bill line, quantity, unit price, VAT category, VAT amount, cost object), reason code, totals, supplier's tax credit note (number, date, file, once received), settlement (set off against the bill, against a later bill, or refund received through wl-payments), status |
-| Exchange rate | Rate for a currency on a date | currency, date, rate to AED, source (manual or feed) |
+| Exchange rate (not built) | Rate for a currency on a date | currency, date, rate to AED, source (manual or feed) |
 | Reminder log | Reminders sent for an invoice | invoice, rule, step, channel, sent at |
 | Export batch | A set of records exported to accounting | target system, period, records, file, status |
 | Issuer snapshot | The issuing entity's details copied onto a document when it is issued or sent; never changed afterwards | legal names EN/AR, trade licence number, TRN, address, bank account shown for payment, logo, footer |
@@ -182,6 +184,8 @@ the cost on the cost objects and adjusts input VAT (§5.13).
 
 ### Quotation
 
+**Build status (2026-10-24):** Not built (later).
+
 Canonical base: [02-construction.md](../verticals/02-construction.md) §7.1, unchanged except
 that acceptance creates whatever the source vertical needs (project, sales order, engagement,
 contract).
@@ -216,6 +220,8 @@ stateDiagram-v2
 ```
 
 ### Charge
+
+**Build status (2026-10-24):** Not built (later): neither Charge schedule nor Charge has a table.
 
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
@@ -1098,7 +1104,7 @@ vendor contract bills and their allocation basis; tickets for invoice disputes,
 
 | Event | When | Payload |
 |---|---|---|
-| `QuotationSent` / `QuotationAccepted` / `QuotationRejected` | transitions | quotation, party, source, total |
+| `QuotationSent` / `QuotationAccepted` / `QuotationRejected` (not built) | transitions | quotation, party, source, total |
 | `InvoiceIssued` | `issue` | invoice, party, source, total, due date |
 | `InvoiceOverdue` | `mark_overdue` | invoice, party, balance, days overdue |
 | `InvoicePaid` | balance reaches zero | invoice, party, source |
@@ -1113,18 +1119,18 @@ vendor contract bills and their allocation basis; tickets for invoice disputes,
 | `PayerBillSubmissionRejected` | `submission_rejected` | payer bill, payer, source, error codes |
 | `PayerRecoupmentRecorded` | `record_recoupment` | payer bill, payer, source, lines and amounts recouped, code |
 | `SubscriptionPastDue` / `SubscriptionSuspended` / `SubscriptionSettled` / `SubscriptionCancelled` | transitions | subscription, party, source |
-| `UsageUnpriced` | usage without a matching rate line | usage record, source |
+| `UsageUnpriced` (not built) | usage without a matching rate line | usage record, source |
 | `PayerBillIssued` / `PayerRemittanceRecorded` / `PayerBillClosed` | payer bill transitions (`PayerBillClosed` on `transfer_to_customer`, `write_off`, `void`) | payer bill, payer, source, claimed, paid, denied, open amount; outcome (transferred, written off, voided) for `PayerBillClosed` |
 | `SupplierBillApproved` | `approve` | bill, supplier, amount, cost objects, landed cost reference per line (when coded to a landed cost; wl-inventory drafts a landed cost adjustment) |
 | `SupplierBillVoided` | supplier bill `void` | bill, reason |
 | `OwnerDrawingDecided` | a pending drawing request ended | source record, legal entity, approved (yes/no), approved by, reason when not approved |
 | `SupplierBillReopened` | supplier bill `unallocate` | bill, supplier, amount restored, balance, reason (payment reversed, debit note cancelled) |
-| `SupplierBillMatched` | `approve` of a PO-linked bill | bill, PO, lines and billed quantities |
-| `BudgetThresholdReached` | committed + actual ≥ threshold | cost object, cost code, % used |
+| `SupplierBillMatched` (not built) | `approve` of a PO-linked bill | bill, PO, lines and billed quantities |
+| `BudgetThresholdReached` (not built) | committed + actual ≥ threshold | cost object, cost code, % used |
 | `CompanyBudgetApproved` | company budget `approve` | budget, entity, fiscal year, version, superseded version |
 | `CompanyBudgetVarianceReached` | `FIN.RUL.24` | entity, category, month, budget, actual, % used |
 | `CashForecastBelowThreshold` | `FIN.RUL.23` | entity, first week below, projected balance, threshold |
-| `VatSummaryPrepared` / `VatSummaryLocked` / `VatSummaryReopened` | transitions | summary, entity, period, net VAT |
+| `VatSummaryPrepared` / `VatSummaryLocked` / `VatSummaryReopened` (not built) | transitions | summary, entity, period, net VAT |
 
 **Attaches to:** quotations, charge schedules, subscriptions, invoices, usage records,
 disbursements, payer splits, payer bills and cost objects reference any `Subject` (lease,
@@ -1135,7 +1141,7 @@ claim, insurance claim).
 
 `quotations.view`, `quotations.create`, `quotations.send`, `quotations.accept`,
 `charges.manage`, `charges.waive`, `subscriptions.view`, `subscriptions.manage`,
-`rate_cards.view`, `rate_cards.manage`, `payer_agreements.manage`, `payer_bills.view`,
+`rate_cards.view`, `rate_cards.manage`, `rate_cards.approve` (approve a rate card version dated in the past, `MPW.ACL.16`), `payer_agreements.manage`, `payer_bills.view`,
 `payer_bills.issue`, `payer_bills.reconcile`, `payer_bills.write_off`, `invoices.view`,
 `invoices.create`,
 `invoices.issue`, `invoices.credit`, `invoices.write_off`, `invoices.dispute`,

@@ -1,6 +1,8 @@
 # 04 — Accounting Firms & Fractional CFO Services
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
+> Spec: accepted · Reviewed: 2026-10-15 · Spec text last changed: 2026-10-16
+
+**Build status (2026-10-24):** Built in F4 (#484, #485, #497), merged. **Built:** the Engagement, CDD file, Return, AML case and KPI pack machines of §7.1, the compliance calendar, retainer, neutral reasons, document requests, tax agent check, voluntary disclosure and corrections, KPI packs from a pasted trial balance in the generic CSV layout. **Partly built:** WIP: the write-off machine and the kernel seam `wl_kernel::wip::UnbilledTime` exist, but no module implements the seam (wl-attendance exists and does not), so WIP is zero in the real host. **Not built (MVP items still open):** time entries and time-based WIP billing (`ACC.TIM.01`), the KPI presets for Zoho Books, Xero, QuickBooks and Tally (`ACC.KPI.01`; live connectors `ACC.KPI.02` are Later). **No demo command:** `clients/demo-accounting` exists but there is no `accounting:demo`. **Machines in code but not in the spec:** `TaxProfileChange`, `WipWriteOff` (README). See [STATUS.md](STATUS.md) and [apps/accounting/README.md](../../apps/accounting/README.md).
 
 ## 1. Summary
 

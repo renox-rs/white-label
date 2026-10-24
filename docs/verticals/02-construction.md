@@ -1,6 +1,8 @@
 # 02 — Construction & Fit-out Subcontractors
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
+> Spec: accepted · Reviewed: 2026-10-15 · Spec text last changed: 2026-10-16
+
+**Build status (2026-10-24):** Built in F2 (#486, #487, #488), merged. **Built:** the app-owned machines of §7.1 (Project with `complete` and `close`, Variation, IPA, Retention, Guarantee), termination with the final account, omission and time variations, certificate and retention deductions, guarantee calls, absence cases, the timesheet and stock flows on wl-attendance and wl-inventory, the Construction demo (`construction:demo`). **Not built (MVP items still open):** sites and geofences, the BOQ import and the IPA calculation (the BOQ line holds only what an omission needs), IPA `revise` and `CON.RUL.04`, advance recovery, crews, daily site reports (`CON.RUL.02`), snag lists, the final retention reminder (`CON.RUL.05`), project pages and the client portal (`POR.ACL.01`). **Note:** the demo client has no `sales` module, so the leads and tenders of the "also included" paragraph are not available there. **Machines in code but not in the spec:** `IpaDeduction`, `RetentionDeduction` (decisions recorded in the app README). See [STATUS.md](STATUS.md) and [apps/construction/README.md](../../apps/construction/README.md).
 
 ## 1. Summary
 

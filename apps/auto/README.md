@@ -17,7 +17,7 @@ App::new().module(auto::Auto)
 # ;
 ```
 
-What is here (every part with its spec section; the 08 issues BL-AUT-01 to BL-AUT-18 and the shared ones they need are built):
+What is here (every part with its spec section; the 08 issues BL-AUT-01 to BL-AUT-18 and the shared ones they need are built; the head item of the spec's MVP, the part master with cross-references, fitment and price tiers, the B2B portal, the counter POS and `AUT.RUL.10`/`14` are not, see [`docs/verticals/STATUS.md`](../../docs/verticals/STATUS.md) and [`docs/progress/f8-auto-deferred.md`](../../docs/progress/f8-auto-deferred.md)):
 
 | Part | Spec | Module |
 |---|---|---|

@@ -1,6 +1,6 @@
 # Epic: wl-payments — negative flows
 
-> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
+> Status: in use (F1–F10 built; open items in [README](../README.md) §7) · Last updated: 2026-10-24
 
 This epic builds the negative flows that the negative-flow review added to
 [wl-payments](../../modules/wl-payments.md): payment reversal with its allocations (X-03), failed
@@ -1364,6 +1364,8 @@ party is asked for a replacement (a stop-payment on the lost cheque is the party
       #101 present, #102 missing: `short`; #101 can be deposited, #102 cannot.
 - [ ] `write_off` is refused until #102 is found or returned as lost.
 - [ ] #102 returned with reason "lost": the party is asked for a replacement; then `recover` or `write_off` is allowed.
+
+_Deferred points of this issue: see [docs/progress/f8-auto-deferred.md](../../progress/f8-auto-deferred.md) (what is missing, who provides it, why)._
 
 #### Out of scope
 Cash counting (BL-PAY-17); cheque bounce (BL-PAY-09).
