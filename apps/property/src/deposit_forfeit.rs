@@ -52,6 +52,7 @@ use crate::charge::ChargeStatus;
 use crate::charge_type::ChargeType;
 use crate::lease::Lease;
 use crate::permissions::{DEPOSITS_REFUND, PROPERTY_MANAGER_ROLE, SECOND_APPROVER_ROLES};
+use crate::termination_credit;
 use crate::texts::english;
 
 /// The rule that asks a second approver above a threshold.
@@ -97,6 +98,9 @@ pub struct DepositSettlement {
     pub excess_invoice_id: Option<i64>,
     /// Its number, once issued.
     pub excess_invoice_number: Option<String>,
+    /// The termination credit applied to the deductions before the deposit,
+    /// in fils (BL-PRP-32).
+    pub credit_applied: i64,
     /// The property manager who approved.
     pub approver_id: i64,
     /// The finance or owner approval above the threshold.
@@ -341,6 +345,20 @@ pub async fn apply(
         )));
     }
 
+    // The termination credit held for the settlement pays the unpaid rent
+    // before the deposit (BL-PRP-32); the deposit covers what is left.
+    let holder = termination_credit::holder(&state.db, lease.root_id).await?;
+    let mut credit_use = None;
+    if let Some(holder) = holder.as_ref()
+        && termination_credit::claim(&state.db, holder).await?
+    {
+        credit_use = Some(termination_credit::use_on_rent(state, holder).await?);
+    }
+    let unpaid_now = if credit_use.as_ref().is_some_and(|u| u.to_deductions > 0) {
+        unpaid_invoices(state, lease.root_id).await?
+    } else {
+        unpaid
+    };
     let applied = deposits(state)
         .apply_to_deductions(
             state,
@@ -348,7 +366,7 @@ pub async fn apply(
             ApplyDeposit {
                 source: lease.agreement(),
                 approver: request.approver,
-                rent: unpaid
+                rent: unpaid_now
                     .iter()
                     .map(|u| ApplyToInvoice {
                         invoice: InvoiceId(u.id),
@@ -357,7 +375,20 @@ pub async fn apply(
                     .collect(),
             },
         )
-        .await?;
+        .await;
+    let applied = match applied {
+        Ok(applied) => applied,
+        Err(error) => {
+            // The forfeiture is refused (after the credit, the deductions may
+            // be below the deposit, which is then refunded with the damage
+            // lines taken from it): what the credit did stays, and the rest of
+            // it follows the property manager's choice.
+            if let (Some(holder), Some(used)) = (holder.as_ref(), credit_use) {
+                termination_credit::finish(state, holder, used, None, Some(user.id)).await?;
+            }
+            return Err(error);
+        }
+    };
 
     let rest = uncovered(applied.kept, &lines);
     let excess: i64 = rest.iter().map(|(_, amount)| *amount).sum();
@@ -384,6 +415,19 @@ pub async fn apply(
         }
     }
     let kept_for_damages = applied.kept.min(damages);
+    // The credit left pays the damages invoice, then follows the choice.
+    let mut credit_applied = 0;
+    if let (Some(holder), Some(used)) = (holder.as_ref(), credit_use) {
+        let done = termination_credit::finish(
+            state,
+            holder,
+            used,
+            invoice_id.map(InvoiceId),
+            Some(user.id),
+        )
+        .await?;
+        credit_applied = done.to_deductions;
+    }
     DepositSettlement::create(
         &state.db,
         DepositSettlement {
@@ -397,6 +441,7 @@ pub async fn apply(
             to_damages: kept_for_damages,
             excess,
             excess_invoice_id: invoice_id,
+            credit_applied,
             approver_id: request.approver,
             second_approver_id: request.second_approver,
             applied_by: Some(user.id),

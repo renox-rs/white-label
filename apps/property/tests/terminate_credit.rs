@@ -1,7 +1,9 @@
 //! BL-PRP-11 (#261) with the real wl-invoicing and wl-payments: the credit
 //! note of the pro rata credit of a paid invoice is the tenant's credit, and
-//! `terminate` either asks it back through the Refund flow or keeps it, as the
-//! property manager chose. A step that fails is left to the accountant.
+//! with no deposit held `terminate` either asks it back through the Refund
+//! flow or keeps it, as the property manager chose (BL-PRP-32 Done when 4: as
+//! before; with a deposit held the credit waits for the settlement, see
+//! `terminate_credit_hold.rs`). A step that fails is left to the accountant.
 
 mod support;
 
@@ -17,7 +19,6 @@ use wl_kernel::payments::{
     AllocationTarget, PaymentMethod, RecordPayment, RefundSource, payment_recorder,
 };
 use wl_payments::Refund;
-use wl_payments::deposit::DepositStatus;
 use wl_payments::refund::RefundStatus;
 
 use support::{AGENT, Booted, MANAGER, Real, TENANT, aed, boot_with, d};
@@ -179,15 +180,15 @@ impl Scene {
 }
 
 /// AC1, the refund choice: the July invoice was paid, so the credit note of
-/// AED 3,193.55 (11 of 31 days) is the tenant's credit. With the choice to
-/// refund it, the credit note is the source of a refund of that amount, which
-/// waits for another user's approval; the credit note is used up. The deposit
-/// settlement started and the portal event says what was credited.
+/// AED 3,193.55 (11 of 31 days) is the tenant's credit. No deposit is held
+/// (BL-PRP-32 Done when 4), so with the choice to refund it, the credit note is
+/// the source of a refund of that amount at `terminate`, which waits for
+/// another user's approval; the credit note is used up. The portal event says
+/// what was credited.
 #[renox::test]
 async fn bl_prp_11_the_credit_that_is_left_is_asked_back_when_the_manager_chose_to_refund_it() {
     let s = scene(Real::MONEY).await;
     let lease = s.leased().await;
-    s.t.hold_real_deposit(&lease, aed(5_000)).await;
     s.invoice_and_pay(&lease, d(7, 1), true).await;
 
     s.notice_and_terminate(&lease, "refund").await;
@@ -225,19 +226,15 @@ async fn bl_prp_11_the_credit_that_is_left_is_asked_back_when_the_manager_chose_
         s.t.tasks.open()
     );
 
-    // The deposit settlement started (the real deposit book).
-    let held = deposits(s.t.state())
-        .held_for(s.t.db(), &lease.agreement())
-        .await
-        .unwrap();
-    assert!(held.is_none(), "no longer held");
-    let deposit = wl_payments::Deposit::query()
-        .where_(wl_payments::Deposit::SOURCE_ID.eq(lease.agreement().subject_id))
-        .first(s.t.db())
-        .await
-        .unwrap()
-        .expect("the deposit");
-    assert_eq!(deposit.status, DepositStatus::SettlementPending);
+    // No deposit was held: nothing waits for a settlement.
+    assert_eq!(after.credit_held, 0);
+    assert!(
+        deposits(s.t.state())
+            .held_for(s.t.db(), &lease.agreement())
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     // The portal event carries the move-out and the credit.
     let events = s.t.terminated.all();
@@ -265,13 +262,12 @@ async fn bl_prp_11_the_credit_that_is_left_is_asked_back_when_the_manager_chose_
     );
 }
 
-/// AC1, the keep choice: the credit stays on the credit note for the tenant to
-/// use, and no refund is asked.
+/// AC1, the keep choice: with no deposit held the credit stays on the credit
+/// note for the tenant to use, and no refund is asked.
 #[renox::test]
 async fn bl_prp_11_the_credit_is_kept_for_the_tenant_when_the_manager_chose_to_keep_it() {
     let s = scene(Real::MONEY).await;
     let lease = s.leased().await;
-    s.t.hold_real_deposit(&lease, aed(5_000)).await;
     s.invoice_and_pay(&lease, d(7, 1), true).await;
 
     s.notice_and_terminate(&lease, "keep").await;
@@ -356,7 +352,6 @@ async fn bl_prp_11_an_unpaid_invoice_leaves_no_credit_to_refund() {
 async fn bl_prp_11_a_refund_that_fails_is_left_to_the_accountant() {
     let s = scene(Real::INVOICING).await;
     let lease = s.leased().await;
-    s.t.deposits.hold(&lease.agreement(), TENANT, aed(5_000));
     s.invoice_and_pay(&lease, d(7, 1), false).await;
     s.t.refunds.refuse(true);
 
@@ -382,6 +377,5 @@ async fn bl_prp_11_a_refund_that_fails_is_left_to_the_accountant() {
         tasks[0].description
     );
     // The rest of the termination went through.
-    assert_eq!(s.t.deposits.started(), vec![lease.agreement()]);
     assert_eq!(s.t.terminated.all().len(), 1);
 }

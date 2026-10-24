@@ -30,15 +30,18 @@
 //! - the cheques `received` or `due_for_deposit` and dated after the cutoff
 //!   are returned against one receipt; those for kept periods stay;
 //! - the settlement of the held deposit starts (nothing is published yet);
-//! - the credit that is left on those credit notes follows the property
-//!   manager's [`CreditChoice`] ([`settle_credit`]): `refund` asks it back
-//!   through the Refund flow (the credit note is the refund's source, taken
-//!   first through the invoicer, so it cannot be refunded twice; the refund
-//!   waits for another user's approval, `FIN.ACL.04`), `keep` leaves it on
-//!   the credit notes for the tenant to use. The deductions of the deposit are
-//!   itemised only after the move-out inspection is settled (BL-PRP-17), so no
-//!   deduction exists yet to apply the credit to: the tenant's credit is
-//!   there for the invoice the deductions produce;
+//! - the credit that is left on those credit notes (the termination credit)
+//!   is **held for the deposit settlement** when a deposit is held
+//!   ([`Lease::credit_held`], BL-PRP-32): the deductions are itemised only
+//!   after the move-out inspection is settled (BL-PRP-17), and the credit
+//!   covers them first when the deposit is refunded or forfeited
+//!   ([`crate::termination_credit`]). With no deposit held (or one settled
+//!   already) it follows the property manager's [`CreditChoice`] at once
+//!   ([`settle_credit`]): `refund` asks it back through the Refund flow (the
+//!   credit note is the refund's source, taken first through the invoicer,
+//!   so it cannot be refunded twice; the refund waits for another user's
+//!   approval, `FIN.ACL.04`), `keep` leaves it on the credit notes for the
+//!   tenant to use;
 //! - `LeaseTerminated` is emitted, which turns the tenant's portal read-only.
 //!
 //! A step that fails does not stop the others: the accountant gets one task
@@ -370,6 +373,11 @@ pub struct Settlement {
     /// The credit that stayed with the tenant because the choice is to keep
     /// it, in fils.
     pub kept: i64,
+    /// The credit held for the deposit settlement, in fils: a deposit is held,
+    /// so the credit goes to the deductions first (BL-PRP-32).
+    pub held: i64,
+    /// The credit notes the held credit sits on.
+    pub held_notes: Vec<CreditNoteId>,
     /// What could not be done and was left to the accountant.
     pub problems: Vec<String>,
     /// Whether this run did the work (`false` for a repeat).
@@ -564,8 +572,13 @@ pub async fn settle_keeping(
         Err(error) => done.problems.push(problem_line("deposit", &error)),
     }
 
-    // 3b. The credit that the invoices did not use.
-    settle_credit(state, &lease, &notes, by, &mut done).await;
+    // 3b. The credit that the invoices did not use: held for the deductions
+    // of the deposit being settled, else as the property manager chose.
+    if done.deposit.is_some() {
+        hold_credit(state, &notes, &mut done).await;
+    } else {
+        settle_credit(state, &lease, &notes, by, &mut done).await;
+    }
 
     // 4. What was credited, what is left by hand, the event.
     Lease::query()
@@ -574,6 +587,8 @@ pub async fn settle_keeping(
             &state.db,
             &[
                 ("termination_credit", &done.credit),
+                ("credit_held", &done.held),
+                ("credit_notes_held", &held_notes_text(&done.held_notes)),
                 ("updated_at", &renox::db::now()),
             ],
         )
@@ -606,11 +621,56 @@ pub async fn settle_keeping(
     Ok(done)
 }
 
+/// The credit notes of `notes`, as the lease stores them: comma separated,
+/// `None` for none.
+pub fn held_notes_text(notes: &[CreditNoteId]) -> Option<String> {
+    if notes.is_empty() {
+        return None;
+    }
+    Some(
+        notes
+            .iter()
+            .map(|note| note.0.to_string())
+            .collect::<Vec<_>>()
+            .join(","),
+    )
+}
+
+/// The credit notes a lease stores in `text` ([`held_notes_text`]).
+pub fn held_notes_of(text: Option<&str>) -> Vec<CreditNoteId> {
+    text.unwrap_or_default()
+        .split(',')
+        .filter_map(|part| part.trim().parse::<i64>().ok())
+        .map(CreditNoteId)
+        .collect()
+}
+
+/// A deposit is held: the credit left on the credit notes of the termination
+/// waits for the deposit settlement, where it covers the deductions first
+/// ([`crate::termination_credit`]). Nothing is refunded or released now.
+async fn hold_credit(state: &AppState, notes: &[CreditNoteId], done: &mut Settlement) {
+    let contract = invoicer(state);
+    for note in notes {
+        match contract.find_credit_note(&state.db, *note).await {
+            Ok(Some(summary))
+                if summary.status == CreditNoteStatus::Issued && summary.remaining > 0 =>
+            {
+                done.held += summary.remaining;
+                done.held_notes.push(*note);
+            }
+            Ok(_) => {}
+            Err(error) => done
+                .problems
+                .push(problem_line(&format!("credit note {note}"), &error)),
+        }
+    }
+}
+
 /// The credit left on the credit notes of the termination, as the property
 /// manager chose (`lease.credit_choice`): asked back through the Refund flow,
 /// or kept for the tenant. A failing step is a problem for the accountant, not
 /// an error.
-async fn settle_credit(
+pub(crate) async fn settle_credit(
     state: &AppState,
     lease: &Lease,
     notes: &[CreditNoteId],

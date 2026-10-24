@@ -228,6 +228,10 @@
         <rx-entry :label="tx['terminate.move_out']" :value="lease.actual_move_out" :placeholder="tx['none']"/>
         <rx-entry :label="tx['terminate.rent_due_until']" :value="lease.rent_due_until" :placeholder="tx['none']"/>
         <rx-entry :label="tx['terminate.credited']" :value="lease.termination_credit" :placeholder="tx['none']"/>
+        <rx-entry rx-if="lease.credit_held" :label="tx['terminate.credit_held']" :value="lease.credit_held"/>
+        <rx-entry rx-if="lease.credit_to_deductions" :label="tx['terminate.credit_to_deductions']" :value="lease.credit_to_deductions"/>
+        <rx-entry rx-if="lease.credit_refunded" :label="tx['terminate.credit_refunded']" :value="lease.credit_refunded"/>
+        <rx-entry rx-if="lease.credit_kept" :label="tx['terminate.credit_kept']" :value="lease.credit_kept"/>
         <rx-entry :label="tx['ejari.cancelled_on']" :value="lease.ejari_cancelled_on" :placeholder="tx['none']"/>
         <rx-entry :label="tx['arrears.plan_until']" :value="plan_until" :placeholder="tx['none']"/>
         <rx-entry :label="tx['force.reason']" :value="lease.force_reason" :placeholder="tx['none']"/>
@@ -253,6 +257,7 @@
         <rx-column :label="tx['deposit_forfeit.rent_due']" align="num" hide-narrow>{{ row.rent_due }}</rx-column>
         <rx-column :label="tx['deposit_forfeit.damages']" align="num" hide-narrow>{{ row.damages }}</rx-column>
         <rx-column :label="tx['deposit_forfeit.total']" align="num">{{ row.total }}</rx-column>
+        <rx-column :label="tx['deposit_forfeit.credit_applied']" align="num" hide-narrow>{{ row.credit_applied }}</rx-column>
         <rx-column :label="tx['deposit_forfeit.to_rent']" align="num">{{ row.to_rent }}</rx-column>
         <rx-column :label="tx['deposit_forfeit.to_damages']" align="num">{{ row.to_damages }}</rx-column>
         <rx-column :label="tx['deposit_forfeit.excess']" align="num">{{ row.excess }}</rx-column>

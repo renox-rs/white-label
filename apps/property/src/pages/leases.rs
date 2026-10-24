@@ -394,6 +394,8 @@ pub struct SettlementRow {
     pub damages: String,
     /// The total deductions: the unpaid rent and the damage lines.
     pub total: String,
+    /// The termination credit applied before the deposit (BL-PRP-32).
+    pub credit_applied: String,
     /// The part applied to the rent invoices.
     pub to_rent: String,
     /// The part kept for the damages.
@@ -527,6 +529,14 @@ pub struct LeaseView {
     pub rent_due_until: String,
     /// The net amount credited at termination.
     pub termination_credit: String,
+    /// The termination credit held for the deposit settlement (BL-PRP-32).
+    pub credit_held: String,
+    /// The part of it applied to the deductions.
+    pub credit_to_deductions: String,
+    /// The part of it refunded.
+    pub credit_refunded: String,
+    /// The part of it kept on the tenant's account.
+    pub credit_kept: String,
     /// The day the Ejari registration was cancelled.
     pub ejari_cancelled_on: String,
     /// Why the lease was ended by force, in the page's language.
@@ -943,6 +953,10 @@ async fn show(
         } else {
             String::new()
         },
+        credit_held: money_or_blank(lease.credit_held),
+        credit_to_deductions: money_or_blank(lease.credit_to_deductions),
+        credit_refunded: money_or_blank(lease.credit_refunded),
+        credit_kept: money_or_blank(lease.credit_kept),
         ejari_cancelled_on: lease
             .ejari_cancelled_on
             .map(|d| d.to_string())
@@ -989,6 +1003,7 @@ async fn show(
             rent_due: crate::money_text(s.rent_due),
             damages: crate::money_text(s.damages),
             total: crate::money_text(s.total_deductions()),
+            credit_applied: crate::money_text(s.credit_applied),
             to_rent: crate::money_text(s.to_rent),
             to_damages: crate::money_text(s.to_damages),
             excess: crate::money_text(s.excess),
@@ -2231,6 +2246,15 @@ async fn cheques(
         renox::HxRefresh,
     )
         .into_response())
+}
+
+/// `fils` as money, or blank for nothing.
+fn money_or_blank(fils: i64) -> String {
+    if fils > 0 {
+        crate::money_text(fils)
+    } else {
+        String::new()
+    }
 }
 
 #[cfg(test)]

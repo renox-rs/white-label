@@ -46,6 +46,7 @@ pub mod statement_machine;
 pub mod statement_payout;
 mod tasks;
 pub mod termination;
+pub mod termination_credit;
 pub mod terms;
 mod texts;
 pub mod ticket_update;
@@ -209,6 +210,8 @@ impl Module for Property {
         chase::schedule(app);
         renewal::schedule(app);
         termination::schedule(app);
+        // The termination credit covers the deposit deductions first (BL-PRP-32).
+        termination_credit::register(app);
         arrears::schedule(app);
         deposit_watch::schedule(app);
         agreement::register();

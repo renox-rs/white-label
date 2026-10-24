@@ -255,6 +255,21 @@ pub struct Lease {
     /// The net amount credited at termination for the periods after the
     /// move-out date, in fils.
     pub termination_credit: i64,
+    /// The termination credit held for the deposit settlement, in fils: what
+    /// the credit notes of `terminate` left when a deposit was held
+    /// (BL-PRP-32); it is applied to the deductions first when the deposit is
+    /// settled ([`crate::termination_credit`]).
+    pub credit_held: i64,
+    /// The credit notes the held credit sits on, comma separated.
+    pub credit_notes_held: Option<String>,
+    /// The part of the held credit applied to the deductions, in fils.
+    pub credit_to_deductions: i64,
+    /// The part of the held credit asked back through the Refund flow.
+    pub credit_refunded: i64,
+    /// The part of the held credit kept on the tenant's account.
+    pub credit_kept: i64,
+    /// The day the held credit was settled with the deposit.
+    pub credit_settled_on: Option<NaiveDate>,
     /// The day the property manager was chased for the Ejari cancellation
     /// (`PRP.RUL.13`).
     pub ejari_chased_on: Option<NaiveDate>,
