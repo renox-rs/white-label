@@ -21,7 +21,7 @@ Map of IDs to numbers: `docs/backlog/github-issues.md`. Issue text: `docs/backlo
 | Build of all 25 issues (code, tests, screens, demo client) | done |
 | Merge of `origin/main` (F6, F10) and unification of wl-sales credit hold with F6 `hold`/`held_from` | done |
 | Audit of all 140 points against code and tests (three groups) | done; Class A gaps closed |
-| Full verification on the final head (after the polish commits): fmt clean, `clippy --workspace --all-targets -D warnings` clean, 23 packages 7,632 passed 0 failed, host in 11 chunks 778 passed, 6 failed | done; the 6 failures are `host/tests/edtech_demo.rs` (see below) |
+| Full verification on the final head (after the polish commits): fmt clean, `clippy --workspace --all-targets -D warnings` clean, 23 packages 7,632 passed 0 failed, host in 11 chunks 778 passed, 6 failed | done; the 6 failures were `host/tests/edtech_demo.rs`, fixed since (the demo counts its dates from the latest Friday) |
 | Browser check with Playwright of 46 pages at 1280 and 390 px, main flows | done; no errors, no overflow at 390 px |
 | Polish round after the browser check (names instead of "Item 6", "None", icons, dates, duplicate ids) | done (`fix:` commits after `924a83b3`) |
 | Re-run of all tests after the polish round | done (see above) |
@@ -56,28 +56,15 @@ Map of IDs to numbers: `docs/backlog/github-issues.md`. Issue text: `docs/backlo
 | # | Issue, point | What is missing | Provider | Why not now |
 |---|---|---|---|---|
 | 6 | BL-SAL-13 (#132) / BL-MFG-14: delivery after the invoice was issued | not billed (one invoice per order, accountant task) | wl-sales / client billing | open decision |
-| 7 | BL-MFG-14 (#395) late entry for goods receipts and inspections | limits installed only for production reports | wl-inventory, this app | needs an approval flow in each |
+| 7 | BL-MFG-14 (#395) late entry for the inspections of returned goods | the limits are installed for production reports and goods receipts (`enter_arrival`, no page yet); an inspection has no business time | this app | needs a business time and a form on the inspection |
 | 8 | BL-MFG-14 calibration certificates kind | no kind, no equipment record | later issue | no entity |
-| 9 | BL-MFG-14 onboarding `HRM.RUL.17` reminders, `HRM.ACL.10` | only checklist and SOP seeding is tested | wl-hr | owned by wl-hr |
-| 10 | BL-MFG-14 SOPs `DOC.RUL.04` re-acknowledgement after 7 days | mechanism not run under the 07 seed | wl-documents | owned by wl-documents |
-| 11 | BL-MFG-14 lead sources: campaign report, cost over budget wait | not run with the 07 seed | wl-sales campaigns | owned there |
 | 12 | BL-MFG-14 signed checklists `WRK.CHK.01` (onboarding, returned goods inspection) | wl-ticketing has only the kernel contract `Checklists` | wl-ticketing | no provider |
 | 13 | BL-MFG-09 (#390) scanner/import entry | no scanner or import entry in the app | later issue | nothing to test |
 | 14 | BL-MFG-13 (#394) pt 3 | "no line selection for a price dispute" is a client-side show/hide; server ignores lines for a price dispute (tested). Ticked on the issue | none (by design) | not enforceable on the server |
-| 17 | BL-MFG-14 (#395) pt 3: no bounce fee invoiced | asserted only as the config value `bounce_fee.is_none()` | wl-payments | no mechanism run under the 07 seed |
-| 18 | BL-MFG-14 pt 14: drawings left out of operating cost and profit reports; owner approval of the budget | not tested; approval asserted only as configuration (100% budget warning and drawing self-approval refusal are proved) | wl-invoicing / wl-accounting reports | not run with the 07 seed |
-| 19 | BL-MFG-14 pt 16: alternative supplier on a purchase request and a second person for a preferred supplier | not run with the 07 seed (supplier score 69 vs 70 is proved) | wl-inventory | not run with the 07 seed |
 
 Not proven end to end (say so in the issues): notice to a customer's main contact is proved as a queued message, not a delivered email; 09:00/09:15 timing of
 MFG.RUL.08 is not asserted (the 01:00 expiry look-ahead schedule is, in `host/tests/manufacturing_conformity.rs`); supplier score, cancellation fee and drawing approval are proved at mechanism level;
 390 px is a browser crawl, not an automated width test; Postgres migrations and `rnx db:check`/`view:check` were not run.
-
-## Known failure that is not ours
-
-`host/tests/edtech_demo.rs` (6 tests) panics at `host/src/app/edtech_demo/stories.rs:67` ("index out of bounds: the len is 2 but the index is 2") when the
-Dubai date falls on a Saturday (it passed earlier the same day, before 20:00 UTC on a Friday). It fails identically on a clean `origin/main`, so it is a
-date-dependent seed in the F10 edtech demo, not an F7 regression. CI running on a Friday after 20:00 UTC or on a Saturday will show it red. Fixing it belongs to F10
-(make the batch start day independent of the weekday); until then say so on the PR.
 
 ## Rules of this project (do not break)
 
