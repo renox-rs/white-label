@@ -1,6 +1,6 @@
 # Workflow
 
-> Status: draft for review · Last updated: 2026-10-16
+> Status: specification; the engine is built (Renox 1.2.0 state machines, used by the F1-F10 modules) · Last updated: 2026-10-24
 
 How work moves through the system: statuses, approvals, automations and integrations. Each
 vertical lists only its own state machines and automations
@@ -117,8 +117,8 @@ Two tables per entity, in the vertical or module document:
 **Diagram:** a Mermaid `stateDiagram-v2` drawn from the transitions table, one arrow per
 `from → to` pair, labelled with the transition. The table is authoritative.
 
-Once the engine exists, the same diagram is **generated** from the declaration and shown
-read-only in the admin next to each entity. It is never drawn by hand.
+The engine exists (Renox 1.2.0), so the same diagram can be **generated** from the declaration with
+`rnx state:diagram`; a hand-drawn diagram in a document must match it, and the table stays authoritative.
 
 ## 4. Automation rules
 
@@ -229,9 +229,9 @@ Every shared automation, with its owner and the vertical rules it generalises. S
 | `FIN.RUL.25` | Task for the accountant when a bank balance for the forecast is missing or older than 7 days | wl-invoicing | — | module |
 | `FIN.RUL.26` | Remind 30 days before a fiscal year that has no approved budget | wl-invoicing | — | module |
 | `SAL.RUL.01` | Notify accountant and sales rep when an order goes on credit hold | wl-sales | — | in use |
-| `SAL.RUL.02` | Remind the party before a package expires | wl-sales | `CLN.RUL.06`, `EDU.RUL.04` | in use |
-| `SAL.RUL.03` | Notify the party when package credits run low | wl-sales | `EDU.RUL.03` | in use |
-| `SAL.RUL.04` | Remind the customer of an order ready but not collected | wl-sales | `AUT.RUL.06` | in use |
+| `SAL.RUL.02` | Remind the party before a package expires | wl-sales | `CLN.RUL.06`, `EDU.RUL.04` | planned (not built) |
+| `SAL.RUL.03` | Notify the party when package credits run low | wl-sales | `EDU.RUL.03` | planned (not built) |
+| `SAL.RUL.04` | Remind the customer of an order ready but not collected | wl-sales | `AUT.RUL.06` | planned (not built) |
 | `SAL.RUL.05` | Put the customer account and its credit group on hold when a cheque bounces | wl-sales | — | module |
 | `SAL.RUL.06` | Refund a payment that arrives for a cancelled, rejected or fully paid order | wl-sales | — | module |
 | `SAL.RUL.07` | Earn loyalty points or visits on a qualifying sale; reverse them on a return or credit note | wl-sales | `FNB.LOY.01` (06) | module |

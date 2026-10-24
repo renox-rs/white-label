@@ -1,8 +1,8 @@
 # wl-hr
 
 HR: the minimal employee record and the onboarding of new staff from the templates of their job role
-([spec](../../docs/modules/wl-hr.md)). Payroll, the WPS file, visas, leave and the final settlement
-come in phase F9 (decision 0005). Other modules ask about employees only through the kernel
+([spec](../../docs/modules/wl-hr.md)). Employees, onboarding, qualifications, leave, absence cases, payroll with
+the WPS file, visa cases and the final settlement (decision 0005). Other modules ask about employees only through the kernel
 (`wl-kernel`), never through this crate.
 
 The host mounts it when `client.toml` enables `hr`:

@@ -1,6 +1,8 @@
 # 05 — Private Clinics
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
+> Spec: accepted · Reviewed: 2026-10-15 · Spec text last changed: 2026-10-16
+
+**Build status (2026-10-24):** Built in F5 (#499, #514, #515), merged. **Built:** the Prior authorisation and Claim machines of §7.1 (with technical rejection, recoupment, late closing and void), check-in with eligibility and the coverage outcomes, the Appointment on wl-scheduling, recalls traced to patients, remittance recording per claim, the Clinics demo (`clinics:demo`). **Not built or not found (MVP items still open):** patient portal (only the card-request route exists), patient feedback after a visit (`WRK.FBK.01`), waiting list, bank-side matching of remittances. Online payment and prepaid packages belong to wl-payments and wl-sales and are not clinic-specific. **Machines in code but not in the spec:** `Visit` (opened by check-in; states `checked_in`, `in_progress`, `completed`, `cancelled`, all system-driven) and `RecallNotice` (README). See [STATUS.md](STATUS.md) and [apps/clinics/README.md](../../apps/clinics/README.md).
 
 ## 1. Summary
 
@@ -341,6 +343,10 @@ expire with appointments affected (`DOC.RUL.03`).
 | `PLT.ENT.01` | Legal entities: several trade licences and TRNs in one deployment; issuer on every document | shared | wl-kernel | MVP |
 | `PLT.IMP.01` | Data import and migration: Excel templates per entity, validation, dry run, rollback | shared | wl-kernel | MVP |
 | `PLT.SRC.01` | Global search across records, including Arabic names | shared | wl-kernel + Renox search | MVP |
+| `PLT.REL.01` | Related records of any record, in a panel and as a tool ([decision 0006](../decisions/0006-search-and-ai-agents.md)) | shared | wl-kernel | MVP |
+| `PLT.AGT.01` | AI assistant connection (MCP): search, read, summarise, reports | shared | wl-kernel + Renox (R26, R27) | Later |
+| `PLT.AGT.02` | AI assistant actions: transitions and drafts, with preview and confirm | shared | wl-kernel + Renox (R28) | Later |
+| `PLT.AGT.03` | AI assistant inbox and messages | shared | wl-kernel + wl-notify | Later |
 | `PLT.NOT.01` | Notes, comments and @mentions on any record, with an activity timeline | shared | wl-kernel | MVP |
 | `PLT.SSO.01` | Staff single sign-on with Microsoft 365 or Google Workspace | shared | Renox OAuth (renox-oauth) | Later |
 | `RPT.LIB.01` | Report library: filtered reports with export to Excel, CSV and PDF | shared | wl-kernel | MVP |
@@ -761,7 +767,7 @@ becomes a call task for the front desk.
 - **Specific to this vertical:** payer contracts and tariffs, insurance policies and
   eligibility, prior authorisations, charge capture, patient-share calculation, claims and
   remittances, practitioner licences and rosters, recalls, EMR and claims integrations.
-- **Estimated reuse:** 68 of 80 capabilities (85%) come from shared modules or Renox.
+- **Estimated reuse:** 72 of 84 capabilities (86%) come from shared modules or Renox.
 
 ## 12. MVP scope
 

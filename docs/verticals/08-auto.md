@@ -1,6 +1,8 @@
 # 08 — Auto Parts Suppliers & Fleet/Workshop Services
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
+> Spec: accepted · Reviewed: 2026-10-15 · Spec text last changed: 2026-10-23
+
+**Build status (2026-10-24):** Built in F8 (#522, #561), merged. **Built:** the Job card, Supplier warranty claim, Fleet contract and Insurance repair claim machines of §7.1, estimate approval by link, parts, storage, recalls, settings, the shared changes in wl-sales, wl-inventory, wl-payments and wl-scheduling, the Auto demo (`auto:demo`). **Not built (MVP items still open):** the part master with cross-references, fitment and price tiers (there is no part catalogue; warranty terms are kept on the claim), Excel import of parts, B2B portal ordering, counter POS, `AUT.RUL.10` and `AUT.RUL.14` (and the sending of `AUT.RUL.11`, `AUT.RUL.13`: the claim reminders and the weekly insurer statement are not sent). The README says the issues BL-AUT-01 to BL-AUT-18 are built; that is true of the issues, not of the head item of §12. Deferred points per issue: `docs/progress/f8-auto-deferred.md`. Machines in code but not in the spec: none. See [STATUS.md](STATUS.md) and [apps/auto/README.md](../../apps/auto/README.md).
 
 ## 1. Summary
 
@@ -367,6 +369,10 @@ global. Sales representatives are global but see only the customers assigned to 
 | `PLT.ENT.01` | Legal entities: several trade licences and TRNs in one deployment; issuer on every document | shared | wl-kernel | MVP |
 | `PLT.IMP.01` | Data import and migration: Excel templates per entity, validation, dry run, rollback | shared | wl-kernel | MVP |
 | `PLT.SRC.01` | Global search across records, including Arabic names | shared | wl-kernel + Renox search | MVP |
+| `PLT.REL.01` | Related records of any record, in a panel and as a tool ([decision 0006](../decisions/0006-search-and-ai-agents.md)) | shared | wl-kernel | MVP |
+| `PLT.AGT.01` | AI assistant connection (MCP): search, read, summarise, reports | shared | wl-kernel + Renox (R26, R27) | Later |
+| `PLT.AGT.02` | AI assistant actions: transitions and drafts, with preview and confirm | shared | wl-kernel + Renox (R28) | Later |
+| `PLT.AGT.03` | AI assistant inbox and messages | shared | wl-kernel + wl-notify | Later |
 | `PLT.NOT.01` | Notes, comments and @mentions on any record, with an activity timeline | shared | wl-kernel | MVP |
 | `PLT.SSO.01` | Staff single sign-on with Microsoft 365 or Google Workspace | shared | Renox OAuth (renox-oauth) | Later |
 | `RPT.LIB.01` | Report library: filtered reports with export to Excel, CSV and PDF | shared | wl-kernel | MVP |
@@ -1015,7 +1021,7 @@ minimum) is **on** by default in this vertical.
   fleet contracts and consolidated billing, warranty claims both ways, insurance accident
   repairs (claims, insurer approvals, split billing, insurer receivables), export sales,
   auto-specific reports.
-- **Estimated reuse:** 76 of 94 capabilities (81%) come from shared modules or Renox. This
+- **Estimated reuse:** 80 of 98 capabilities (82%) come from shared modules or Renox. This
   vertical leans most on the sales module (`wl-sales`: catalogue, price tiers, sales orders,
   POS, returns, credit limits), shared with F&B, manufacturing, clinics and EdTech.
 

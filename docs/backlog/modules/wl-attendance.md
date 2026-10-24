@@ -1,6 +1,6 @@
 # Epic: wl-attendance — negative flows
 
-> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
+> Status: in use (F1–F10 built; open items in [README](../README.md) §7) · Last updated: 2026-10-24
 
 This epic builds the attendance and timesheet negative flows added by the review fix X-16:
 overlap, overtime-cap, midday-break and invalid-permit flags with a separate reviewer
@@ -500,7 +500,7 @@ How the flags are raised (BL-ATT-01, BL-ATT-02, BL-ATT-04).
 ### BL-ATT-06 — wl-attendance: refuse timesheet submit when allocated hours exceed attended hours
 
 **Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
-**Depends on:** Base: wl-attendance Timesheet lifecycle (`submit`) · BL-ATT-01 · **Blocks:** BL-CON-18
+**Depends on:** Base: wl-attendance Timesheet lifecycle (`submit`) · BL-ATT-01 · **Blocks:** BL-CON-18, BL-MPW-27
 **Review items:** X-16, 09 MEDIUM "overlap guards"
 
 #### Goal
@@ -568,7 +568,7 @@ Attendance overlap flags (BL-ATT-01).
 ### BL-ATT-07 — wl-attendance: open an adjustment timesheet on a locked timesheet (`HRM.ACL.08`)
 
 **Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` · **Milestone:** Launch 02 · **Size:** m
-**Depends on:** Base: wl-attendance Timesheet lifecycle (`lock`) · **Blocks:** BL-ATT-08, BL-ATT-09, BL-ATT-13, BL-CON-18, BL-EDU-14
+**Depends on:** Base: wl-attendance Timesheet lifecycle (`lock`) · **Blocks:** BL-ATT-08, BL-ATT-09, BL-ATT-13, BL-CON-18, BL-EDU-14, BL-MPW-27
 **Review items:** X-16, 09-N4-a
 
 #### Goal
@@ -665,7 +665,7 @@ credit note or extra line from an adjustment timesheet).
 ### BL-ATT-08 — wl-attendance: approve an adjustment timesheet with segregation of duties
 
 **Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:public` `surface:system` · **Milestone:** Launch 02 · **Size:** s
-**Depends on:** BL-ATT-07 · **Blocks:** BL-HRM-16, BL-CON-18, BL-EDU-14
+**Depends on:** BL-ATT-07 · **Blocks:** BL-HRM-16, BL-CON-18, BL-EDU-14, BL-MPW-27
 **Review items:** X-16, 09-N4-a
 
 #### Goal
@@ -837,7 +837,7 @@ The invoice dispute and credit note (Epic wl-invoicing); approval (BL-ATT-08).
 ### BL-ATT-10 — wl-attendance: escalate an unanswered external timesheet (`HRM.RUL.15` at E days)
 
 **Labels:** `module:wl-attendance` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
-**Depends on:** Base: wl-attendance `HRM.RUL.08` (submit and reminders) · **Blocks:** BL-ATT-11, BL-MPW-19, BL-MPW-21
+**Depends on:** Base: wl-attendance `HRM.RUL.08` (submit and reminders) · **Blocks:** BL-ATT-11, BL-MPW-19, BL-MPW-21, BL-MPW-27, BL-MPW-28
 **Review items:** X-16, 09-N5-b
 
 #### Goal
@@ -907,7 +907,7 @@ Deemed approval at N (BL-ATT-11).
 ### BL-ATT-11 — wl-attendance: deem an external timesheet approved per contract (`deem_approve`)
 
 **Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
-**Depends on:** BL-ATT-10 · BL-ATT-13 (reconciliation on deemed approval) · **Blocks:** BL-MPW-19
+**Depends on:** BL-ATT-10 · BL-ATT-13 (reconciliation on deemed approval) · **Blocks:** BL-MPW-19, BL-MPW-27, BL-MPW-28
 **Review items:** X-16, 09-N5-b
 
 #### Goal
@@ -1078,7 +1078,7 @@ Reconciliation on approval (BL-ATT-13); how payroll shows provisional hours (BL-
 ### BL-ATT-13 — wl-attendance: reconcile provisional hours when the timesheet is approved
 
 **Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:system` · **Milestone:** Launch 09 · **Size:** s
-**Depends on:** BL-ATT-07 · BL-ATT-12 · **Blocks:** BL-HRM-16, BL-ATT-11
+**Depends on:** BL-ATT-07 · BL-ATT-12 · **Blocks:** BL-HRM-16, BL-ATT-11, BL-MPW-27
 **Review items:** X-16, 09-N5-c
 
 #### Goal

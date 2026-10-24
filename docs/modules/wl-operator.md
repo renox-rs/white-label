@@ -1,6 +1,8 @@
 # wl-operator
 
-> Status: draft · Last updated: 2026-10-16
+> Status: design only; nothing built · Last updated: 2026-10-24
+
+**Build status (2026-10-24):** Not built. There is no `operator/` directory and no operator crate in the repository; [ARCHITECTURE.md](../ARCHITECTURE.md) lists the operator app as planned (rollout track). The sections below are a specification. Demo instances exist today as `clients/demo-*` and the deployment files in `deploy/`.
 
 ## 1. Purpose
 

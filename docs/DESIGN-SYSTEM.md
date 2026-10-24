@@ -1,7 +1,9 @@
 # White-Label Design System
 
-> Status: **accepted** (2026-10-14): teal + terracotta as the platform default, IBM Plex Sans Arabic + Noto Kufi Arabic for Arabic. Reference app: the Renox bike shop
+> Status: **accepted** (2026-10-14, updated 2026-10-24): teal + terracotta as the platform default, Noto Sans Arabic (shipped by Renox 1.2) for Arabic; IBM Plex Sans Arabic and Noto Kufi Arabic were considered and are not adopted. Reference app: the Renox bike shop
 > ([bikeshop.renox.rs](https://bikeshop.renox.rs), source in `renox/examples/bikeshop`).
+
+**Build status (2026-10-24):** Built: the branding keys of section 4 (checked against `crates/wl-kernel/src/config.rs`), the status tones of section 6 through `rx-badge`, the standard list grid and page fill (section 11). Not built: the `wl-` components of section 7 (`wl-status`, `wl-money`, `wl-party-card` ...); no `<wl-` tag exists in any crate, app or host template.
 
 ## 1. Decision
 
@@ -65,10 +67,14 @@ A client overrides **only** these values in `client.toml` (later editable in the
 ```toml
 [branding]
 logo         = "branding/logo.svg"   # square mark + wordmark
-accent       = "#0F766E"             # required
-accent_2     = "#B8532E"             # optional, defaults to the theme's terracotta
-font_display = "Poppins"             # optional: "Poppins" | "Inter"
+accent       = "#0F766E"             # optional, defaults to the platform teal
+second       = "#B8532E"             # optional, defaults to the theme's terracotta
+display_font = "Poppins"             # optional: "Poppins" | "Inter"
+theme        = "classic"             # optional: the kit's older look
 ```
+
+These are the only keys: `[branding]` is parsed with `deny_unknown_fields`, so a key such as
+`accent_2` or `font_display` stops the host with a config error.
 
 The client's name (`[client] name`) is the app's name: the sidebar brand, the public and sign-in
 pages, the error pages and the mails' sender name show it (the host sets `{{ brand }}` for the
@@ -104,7 +110,7 @@ are what keeps every client looking professionally designed.
 | Topic | Rule |
 |---|---|
 | **Arabic + RTL** | `dir="rtl"` when the locale is `ar`. Module CSS uses logical properties only (`margin-inline-start`, `padding-inline`, `inset-inline-end`), never `left`/`right`. Directional icons (arrows, chevrons) flip; logos, charts and phone numbers do not |
-| **Arabic fonts** | Text: *IBM Plex Sans Arabic* (OFL). Titles: *Noto Kufi Arabic* (OFL), as Poppins' counterpart. Served from `/_renox/fonts` like Inter/Poppins. Font stacks put the Latin face first, so mixed text works |
+| **Arabic fonts** | Text and titles: *Noto Sans Arabic* (OFL), shipped by Renox 1.2 (IBM Plex Sans Arabic and Noto Kufi Arabic are not adopted). Served from `/_renox/fonts` like Inter/Poppins. Font stacks put the Latin face first, so mixed text works |
 | **Digits** | Western digits (0–9) in both languages. This is the norm in UAE business documents and avoids confusion in amounts and IDs |
 | **Money** | `AED 1,250.00`: the code before the amount, 2 decimals, tabular figures (`font-variant-numeric: tabular-nums`) in tables and totals. VAT always shown as its own line |
 | **Dates** | `14 Oct 2026` in text, `14/10/2026` in dense tables; never `10/14`. Gregorian only |
@@ -124,16 +130,17 @@ Many modules show a status. The same meaning always uses the same tone, through 
 | `warning` | needs attention soon | invoice **due in ≤ 7 days**, document **expires in ≤ 30 days**, SLA **at risk** |
 | `error` | overdue / broken | invoice **overdue**, document **expired**, SLA **breached** |
 
-`wl-kernel` provides `<wl-status :status="invoice.status" domain="invoicing"/>`, which maps a
-module's status to a tone and a translated label. Modules never choose a badge colour
-themselves.
+Target, **not built**: `wl-kernel` provides `<wl-status :status="invoice.status" domain="invoicing"/>`,
+which maps a module's status to a tone and a translated label. Today each module picks the
+`rx-badge` kind from the table above (a status column in a grid uses the grid's badge column).
+Modules never choose a badge colour of their own.
 
 ## 7. Component layers and naming
 
 | Layer | Prefix | Where | Examples |
 |---|---|---|---|
-| Renox kit | `rx-` | `renox` (OSS) | `rx-table`, `rx-grid`, `rx-form`, `rx-wizard`, `rx-kanban`, `rx-month-calendar` |
-| Platform | `wl-` | `white-label/crates/wl-*` | `wl-status`, `wl-money`, `wl-party-card`, `wl-document-list`, `wl-expiry-meter`, `wl-invoice-summary`, `wl-portal-hero` |
+| Renox kit | `rx-` | `renox` (OSS) | `rx-grid` (the standard for every list, section 11), `rx-table` (inside detail pages only), `rx-form`, `rx-wizard`, `rx-kanban`, `rx-month-calendar` |
+| Platform | `wl-` | `white-label/crates/wl-*` | *targets, none built*: `wl-status`, `wl-money`, `wl-party-card`, `wl-document-list`, `wl-expiry-meter`, `wl-invoice-summary`, `wl-portal-hero` |
 | Vertical app | app prefix | `apps/<app>` | `prop-unit-card`, `mp-placement-row` |
 | Client | `ext-` | `clients/<client>/ext` | only when configuration cannot do it |
 
@@ -172,7 +179,25 @@ These needed work in Renox. **All three are delivered in Renox 1.2.0** (added to
 - [ ] Only `var(--rx-*)` values; no hex, px font sizes or fixed shadows
 - [ ] Logical properties only; screenshot checked with `dir="rtl"`
 - [ ] Checked in dark mode
-- [ ] Statuses rendered through `wl-status`
-- [ ] Amounts through `wl-money` (tabular figures, AED)
+- [ ] Statuses use the `rx-badge` kinds of section 6 (`wl-status` is a target, not built)
+- [ ] Amounts: AED, tabular figures (section 5); money columns of a grid carry a summary
+- [ ] A list screen is a `renox::grid::Grid` that fills the screen (section 11); `node .claude/skills/standard-grid/check-fill.js <base-url> <path>` passes
 - [ ] Every interactive element ≥ 44 px and keyboard-focusable with a visible `--rx-focus` ring
 - [ ] Every new navigation link guarded by `can('…')`
+
+## 11. List screens and page fill
+
+Rule (tracking issue #523, written out in [host/AGENTS.md](../host/AGENTS.md) and the project skill
+[standard-grid](../.claude/skills/standard-grid/SKILL.md); load the skill before writing or changing
+any page that lists records).
+
+- **Every list is the standard grid**: `renox::grid::Grid` rendered as `<rx-grid>`, with the 13-point
+  baseline of the skill: search, sort, filters, pagination, dynamic columns, remembered state
+  (`.remember()`), `.advanced_filter()`, role-limited export, an empty state and summaries on
+  money columns. `rx-table` stays inside detail pages (a few lines of a record), never for a list.
+- **On a desktop screen the page fills the space and does not scroll as a document**:
+  `<rx-shell fill>`, one `rx-fill` element (or `rx-panes` of `rx-pane` panels) takes the remaining
+  height, every panel scrolls on its own. `<rx-grid>` is a direct child of `<rx-page>`, never
+  wrapped in `rx-stack` or `rx-card`, with nothing below it. Tablets and phones fall back to
+  document scroll by themselves. Public pages scroll as a document.
+- **Check**: `node .claude/skills/standard-grid/check-fill.js <base-url> <path>...`.

@@ -1,6 +1,8 @@
 # 09 — Manpower Supply & Outsourcing
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
+> Spec: accepted · Reviewed: 2026-10-15 · Spec text last changed: 2026-10-20
+
+**Build status (2026-10-24):** Built in F9 (#500, #501, #516, #519), merged. **Built:** the Client contract, Manpower request and Deployment machines of §7.1, rate cards from wl-invoicing, timesheets with client approval in the portal, document blocks and suspension on expiry, exits (absconding, death), leave cover requests, the Manpower demo (`manpower:demo`). **Not built (MVP items still open):** the worker portal with payslips and leave (`POR.SLF.02`; the portal routes are for the client approver). The candidate pipeline (`MPW.REC.01`) is Later as written. Open on GitHub: BL-MPW-20, 21 (#434, #435) and the screens #502, #503, #505-#507, #509, #510, #513. Machines in code but not in the spec: none. See [STATUS.md](STATUS.md) and [apps/manpower/README.md](../../apps/manpower/README.md).
 
 ## 1. Summary
 
@@ -12,9 +14,9 @@ salary deadlines. The app tracks every worker from onboarding to exit, deploys t
 sites, turns client-approved timesheets into invoices and WPS-compliant payroll, and shows
 margin per client and per worker.
 
-Manpower is built in phase **F9** ([decision 0005](../decisions/0005-phases-follow-vertical-numbers.md); it was the second
+Manpower was built in phase **F9** ([decision 0005](../decisions/0005-phases-follow-vertical-numbers.md); it was the second
 vertical under [decision 0001](../decisions/0001-first-two-verticals.md), superseded).
-Its purpose is to prove that the modules built for Property, together with the attendance and
+Its purpose was to prove that the modules built for Property, together with the attendance and
 timesheet modules first described in Construction, can be reused without being rewritten.
 [§11](#11-platform-fit) lists exactly what is reused.
 
@@ -350,6 +352,10 @@ the confidential *grievance* tickets).
 | `PLT.ENT.01` | Legal entities: several trade licences and TRNs in one deployment; issuer on every document | shared | wl-kernel | MVP |
 | `PLT.IMP.01` | Data import and migration: Excel templates per entity, validation, dry run, rollback | shared | wl-kernel | MVP |
 | `PLT.SRC.01` | Global search across records, including Arabic names | shared | wl-kernel + Renox search | MVP |
+| `PLT.REL.01` | Related records of any record, in a panel and as a tool ([decision 0006](../decisions/0006-search-and-ai-agents.md)) | shared | wl-kernel | MVP |
+| `PLT.AGT.01` | AI assistant connection (MCP): search, read, summarise, reports | shared | wl-kernel + Renox (R26, R27) | Later |
+| `PLT.AGT.02` | AI assistant actions: transitions and drafts, with preview and confirm | shared | wl-kernel + Renox (R28) | Later |
+| `PLT.AGT.03` | AI assistant inbox and messages | shared | wl-kernel + wl-notify | Later |
 | `PLT.NOT.01` | Notes, comments and @mentions on any record, with an activity timeline | shared | wl-kernel | MVP |
 | `PLT.SSO.01` | Staff single sign-on with Microsoft 365 or Google Workspace | shared | Renox OAuth (renox-oauth) | Later |
 | `RPT.LIB.01` | Report library: filtered reports with export to Excel, CSV and PDF | shared | wl-kernel | MVP |
@@ -1026,7 +1032,7 @@ on paper and entered late (`HRM.ACL.01`, late-entry flag).
 - **Specific to this vertical:** client contracts and rate cards, manpower requests,
   deployments and replacements, client timesheet approval, site requirements, candidates,
   accommodation, Emiratisation, margin reporting.
-- **Estimated reuse:** 57 of 66 capabilities (86%) come from shared modules or Renox. 40 of
+- **Estimated reuse:** 61 of 70 capabilities (87%) come from shared modules or Renox. 40 of
   them already exist in Property or Construction.
 
 ## 12. MVP scope

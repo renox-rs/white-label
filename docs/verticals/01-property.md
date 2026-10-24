@@ -1,6 +1,8 @@
 # 01 — Property & Building Management
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
+> Spec: accepted · Reviewed: 2026-10-15 · Spec text last changed: 2026-10-20
+
+**Build status (2026-10-24):** Built in F1 (#455, #456, #482), merged. **Built:** all four app-owned state machines of §7.1 (Unit, Lease, Management agreement, Owner statement) with their states and transitions, the lease negative paths (holding over, notice, termination, deposit settlement), charge schedule, invoices, cheques, deposits and arrears on the shared modules, owner statements with approval and payout, maintenance tickets, enquiries and viewings, the Property demo (`property:demo`). **Partly built:** the shared-module items of §12 (bank statement import, VAT summary, AMC certificates) live in wl-payments, wl-invoicing and wl-documents and are not property-specific; AMC planned visits are not verified. **Not built (MVP items still open):** tenant portal (no property route), rent roll report (`PRP.RPT.01`; only an occupancy column on the portfolio page), EN/AR contract PDF, portfolio migration from Excel (`PLT.IMP.01`). Reservations and the rest of the Excluded list are Later. Machines in code but not in the spec: none. See [STATUS.md](STATUS.md) and [apps/property/README.md](../../apps/property/README.md).
 
 ## 1. Summary
 
@@ -366,6 +368,10 @@ Planned maintenance under a vendor's AMC follows §4.5.
 | `PLT.ENT.01` | Legal entities: several trade licences and TRNs in one deployment; issuer on every document | shared | wl-kernel | MVP |
 | `PLT.IMP.01` | Data import and migration: Excel templates per entity, validation, dry run, rollback | shared | wl-kernel | MVP |
 | `PLT.SRC.01` | Global search across records, including Arabic names | shared | wl-kernel + Renox search | MVP |
+| `PLT.REL.01` | Related records of any record, in a panel and as a tool ([decision 0006](../decisions/0006-search-and-ai-agents.md)) | shared | wl-kernel | MVP |
+| `PLT.AGT.01` | AI assistant connection (MCP): search, read, summarise, reports | shared | wl-kernel + Renox (R26, R27) | Later |
+| `PLT.AGT.02` | AI assistant actions: transitions and drafts, with preview and confirm | shared | wl-kernel + Renox (R28) | Later |
+| `PLT.AGT.03` | AI assistant inbox and messages | shared | wl-kernel + wl-notify | Later |
 | `PLT.NOT.01` | Notes, comments and @mentions on any record, with an activity timeline | shared | wl-kernel | MVP |
 | `PLT.SSO.01` | Staff single sign-on with Microsoft 365 or Google Workspace | shared | Renox OAuth (renox-oauth) | Later |
 | `RPT.LIB.01` | Report library: filtered reports with export to Excel, CSV and PDF | shared | wl-kernel | MVP |
@@ -1075,7 +1081,7 @@ defaults):**
   import, search, notes and reports.
 - **Specific to this vertical:** portfolio (buildings, units), management agreements, leases
   and their lifecycle, Ejari tracking, rent index check, owner statements, rent roll.
-- **Estimated reuse:** 48 of 60 capabilities (80%) come from shared modules or Renox.
+- **Estimated reuse:** 52 of 64 capabilities (81%) come from shared modules or Renox.
 
 ## 12. MVP scope
 

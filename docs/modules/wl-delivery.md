@@ -1,6 +1,8 @@
 # wl-delivery
 
-> Status: draft · Last updated: 2026-10-16
+> Status: specification, built; the build ledger is [crates/wl-delivery/README.md](../../crates/wl-delivery/README.md) · Last updated: 2026-10-24
+
+**Build status (2026-10-24):** Built: deliveries, runs, drivers and vehicles, the driver's day list, proof (photo, signature, OTP), per-line delivered and refused quantity, disputes, loss, reversal and return handling. One gap: the transition `cancel` exists but no `DeliveryCancelled` event is defined in the kernel or emitted. List screens use the standard Renox grid (`renox::grid::Grid`).
 
 ## 1. Purpose
 
@@ -78,7 +80,7 @@ Generalised from the delivery part of the Logistics *Shipment* ([03-logistics.md
 | `reverse_delivery` | delivered, under_review | out_for_delivery (run still `dispatched`), attempted (otherwise) | `deliveries.reverse` | reason (marked by mistake, recipient denies, wrong recipient); liability (driver, business, client, none); approval (`WRK.ACL.10`) | original proof kept and marked reversed, never edited; attempt with reason *reversed* that does not count against the maximum; cash recorded as collected: removed from the driver's open custody if not yet handed over, otherwise refunded to the payer or kept for the next attempt (approver's choice, `wl-payments`); driver liability goes to the cash shortage or an HR case; from `under_review`: frozen flag cleared, and the linked ticket resolved with outcome *reversed* (left open for the HR follow-up when liability is *driver*); source reverses its fulfilment; event `DeliveryReversed` |
 | `mark_lost` | out_for_delivery, attempted, under_review | lost | system (untraced for N days, `WRK.RUL.17`) or `deliveries.reverse` | manual: reason, liability, approval (`WRK.ACL.10`), and no scan, attempt, depot receipt or delivery outcome recorded after the request (re-checked at final approval; the request fails otherwise) | claim ticket opened (`wl-ticketing`); the source and the sender (03: the client) notified; COD not expected any more; source excludes it from billing and decides any credit note or claim; event `DeliveryLost` |
 | `found` | lost | attempted | `deliveries.manage` | goods scanned or confirmed at a depot | attempt with reason *found* that does not count; source notified; the claim ticket gets a comment "goods found at <depot>" and its owner is notified (not closed); event `DeliveryFound` |
-| `cancel` | pending, assigned | cancelled | `deliveries.manage` or system (source cancelled) | run not dispatched | event `DeliveryCancelled` |
+| `cancel` | pending, assigned | cancelled | `deliveries.manage` or system (source cancelled) | run not dispatched | event `DeliveryCancelled` (not built) |
 
 ```mermaid
 stateDiagram-v2
@@ -327,7 +329,7 @@ candidate (§6).
 | `DeliveryAttemptFailed` | failed visit | delivery, source, reason, attempt number |
 | `DeliveryRefusedReceived` | run `close`, for a delivered delivery with refused lines | delivery, source, run, lines with refused quantity received back and missing, refusal reasons |
 | `DeliveryReturned` | returned to origin | delivery, source, reason |
-| `DeliveryCancelled` | cancelled | delivery, source |
+| `DeliveryCancelled` (not built: no event struct exists; `cancel` emits none) | cancelled | delivery, source |
 | `DeliveryDiscarded` | perishable goods discarded | delivery, source, reason, wastage record |
 | `DeliveryDisputed` | `open_review` | delivery, source, reason, ticket |
 | `DeliveryDisputeClosed` | `close_review` | delivery, source, outcome, ticket |

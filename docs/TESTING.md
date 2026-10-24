@@ -1,23 +1,23 @@
 # Testing
 
-> Status: draft for review · Last updated: 2026-10-20 (§0 describes the practice in F1; the rest
-> is the target where marked)
+> Status: §0 describes the practice as built (F1-F10); the rest is the target where marked · Last updated: 2026-10-24
 
 How the platform is tested, derived from the documentation. The documents already define
 the behaviour precisely, with IDs: capabilities, access rules, automations and state machine
 transitions. Every one of them becomes at least one test, so a reviewer can check coverage by
 ID instead of by reading code.
 
-## 0. How tests are written and run today (F1)
+## 0. How tests are written and run today (F1-F10)
 
-- **Where:** integration tests in `crates/<crate>/tests/*.rs`, `apps/property/tests/*.rs` and
+- **Where:** integration tests in `crates/<crate>/tests/*.rs`, `apps/<app>/tests/*.rs` (every app has them) and
   `host/tests/*.rs`, each crate with a `tests/support` module that boots a `TestApp` with the
   modules it needs (fakes for the other modules' kernel contracts). Tests named `*_real.rs`
-  and those in `host/tests` boot the real modules together. Unit tests sit next to the code in
+  and those in `host/tests` boot the real modules together; some apps add `*_demo.rs` and
+  `*_screens.rs` files (auto, manufacturing, manpower) for the demo data and the rendered screens. Unit tests sit next to the code in
   `#[cfg(test)]` modules.
 - **Named after the backlog issue, not the capability ID.** Each test file starts with a
   `//!` comment naming the issue it covers (`BL-PRP-02 (#252)`) and the rule or capability IDs
-  (`PRP.RUL.12`); 260 of 267 test files do. Each test's `///` comment names the Done-when
+  (`PRP.RUL.12`); 891 of 894 top-level test files do (183 in `host/tests`, 711 in `crates/*/tests` and `apps/*/tests`; counted 2026-10-24, the number dates fast). Each test's `///` comment names the Done-when
   point it checks (`AC1:`, `AC2:` …), and the function name says the behaviour in words
   (`a_second_adjustment_waits_until_the_first_is_settled`). Some files prefix the functions
   with the issue (`bl_prp_24_...`); a few with a capability or rule ID (`prp_lse_01_...`, `prp_acl_04_...`).
@@ -25,8 +25,10 @@ ID instead of by reading code.
   before a pull request.
 - **CI** (`.github/workflows/ci.yml`, on every pull request and push to `main`):
   `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked`,
-  `cargo test --workspace --locked`, and `cargo check --workspace --locked` on Rust 1.94 (the
-  minimum version).
+  `cargo test --workspace --locked` (all with `RUSTFLAGS=-D warnings`, a lean dev profile
+  `CARGO_PROFILE_DEV_DEBUG=0` and free runner disk first), and in the `msrv` job `cargo check
+  --workspace --locked` on Rust 1.94 (the minimum version). `release.yml` (tags) and
+  `release-main.yml` (every push to main) build binaries; they are not test workflows.
 - **Not built yet:** the ID coverage report (§1), generated state machine conformance
   matrices (§3), browser, RTL, dark-mode and PDF comparison checks (§8), `cargo deny`, and the
   `rnx db:check` / `rnx view:check` steps in CI. They are the target below.
@@ -120,7 +122,7 @@ For each `*.RUL.NN`:
 
 - **Factories** for every model, producing valid records with sensible defaults.
 - **Demo datasets** ([DEMO-DATA.md](DEMO-DATA.md)) are loaded in acceptance tests, so the
-  scenarios run on the same data the sales demo shows. A demo that breaks fails the build.
+  scenarios run on the same data the sales demo shows. A demo that breaks fails the build: the demo commands are run in tests (`host/tests/demo_seed.rs` for `property:demo`, `*_demo.rs` for construction, clinics, manpower, manufacturing, edtech, auto and accounting, `logistics.rs` and `fnb.rs` for those two).
 - **No production data** in tests, ever.
 - **Edge data:** Arabic names, mixed scripts, very long names, zero-rated and exempt VAT lines,
   amounts with fils, dates around month end, Ramadan hours, public holidays.

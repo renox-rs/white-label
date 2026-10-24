@@ -1,16 +1,17 @@
 # Operations
 
-> Status: draft for review · Last updated: 2026-10-20
+> Status: target design with a partly built base (section 12) · Last updated: 2026-10-24
 
 How we run the hosted platform: where it runs, how releases reach clients, backups,
 monitoring, support, and how a client is onboarded and offboarded. The tools for this live in
 the control plane, [wl-operator](modules/wl-operator.md). Security controls are in
 [SECURITY.md](SECURITY.md).
 
-> **What exists today (F1).** The per-client deployment files and the runbook are in
+> **What exists today (F1-F10 built).** The per-client deployment files and the runbook are in
 > [`deploy/`](../deploy/README.md): Dockerfile, systemd service and socket units, Litestream
-> configuration, production environment file, Caddyfile and the release workflow
-> (`.github/workflows/release.yml`). Everything about the control plane (`wl-operator`), the
+> configuration, production environment file, Caddyfile and two release workflows
+> (`.github/workflows/release.yml` for tagged client releases, `release-main.yml` for the
+> public demo builds). Everything about the control plane (`wl-operator`), the
 > host agent, automatic rollback, the nightly snapshot job, uploads sync, monitoring and
 > alerting below is still a **target**. Section 12 says what has been built and what has been
 > tested.
@@ -62,7 +63,7 @@ without an extension crate run the same `host` binary; clients with one get thei
 | Environment | Purpose | Data | Who uses it |
 |---|---|---|---|
 | **Development** | Local work on modules and apps | Factories and demo data | Developers, agents |
-| **Demo** | One deployment per vertical for sales demos | Demo datasets ([DEMO-DATA.md](DEMO-DATA.md)), reset nightly | Sales, prospects |
+| **Demo** | One deployment per vertical for sales demos | Demo datasets ([DEMO-DATA.md](DEMO-DATA.md)), reset nightly (**target**: no reset job is built, `OPS.DMO.01` needs `wl-operator`; today a demo is made by its `<vertical>:demo` command and the public demos are redeployed on every push to main, section 12) | Sales, prospects |
 | **Staging / canary** | First to receive every release; our internal demo client | Demo data + synthetic load | Us |
 | **Production** | Paying clients | Real data | Clients |
 
@@ -195,9 +196,9 @@ without an extension crate.
 3. Is 99.5% availability enough for clients, or do some need 99.9% with a higher price? *(sales)*
 4. Who staffs out-of-hours S1 support at the start? *(us)*
 
-## 12. F1 deployment status
+## 12. Deployment status
 
-State at 2026-10-20. *Built* = the file or procedure exists in the repository. *Tested* = it was
+State at 2026-10-24 (the F1 checks of 2026-10-20 stand; F2-F10 added no deployment files). *Built* = the file or procedure exists in the repository. *Tested* = it was
 run, and the note says where. Nothing is marked tested that was not run.
 
 | Item | Built | Tested | Notes |
@@ -218,15 +219,17 @@ run, and the note says where. Nothing is marked tested that was not run.
 | Rollout rings, two-person rule, automatic rollback | **no** | no | Need `wl-operator` / `deploy/rollout`. |
 | Monitoring and alerting (section 6) | **no** | no | Only the data source exists (`/health`, journal). |
 | Capacity figure (12 MiB per process) | no | no | Still to be measured. |
-| Production hardening of the host | yes | yes (tests and a debug run) | `db:seed`, `migrate:fresh` and `property:demo` refuse to run when `APP_ENV` is production (`host/tests/production_guard.rs`). There is no public sign-up: `/register` is gone, users are added on `/users` or with `users:invite` (a mail that fails leaves the user and no 500: `host/tests/users_invite.rs`). `/` redirects to `/dashboard` or `/login` (no starter-kit page). `CSP=strict` was tried in a browser on the main pages with no violation; the default stays `relaxed` ([deploy/README.md](../deploy/README.md) section 8). Not covered: portal pages, PDFs, uploads under `strict`. |
+| Public demos (`<vertical>.renoxium.com`) | yes (workflow) | no | `.github/workflows/release-main.yml` builds the artifact `white-label-<sha>` (binary `white-label`, `REVISION`, sha256, `clients/`) on every push to main; the demo server pulls the newest artifact every few minutes (autodeploy). CI holds no server keys. The server side is not in this repository and not described in these docs. |
+| Production hardening of the host | yes | yes (tests and a debug run) | `migrate:fresh`, `db:seed` and every `<vertical>:demo` command (the list `DEMO_COMMANDS` in `host/src/lib.rs`: `property:demo`, `construction:demo`, `logistics:demo`, `manpower:demo`, `clinics:demo`, `fnb:demo`, `edtech:demo`, `auto:demo`, `manufacturing:demo`) refuse to run when `APP_ENV` is production (`host/tests/production_guard.rs` tests three of them). There is no public sign-up: `/register` is gone, users are added on `/users` or with `users:invite` (a mail that fails leaves the user and no 500: `host/tests/users_invite.rs`). `/` redirects to `/dashboard` or `/login` (no starter-kit page). `CSP=strict` was tried in a browser on the main pages with no violation; the default stays `relaxed` ([deploy/README.md](../deploy/README.md) section 8). Not covered: portal pages, PDFs, uploads under `strict`. |
 
 **The EdTech client (F10).** `apps/edtech` is built and boots from `clients/demo-edtech/client.toml`
-like the other verticals. `edtech:install` (also run by the seeders after `wl:install`) stores the
+like the other verticals (each has its own `<vertical>:install`: accounting, auto, clinics,
+construction, edtech, fnb, logistics, manpower, manufacturing, property). `edtech:install` (also run by the seeders after `wl:install`) stores the
 service types, ticket categories, lead sources, loyalty programme, send windows, onboarding
 checklists, SOPs, budget category and notification reactions the 10 settings ask for; it adds what is
-missing and keeps what the client changed, so it is safe to run on a live database. There is no
-`edtech:demo` command yet (see [DEMO-DATA.md](DEMO-DATA.md)), so `db:seed` is the only demo data and
-it is refused in production. Nothing of F10 has been run in production: the release checks above
+missing and keeps what the client changed, so it is safe to run on a live database. `edtech:demo`
+(`host/src/app/edtech_demo`, see [DEMO-DATA.md](DEMO-DATA.md)) makes the demo company; like the other
+demo commands it is refused in production. Nothing of F10 has been run in production: the release checks above
 apply to it as to the others.
 
 ## Sources

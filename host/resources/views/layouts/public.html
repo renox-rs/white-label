@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="{{ app.locale }}" dir="{{ app.dir }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <rx-outlet name="seo">{{ seo() }}</rx-outlet>
+  <rx-head/>
+  <rx-ui/>
+  <rx-theme/>
+  <rx-pwa/>
+  <link rel="stylesheet" href="{{ asset('app.css') }}">
+  <link rel="stylesheet" href="{{ asset('patterns.css') }}">
+  <rx-outlet stack="head"/>
+</head>
+{#- The public pages a person opens from a link in a message (a payment
+    link, an unsubscribe link): the brand on top and the page in the middle,
+    no menu and no sign-in links. The signed-in pages use layouts/app.html. -#}
+<body class="rx-page app-public">
+  <rx-navbar brand="{{ brand }}" href="{{ route('home') }}" mark width="wide"/>
+  <main class="rx-container" id="main">
+    <rx-outlet name="content"/>
+  </main>
+  <rx-toasts/>
+  <rx-outlet stack="scripts"/>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # Epic: wl-invoicing — negative flows
 
-> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
+> Status: in use (F1–F10 built; open items in [README](../README.md) §7) · Last updated: 2026-10-24
 
 This epic builds the negative flows that the negative-flow review added to
 [wl-invoicing](../../modules/wl-invoicing.md): bad-debt write-off, VAT relief and recovery
@@ -55,7 +55,7 @@ forecast (G2, `FIN.CFL.01`: BL-INV-28 to 30).
 ### BL-INV-01 — wl-invoicing: write off an invoice balance as a bad debt
 
 **Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** Base: wl-invoicing Invoice lifecycle (`issue`, `allocate`, `mark_overdue`) · Epic wl-kernel: approval returned/failed (`PLT.APR.01`, request `fail`) · **Blocks:** BL-INV-02, BL-INV-03, BL-PAY-13, BL-ACC-24, BL-AUT-18, BL-CON-02, BL-CON-17, BL-EDU-18, BL-LOG-26, BL-MFG-14, BL-MPW-21, BL-PRP-18, BL-PRP-26
+**Depends on:** Base: wl-invoicing Invoice lifecycle (`issue`, `allocate`, `mark_overdue`) · Epic wl-kernel: approval returned/failed (`PLT.APR.01`, request `fail`) · **Blocks:** BL-INV-02, BL-INV-03, BL-PAY-13, BL-ACC-24, BL-AUT-18, BL-CON-02, BL-CON-17, BL-EDU-18, BL-LOG-26, BL-MFG-14, BL-MPW-21, BL-PRP-18, BL-PRP-26, BL-MPW-29
 **Review items:** X-01
 
 #### Goal

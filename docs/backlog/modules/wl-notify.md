@@ -1,6 +1,6 @@
 # Epic: wl-notify — negative flows
 
-> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
+> Status: in use (F1–F10 built; open items in [README](../README.md) §7) · Last updated: 2026-10-24
 
 What happens when a message gives up: after all retries and fallbacks, `give_up` emits
 `MessageGaveUp` with full detail and `NTF.RUL.01` runs the notification type's give-up reaction,

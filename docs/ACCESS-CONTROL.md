@@ -1,6 +1,8 @@
 # Access Control
 
-> Status: draft for review · Last updated: 2026-10-20 (§10 added)
+> Status: specification; F1-F10 enforce the roles, scopes and limits of the built modules · Last updated: 2026-10-24
+>
+> **Build status (2026-10-24):** Built: roles, permissions, scopes, limits and SOD rules as used by the ten verticals. Not built: staff two-factor login (`PLT.ACL.02`) and the operator rules (`PLT.ACL.04`, `OPS.ACL.*`). See [SECURITY.md](SECURITY.md) for the built-vs-target table.
 
 Every business actor in every vertical is controlled by the same model: **RBAC for what a
 person may do, ABAC for where, when, and on which records**. This document defines the model
@@ -36,7 +38,7 @@ A request passes all four layers, in this order.
 
 ### Layer 1 — Authentication
 
-Who is this? A logged-in staff user (with 2FA), a portal user, a token, or a system job.
+Who is this? A logged-in staff user (with 2FA once built), a portal user, a token, or a system job.
 
 ### Layer 2 — RBAC: what may this actor do?
 
@@ -125,7 +127,7 @@ platform capability (`PLT.APR.01`, `wl-kernel`) used by every vertical.
 | `TIM` durations | Giving external users staff permissions |
 | Which role approves a `LIM`/`SOD` request | |
 | Whether `SOD` is enforced (on by default) | |
-| 2FA for staff (on by default) | |
+| 2FA for staff (on by default; **not built**) | |
 
 Defaults are written in each rule's *Parameter (default)* column, in the vertical documents.
 
@@ -150,7 +152,7 @@ These apply to every vertical and are not repeated in vertical documents.
 | ID | Rule | Pattern | Parameter (default) |
 |---|---|---|---|
 | `PLT.ACL.01` | Every action and list is denied unless a role grants it | — | — |
-| `PLT.ACL.02` | Staff must enable two-factor login before the back office opens | — | on |
+| `PLT.ACL.02` | Staff must enable two-factor login before the back office opens (**target, not built**) | — | on |
 | `PLT.ACL.03` | Only users with `roles.manage` can grant roles, and they cannot grant a permission they do not hold | `SOD` | — |
 | `PLT.ACL.04` | The platform operator account is disabled until enabled for an incident; each session is audited and notified to the client admin | `TIM`, `SEN` | session ≤ 24 h |
 | `PLT.ACL.05` | External users are linked to exactly one person party and hold only portal roles; access to other parties comes from relationships and access grants | `OWN` | — |
@@ -167,7 +169,7 @@ reviewed (the vertical row keeps the old ID as *formerly*).
 
 | ID | Rule | Owner | Generalises | Status |
 |---|---|---|---|---|
-| `PLT.ACL.01`–`08` | Platform-wide rules (§8) | wl-kernel | — | in use |
+| `PLT.ACL.01`–`08` | Platform-wide rules (§8) | wl-kernel | — | in use: `01`, `03`, `05`–`08`; **not built**: `02` (2FA) and `04` (operator break-glass, needs wl-operator) |
 | `PLT.ACL.09` | A record is voided only with a reason, from allowed states, never after it went to a third party or authority; approval if money or stock was posted | wl-kernel | — | module |
 | `PLT.ACL.10` | An entry more than N hours late, or in a reopenable closed period, needs a manager's approval | wl-kernel | — | module |
 | `PTY.ACL.01` | Guardian access ends when the dependant reaches the age of majority | wl-parties | `CLN.ACL.06`, `EDU.ACL.02` | in use |

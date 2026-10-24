@@ -24,13 +24,12 @@ env:
   CARGO_PROFILE_DEV_STRIP: symbols
 
 jobs:
-  test:
-    name: fmt, clippy, test
+  lint:
+    name: fmt, clippy
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Free disk space
-        # Remove large preinstalled toolchains this workspace does not use.
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
@@ -40,7 +39,66 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked
-      - run: cargo test --workspace --locked
+
+  test:
+    # The tests in parallel parts, so the wait is the slowest part instead
+    # of all of them in a row (about two hours).
+    # .github/ci-test.sh says how a part is chosen.
+    name: test (${{ matrix.part }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # 17 parts: with lint and msrv, 19 jobs, within the 20 a free
+        # organisation runs at once.
+        part:
+          - modules 1 4
+          - modules 2 4
+          - modules 3 4
+          - modules 4 4
+          - apps 1 3
+          - apps 2 3
+          - apps 3 3
+          - host 1 10
+          - host 2 10
+          - host 3 10
+          - host 4 10
+          - host 5 10
+          - host 6 10
+          - host 7 10
+          - host 8 10
+          - host 9 10
+          - host 10 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        # Remove large preinstalled toolchains this workspace does not use.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+            /usr/local/.ghcup /usr/share/swift /opt/az /usr/local/share/powershell /usr/local/share/boost
+          df -h /
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # One cache for every part; only the first part saves it.
+          shared-key: test
+          save-if: ${{ matrix.part == 'host 1 10' }}
+      - run: .github/ci-test.sh ${{ matrix.part }}
+
+  # The check branch protection and the PR page know: green when lint and
+  # every test part are green, red when one failed. A run cancelled because
+  # a newer push replaced it skips this job instead of showing red; the
+  # newer run reports.
+  done:
+    name: fmt, clippy, test
+    if: ${{ !cancelled() }}
+    needs: [lint, test]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Every part passed
+        run: |
+          echo "lint: ${{ needs.lint.result }}, test: ${{ needs.test.result }}"
+          [ "${{ needs.lint.result }}" = success ] && [ "${{ needs.test.result }}" = success ]
 
   msrv:
     # Renox 1.2 needs Rust 1.94; so does this workspace (Cargo.toml).
