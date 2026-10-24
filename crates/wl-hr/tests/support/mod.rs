@@ -46,10 +46,10 @@ use wl_kernel::timesheets::{
 use wl_kernel::workforce::{
     AbsenceCaseOpened, EmployeeAbsconded, EmployeeActivated, EmployeeAssignmentChanged,
     EmployeeDeceased, EmployeeExited, EmployeeId, EmployeeNoticeWithdrawn,
-    EmployeeOnboardingCancelled, EmployeeReinstated, LeaveApproved, LeaveCancelled,
-    OnboardingCompleted, OnboardingStarted, PayAccountChanged, PayrollLinesFailed, PayrollRunPaid,
-    PayrollRunReturned, QualificationExpired, QualificationExpiring, SettlementDisputed,
-    SettlementPaid, VisaCaseRejected,
+    EmployeeOnboardingCancelled, EmployeeReceivableRaised, EmployeeReinstated, LeaveApproved,
+    LeaveCancelled, OnboardingCompleted, OnboardingStarted, PayAccountChanged, PayrollLinesFailed,
+    PayrollRunPaid, PayrollRunReturned, QualificationExpired, QualificationExpiring,
+    SettlementDisputed, SettlementPaid, VisaCaseRejected,
 };
 use wl_kernel::{PartyId, SopId, Subject};
 
@@ -651,6 +651,7 @@ struct Fakes {
     returned: Arc<Mutex<Vec<PayrollRunReturned>>>,
     failed: Arc<Mutex<Vec<PayrollLinesFailed>>>,
     paid: Arc<Mutex<Vec<PayrollRunPaid>>>,
+    receivables_raised: Arc<Mutex<Vec<EmployeeReceivableRaised>>>,
     settlement_paid: Arc<Mutex<Vec<SettlementPaid>>>,
     settlement_disputed: Arc<Mutex<Vec<SettlementDisputed>>>,
     tasks: TicketDesk,
@@ -934,6 +935,7 @@ impl Module for Fakes {
         record(app, &self.returned);
         record(app, &self.failed);
         record(app, &self.paid);
+        record(app, &self.receivables_raised);
         record(app, &self.settlement_paid);
         record(app, &self.settlement_disputed);
         if self.real.attendance {
@@ -1006,6 +1008,8 @@ pub struct Booted {
     pub failed: Recorded<PayrollLinesFailed>,
     /// `PayrollRunPaid`.
     pub paid: Recorded<PayrollRunPaid>,
+    /// `EmployeeReceivableRaised`.
+    pub receivables_raised: Recorded<EmployeeReceivableRaised>,
     /// `SettlementPaid`.
     pub settlement_paid: Recorded<SettlementPaid>,
     /// `SettlementDisputed`.
@@ -1856,6 +1860,7 @@ async fn boot_full(
         returned: Arc::default(),
         failed: Arc::default(),
         paid: Arc::default(),
+        receivables_raised: Arc::default(),
         settlement_paid: Arc::default(),
         settlement_disputed: Arc::default(),
         tasks: TicketDesk::default(),
@@ -1887,6 +1892,7 @@ async fn boot_full(
         Recorded(fakes.visa_rejected.clone()),
         fakes.attendance.clone(),
     );
+    let receivables_raised = Recorded(fakes.receivables_raised.clone());
     let (settlement_paid, settlement_disputed) = (
         Recorded(fakes.settlement_paid.clone()),
         Recorded(fakes.settlement_disputed.clone()),
@@ -2132,6 +2138,7 @@ async fn boot_full(
         returned,
         failed,
         paid,
+        receivables_raised,
         settlement_paid,
         settlement_disputed,
         tasks,

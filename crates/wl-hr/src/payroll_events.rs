@@ -9,6 +9,7 @@ use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{PostCost, post_cost};
+use wl_kernel::workforce::EmployeeReceivableRaised;
 use wl_kernel::{
     EmployeeId, FailedPayrollLine, PayrollLinesFailed, PayrollRunId, PayrollRunPaid,
     PayrollRunReturned,
@@ -18,6 +19,7 @@ use crate::payroll::{
     CONFIRM_PAID, LineStatus, PayrollLine, PayrollRun, RECORD_PARTIAL, RECORD_PARTIAL_BY_SYSTEM,
     RECORD_REJECTION, RETURN, SUBMIT, SUBMIT_BY_SYSTEM,
 };
+use crate::receivable::Receivable;
 use crate::{notices, wps_alerts};
 
 /// The listener registered by [`crate::events`].
@@ -146,10 +148,35 @@ async fn paid(state: &AppState, run_id: i64) -> Result {
             employees: paid.iter().map(|l| EmployeeId(l.employee_id)).collect(),
         })
         .await?;
+    raise_receivables(state, &run).await?;
     post_costs(state, &run).await?;
     // `HRM.RUL.12`: lines whose hold cleared while this run was being paid are
     // released now that it is `paid`.
     crate::release::propose(state).await.map(|_| ())
+}
+
+/// `confirm_paid` of a supplementary run: `EmployeeReceivableRaised` for each
+/// receivable the run left on an employee's party (a negative difference no
+/// settlement or payroll can take), for the module that keeps the party's
+/// receivables.
+async fn raise_receivables(state: &AppState, run: &PayrollRun) -> Result {
+    let receivables = Receivable::query()
+        .where_(Receivable::SOURCE_RUN_ID.eq(run.id))
+        .order_by(Receivable::ID)
+        .get(&state.db)
+        .await?;
+    for receivable in receivables {
+        state
+            .emit(EmployeeReceivableRaised {
+                receivable: receivable.id,
+                employee: EmployeeId(receivable.employee_id),
+                party: wl_kernel::PartyId(receivable.party_id),
+                amount: receivable.amount,
+                run: Some(PayrollRunId(run.id)),
+            })
+            .await?;
+    }
+    Ok(())
 }
 
 /// `confirm_paid`: the cost of each paid line is posted to its cost object

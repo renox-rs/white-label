@@ -343,6 +343,16 @@ async fn hrm17_ac5_an_employee_who_left_is_recovered_from_the_settlement_or_owes
     assert_eq!((owed[0].amount, owed[0].party_id), (aed(300), h.party_id));
     assert_eq!(owed[0].source_run_id, Some(run.id));
     assert!(w.adjustments_of(&h).await.is_empty());
+
+    // The module that keeps the party's receivables is told, once, of H's
+    // AED 300 on H's party; G's recovery from the settlement raises nothing.
+    let raised = w.t.receivables_raised.all();
+    assert_eq!(raised.len(), 1);
+    assert_eq!(raised[0].receivable, owed[0].id);
+    assert_eq!(raised[0].employee.0, h.id);
+    assert_eq!(raised[0].party.0, h.party_id);
+    assert_eq!(raised[0].amount, aed(300));
+    assert_eq!(raised[0].run.map(|r| r.0), Some(run.id));
 }
 
 /// Several supplementary runs on one paid run: each difference is against the

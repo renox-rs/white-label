@@ -187,6 +187,28 @@ pub struct PayrollRunPaid {
 
 impl Event for PayrollRunPaid {}
 
+/// An employee owes the company money that no payroll or settlement can
+/// recover (wl-hr §4 *Run types*, §5.6): the negative difference of a
+/// supplementary run for an employee who left after their settlement was
+/// paid. wl-hr keeps the receivable on the employee's party; the module that
+/// keeps the party's receivables (wl-payments or wl-invoicing) listens to
+/// this to raise its own record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmployeeReceivableRaised {
+    /// wl-hr's receivable row.
+    pub receivable: i64,
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The employee's party, the debtor.
+    pub party: PartyId,
+    /// The amount owed, AED fils, positive.
+    pub amount: i64,
+    /// The run that caused it.
+    pub run: Option<PayrollRunId>,
+}
+
+impl Event for EmployeeReceivableRaised {}
+
 /// The subject type of a final settlement, for [`Subject`] references.
 pub const SETTLEMENT_SUBJECT_TYPE: &str = "hr.settlement";
 
