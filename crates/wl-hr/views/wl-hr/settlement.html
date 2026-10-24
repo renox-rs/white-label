@@ -114,5 +114,6 @@
         </rx-table>
       </rx-card>
     </template>
+    <div id="settlement-related" hx-get="/related/hr.settlement:{{ settlement.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

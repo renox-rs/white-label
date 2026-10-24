@@ -103,7 +103,7 @@ impl StateMachine for LeaveRequest {
             .state(Cancelled)
             .tone("neutral")
             .terminal()
-            .transition(
+            .transition(crate::search::reindex_leave(
                 Transition::new(APPROVE)
                     .label("Approve")
                     .tone("success")
@@ -138,8 +138,8 @@ impl StateMachine for LeaveRequest {
                             .await
                         })
                     }),
-            )
-            .transition(
+            ))
+            .transition(crate::search::reindex_leave(
                 Transition::new(REJECT)
                     .label("Reject")
                     .tone("danger")
@@ -165,8 +165,8 @@ impl StateMachine for LeaveRequest {
                             .await
                         })
                     }),
-            )
-            .transition(
+            ))
+            .transition(crate::search::reindex_leave(
                 Transition::new(CANCEL)
                     .label("Cancel")
                     .tone("neutral")
@@ -204,8 +204,8 @@ impl StateMachine for LeaveRequest {
                             .await
                         })
                     }),
-            )
-            .transition(
+            ))
+            .transition(crate::search::reindex_leave(
                 Transition::new(COMPLETE)
                     .label("Complete")
                     .tone("success")
@@ -222,7 +222,7 @@ impl StateMachine for LeaveRequest {
                             }
                         })
                     }),
-            )
+            ))
     }
 }
 

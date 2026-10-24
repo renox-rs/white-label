@@ -172,7 +172,7 @@ impl StateMachine for Employee {
             .state(OnboardingCancelled)
             .tone("neutral")
             .terminal()
-            .transition(
+            .transition(crate::search::reindex_employee(
                 Transition::new(ACTIVATE)
                     .label("Activate")
                     .tone("success")
@@ -190,8 +190,8 @@ impl StateMachine for Employee {
                             }
                         })
                     }),
-            );
-        let machine = machine.transition(
+            ));
+        let machine = machine.transition(crate::search::reindex_employee(
             Transition::new(EXIT)
                 .label("Exit")
                 .tone("danger")
@@ -202,7 +202,7 @@ impl StateMachine for Employee {
                     let employee = employee.clone();
                     Box::pin(async move { exit::apply(tx, &employee).await })
                 }),
-        );
+        ));
         let pairs = [
             exit_pair(
                 CANCEL_ONBOARDING,
@@ -244,7 +244,7 @@ impl StateMachine for Employee {
             .into_iter()
             .flatten()
             .fold(machine, |machine, transition| {
-                machine.transition(transition)
+                machine.transition(crate::search::reindex_employee(transition))
             })
     }
 }

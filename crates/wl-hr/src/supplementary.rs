@@ -174,6 +174,12 @@ pub async fn create(
         line.run_id = run.id;
         line.insert(&mut tx).await?;
     }
+    crate::search::index(
+        &mut tx,
+        wl_kernel::workforce::PAYROLL_RUN_SUBJECT_TYPE,
+        run.id,
+    )
+    .await?;
     tx.commit().await?;
     Ok(run)
 }

@@ -329,6 +329,13 @@ pub async fn create(state: &AppState, input: NewEmployee) -> Result<Employee> {
         )
         .await?;
     }
+    // Found by number and name from now on (BL-AGT-11).
+    crate::search::index(
+        &mut tx,
+        wl_kernel::workforce::EMPLOYEE_SUBJECT_TYPE,
+        employee.id,
+    )
+    .await?;
     tx.commit().await?;
     if initial == EmployeeStatus::Onboarding {
         onboarding::start_on_hire(state, &employee).await?;

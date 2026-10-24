@@ -225,6 +225,7 @@ async fn open_off_cycle_in(
         ..PayrollRun::default()
     };
     run.insert(&mut *tx).await?;
+    crate::search::index(tx, wl_kernel::workforce::PAYROLL_RUN_SUBJECT_TYPE, run.id).await?;
     Ok((run, true))
 }
 

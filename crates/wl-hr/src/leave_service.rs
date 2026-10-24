@@ -210,8 +210,9 @@ pub async fn request(
     if to < from {
         return Err(refuse("wl_hr.leave.problem.dates"));
     }
-    LeaveRequest::create(
-        &state.db,
+    let mut tx = state.db.begin().await?;
+    let leave = LeaveRequest::create(
+        &mut tx,
         LeaveRequest {
             employee_id,
             leave_type,
@@ -222,7 +223,11 @@ pub async fn request(
             ..LeaveRequest::default()
         },
     )
-    .await
+    .await?;
+    // Found from now on (BL-AGT-11).
+    crate::search::index(&mut tx, crate::leave::LEAVE_SUBJECT_TYPE, leave.id).await?;
+    tx.commit().await?;
+    Ok(leave)
 }
 
 /// Loads request `id` and its employee.

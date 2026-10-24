@@ -289,5 +289,6 @@
         </rx-tab-panel>
       </template>
     </rx-tabs>
+    <div id="employee-related" hx-get="/related/hr.employee:{{ employee.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

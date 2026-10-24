@@ -38,6 +38,7 @@ pub mod recovery;
 pub mod release;
 pub mod reminders;
 pub mod salary;
+pub mod search;
 pub mod seed;
 pub mod settlement;
 pub mod settlement_alerts;
@@ -401,6 +402,9 @@ impl Module for WlHr {
         app.model::<PayAccount>();
         app.provide(self.config.clone());
         employee_machine::register(app);
+        // Employees, leave, payroll runs and settlements in the search index
+        // and the Related panel (BL-AGT-11).
+        search::register();
         renox::state_machine::register::<LeaveRequest>();
         renox::state_machine::register::<Onboarding>();
         renox::state_machine::register::<OnboardingStep>();

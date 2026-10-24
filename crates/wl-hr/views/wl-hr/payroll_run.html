@@ -174,5 +174,6 @@
       </rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['payroll.no_lines']" icon="users"/></rx-slot>
     </rx-table>
+    <div id="payroll-run-related" hx-get="/related/hr.payroll_run:{{ run.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

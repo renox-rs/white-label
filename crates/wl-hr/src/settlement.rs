@@ -232,14 +232,24 @@ impl StateMachine for FinalSettlement {
             .state(Cancelled)
             .tone("neutral")
             .terminal()
-            .transition(settlement_pay::approve())
-            .transition(settlement_pay::pay())
-            .transition(settlement_dispute::dispute())
-            .transition(settlement_dispute::resolve(false))
-            .transition(settlement_dispute::resolve(true))
-            .transition(settlement_close::close())
-            .transition(settlement_close::cancel(false))
-            .transition(settlement_close::cancel(true))
+            .transition(crate::search::reindex_settlement(settlement_pay::approve()))
+            .transition(crate::search::reindex_settlement(settlement_pay::pay()))
+            .transition(crate::search::reindex_settlement(
+                settlement_dispute::dispute(),
+            ))
+            .transition(crate::search::reindex_settlement(
+                settlement_dispute::resolve(false),
+            ))
+            .transition(crate::search::reindex_settlement(
+                settlement_dispute::resolve(true),
+            ))
+            .transition(crate::search::reindex_settlement(settlement_close::close()))
+            .transition(crate::search::reindex_settlement(settlement_close::cancel(
+                false,
+            )))
+            .transition(crate::search::reindex_settlement(settlement_close::cancel(
+                true,
+            )))
     }
 }
 
@@ -350,6 +360,7 @@ pub async fn draft_or_relabel_in(
             .await?;
         open.reason = reason.to_owned();
         open.payee = payee.to_owned();
+        crate::search::index(tx, SETTLEMENT_SUBJECT_TYPE, open.id).await?;
         return Ok(open);
     }
     let mut settlement = FinalSettlement {
@@ -360,6 +371,7 @@ pub async fn draft_or_relabel_in(
         ..FinalSettlement::default()
     };
     settlement.insert(&mut *tx).await?;
+    crate::search::index(tx, SETTLEMENT_SUBJECT_TYPE, settlement.id).await?;
     Ok(settlement)
 }
 

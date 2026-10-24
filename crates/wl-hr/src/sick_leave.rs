@@ -112,6 +112,7 @@ pub async fn record(
     request
         .insert_in_state(&mut tx, LeaveStatus::Approved, "record_sick")
         .await?;
+    crate::search::index(&mut tx, crate::leave::LEAVE_SUBJECT_TYPE, request.id).await?;
     tx.commit().await?;
     state.emit(approved_event(&request)).await?;
     leave::sync_due_dates(state, employee_id, today()).await?;

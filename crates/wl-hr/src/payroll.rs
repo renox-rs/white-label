@@ -421,18 +421,28 @@ impl StateMachine for PayrollRun {
             .state(Paid)
             .tone("success")
             .terminal()
-            .transition(calculate())
-            .transition(approve())
-            .transition(return_run())
-            .transition(wps_rejection::record_rejection())
-            .transition(wps_rejection::resubmit())
-            .transition(submit_transition(false))
-            .transition(submit_transition(true))
-            .transition(wps_partial::record_partial(false))
-            .transition(wps_partial::record_partial(true))
-            .transition(wps_partial::regenerate(false))
-            .transition(wps_partial::regenerate(true))
-            .transition(wps_partial::confirm_paid())
+            .transition(crate::search::reindex_payroll(calculate()))
+            .transition(crate::search::reindex_payroll(approve()))
+            .transition(crate::search::reindex_payroll(return_run()))
+            .transition(crate::search::reindex_payroll(
+                wps_rejection::record_rejection(),
+            ))
+            .transition(crate::search::reindex_payroll(wps_rejection::resubmit()))
+            .transition(crate::search::reindex_payroll(submit_transition(false)))
+            .transition(crate::search::reindex_payroll(submit_transition(true)))
+            .transition(crate::search::reindex_payroll(wps_partial::record_partial(
+                false,
+            )))
+            .transition(crate::search::reindex_payroll(wps_partial::record_partial(
+                true,
+            )))
+            .transition(crate::search::reindex_payroll(wps_partial::regenerate(
+                false,
+            )))
+            .transition(crate::search::reindex_payroll(wps_partial::regenerate(
+                true,
+            )))
+            .transition(crate::search::reindex_payroll(wps_partial::confirm_paid()))
     }
 }
 
