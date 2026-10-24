@@ -1,6 +1,8 @@
 # wl-sales
 
-> Status: draft · Last updated: 2026-10-16
+> Status: specification, partly built; the build ledger is [crates/wl-sales/README.md](../../crates/wl-sales/README.md) · Last updated: 2026-10-24
+
+**Build status (2026-10-24):** Built: leads, campaigns and acquisition, sales orders (ten states, `hold`, `release`, `amend`, line cancellations, back-orders), credit control, counter sales, till sessions, sales returns, prepaid packages (sell, activate, consume, reverse, expire, extend, cancel), loyalty (programme, accounts, points, redemption, segments, closure, merge, block). Not built (later): package sale pages and package `refund`; the shared rules `SAL.RUL.02` (package expiry reminder), `SAL.RUL.03` (low-credit renewal offer) and `SAL.RUL.04` (uncollected-order reminder) are planned, not in use (edtech has its own `PACKAGE_REMINDER` type); a till-variance approval threshold is not a setting of this module (the variance goes to the cash handover, `FIN.ACL.06`). List screens use the standard Renox grid (`renox::grid::Grid`).
 
 ## 1. Purpose
 
@@ -166,7 +168,7 @@ fact.
 | `hold` | confirmed, partially_fulfilled | credit_hold | system (re-check at dispatch fails, or `SAL.RUL.05` on a bounced cheque) | order on account | state before the hold kept; dispatch blocked, reservations kept; event `SalesOrderCreditHeld` |
 | `release` | credit_hold | confirmed, partially_fulfilled | `credit.release` | approval (`PLT.APR.01`); releaser ≠ creator (`SAL.ACL.03`) | back to the state before the hold (`confirmed` from submit); open back-orders of the order reserved from available stock at the branch (Back-orders below); event `SalesOrderConfirmed` when first confirmed |
 | `amend` | pending_acceptance, credit_hold, confirmed, partially_fulfilled | same state, or credit_hold | `sales_orders.amend` | reason; no line below its fulfilled quantity; a line whose fulfilment started is not reduced by `amend` (it goes through `cancel_line`, which asks for an outcome); prices and discounts within `SAL.ACL.02`; channel allows amendments (aggregator orders are changed on the aggregator); approval when fulfilment started (`SAL.ACL.05`); a changed customer PO reference or call-off number passes the same uniqueness check as `submit` | revision + 1 and the previous revision kept; reservations and vertical fulfilment adjusted; credit check re-run when the value rises (fails → `credit_hold`); prepaid: payment link for an increase, refund of a decrease (`wl-payments`); a draft invoice is updated, an issued one is corrected by credit note or an extra invoice (`wl-invoicing`); revised confirmation sent; event `SalesOrderAmended` |
-| `cancel_line` | confirmed, partially_fulfilled | same state, fulfilled | `sales_orders.cancel` | reason; open quantity only; at least one line stays open or fulfilled (otherwise `cancel`); outcome per line and approval when fulfilment of the line started (`SAL.ACL.05`) | quantity cancelled; outcome applied (below); prepaid share refunded less any fee; an invoice already issued for the line is corrected by a credit note for the cancelled value (`wl-invoicing`); `fulfilled` when nothing is open; event `SalesOrderLineCancelled` |
+| `cancel_line` | confirmed, partially_fulfilled | same state (`cancel_line`, `cancel_line_partly`); `partially_fulfilled` to `fulfilled` (`cancel_line_last`) | `sales_orders.cancel` | reason; open quantity only; at least one line stays open or fulfilled (otherwise `cancel` when nothing is left open, or `cancel_remaining`); outcome per line and approval when fulfilment of the line started (`SAL.ACL.05`) | quantity cancelled; outcome applied (below); prepaid share refunded less any fee; an invoice already issued for the line is corrected by a credit note for the cancelled value (`wl-invoicing`); `fulfilled` when nothing is open; event `SalesOrderLineCancelled` |
 | `fulfil` | confirmed, partially_fulfilled | partially_fulfilled, fulfilled | system (`DispatchDelivered` for an order shipped on a dispatch note; `DeliveryDelivered` only for an order delivered without a dispatch note; collection recorded; or vertical fulfilment completed) | dispatch of an order on account passes `credit_recheck`; not yet fulfilled from the same dispatch or delivery (idempotent per source) | accepted quantities fulfilled (refused delivery lines are not); `fulfilled` when nothing is open; invoice drafted when the client invoices on delivery |
 | `reverse_fulfilment` | partially_fulfilled, fulfilled | confirmed, partially_fulfilled | system (`DispatchReversed`, or `DispatchLost` of a `delivered` dispatch; for an order delivered without a dispatch note, `DeliveryReversed`, or `DeliveryLost` from `under_review`) | the quantities were fulfilled from that dispatch or delivery | quantity fulfilled reduced by them; `confirmed` when nothing stays fulfilled, otherwise `partially_fulfilled`; a draft invoice is updated, an issued one is left as it is and the accountant gets a task (credit note or keep for re-delivery, `wl-invoicing`); sales rep told; event `SalesOrderFulfilmentReversed` |
 | `cancel_remaining` | partially_fulfilled | fulfilled | `sales_orders.cancel` | reason given; outcome per line and approval when fulfilment of a line started (`SAL.ACL.05`) | open lines cancelled with their outcomes; reservations released; one event `SalesOrderLineCancelled` per cancelled line |
@@ -197,9 +199,8 @@ stateDiagram-v2
   partially_fulfilled --> partially_fulfilled: amend
   partially_fulfilled --> credit_hold: amend
   confirmed --> confirmed: cancel_line
-  confirmed --> fulfilled: cancel_line
   partially_fulfilled --> partially_fulfilled: cancel_line
-  partially_fulfilled --> fulfilled: cancel_line
+  partially_fulfilled --> fulfilled: cancel_line_last
   confirmed --> partially_fulfilled: fulfil
   confirmed --> fulfilled: fulfil
   partially_fulfilled --> fulfilled: fulfil
@@ -236,13 +237,13 @@ refused: the available part is reserved and the rest is *back-ordered* (quantity
 back-ordered on the line; the order stays `confirmed` or `partially_fulfilled`, and the other
 lines are picked and fulfilled). Back-ordered quantity not yet covered by an open purchase
 order counts as demand in `STK.RUL.04` (`wl-inventory`). When stock arrives at the branch
-(`StockMoved` for a `receive` or `transfer_in` movement, `wl-inventory`), it is reserved for
+(the kernel event `StockArrived` for a `receive` or `transfer_in` movement, emitted by `wl-inventory`), it is reserved for
 the open back-orders of the item oldest first (by the time the line was confirmed; on a tie,
 by order number, then line number); orders on `credit_hold` are skipped. When such an order
 is released (`release`), its open back-orders are reserved at once from the stock then
 available at the branch, in the same order; what stays short waits for the next arrival.
 The customer gets one message per order when any of its back-orders is reserved. A goods
-receipt that is reversed releases the reservations made from it, and the lines are
+receipt that is reversed (`StockArrivalReversed`) releases the reservations made from it, and the lines are
 back-ordered again. The customer may cancel a back-order with `cancel_line` (no
 outcome needed: nothing was picked) or `cancel_remaining`; a cancelled back-order leaves the
 demand of `STK.RUL.04`.
@@ -817,7 +818,7 @@ Earn lots are consumed oldest expiry first by `redeem` and `expire`.
   invoice (task to collect, holder told; consumption suspended only when the setting is on,
   §4.4).
 - `wl-inventory`: availability, reservations, dispatch notes (which call `credit_recheck`).
-  `StockMoved` for `receive` and `transfer_in` movements reserves arriving stock for open
+  `StockArrived` (and `StockArrivalReversed` for a reversed receipt) for `receive` and `transfer_in` movements reserves arriving stock for open
   back-orders.
   Events consumed for orders shipped on a dispatch note: `DispatchDelivered` (`fulfil` for
   delivered quantities), `DispatchReturned` (as `DeliveryReturned` below), `DispatchReversed`
@@ -884,7 +885,7 @@ them.
 `packages.extend`, `packages.adjust`, `packages.refund` · `discounts.manage`,
 `discounts.apply_manual` · `returns.request`, `returns.handle` · `campaigns.view`,
 `campaigns.manage`, `campaigns.costs.manage`, `acquisition.reports.view` · `loyalty.view`,
-`loyalty.enrol`, `loyalty.redeem`, `loyalty.adjust`, `loyalty.manage`, `segments.manage`.
+`loyalty.enrol`, `loyalty.redeem`, `loyalty.adjust`, `loyalty.manage`, `segments.manage`, `segments.export` (export a segment) · `sales_orders.approve` (approve an amendment or cancellation after fulfilment started) · `returns.approve` (approve the refund of a return).
 
 **Shared access rules** (registered in [ACCESS-CONTROL.md](../ACCESS-CONTROL.md) §9, all
 `in use`; `SAL.ACL.07` to `SAL.ACL.09` added 2026-10-16)
@@ -907,9 +908,9 @@ them.
 | ID | When | If | Then | Parameters (default) | Generalises |
 |---|---|---|---|---|---|
 | `SAL.RUL.01` | sales order → `credit_hold` | — | notify accountant and the sales rep | — | — |
-| `SAL.RUL.02` | N days before a package's end date | credits remaining > 0 | notify the holder (and the payer, e.g. a guardian) | N = 14 | `CLN.RUL.06`, `EDU.RUL.04` |
-| `SAL.RUL.03` | package credit consumed | credits remaining ≤ N | notify the holder or payer with a renewal link | N = 2 | `EDU.RUL.03` |
-| `SAL.RUL.04` | N days after the dispatch of a *collect* order reaches `picked` (ready for collection) | not collected | notify the customer and the sales rep | N = 3 | `AUT.RUL.06` |
+| `SAL.RUL.02` (planned, not in use) | N days before a package's end date | credits remaining > 0 | notify the holder (and the payer, e.g. a guardian) | N = 14 | `CLN.RUL.06`, `EDU.RUL.04` |
+| `SAL.RUL.03` (planned, not in use) | package credit consumed | credits remaining ≤ N | notify the holder or payer with a renewal link | N = 2 | `EDU.RUL.03` |
+| `SAL.RUL.04` (planned, not in use) | N days after the dispatch of a *collect* order reaches `picked` (ready for collection) | not collected | notify the customer and the sales rep | N = 3 | `AUT.RUL.06` |
 | `SAL.RUL.05` | `ChequeBounced` (`wl-payments`) | the drawer has a customer account | set the account on hold (and the credit group when configured); run `hold` on its orders on account not yet dispatched; refuse new orders and counter sales on account until the account hold is cleared (*Clear account hold*, §4.2); notify the accountant and the sales rep | whole group: on | — |
 | `SAL.RUL.06` | `PaymentReceived` for an order | order is `cancelled` or `rejected`, or already fully paid, or `awaiting_payment` and the amount differs from the order total (partial or over-payment: it cannot confirm the order, which then times out) | request a full refund of that payment (`wl-payments` `Refunds`, reason *late payment*); notify the customer and the outlet or sales manager; the order stays as it is | — | — |
 | `SAL.RUL.07` | a qualifying sale completes (`CounterSaleCompleted`; sales order → `fulfilled`; `InvoicePaid` for an invoice not made from an order or a counter sale), or a sales return or credit note on such a sale is issued | the party has an `active` loyalty account that is not paused (party blocked); the member was attached before completion (`SAL.ACL.08`); eligible amount ≥ the minimum; not yet earned (or reversed) for this source | `earn` points or a visit with the lot's expiry date, or `reverse_earn` in proportion; when visits reach the reward, the reward is made available and the member told | 1 point per AED 1; minimum AED 0; validity 12 months | — |
@@ -927,7 +928,7 @@ them.
 | Invoice timing for orders | on fulfilment (alternatives: on confirmation, periodic) |
 | Manual discount limit (`SAL.ACL.02`) | 10% |
 | Paid-order cancellation limit (`SAL.ACL.01`) | AED 50 |
-| Till variance needing approval | AED 20 |
+| Till variance needing approval | AED 20 (specified; not read by the module: the variance goes to the cash handover, `FIN.ACL.06`) |
 | Return window and restocking fee | 14 days; 0% |
 | Online payment window before `payment_failed` (gateway timeout) | 15 min |
 | Unique external order number per channel | on |
@@ -936,12 +937,18 @@ them.
 | Amendments allowed per channel | on, except aggregator channels |
 | Cancellation after fulfilment started: outcomes offered; fee (% of the line or amount) | return to stock, finish to stock, scrap, limited to what the vertical can do (06: return to stock, scrap; 08: return to stock); 0 |
 | Credit re-check at dispatch for orders on account | on |
+| Role told of a payment refunded as late (`SAL.RUL.06`) (`order_manager_role`) | company admin when empty |
+| Role that owns orders of channels other than website and portal (`sales_rep_role`) | company admin when empty |
+| Role told when an order goes on credit hold (`accountant_role`, `SAL.RUL.01`) | accountant |
+| Hours a payment link of an order increase lasts outside website and portal (`amend_link_hours`) | 24 |
+| VAT category of a cancellation fee line (`cancellation_fee_vat`) | standard (open item A-04) |
+| Outcomes offered when a started line is cancelled (`cancel_outcomes`) | what the vertical can do (see above) |
 | Bounced cheque hold (`SAL.RUL.05`): hold the whole credit group | on |
 | Refund after completion: approval above (`SAL.ACL.06`); complaint categories; responsible parties | AED 50; cold, late, missing item, wrong item, quality, service not delivered, other; business, driver or rider, aggregator, supplier, customer |
 | Package defaults: validity, refund from expired, extension limit | 6 months; off; one extension |
 | Package: suspend consumption while a reopened invoice balance is unpaid (§4.4) | off (05, 10: task to collect only) |
-| Package reminders: days before expiry (`SAL.RUL.02`); low-credit threshold (`SAL.RUL.03`) | 14 days; 2 credits |
-| Uncollected order reminder (`SAL.RUL.04`) | 3 days |
+| Package reminders: days before expiry (`SAL.RUL.02`); low-credit threshold (`SAL.RUL.03`) (planned, not in use) | 14 days; 2 credits |
+| Uncollected order reminder (`SAL.RUL.04`) (planned, not in use) | 3 days |
 | Credit groups with a combined limit | off |
 | Counter sales on account | off (08: on) |
 | Discount stacking | off |
