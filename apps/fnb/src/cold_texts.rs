@@ -116,6 +116,9 @@ pub(crate) const COLD_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.cold.read_at", "Read at"),
     ("fnb.screen.cold.on_hold", "On temperature hold"),
     ("fnb.screen.cold.in_use", "In use"),
+    ("fnb.screen.cold.condition", "Temperature"),
+    ("fnb.screen.cold.in_range", "In range"),
+    ("fnb.screen.cold.out_of_range", "Out of range"),
     ("fnb.screen.cold.record", "Record a reading"),
     (
         "fnb.screen.cold.record_title",

@@ -3,11 +3,22 @@
     (the brands show "temporarily closed" and the aggregators are paused by
     hand), the buttons to pause and to resume (only a manager resumes, the
     system never does), and the paper orders of the outage with the sheet that
-    enters one as a late entry with its business time. Replace it with
+    enters one as a late entry with its business time. One table per outlet
+    (not a renox::grid), in a panel that fills the screen and scrolls by
+    itself; the search and the state filter at the top narrow the channels of
+    every outlet (`?q=`, `?state=open|paused`). Replace it with
     resources/views/fnb/outlet_channels.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['channels.title']">
+  <rx-page-header :title="tx['channels.title']" :subtitle="tx['channels.subtitle']"/>
+  <section class="rx-pane rx-fill">
   <rx-stack>
-    <rx-page-header :title="tx['channels.title']" :subtitle="tx['channels.subtitle']"/>
+    <rx-form method="GET" action="{{ route('fnb.outlet_channels') }}">
+      <rx-row>
+        <rx-input name="q" :label="tx['channels.search']" :value="search" id="channels-search"/>
+        <rx-select name="state" :label="tx['state']" :options="state_options" :selected="state_selected" id="channels-state"/>
+        <rx-button type="submit" :label="tx['channels.filter']"/>
+      </rx-row>
+    </rx-form>
     <rx-card rx-for="outlet in outlets" :title="outlet.name">
       <rx-stack>
         <rx-alert rx-if="outlet.banner" :kind="outlet.banner_kind" :message="outlet.banner"/>
@@ -75,6 +86,8 @@
         </rx-card>
       </rx-stack>
     </rx-card>
-    <rx-empty rx-if="not outlets" :title="tx['channels.empty']" :message="tx['channels.empty_text']" icon="power"/>
+    <rx-empty rx-if="not outlets and not filtered" :title="tx['channels.empty']" :message="tx['channels.empty_text']" icon="power"/>
+    <rx-empty rx-if="not outlets and filtered" :title="tx['channels.no_match']" :message="tx['channels.no_match_text']" icon="search"/>
   </rx-stack>
+  </section>
 </rx-page>

@@ -72,10 +72,11 @@ fn kind_options(lang: &Lang) -> Vec<[String; 2]> {
         .collect()
 }
 
-/// The cold units grid: search on the name and code, filter by kind. The
-/// range, the last reading, the hold and the record button are drawn by the
-/// template (`custom`).
-pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+/// The cold units grid: search on the name and code, filters by kind, stock
+/// location (`locations`, hidden at first) and whether the unit is out of
+/// range now, which also sorts. The range, the last reading, the hold and the
+/// record button are drawn by the template (`custom`).
+pub(crate) fn grid(lang: &Lang, locations: Vec<(String, String)>, can_export: bool) -> Grid {
     let t = tx(lang);
     let kinds: Vec<(String, String)> = kind::ALL
         .iter()
@@ -100,6 +101,26 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
         )
         .column(Column::text("code", &t["cold.code"]).searchable())
         .column(Column::select("kind", &t["cold.kind"], kinds).mobile())
+        .column(
+            Column::select("location_id", &t["cold.location"], locations)
+                .hidden()
+                .sortable(false),
+        )
+        .column(
+            Column::select(
+                "condition",
+                &t["cold.condition"],
+                [
+                    ("in_range".to_owned(), t["cold.in_range"].clone()),
+                    ("out_of_range".to_owned(), t["cold.out_of_range"].clone()),
+                ],
+            )
+            .computed(
+                "CASE WHEN {T}.\"out_since\" IS NULL THEN 'in_range' ELSE 'out_of_range' END",
+            )
+            .badges(&[("in_range", "success"), ("out_of_range", "danger")])
+            .mobile(),
+        )
         .column(Column::custom("range", &t["cold.range"]))
         .column(Column::custom("reading", &t["cold.reading"]).mobile())
         .column(Column::custom("read_at", &t["cold.read_at"]))
@@ -136,7 +157,25 @@ async fn index(
         return Err(Error::Forbidden);
     }
     let can_manage = user.has_permission_anywhere(permissions::COLD_UNITS_MANAGE);
-    let grid = grid(&lang, can_manage);
+    let locations: Vec<[String; 2]> = stock_hold_service(&state)
+        .locations(&state)
+        .await?
+        .into_iter()
+        .map(|l| {
+            [
+                l.location.subject_id.to_string(),
+                format!("{} / {}", l.code, l.name),
+            ]
+        })
+        .collect();
+    let grid = grid(
+        &lang,
+        locations
+            .iter()
+            .map(|[id, label]| (id.clone(), label.clone()))
+            .collect(),
+        can_manage,
+    );
     if request.param("export").is_some() && !can_manage {
         return Err(Error::Forbidden);
     }
@@ -173,19 +212,11 @@ async fn index(
                 .unwrap_or_default(),
             "on_hold": held,
             "ticket": unit.ticket_number.clone().unwrap_or_default(),
+            // As the filter's options name them (text keys).
+            "location_id": unit.location_id.to_string(),
+            "condition": if unit.out_since.is_some() { "out_of_range" } else { "in_range" },
         })
     });
-    let locations = stock_hold_service(&state)
-        .locations(&state)
-        .await?
-        .into_iter()
-        .map(|l| {
-            [
-                l.location.subject_id.to_string(),
-                format!("{} / {}", l.code, l.name),
-            ]
-        })
-        .collect();
     Ok(View::typed(ColdUnitsPage {
         tx: tx(&lang),
         units,

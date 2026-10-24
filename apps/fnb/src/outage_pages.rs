@@ -134,6 +134,12 @@ pub(crate) struct OutletBlock {
 pub(crate) struct ChannelsPage {
     tx: Texts,
     outlets: Vec<OutletBlock>,
+    /// The searched text (`?q=`).
+    search: String,
+    state_options: Vec<[String; 2]>,
+    state_selected: String,
+    /// Whether the search or the state narrows the page.
+    filtered: bool,
     methods: Vec<[String; 2]>,
     paper_channels: Vec<[String; 2]>,
     today: String,
@@ -240,7 +246,52 @@ async fn block_of(
     })
 }
 
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<Response> {
+/// What the page is narrowed to: `?q=` a part of the outlet's or the
+/// channel's name or kind, `?state=` `open` or `paused`.
+#[derive(serde::Deserialize, Default, Debug)]
+pub struct ChannelFilter {
+    #[serde(default)]
+    q: String,
+    #[serde(default)]
+    state: String,
+}
+
+impl ChannelFilter {
+    /// Whether it narrows anything.
+    fn is_set(&self) -> bool {
+        !self.q.trim().is_empty() || matches!(self.state.as_str(), "open" | "paused")
+    }
+
+    /// `block` with only the channels the filter keeps; `None` when nothing
+    /// of it is left. A search that names the outlet keeps all its channels.
+    fn apply(&self, mut block: OutletBlock) -> Option<OutletBlock> {
+        if !self.is_set() {
+            return Some(block);
+        }
+        let wanted = self.q.trim().to_lowercase();
+        let outlet_named = !wanted.is_empty() && block.name.to_lowercase().contains(&wanted);
+        block.channels.retain(|channel| {
+            let state_ok = match self.state.as_str() {
+                "open" => !channel.paused,
+                "paused" => channel.paused,
+                _ => true,
+            };
+            let text_ok = wanted.is_empty()
+                || outlet_named
+                || channel.name.to_lowercase().contains(&wanted)
+                || channel.kind.to_lowercase().contains(&wanted);
+            state_ok && text_ok
+        });
+        (!block.channels.is_empty()).then_some(block)
+    }
+}
+
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Query(filter): Query<ChannelFilter>,
+) -> Result<Response> {
     if !user.has_permission(permissions::OUTLET_CHANNELS_VIEW) {
         return Err(Error::Forbidden);
     }
@@ -253,8 +304,10 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
     {
         // The central kitchen has no channel of its own to show.
         let block = block_of(&state, &lang, &user, &outlet).await?;
-        if !block.channels.is_empty() || block.outage_id.is_some() {
-            blocks.push(block);
+        if (!block.channels.is_empty() || block.outage_id.is_some())
+            && let Some(kept) = filter.apply(block)
+        {
+            blocks.push(kept);
         }
     }
     let methods = method::ALL
@@ -277,9 +330,23 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
     .iter()
     .map(|c| [(*c).to_owned(), channel_word(&lang, c)])
     .collect();
+    let state_options = vec![
+        [String::new(), t(&lang, "fnb.screen.channels.state_all")],
+        ["open".to_owned(), t(&lang, "fnb.screen.channels.open")],
+        ["paused".to_owned(), t(&lang, "fnb.screen.channels.paused")],
+    ];
+    let state_selected = if matches!(filter.state.as_str(), "open" | "paused") {
+        filter.state.clone()
+    } else {
+        String::new()
+    };
     Ok(View::typed(ChannelsPage {
         tx: tx(&lang),
         outlets: blocks,
+        search: filter.q.trim().to_owned(),
+        state_options,
+        state_selected,
+        filtered: filter.is_set(),
         methods,
         paper_channels,
         today: wl_kernel::documents::today().to_string(),

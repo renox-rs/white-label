@@ -131,6 +131,14 @@ pub(crate) const OUTAGE_TEXTS: &[(&str, &str)] = &[
     ("fnb.screen.channels.open", "Taking orders"),
     ("fnb.screen.channels.paused", "Temporarily closed"),
     ("fnb.screen.channels.since", "Since"),
+    ("fnb.screen.channels.search", "Search outlets and channels"),
+    ("fnb.screen.channels.filter", "Filter"),
+    ("fnb.screen.channels.state_all", "Every state"),
+    ("fnb.screen.channels.no_match", "No channel matches"),
+    (
+        "fnb.screen.channels.no_match_text",
+        "Clear the search or pick another state to see the channels again.",
+    ),
     ("fnb.screen.channels.empty", "No channels yet"),
     (
         "fnb.screen.channels.empty_text",
