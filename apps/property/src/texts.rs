@@ -2069,6 +2069,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.enquiries.converted_no", "Open"),
     ("property.enquiries.created", "Enquiry recorded."),
     (
+        "property.enquiries.close_reason_unknown",
+        "Close it as a duplicate, spam or invalid.",
+    ),
+    (
         "property.enquiries.name_required",
         "Give the prospect's name.",
     ),

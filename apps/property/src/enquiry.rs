@@ -11,6 +11,13 @@
 //! converted value. A tenant who never made an enquiry gets the source on its
 //! party by staff, as for any customer. Viewings and the pipeline around the
 //! enquiry are not built here.
+//!
+//! The enquiries are 01's leads in the acquisition report (BL-SAL-27):
+//! [`EnquiryLeads`] reports them through the kernel's lead-capture contract
+//! (`wl_kernel::lead_records`), so wl-sales counts them under *Enquiries*
+//! without copying them and without this crate depending on wl-sales. An
+//! enquiry closed as duplicate, spam or invalid ([`close`]) is left out; it is
+//! won on the day its tenant's first lease was activated.
 
 use renox::chrono::NaiveDate;
 use renox::db::DateTime;
@@ -18,7 +25,10 @@ use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
+use wl_kernel::lead_records::{LeadRecord, LeadRecords, LeadRecordsFuture};
 use wl_kernel::sales::{Attribute, campaign_attribution};
+
+use crate::lease::{Lease, LeaseStatus};
 
 use crate::seed::LEAD_SOURCES;
 use crate::texts::english;
@@ -56,6 +66,9 @@ pub struct Enquiry {
     pub converted_party_id: Option<i64>,
     /// The day it converted.
     pub converted_on: Option<NaiveDate>,
+    /// Why it was closed without counting (`duplicate`, `spam`, `invalid`);
+    /// empty while it counts (BL-SAL-27).
+    pub closed_reason: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -166,6 +179,94 @@ pub async fn convert(state: &AppState, id: i64, tenant: PartyId) -> Result<Enqui
     enquiry.converted_on = Some(today());
     enquiry.save(&state.db).await?;
     Ok(enquiry)
+}
+
+/// The reasons an enquiry is closed without counting as a lead.
+pub const CLOSE_REASONS: [&str; 3] = ["duplicate", "spam", "invalid"];
+
+/// Closes enquiry `id` as `reason` (one of [`CLOSE_REASONS`]): it stays on
+/// file and leaves the campaign leads (BL-SAL-27).
+///
+/// # Errors
+///
+/// `NotFound` for an unknown enquiry; 422 for another reason or a converted
+/// enquiry; the database's errors.
+pub async fn close(db: &Db, id: i64, reason: &str) -> Result<Enquiry> {
+    let mut enquiry = Enquiry::find_or_404(db, id).await?;
+    if !CLOSE_REASONS.contains(&reason) {
+        return Err(refused("property.enquiries.close_reason_unknown"));
+    }
+    if enquiry.is_converted() {
+        return Err(refused("property.enquiries.already_converted"));
+    }
+    enquiry.closed_reason = Some(reason.to_owned());
+    enquiry.save(db).await?;
+    Ok(enquiry)
+}
+
+/// 01's enquiries as lead records for the acquisition report (BL-SAL-27):
+/// the source and campaign codes stored at capture, created on the day it
+/// came in, won on the activation day of the converted tenant's first lease,
+/// excluded when closed. A converted enquiry is one record, so it is never
+/// counted twice.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EnquiryLeads;
+
+/// The name the provider registers under.
+pub const LEAD_PROVIDER: &str = "property.enquiries";
+
+/// What 01 calls its leads in the report.
+pub const LEAD_LABEL: &str = "Enquiries";
+
+impl EnquiryLeads {
+    /// The activation day of the first lease of `party`, if one was activated.
+    async fn first_activation(db: &Db, party: i64) -> Result<Option<NaiveDate>> {
+        let leases = Lease::query()
+            .where_(Lease::TENANT_PARTY_ID.eq(party))
+            .where_(Lease::ACTIVATED_ON.is_not_null())
+            .order_by(Lease::ACTIVATED_ON)
+            .get(db)
+            .await?;
+        Ok(leases
+            .into_iter()
+            .filter(|l| l.status != LeaseStatus::Cancelled)
+            .find_map(|l| l.activated_on))
+    }
+}
+
+impl LeadRecords for EnquiryLeads {
+    fn records<'a>(
+        &'a self,
+        db: &'a Db,
+        from: Option<NaiveDate>,
+        to: Option<NaiveDate>,
+    ) -> LeadRecordsFuture<'a, Vec<LeadRecord>> {
+        Box::pin(async move {
+            let mut out = Vec::new();
+            for enquiry in Enquiry::query().order_by(Enquiry::ID).get(db).await? {
+                let won_on = match enquiry.converted_party_id {
+                    Some(party) => Self::first_activation(db, party).await?,
+                    None => None,
+                };
+                let inside =
+                    |d: NaiveDate| from.is_none_or(|f| d >= f) && to.is_none_or(|t| d <= t);
+                if !inside(enquiry.received_on) && !won_on.is_some_and(inside) {
+                    continue;
+                }
+                out.push(LeadRecord {
+                    subject: Some(enquiry.subject()),
+                    source: Some(enquiry.source.clone()),
+                    campaign: enquiry.campaign.clone(),
+                    created: enquiry.received_on,
+                    won_on,
+                    excluded: enquiry.closed_reason.is_some(),
+                    branch: None,
+                    legal_entity_id: None,
+                });
+            }
+            Ok(out)
+        })
+    }
 }
 
 #[cfg(test)]

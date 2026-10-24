@@ -212,14 +212,31 @@ fn viewer_of(user: &AuthUser, facts: &Facts) -> Viewer {
     )
 }
 
-/// The report for `query` as `user` sees it, with the names of its rows.
+/// The heading of the leads column when verticals report their own lead
+/// records (BL-SAL-27): the vertical's name for them (*Enquiries* in 01),
+/// after *Leads* when wl-sales has leads of its own too.
+fn leads_heading(facts: &Facts, leads: &str) -> Option<String> {
+    if facts.provider_labels.is_empty() {
+        return None;
+    }
+    let labels = facts.provider_labels.join(" / ");
+    Some(if facts.own_leads > 0 {
+        format!("{leads} / {labels}")
+    } else {
+        labels
+    })
+}
+
+/// The report for `query` as `user` sees it, with the names of its rows and
+/// the heading of its leads column when a vertical names them.
 async fn build(
     state: &AppState,
     user: &AuthUser,
     lang: &Lang,
     query: &ReportQuery,
-) -> Result<(Report, Vec<String>)> {
-    let facts = report::load(&state.db, &config_of(state)).await?;
+) -> Result<(Report, Vec<String>, Option<String>)> {
+    let facts = report::load_with_providers(state, &config_of(state)).await?;
+    let heading = leads_heading(&facts, &texts::t(lang, "wl_sales.report.leads"));
     let viewer = viewer_of(user, &facts);
     if viewer.is_blind() {
         return Err(Error::Forbidden);
@@ -231,7 +248,8 @@ async fn build(
         labels.push(report::label_of(&state.db, &row.key, &lang.locale).await?);
     }
     let sort = Sort::parse(query.sort.as_deref(), &SORT_KEYS);
-    Ok(sorted(report, labels, sort.as_ref()))
+    let (report, labels) = sorted(report, labels, sort.as_ref());
+    Ok((report, labels, heading))
 }
 
 /// One row as the page shows it.
@@ -276,7 +294,7 @@ async fn index(
     lang: Lang,
     Query(query): Query<ReportQuery>,
 ) -> Result<View> {
-    let (report, labels) = build(&state, &user, &lang, &query).await?;
+    let (report, labels, leads_heading) = build(&state, &user, &lang, &query).await?;
     let t = |key: &str| texts::t(&lang, &format!("wl_sales.{key}"));
     let head = [
         report.by.name(),
@@ -294,7 +312,11 @@ async fn index(
     ]
     .iter()
     .map(|key| {
-        if key.starts_with("report.") {
+        if *key == "report.leads"
+            && let Some(heading) = &leads_heading
+        {
+            heading.clone()
+        } else if key.starts_with("report.") {
             t(key)
         } else {
             t(&format!("report.by.{key}"))
@@ -410,7 +432,7 @@ async fn csv(
     lang: Lang,
     Query(query): Query<ReportQuery>,
 ) -> Result<renox::Download> {
-    let (report, labels) = build(&state, &user, &lang, &query).await?;
+    let (report, labels, _) = build(&state, &user, &lang, &query).await?;
     let total_label = texts::t(&lang, "wl_sales.report.total");
     let body = report::to_csv(&report, &labels, &total_label);
     Ok(renox::Download::bytes(

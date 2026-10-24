@@ -219,6 +219,13 @@ impl Module for Property {
         compliance::register(app);
         seed::register_critical_rules();
         ticket_update::register();
+        // The enquiries are 01's leads in the acquisition report (BL-SAL-27).
+        wl_kernel::lead_records::register_lead_records(
+            app,
+            enquiry::LEAD_PROVIDER,
+            enquiry::LEAD_LABEL,
+            enquiry::EnquiryLeads,
+        );
         // A building is the scope roles are assigned in.
         wl_kernel::scopes::register_label(Building::TABLE, |db, id| {
             let id = id.to_owned();

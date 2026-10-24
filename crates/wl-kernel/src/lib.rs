@@ -32,6 +32,7 @@ pub mod integrations;
 pub mod inventory;
 pub mod invoicing;
 pub mod late_entries;
+pub mod lead_records;
 pub mod lot_disposal;
 pub mod machines;
 pub mod manifest;

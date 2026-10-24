@@ -146,8 +146,14 @@ pub struct CostFact {
 /// Everything the report is computed from.
 #[derive(Debug, Clone, Default)]
 pub struct Facts {
-    /// The leads.
+    /// The leads: the wl-sales leads, then the records of the verticals'
+    /// lead providers (BL-SAL-27).
     pub leads: Vec<LeadFact>,
+    /// How many of the leads are wl-sales leads (the first ones).
+    pub own_leads: usize,
+    /// The names the registered lead providers give their leads
+    /// (*Enquiries* in 01), in English.
+    pub provider_labels: Vec<&'static str>,
     /// The new customers.
     pub customers: Vec<CustomerFact>,
     /// The approved cost entries.
@@ -589,6 +595,63 @@ pub fn to_csv(report: &Report, labels: &[String], total_label: &str) -> String {
     out
 }
 
+/// [`load`] plus the lead records of every lead provider the app's
+/// verticals registered (BL-SAL-27, `wl_kernel::lead_records`): each record
+/// counts as a lead of its source and campaign (found by code), in the period
+/// it was created, won when it was won, left out when excluded. The records
+/// stay in the vertical; nothing is copied into wl-sales.
+pub async fn load_with_providers(state: &AppState, config: &SalesConfig) -> Result<Facts> {
+    let mut facts = load(&state.db, config).await?;
+    let providers = wl_kernel::lead_records::lead_providers(state);
+    if providers.is_empty() {
+        return Ok(facts);
+    }
+    let db = &state.db;
+    let campaigns: BTreeMap<String, Campaign> = Campaign::query()
+        .get(db)
+        .await?
+        .into_iter()
+        .map(|c| (c.code.clone(), c))
+        .collect();
+    let sources: BTreeMap<String, i64> = LeadSource::query()
+        .get(db)
+        .await?
+        .into_iter()
+        .map(|s| (s.code, s.id))
+        .collect();
+    for provider in providers {
+        if !facts.provider_labels.contains(&provider.label) {
+            facts.provider_labels.push(provider.label);
+        }
+        for record in provider.records.records(db, None, None).await? {
+            let campaign = record
+                .campaign
+                .as_deref()
+                .and_then(|code| campaigns.get(&crate::campaign::normalize_code(code)));
+            facts.leads.push(LeadFact {
+                attrs: Attrs {
+                    source: record
+                        .source
+                        .as_deref()
+                        .and_then(|code| sources.get(code).copied())
+                        .or_else(|| campaign.and_then(|c| c.lead_source_id)),
+                    campaign: campaign.map(|c| c.id),
+                    channel: campaign.and_then(|c| c.marketing_channel.clone()),
+                    brand: campaign.and_then(|c| c.brand.clone()),
+                    branch: record.branch.clone().or_else(|| campaign.and_then(Campaign::branch)),
+                    entity: campaign
+                        .and_then(|c| c.legal_entity_id)
+                        .or(record.legal_entity_id),
+                },
+                created: record.created,
+                won_on: record.won_on,
+                counts: !record.excluded,
+            });
+        }
+    }
+    Ok(facts)
+}
+
 /// Loads the facts: every lead, every live acquisition with a first sale and
 /// every approved cost entry. The filters and the scope are applied by
 /// [`compute`].
@@ -631,6 +694,7 @@ pub async fn load(db: &Db, config: &SalesConfig) -> Result<Facts> {
             counts: !lead.left_out_of_counts(),
         });
     }
+    facts.own_leads = facts.leads.len();
     let acquisitions = PartyAcquisition::query()
         .where_(PartyAcquisition::SUPERSEDED_BY.is_null())
         .where_(PartyAcquisition::FIRST_SALE_ID.is_not_null())
