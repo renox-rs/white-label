@@ -26,12 +26,7 @@ fn travel_to(app: &TestApp, day: &str) {
 /// A lease of a new unit for `tenant`, put straight in `status` (the lease
 /// lifecycle is the property app's and tested there; here only the state
 /// the portal listener reads matters).
-async fn lease_in(
-    app: &TestApp,
-    code: &str,
-    tenant: PartyId,
-    status: &str,
-) -> property::Lease {
+async fn lease_in(app: &TestApp, code: &str, tenant: PartyId, status: &str) -> property::Lease {
     let unit = unit_of(app, code, "101", property::UnitUse::Residential).await;
     let lease = draft_lease(app, &unit, tenant, -30).await;
     renox::db::sql("UPDATE property_leases SET status = ? WHERE id = ?")
@@ -192,5 +187,8 @@ async fn por03_a_force_terminated_lease_ends_the_grant() {
         .unwrap();
     let ended = AccessGrant::find_or_404(app.db(), grant.id).await.unwrap();
     assert_eq!(ended.status, GrantStatus::ReadOnly);
-    assert_eq!(ended.ended_reason.as_deref(), Some("lease force-terminated"));
+    assert_eq!(
+        ended.ended_reason.as_deref(),
+        Some("lease force-terminated")
+    );
 }

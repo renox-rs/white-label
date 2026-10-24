@@ -769,7 +769,11 @@ async fn request_confirm(
     wl_ticketing::work::confirm(&state, &user, &ticket)
         .await
         .map_err(renox::state_machine::TransitionError::into_error)?;
-    Ok((Toast::success("Thank you: the request is closed."), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success("Thank you: the request is closed."),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// `POST /portal/{party}/requests/{ticket}/reopen`: the requester reopens
@@ -787,7 +791,11 @@ async fn request_reopen(
     wl_ticketing::work::reopen(&state, &user, &ticket, renox::db::now())
         .await
         .map_err(renox::state_machine::TransitionError::into_error)?;
-    Ok((Toast::success("The request is open again."), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success("The request is open again."),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The document kind of a request's photos (BL-TKT-14): images up to 20 MB
@@ -845,8 +853,7 @@ impl Module for PropertyPortal {
 
     fn register(&self, app: &mut Registry) {
         register_sections();
-        app.view_data::<RequestNewPage>()
-            .view_data::<RequestPage>();
+        app.view_data::<RequestNewPage>().view_data::<RequestPage>();
         // The photos of a portal request, stored on the ticket (BL-TKT-14).
         wl_documents::register_kind(photo_kind());
         app.command(

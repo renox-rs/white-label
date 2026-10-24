@@ -219,9 +219,7 @@ pub(crate) fn grid(
             .mobile()
             .searchable(),
         )
-        .column(
-            Column::select("channel", &t("orders.channel"), channel_options).searchable(),
-        )
+        .column(Column::select("channel", &t("orders.channel"), channel_options).searchable())
         .column(Column::text("payment_mode", &t("orders.payment_mode")).hidden())
         .column(
             Column::text("external_number", &t("orders.external_number"))

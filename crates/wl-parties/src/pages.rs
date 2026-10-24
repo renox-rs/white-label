@@ -63,9 +63,7 @@ use crate::confirm_match;
 use crate::contacts::{ContactPoint, ContactStatus, ContactType, update_contact, verify_contact};
 use crate::create::{NewParty, create};
 use crate::details::{CompanyDetails, PersonDetails};
-use crate::einvoice::{
-    clean, lookup_available, lookup_by_trn, lookup_recipient, set_recipient_id,
-};
+use crate::einvoice::{clean, lookup_available, lookup_by_trn, lookup_recipient, set_recipient_id};
 use crate::evidence::{UnblockBasis, UnblockEvidence};
 use crate::list_parser::ListParsers;
 use crate::list_upload::{
@@ -497,18 +495,14 @@ async fn lookup_new_einvoice(
             let typed = clean(Some(&entered.einvoice_recipient_id));
             match typed {
                 None => {
-                    let text =
-                        texts::t_with(&lang, "wl_parties.einvoice.found", &[("id", &found)]);
+                    let text = texts::t_with(&lang, "wl_parties.einvoice.found", &[("id", &found)]);
                     entered.einvoice_recipient_id = found;
                     (Some((text, "success")), None)
                 }
                 Some(typed) if typed == found => (None, None),
                 Some(_) => {
-                    let text = texts::t_with(
-                        &lang,
-                        "wl_parties.einvoice.suggestion",
-                        &[("id", &found)],
-                    );
+                    let text =
+                        texts::t_with(&lang, "wl_parties.einvoice.suggestion", &[("id", &found)]);
                     (Some((text, "warning")), Some(found))
                 }
             }
@@ -1571,10 +1565,14 @@ async fn block_effects_page(lang: Lang, Query(query): Query<BlockEffectsQuery>) 
             key: info.key,
         })
         .collect();
-    let effects = [BlockEffect::Pause, BlockEffect::Continue, BlockEffect::Review]
-        .iter()
-        .map(|e| (e.as_str().to_owned(), t(&format!("effect.{}", e.as_str()))))
-        .collect();
+    let effects = [
+        BlockEffect::Pause,
+        BlockEffect::Continue,
+        BlockEffect::Review,
+    ]
+    .iter()
+    .map(|e| (e.as_str().to_owned(), t(&format!("effect.{}", e.as_str()))))
+    .collect();
     let mut sorts = Vec::new();
     for (key, label) in [
         ("agreement", "block_effects.agreement"),

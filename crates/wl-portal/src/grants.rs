@@ -427,10 +427,7 @@ mod tests {
         };
         assert!(grant.is_readable_on(day(12, 31)));
         assert!(!grant.is_active_on(day(12, 31)));
-        assert_eq!(
-            grant.closes_on(90),
-            NaiveDate::from_ymd_opt(2027, 4, 1)
-        );
+        assert_eq!(grant.closes_on(90), NaiveDate::from_ymd_opt(2027, 4, 1));
         assert_eq!(grant.closes_on(0), Some(day(12, 31)));
         let closed = AccessGrant {
             status: GrantStatus::Closed,

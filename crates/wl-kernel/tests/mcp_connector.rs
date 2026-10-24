@@ -16,7 +16,9 @@ use renox::serde_json::{Map, Value};
 use renox::testing::{TestApp, TestResponse};
 use serde::{Deserialize, Serialize};
 use wl_kernel::agent::access::{AgentsOn, TURNED_OFF, policy};
-use wl_kernel::connector::{AgentReport, RecordFields, ReportRows, register_fields, register_report};
+use wl_kernel::connector::{
+    AgentReport, RecordFields, ReportRows, register_fields, register_report,
+};
 use wl_kernel::related::Relation;
 use wl_kernel::search::{self, SearchDocument, Searchable, Sensitivity, kinds};
 use wl_kernel::{ClientConfig, Subject};
@@ -112,17 +114,22 @@ impl Module for Subjects {
             })
         });
         register_report(
-            AgentReport::new("mcptest.lines", "Many lines", "invoices.view", |_db, _access, _f| {
-                Box::pin(async move {
-                    let mut totals = Map::new();
-                    totals.insert("amount".into(), json!(600 * 100));
-                    Ok(ReportRows {
-                        columns: vec!["line".into(), "amount".into()],
-                        rows: (1..=600).map(|i| vec![json!(i), json!(100)]).collect(),
-                        totals,
+            AgentReport::new(
+                "mcptest.lines",
+                "Many lines",
+                "invoices.view",
+                |_db, _access, _f| {
+                    Box::pin(async move {
+                        let mut totals = Map::new();
+                        totals.insert("amount".into(), json!(600 * 100));
+                        Ok(ReportRows {
+                            columns: vec!["line".into(), "amount".into()],
+                            rows: (1..=600).map(|i| vec![json!(i), json!(100)]).collect(),
+                            totals,
+                        })
                     })
-                })
-            })
+                },
+            )
             .filter("from", "The first line"),
         );
     }
@@ -174,9 +181,14 @@ where
 async fn user_with_token(app: &TestApp, name: &str, grants: &[&str]) -> (User, String) {
     let db = app.db();
     permissions::define_role(db, name, grants).await.unwrap();
-    let user = User::register(db, name, &format!("{name}@gulftower.example"), "password123")
-        .await
-        .unwrap();
+    let user = User::register(
+        db,
+        name,
+        &format!("{name}@gulftower.example"),
+        "password123",
+    )
+    .await
+    .unwrap();
     user.assign_role(db, name).await.unwrap();
     let token = user.create_token(db, "Claude", None).await.unwrap();
     (user, token.plain)
@@ -194,18 +206,28 @@ async fn rpc(app: &TestApp, token: &str, method: &str, params: Value) -> TestRes
 
 /// The structured answer of a tool, or panics on a tool error.
 async fn tool(app: &TestApp, token: &str, name: &str, arguments: Value) -> Value {
-    let answer: Value = rpc(app, token, "tools/call", json!({ "name": name, "arguments": arguments }))
-        .await
-        .json();
+    let answer: Value = rpc(
+        app,
+        token,
+        "tools/call",
+        json!({ "name": name, "arguments": arguments }),
+    )
+    .await
+    .json();
     assert_eq!(answer["result"]["isError"], json!(false), "{answer}");
     answer["result"]["structuredContent"].clone()
 }
 
 /// The error text of a tool call that failed.
 async fn tool_error(app: &TestApp, token: &str, name: &str, arguments: Value) -> String {
-    let answer: Value = rpc(app, token, "tools/call", json!({ "name": name, "arguments": arguments }))
-        .await
-        .json();
+    let answer: Value = rpc(
+        app,
+        token,
+        "tools/call",
+        json!({ "name": name, "arguments": arguments }),
+    )
+    .await
+    .json();
     assert_eq!(answer["result"]["isError"], json!(true), "{answer}");
     answer["result"]["content"][0]["text"]
         .as_str()
@@ -277,10 +299,16 @@ async fn a_fresh_company_refuses_every_agent_call() {
     let (_, token) = user_with_token(&app, "finance", &["invoices.view"]).await;
     // The client may connect, but no tool is listed or run.
     let init: Value = rpc(&app, &token, "initialize", json!({})).await.json();
-    assert!(init["result"]["capabilities"]["tools"].is_object(), "{init}");
+    assert!(
+        init["result"]["capabilities"]["tools"].is_object(),
+        "{init}"
+    );
     for (method, params) in [
         ("tools/list", json!({})),
-        ("tools/call", json!({ "name": "search", "arguments": { "query": "INV" } })),
+        (
+            "tools/call",
+            json!({ "name": "search", "arguments": { "query": "INV" } }),
+        ),
     ] {
         let answer: Value = rpc(&app, &token, method, params).await.json();
         assert_eq!(answer["error"]["message"], json!(TURNED_OFF), "{answer}");
@@ -314,7 +342,9 @@ async fn the_assistant_finds_reads_and_relates_what_its_user_sees() {
     let invoice_id = format!("{INVOICE}:{}", world.invoice.id);
 
     // The tools are listed, read-only.
-    let list: Value = rpc(app, &world.finance, "tools/list", json!({})).await.json();
+    let list: Value = rpc(app, &world.finance, "tools/list", json!({}))
+        .await
+        .json();
     let tools = list["result"]["tools"].as_array().expect("tools");
     for name in ["search", "fetch", "related", "list_reports", "run_report"] {
         let tool = tools
@@ -325,7 +355,13 @@ async fn the_assistant_finds_reads_and_relates_what_its_user_sees() {
     }
 
     // The number finds the invoice first.
-    let found = tool(app, &world.finance, "search", json!({ "query": "INV-PGP-2026-0004" })).await;
+    let found = tool(
+        app,
+        &world.finance,
+        "search",
+        json!({ "query": "INV-PGP-2026-0004" }),
+    )
+    .await;
     assert_eq!(found["results"][0]["id"], json!(invoice_id), "{found}");
     assert!(
         found["results"][0]["url"]
@@ -396,7 +432,13 @@ async fn invoices_are_neither_found_nor_fetchable_without_their_permission() {
     let world = world().await;
     let app = &world.app;
     let invoice_id = format!("{INVOICE}:{}", world.invoice.id);
-    let found = tool(app, &world.viewer, "search", json!({ "query": "INV-PGP-2026-0004" })).await;
+    let found = tool(
+        app,
+        &world.viewer,
+        "search",
+        json!({ "query": "INV-PGP-2026-0004" }),
+    )
+    .await;
     assert_eq!(found["count"], json!(0), "{found}");
     let typed = tool(
         app,
@@ -447,14 +489,30 @@ async fn a_report_returns_at_most_500_rows_and_says_how_to_narrow_it() {
     let world = world().await;
     let app = &world.app;
     let listed = tool(app, &world.finance, "list_reports", json!({})).await;
-    assert_eq!(listed["reports"][0]["key"], json!("mcptest.lines"), "{listed}");
+    assert_eq!(
+        listed["reports"][0]["key"],
+        json!("mcptest.lines"),
+        "{listed}"
+    );
     let none = tool(app, &world.viewer, "list_reports", json!({})).await;
     assert_eq!(none["reports"], json!([]));
     assert_eq!(
-        tool_error(app, &world.viewer, "run_report", json!({ "key": "mcptest.lines" })).await,
+        tool_error(
+            app,
+            &world.viewer,
+            "run_report",
+            json!({ "key": "mcptest.lines" })
+        )
+        .await,
         "Not found."
     );
-    let ran = tool(app, &world.finance, "run_report", json!({ "key": "mcptest.lines" })).await;
+    let ran = tool(
+        app,
+        &world.finance,
+        "run_report",
+        json!({ "key": "mcptest.lines" }),
+    )
+    .await;
     assert_eq!(ran["rows"].as_array().unwrap().len(), 500);
     assert_eq!(ran["row_count"], json!(600));
     assert_eq!(ran["truncated"], json!(true));

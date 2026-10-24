@@ -41,19 +41,47 @@ async fn sign_in(app: &TestApp, email: &str) {
 
 /// Each list with its template and the demo login that works from it.
 const LISTS: [(&str, &str, &str); 9] = [
-    ("/auto/job-cards", "job_cards.html", "waleed@alnoorauto.example"),
-    ("/auto/vehicles", "vehicles.html", "hussein@alnoorauto.example"),
+    (
+        "/auto/job-cards",
+        "job_cards.html",
+        "waleed@alnoorauto.example",
+    ),
+    (
+        "/auto/vehicles",
+        "vehicles.html",
+        "hussein@alnoorauto.example",
+    ),
     ("/auto/claims", "claims.html", "carla@alnoorauto.example"),
-    ("/auto/fleet", "fleet_contracts.html", "fatima@alnoorauto.example"),
+    (
+        "/auto/fleet",
+        "fleet_contracts.html",
+        "fatima@alnoorauto.example",
+    ),
     (
         "/auto/supplier-claims",
         "supplier_claims.html",
         "pia@alnoorauto.example",
     ),
-    ("/auto/export-sales", "export_sales.html", "aisha@alnoorauto.example"),
-    ("/auto/technician", "technician.html", "tareq@alnoorauto.example"),
-    ("/auto/insurers", "insurers.html", "carla@alnoorauto.example"),
-    ("/auto/labour-menu", "labour_menu.html", "sami@alnoorauto.example"),
+    (
+        "/auto/export-sales",
+        "export_sales.html",
+        "aisha@alnoorauto.example",
+    ),
+    (
+        "/auto/technician",
+        "technician.html",
+        "tareq@alnoorauto.example",
+    ),
+    (
+        "/auto/insurers",
+        "insurers.html",
+        "carla@alnoorauto.example",
+    ),
+    (
+        "/auto/labour-menu",
+        "labour_menu.html",
+        "sami@alnoorauto.example",
+    ),
 ];
 
 /// Every list of the issue is a grid that is a direct child of its page.
@@ -103,11 +131,7 @@ async fn the_export_is_for_the_roles_that_manage_the_list() {
 
     sign_in(&app, "tareq@alnoorauto.example").await;
     for path in ["/auto/technician?export=csv", "/auto/job-cards?export=csv"] {
-        let page = app
-            .request()
-            .header("accept", "text/html")
-            .get(path)
-            .await;
+        let page = app.request().header("accept", "text/html").get(path).await;
         assert_eq!(page.status.as_u16(), 403, "{path} as a technician");
     }
 }

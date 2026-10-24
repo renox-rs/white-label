@@ -186,12 +186,14 @@ pub(crate) async fn contracts(
     let clients = grid_lookup::party_options(
         state,
         &lang.locale,
-        visible.iter().map(|contract| contract.client_party_id).collect::<Vec<i64>>(),
+        visible
+            .iter()
+            .map(|contract| contract.client_party_id)
+            .collect::<Vec<i64>>(),
     )
     .await;
     let term = grid_lookup::searched(&request, session, "manpower-contracts");
-    let client_match =
-        grid_lookup::party_match(state, term.as_deref(), &["client_party_id"]).await;
+    let client_match = grid_lookup::party_match(state, term.as_deref(), &["client_party_id"]).await;
     let grid = contracts_grid(lang, clients, &client_match, can_create);
     let query = ClientContract::query().where_(
         ClientContract::ID.is_in(only(visible.iter().map(|contract| contract.id).collect())),
@@ -360,8 +362,7 @@ pub(crate) async fn requests(
         .await?;
     let clients = grid_lookup::party_options(state, &lang.locale, client_ids).await;
     let term = grid_lookup::searched(&request, session, "manpower-requests");
-    let client_match =
-        grid_lookup::party_match(state, term.as_deref(), &["client_party_id"]).await;
+    let client_match = grid_lookup::party_match(state, term.as_deref(), &["client_party_id"]).await;
     let grid = requests_grid(lang, clients, &client_match, can_export);
     if let Some(file) = exported(&grid, query.clone(), &request, can_export).await? {
         return Ok(file);
@@ -518,7 +519,10 @@ async fn deployment_lookups(
         filters.clients = grid_lookup::party_options(
             state,
             &lang.locale,
-            shown.iter().map(|deployment| deployment.client_party_id).collect::<Vec<i64>>(),
+            shown
+                .iter()
+                .map(|deployment| deployment.client_party_id)
+                .collect::<Vec<i64>>(),
         )
         .await;
         let mut request_ids: Vec<i64> = shown.iter().filter_map(|d| d.request_id).collect();
@@ -557,10 +561,9 @@ async fn deployment_lookups(
     let mut found = Vec::new();
     for deployment in &shown {
         if !names.contains_key(&deployment.employee_id) {
-            let name =
-                crate::deployments::worker_name(state, &lang.locale, deployment.employee())
-                    .await
-                    .to_lowercase();
+            let name = crate::deployments::worker_name(state, &lang.locale, deployment.employee())
+                .await
+                .to_lowercase();
             names.insert(deployment.employee_id, name);
         }
         if names

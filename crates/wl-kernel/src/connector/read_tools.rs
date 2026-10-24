@@ -23,14 +23,12 @@ use renox::serde_json::{Map, Value};
 
 use super::fetch::fields_of;
 use super::reports;
+use crate::agent::AgentCall;
 use crate::agent::access::{self, Use};
 use crate::agent::tools::{AgentTool, register_tool};
-use crate::agent::AgentCall;
 use crate::machines;
 use crate::related;
-use crate::search::{
-    self, Access, SearchDocumentRow, SearchHit, identifiers_of, searchable_type,
-};
+use crate::search::{self, Access, SearchDocumentRow, SearchHit, identifiers_of, searchable_type};
 use crate::subject::Subject;
 
 /// The most results `search` returns.
@@ -150,7 +148,11 @@ async fn search_tool(call: AgentCall, args: Value) -> Result<Value> {
 
 /// The stored document of `subject` when the user may open it and the
 /// company lets assistants read its type; "not found" otherwise.
-async fn readable(call: &AgentCall, access: &Access, subject: &Subject) -> Result<SearchDocumentRow> {
+async fn readable(
+    call: &AgentCall,
+    access: &Access,
+    subject: &Subject,
+) -> Result<SearchDocumentRow> {
     let searchable = searchable_type(&subject.subject_type).ok_or_else(not_found)?;
     if !may_read(call, &subject.subject_type).await {
         return Err(not_found());
@@ -253,7 +255,10 @@ async fn related_tool(call: AgentCall, args: Value) -> Result<Value> {
     {
         return Err(not_found());
     }
-    let wanted = args.get("relation").and_then(Value::as_str).map(str::to_owned);
+    let wanted = args
+        .get("relation")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
     let mut groups = Vec::new();
     for group in related::related(db, &access, &subject, related::PANEL_DEPTH).await? {
         if wanted.as_deref().is_some_and(|name| name != group.name) {

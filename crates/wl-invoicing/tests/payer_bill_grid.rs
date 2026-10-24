@@ -62,8 +62,16 @@ async fn the_payer_bills_grid_searches_by_payer_sorts_and_pages() {
         .assert_see("1–12 of 12");
 
     let at = |html: &str, text: &str| html.find(text).unwrap_or(usize::MAX);
-    let desc = t.app.get("/payer-bills?sort=-payer&per_page=25").await.text();
+    let desc = t
+        .app
+        .get("/payer-bills?sort=-payer&per_page=25")
+        .await
+        .text();
     assert!(at(&desc, "Quiet Sands LLC") < at(&desc, "Blue Dunes LLC"));
-    let asc = t.app.get("/payer-bills?sort=payer&per_page=25").await.text();
+    let asc = t
+        .app
+        .get("/payer-bills?sort=payer&per_page=25")
+        .await
+        .text();
     assert!(at(&asc, "Blue Dunes LLC") < at(&asc, "Quiet Sands LLC"));
 }

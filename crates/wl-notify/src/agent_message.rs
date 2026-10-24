@@ -58,8 +58,7 @@ pub const SEND_MESSAGE: &str = "send_message";
 pub const FREE_TEXT_ARGUMENTS: &[&str] = &["body", "text", "message", "content", "subject"];
 
 /// More placeholders for records of one type: `(state, record id)`.
-pub type RecordData =
-    Arc<dyn Fn(AppState, i64) -> BoxFuture<'static, Result<Value>> + Send + Sync>;
+pub type RecordData = Arc<dyn Fn(AppState, i64) -> BoxFuture<'static, Result<Value>> + Send + Sync>;
 
 static DATA: RwLock<BTreeMap<String, RecordData>> = RwLock::new(BTreeMap::new());
 
@@ -354,12 +353,18 @@ async fn placeholders(
 ) -> Result<Value> {
     let mut data = Map::new();
     let document = wl_kernel::search::document_of(&state.db, record).await?;
-    let title = document.as_ref().map_or(title, |d| d.title.as_str()).to_owned();
+    let title = document
+        .as_ref()
+        .map_or(title, |d| d.title.as_str())
+        .to_owned();
     for key in ["number", "title", "record"] {
         data.insert(key.to_owned(), Value::String(title.clone()));
     }
     if let Some(document) = &document {
-        data.insert("secondary".into(), Value::String(document.secondary.clone()));
+        data.insert(
+            "secondary".into(),
+            Value::String(document.secondary.clone()),
+        );
         if let Some(status) = &document.status {
             data.insert("status".into(), Value::String(status.clone()));
         }
@@ -405,7 +410,8 @@ async fn queue(call: &AgentCall, plan: &Plan) -> Result<Message> {
         },
     };
     let recipient = NotifyRecipient::Party { id: plan.party };
-    let mut message = crate::notifier::compose(&plan.def, &plan.record, &recipient, &resolved, &data);
+    let mut message =
+        crate::notifier::compose(&plan.def, &plan.record, &recipient, &resolved, &data);
     message.subject_label = Some(plan.record_title.clone());
     // The text previewed is the text sent.
     message.rendered_subject.clone_from(&plan.subject);

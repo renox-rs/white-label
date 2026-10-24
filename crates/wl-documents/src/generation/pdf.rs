@@ -247,9 +247,7 @@ fn jpeg_image(bytes: &[u8]) -> Option<Image> {
             return Some(Image {
                 width,
                 height,
-                dict: format!(
-                    "/ColorSpace {space} /BitsPerComponent 8 /Filter /DCTDecode"
-                ),
+                dict: format!("/ColorSpace {space} /BitsPerComponent 8 /Filter /DCTDecode"),
                 data: bytes.to_vec(),
             });
         }
@@ -385,8 +383,7 @@ pub fn render(job: &RenderJob) -> Result<Vec<u8>, RenderError> {
     let (page_width, page_height) = page_size(job.paper);
     let right = page_width - MARGIN;
     let top = page_height - MARGIN - LOGO_HEIGHT - 30.0;
-    let footer_lines =
-        usize::from(job.footer_en.is_some()) + usize::from(job.footer_ar.is_some());
+    let footer_lines = usize::from(job.footer_en.is_some()) + usize::from(job.footer_ar.is_some());
     #[allow(clippy::cast_precision_loss)]
     let bottom = MARGIN + 20.0 + footer_lines as f32 * LINE_HEIGHT;
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -475,7 +472,14 @@ pub fn render(job: &RenderJob) -> Result<Vec<u8>, RenderError> {
         if let Some(name_ar) = job.brand.company_name_ar.as_deref() {
             text_line(&mut content, name_ar, name_x, right, header_y + 14.0, 12.0);
         }
-        text_line(&mut content, &job.title, MARGIN, right, header_y - 18.0, 12.0);
+        text_line(
+            &mut content,
+            &job.title,
+            MARGIN,
+            right,
+            header_y - 18.0,
+            12.0,
+        );
         let rule_y = header_y - 26.0;
         let _ = writeln!(
             content,
@@ -529,8 +533,7 @@ pub fn render(job: &RenderJob) -> Result<Vec<u8>, RenderError> {
             )
             .into_bytes(),
         );
-        let mut stream =
-            format!("<< /Length {} >>\nstream\n", content.len()).into_bytes();
+        let mut stream = format!("<< /Length {} >>\nstream\n", content.len()).into_bytes();
         stream.extend_from_slice(content.as_bytes());
         stream.extend_from_slice(b"endstream");
         objects.push(stream);

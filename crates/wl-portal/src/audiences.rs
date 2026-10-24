@@ -77,10 +77,7 @@ impl PortalRole {
 
     /// Every role, by audience then in the order they were seeded.
     pub async fn all(db: &Db) -> Result<Vec<PortalRole>> {
-        let mut roles = PortalRole::query()
-            .order_by(PortalRole::ID)
-            .get(db)
-            .await?;
+        let mut roles = PortalRole::query().order_by(PortalRole::ID).get(db).await?;
         roles.sort_by(|a, b| a.audience.cmp(&b.audience).then(a.id.cmp(&b.id)));
         Ok(roles)
     }

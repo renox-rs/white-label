@@ -71,9 +71,7 @@ fn sort_key(row: &Row, key: &str) -> SortKey {
         "actual" => SortKey::Number(row.actual),
         "variance" => SortKey::Number(row.actual - row.budget),
         // A category with no budget has no percentage: it comes first.
-        _ => SortKey::Number(
-            percent_bp(row.actual - row.budget, row.budget).unwrap_or(i64::MIN),
-        ),
+        _ => SortKey::Number(percent_bp(row.actual - row.budget, row.budget).unwrap_or(i64::MIN)),
     }
 }
 
@@ -409,7 +407,11 @@ async fn index(
                     row.actual.clone(),
                     row.variance.clone(),
                     row.percent.clone(),
-                    if row.unfavourable { flag.clone() } else { String::new() },
+                    if row.unfavourable {
+                        flag.clone()
+                    } else {
+                        String::new()
+                    },
                 ]
             })
             .collect();
@@ -440,7 +442,14 @@ async fn index(
         &[
             ("entity", entity_param.clone()),
             ("month", month_param.clone()),
-            ("ytd", if filter.ytd() { "1".to_owned() } else { String::new() }),
+            (
+                "ytd",
+                if filter.ytd() {
+                    "1".to_owned()
+                } else {
+                    String::new()
+                },
+            ),
             ("sort", sort_param.clone()),
         ],
     );

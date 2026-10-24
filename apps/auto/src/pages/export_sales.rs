@@ -119,7 +119,8 @@ async fn index(
     let today = wl_kernel::documents::today();
     let can_export = user.has_permission(permissions::EXPORT_SALES_MANAGE);
     let grid = lists::exporting(grid(&lists::texts_in(&lang)), can_export);
-    if let Some(file) = lists::export_file(&grid, can_export, ExportSale::query(), &request).await? {
+    if let Some(file) = lists::export_file(&grid, can_export, ExportSale::query(), &request).await?
+    {
         return Ok(file);
     }
     let page = grid.page(ExportSale::query(), &request).await?;

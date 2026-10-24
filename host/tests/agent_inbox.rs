@@ -153,7 +153,13 @@ async fn mark_read_clears_the_bell_count() {
     let ana = person(&app, "Ana", host::roles::ADMIN).await;
     let carl = person(&app, "Carl", host::roles::RECEIVABLES).await;
     notification(&app, &ana, "wl-notification", "Invoice INV-0004 is overdue").await;
-    notification(&app, &ana, "ticket.mention", "Carl mentioned you on ticket T-12").await;
+    notification(
+        &app,
+        &ana,
+        "ticket.mention",
+        "Carl mentioned you on ticket T-12",
+    )
+    .await;
     notification(&app, &carl, "wl-notification", "Not Ana's").await;
     assert_eq!(ana.unread_notification_count(app.db()).await.unwrap(), 2);
 

@@ -11,8 +11,8 @@ use std::time::Duration;
 use renox::Download;
 use renox::prelude::*;
 use renox::signed::ValidSignature;
-use wl_kernel::documents::DocumentId;
 use wl_kernel::document_store::{DocumentStore, StoreFuture, StoredFile};
+use wl_kernel::documents::DocumentId;
 
 use wl_kernel::Subject;
 
@@ -108,11 +108,17 @@ async fn signed_file(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Download> {
-    let document = Document::find(&state.db, id).await?.ok_or(Error::NotFound)?;
+    let document = Document::find(&state.db, id)
+        .await?
+        .ok_or(Error::NotFound)?;
     let version = document
         .current_file(&state.db)
         .await?
         .ok_or(Error::NotFound)?;
     let bytes = version.read(&state).await?.ok_or(Error::NotFound)?;
-    Ok(Download::bytes(version.file_name, version.mime_type, bytes.to_vec()))
+    Ok(Download::bytes(
+        version.file_name,
+        version.mime_type,
+        bytes.to_vec(),
+    ))
 }

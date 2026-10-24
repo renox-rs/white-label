@@ -91,7 +91,14 @@ async fn with_the_property_seed_the_form_offers_the_six_channels_and_the_report_
         .collect();
     assert_eq!(
         active,
-        ["brokers", "email", "listing_portals", "search_ads", "signboards", "social_media"]
+        [
+            "brokers",
+            "email",
+            "listing_portals",
+            "search_ads",
+            "signboards",
+            "social_media"
+        ]
     );
     // Nothing is deleted, and a re-run changes nothing.
     assert_eq!(CampaignChannel::query().count(db).await.unwrap(), 17);
@@ -169,7 +176,10 @@ async fn a_channel_in_use_is_not_deleted_and_deactivating_hides_it_from_new_camp
     let t = boot().await;
     let db = t.db();
     let used = campaign(&t, "TIK26", "tiktok").await;
-    let tiktok = CampaignChannel::by_code(db, "tiktok").await.unwrap().unwrap();
+    let tiktok = CampaignChannel::by_code(db, "tiktok")
+        .await
+        .unwrap()
+        .unwrap();
     assert!(tiktok.in_use(db).await.unwrap());
     assert_eq!(
         tiktok.clone().delete_unused(db).await.unwrap(),
@@ -185,7 +195,12 @@ async fn a_channel_in_use_is_not_deleted_and_deactivating_hides_it_from_new_camp
         )
         .await
         .assert_status(422);
-    assert!(CampaignChannel::by_code(db, "tiktok").await.unwrap().is_some());
+    assert!(
+        CampaignChannel::by_code(db, "tiktok")
+            .await
+            .unwrap()
+            .is_some()
+    );
 
     t.app
         .post(
@@ -237,7 +252,11 @@ async fn a_vertical_seed_adds_tender_invitations_without_code_in_wl_sales() {
     let db = t.db();
     let done = CampaignChannel::seed_vertical(
         db,
-        &[("tender_invitations", "Tender invitations", "دعوات المناقصات")],
+        &[(
+            "tender_invitations",
+            "Tender invitations",
+            "دعوات المناقصات",
+        )],
         false,
     )
     .await

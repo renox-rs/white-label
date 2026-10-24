@@ -88,7 +88,11 @@ async fn five_cheques_go_back_against_one_numbered_receipt_sent_to_the_tenant() 
         ids.push(s.cheque(number, i as i64 + 1).await);
     }
     let handover = s.hand_back(ids.clone()).await;
-    assert_eq!(handover.cheques.0.len(), 5, "one receipt lists the five cheques");
+    assert_eq!(
+        handover.cheques.0.len(),
+        5,
+        "one receipt lists the five cheques"
+    );
     assert_eq!(handover.total, 5_000_000);
     assert_eq!(handover.receiver_party_id, s.tenant.0);
     let number = handover.number.clone().expect("the receipt is numbered");
@@ -97,7 +101,10 @@ async fn five_cheques_go_back_against_one_numbered_receipt_sent_to_the_tenant() 
     let stored = wl_documents::Document::find_or_404(s.app.db(), document)
         .await
         .unwrap();
-    assert_eq!(stored.subject_type, wl_payments::cheque_handover::SUBJECT_TYPE);
+    assert_eq!(
+        stored.subject_type,
+        wl_payments::cheque_handover::SUBJECT_TYPE
+    );
     assert_eq!(stored.subject_id, handover.id);
 
     // Each cheque links to the receipt.

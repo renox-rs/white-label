@@ -175,7 +175,10 @@ mod tests {
             })
         );
         assert_eq!(Sort::parse(Some("name"), &keys).unwrap().param(), "name");
-        assert_eq!(Sort::parse(Some("-total"), &keys).unwrap().param(), "-total");
+        assert_eq!(
+            Sort::parse(Some("-total"), &keys).unwrap().param(),
+            "-total"
+        );
         assert_eq!(Sort::parse(Some("other"), &keys), None);
         assert_eq!(Sort::parse(Some(""), &keys), None);
         assert_eq!(Sort::parse(None, &keys), None);
@@ -217,7 +220,11 @@ mod tests {
         assert_eq!(
             export_link(
                 "/budget-report",
-                &[("entity", "3".into()), ("month", String::new()), ("sort", "-variance".into())]
+                &[
+                    ("entity", "3".into()),
+                    ("month", String::new()),
+                    ("sort", "-variance".into())
+                ]
             ),
             "/budget-report?entity=3&sort=-variance&export=csv"
         );

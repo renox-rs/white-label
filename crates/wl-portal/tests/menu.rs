@@ -36,7 +36,14 @@ async fn por02_a_primary_contact_sees_every_tenant_section_in_order() {
     let (sara, _) = t.tenant_user("Sara", AL_NOOR, &["primary_contact"]).await;
     assert_eq!(
         menu_keys(&t, &sara, AL_NOOR).await,
-        ["lease", "invoices", "cheques", "deposit", "documents", "requests"]
+        [
+            "lease",
+            "invoices",
+            "cheques",
+            "deposit",
+            "documents",
+            "requests"
+        ]
     );
     let home = t.get_as(&sara, &format!("/portal/{AL_NOOR}")).await;
     home.assert_ok();
@@ -102,14 +109,26 @@ async fn por02_a_user_with_two_parties_switches_and_sees_each_partys_rows() {
         .get_as(&nadia, &format!("/portal/{ACME_ONE}/invoices"))
         .await;
     one.assert_ok();
-    assert!(one.text().contains(&format!("Invoices of party {ACME_ONE}")));
-    assert!(!one.text().contains(&format!("Invoices of party {ACME_TWO}")));
+    assert!(
+        one.text()
+            .contains(&format!("Invoices of party {ACME_ONE}"))
+    );
+    assert!(
+        !one.text()
+            .contains(&format!("Invoices of party {ACME_TWO}"))
+    );
     let two = t
         .get_as(&nadia, &format!("/portal/{ACME_TWO}/invoices"))
         .await;
     two.assert_ok();
-    assert!(two.text().contains(&format!("Invoices of party {ACME_TWO}")));
-    assert!(!two.text().contains(&format!("Invoices of party {ACME_ONE}")));
+    assert!(
+        two.text()
+            .contains(&format!("Invoices of party {ACME_TWO}"))
+    );
+    assert!(
+        !two.text()
+            .contains(&format!("Invoices of party {ACME_ONE}"))
+    );
 
     t.get_as(&nadia, &format!("/portal/{SARA_PARTY}/invoices"))
         .await
@@ -206,6 +225,13 @@ async fn por02_two_grants_for_one_party_add_up() {
     t.grant(&lina, AL_NOOR, &["primary_contact"]).await;
     assert_eq!(
         menu_keys(&t, &lina, AL_NOOR).await,
-        ["lease", "invoices", "cheques", "deposit", "documents", "requests"]
+        [
+            "lease",
+            "invoices",
+            "cheques",
+            "deposit",
+            "documents",
+            "requests"
+        ]
     );
 }

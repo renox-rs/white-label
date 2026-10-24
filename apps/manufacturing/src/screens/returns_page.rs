@@ -179,9 +179,7 @@ pub(crate) async fn show(
     // Everyone who sees the page may export it; the customer is a custom
     // column and never leaves in a file.
     let grid = grids::exporting(grid(&lang), true);
-    if let Some(file) =
-        grids::export_file(&grid, true, query.clone(), &request).await?
-    {
+    if let Some(file) = grids::export_file(&grid, true, query.clone(), &request).await? {
         return Ok(file);
     }
     let page = grid.page(query, &request).await?;

@@ -279,12 +279,8 @@ async fn calls(
         visible
     }));
     let term = grid_lookup::searched(&request, &session, "clinics-recall-calls");
-    let patient_match = grid_lookup::party_match(
-        &state,
-        term.as_deref(),
-        &["patient_party_id", "party_id"],
-    )
-    .await;
+    let patient_match =
+        grid_lookup::party_match(&state, term.as_deref(), &["patient_party_id", "party_id"]).await;
     let (branch_sql, branch_options) = grid_lookup::labelled("id", &branches);
     let page = calls_grid(&lang, &patient_match, &branch_sql, branch_options)
         .page(query, &request)

@@ -425,9 +425,12 @@ async fn store(
     if let Some(reference) = &form.outage_reference {
         reported = reported.outage(reference);
     }
-    let preview =
-        wl_kernel::late_entries::preview(&state, wl_kernel::tickets::TICKET_SUBJECT_TYPE, reported_at)
-            .await?;
+    let preview = wl_kernel::late_entries::preview(
+        &state,
+        wl_kernel::tickets::TICKET_SUBJECT_TYPE,
+        reported_at,
+    )
+    .await?;
     if preview.needs_reason() && reported.reason.is_none() {
         return Err(invalid("late_reason", t("late.reason_required"), &form));
     }

@@ -57,7 +57,10 @@ fn the_lists_built_in_code_fill_the_page_with_one_pane() {
             source.contains("<section class=\"rx-pane rx-fill\">"),
             "{path} fills the page"
         );
-        assert!(!source.contains("<rx-stack>\n    <rx-page-header"), "{path}");
+        assert!(
+            !source.contains("<rx-stack>\n    <rx-page-header"),
+            "{path}"
+        );
         assert!(!source.contains(" card>"), "{path} has no card table");
         assert!(source.contains("name=\"q\""), "{path} has a search");
     }

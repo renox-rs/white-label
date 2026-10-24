@@ -112,9 +112,14 @@ pub async fn open_reported(
 ) -> Result<TicketRef> {
     let now = renox::db::now();
     if reported.at > now {
-        return Err(unprocessable("The time it was reported cannot be in the future."));
+        return Err(unprocessable(
+            "The time it was reported cannot be in the future.",
+        ));
     }
-    if matches!(request.channel, TicketChannel::Portal | TicketChannel::System) {
+    if matches!(
+        request.channel,
+        TicketChannel::Portal | TicketChannel::System
+    ) {
         return Tickets::open(state, request).await;
     }
     // Checked before the entry is stored, so a refusal leaves nothing.

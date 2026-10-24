@@ -118,7 +118,10 @@ async fn sara_sees_the_invoice_and_disputes_part_of_it() {
     assert_eq!(dispute.reason, "parking charged twice");
     assert_eq!(dispute.raised_via, wl_invoicing::DisputeVia::Portal);
     assert_eq!(dispute.raised_by_party_id, Some(party.0));
-    assert!(dispute.ticket_id.is_some(), "a billing dispute ticket is opened");
+    assert!(
+        dispute.ticket_id.is_some(),
+        "a billing dispute ticket is opened"
+    );
     assert_eq!(
         messages_to_party(&app, wl_invoicing::dispute::ACKNOWLEDGED, party)
             .await
@@ -199,10 +202,9 @@ async fn the_october_statement_runs_from_zero_to_the_balance_left() {
         .await
         .unwrap();
 
-    let statement =
-        wl_invoicing::portal::statement_of(app.db(), party, october(1), october(31))
-            .await
-            .unwrap();
+    let statement = wl_invoicing::portal::statement_of(app.db(), party, october(1), october(31))
+        .await
+        .unwrap();
     assert_eq!(statement.opening, 0);
     assert_eq!(statement.lines.len(), 2);
     assert_eq!(statement.lines[0].movement.debit, 450_000);

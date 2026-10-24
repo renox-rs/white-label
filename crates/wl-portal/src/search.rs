@@ -133,7 +133,10 @@ pub async fn reach_of(state: &AppState, user: i64, day: NaiveDate) -> Result<Vec
         let allowed: Vec<String> = types
             .iter()
             .filter(|t| !hidden.iter().any(|h| h == t.subject_type()))
-            .filter(|t| t.portal_permission().is_none_or(|p| permissions.contains(p)))
+            .filter(|t| {
+                t.portal_permission()
+                    .is_none_or(|p| permissions.contains(p))
+            })
             .map(|t| t.subject_type().to_owned())
             .collect();
         reach.push(PortalReach {

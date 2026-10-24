@@ -44,7 +44,10 @@ pub async fn timeline(
     let names = names(db, rows).await?;
     let mut items = renox::state_machine::timeline(rows, machine);
     for (item, row) in items.iter_mut().zip(rows) {
-        let actor = row.actor_id.and_then(|id| names.get(&id)).map(String::as_str);
+        let actor = row
+            .actor_id
+            .and_then(|id| names.get(&id))
+            .map(String::as_str);
         let Some(line) = by_line(actor, via(row)) else {
             continue;
         };

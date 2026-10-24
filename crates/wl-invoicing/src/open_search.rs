@@ -4,8 +4,8 @@
 //! [`OpenInvoiceSearch`](wl_kernel::invoice_search::OpenInvoiceSearch).
 
 use renox::prelude::*;
-use wl_kernel::invoice_search::{OpenInvoiceSearch, SearchFuture};
 use wl_kernel::PartyId;
+use wl_kernel::invoice_search::{OpenInvoiceSearch, SearchFuture};
 use wl_kernel::invoicing::{InvoiceStatus, InvoiceSummary, SupplierBillSummary};
 
 use crate::invoice::Invoice;

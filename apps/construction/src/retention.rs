@@ -401,8 +401,7 @@ pub async fn withhold_in(tx: &mut Transaction, project: &Project, work: i64) -> 
             None => {
                 let mut made = Retention::new(project.id, which, amount);
                 made.insert(&mut *tx).await?;
-                wl_kernel::search::index_in(&mut *tx, &Subject::new(SUBJECT_TYPE, made.id))
-                    .await?;
+                wl_kernel::search::index_in(&mut *tx, &Subject::new(SUBJECT_TYPE, made.id)).await?;
             }
         }
     }

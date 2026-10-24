@@ -447,11 +447,7 @@ impl Notification for ProviderNotice {
     }
 
     fn to_mail(&self, _to: &Recipient, _state: &AppState) -> Result<Mail> {
-        let mut mail = Mail::new(
-            self.address.clone(),
-            self.title.clone(),
-            self.body.clone(),
-        );
+        let mut mail = Mail::new(self.address.clone(), self.title.clone(), self.body.clone());
         for file in &self.attachments {
             mail = mail.attach(
                 file.file_name.clone(),

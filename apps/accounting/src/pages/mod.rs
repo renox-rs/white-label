@@ -119,7 +119,12 @@ async fn engagement_options(
             .await?
             .map(|party| party.display_name)
             .unwrap_or_default();
-        let label = format!("{} · {} · {}", engagement.number(), client, engagement.title);
+        let label = format!(
+            "{} · {} · {}",
+            engagement.number(),
+            client,
+            engagement.title
+        );
         if needle.is_empty() || query.is_lookup() || label.to_lowercase().contains(&needle) {
             options.push(renox::select::SelectOption::new(engagement.id, label));
         }

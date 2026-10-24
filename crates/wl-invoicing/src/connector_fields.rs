@@ -15,7 +15,8 @@ use crate::invoice::Invoice;
 /// The fields of `invoice` for an assistant.
 pub fn fields(invoice: &Invoice) -> RecordFields {
     let date = |d: Option<renox::chrono::NaiveDate>| {
-        d.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_default()
+        d.map(|d| d.format("%Y-%m-%d").to_string())
+            .unwrap_or_default()
     };
     let currency = invoice.currency.as_str();
     let mut fields = RecordFields::new()

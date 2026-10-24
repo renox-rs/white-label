@@ -107,7 +107,10 @@ fn status_of(lang: &Lang, status: RuleRunStatus) -> (String, String) {
         RuleRunStatus::Queued | RuleRunStatus::Skipped => "info",
     };
     (
-        texts::t(lang, &format!("wl_kernel.rule_run.status.{}", status.as_str())),
+        texts::t(
+            lang,
+            &format!("wl_kernel.rule_run.status.{}", status.as_str()),
+        ),
         kind.to_owned(),
     )
 }

@@ -130,8 +130,15 @@ async fn the_pages_show_the_subscription() {
     assert!(html.contains("Engagement #5"), "the source in words");
     assert!(!html.contains("accounting.engagement:5"));
     let found = t.app.get("/subscriptions?search=engagement").await.text();
-    assert!(found.contains("Retainer"), "a search on the source in words");
-    let none = t.app.get("/subscriptions?search=nothing-like-it").await.text();
+    assert!(
+        found.contains("Retainer"),
+        "a search on the source in words"
+    );
+    let none = t
+        .app
+        .get("/subscriptions?search=nothing-like-it")
+        .await
+        .text();
     assert!(!none.contains("Engagement #5"));
     let sorted = t.app.get("/subscriptions?sort=source&per_page=10").await;
     sorted.assert_ok();

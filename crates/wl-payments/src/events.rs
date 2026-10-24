@@ -55,13 +55,13 @@ fn received_event(transition: &str, payment: &Payment) -> Option<PaymentReceived
             // A supplier payment (BL-PAY-28): `record` gives the event, as
             // the spec says, money out included.
             || [RECORD_SUPPLIER, RECORD_SUPPLIER_APPROVED].contains(&transition)))
-        .then(|| PaymentReceived {
-            payment: payment.payment_id(),
-            party: payment.party(),
-            amount: payment.amount,
-            method: payment.method,
-            allocations: Vec::new(),
-        })
+    .then(|| PaymentReceived {
+        payment: payment.payment_id(),
+        party: payment.party(),
+        amount: payment.amount,
+        method: payment.method,
+        allocations: Vec::new(),
+    })
 }
 
 /// The event of a committed reversal of `payment` (as it is now), with the

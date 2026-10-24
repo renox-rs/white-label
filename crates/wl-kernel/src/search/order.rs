@@ -59,7 +59,10 @@ mod tests {
     fn parties_come_before_the_types_that_read_their_names() {
         let order = rebuild_order(&types(&[
             ("invoicing.invoice", &["parties.party"]),
-            ("invoicing.credit_note", &["invoicing.invoice", "parties.party"]),
+            (
+                "invoicing.credit_note",
+                &["invoicing.invoice", "parties.party"],
+            ),
             ("parties.party", &[]),
             ("property.lease", &["parties.party", "property.unit"]),
             ("property.unit", &["property.building"]),
@@ -68,7 +71,10 @@ mod tests {
         ]));
         let at = |name: &str| order.iter().position(|t| t == name).unwrap();
         assert!(at("parties.party") < at("invoicing.invoice"), "{order:?}");
-        assert!(at("invoicing.invoice") < at("invoicing.credit_note"), "{order:?}");
+        assert!(
+            at("invoicing.invoice") < at("invoicing.credit_note"),
+            "{order:?}"
+        );
         assert!(at("property.building") < at("property.unit"), "{order:?}");
         assert!(at("property.unit") < at("property.lease"), "{order:?}");
         assert!(at("property.unit") < at("ticketing.ticket"), "{order:?}");
@@ -77,13 +83,21 @@ mod tests {
 
     #[test]
     fn without_dependencies_the_order_is_alphabetical() {
-        let order = rebuild_order(&types(&[("b.b", &[]), ("a.a", &[]), ("c.c", &["x.unknown"])]));
+        let order = rebuild_order(&types(&[
+            ("b.b", &[]),
+            ("a.a", &[]),
+            ("c.c", &["x.unknown"]),
+        ]));
         assert_eq!(order, ["a.a", "b.b", "c.c"]);
     }
 
     #[test]
     fn a_cycle_still_builds_every_type_once() {
-        let order = rebuild_order(&types(&[("a.a", &["b.b"]), ("b.b", &["a.a"]), ("c.c", &[])]));
+        let order = rebuild_order(&types(&[
+            ("a.a", &["b.b"]),
+            ("b.b", &["a.a"]),
+            ("c.c", &[]),
+        ]));
         assert_eq!(order, ["c.c", "a.a", "b.b"]);
     }
 }

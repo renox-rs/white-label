@@ -120,7 +120,12 @@ impl AgentReport {
 
     /// Runs it for `access` with `filters`: at most [`MAX_ROWS`] rows, with
     /// `truncated` and how to narrow it when there were more.
-    pub async fn run(&self, db: &Db, access: &Access, filters: Map<String, Value>) -> Result<Value> {
+    pub async fn run(
+        &self,
+        db: &Db,
+        access: &Access,
+        filters: Map<String, Value>,
+    ) -> Result<Value> {
         let mut answer = (self.run)(db, access, filters).await?;
         let total_rows = answer.rows.len();
         let truncated = total_rows > MAX_ROWS;
@@ -165,7 +170,10 @@ pub fn register_report(report: AgentReport) {
 
 /// Every registered report, in the order registered.
 pub fn reports() -> Vec<AgentReport> {
-    REPORTS.read().unwrap_or_else(PoisonError::into_inner).clone()
+    REPORTS
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
 }
 
 /// The report `key`, if registered.

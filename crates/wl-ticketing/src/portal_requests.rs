@@ -20,10 +20,10 @@
 //! caller.
 
 use renox::prelude::*;
+use wl_kernel::PartyId;
 use wl_kernel::Subject;
 use wl_kernel::document_store::document_store;
 use wl_kernel::tickets::{OpenTicket, TICKET_SUBJECT_TYPE, TicketChannel, TicketRef};
-use wl_kernel::PartyId;
 
 use crate::charge;
 use crate::comments::{Comment, CommentVisibility};

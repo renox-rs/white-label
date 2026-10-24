@@ -37,10 +37,20 @@ fn fills_the_page(html: &str, path: &str) {
     assert!(header < grid, "{path}: the header comes first");
     let between = &html[header..grid];
     for wrapper in ["rx-stack", "rx-card", "rx-table", "rx-panes"] {
-        assert!(!between.contains(wrapper), "{path}: {wrapper} before the grid");
+        assert!(
+            !between.contains(wrapper),
+            "{path}: {wrapper} before the grid"
+        );
     }
-    assert!(!html.contains("rx-table-wrap"), "{path}: an old table is left");
-    assert_eq!(html.matches("<form class=\"rx-grid").count(), 1, "{path}: one grid");
+    assert!(
+        !html.contains("rx-table-wrap"),
+        "{path}: an old table is left"
+    );
+    assert_eq!(
+        html.matches("<form class=\"rx-grid").count(),
+        1,
+        "{path}: one grid"
+    );
     assert!(html.contains("name=\"search\""), "{path}: a search box");
     assert!(html.contains("per_page"), "{path}: a page size");
 }
@@ -75,14 +85,22 @@ async fn the_shipments_grid_searches_the_phone_pages_sorts_and_filters() {
             &w.noor,
             SOUQ,
             "ORD-PHONE",
-            &[("recipient_phone", "+971509998877"), ("recipient_name", "Khalid Rahman")],
+            &[
+                ("recipient_phone", "+971509998877"),
+                ("recipient_name", "Khalid Rahman"),
+            ],
         )
         .await;
 
     let first = load(&w, &w.dispatcher, "/shipments?per_page=10&sort=number").await;
     assert!(shows_range(&first, 1, 10, 12));
     assert!(first.contains(&numbers[0]));
-    let second = load(&w, &w.dispatcher, "/shipments?per_page=10&sort=number&page=2").await;
+    let second = load(
+        &w,
+        &w.dispatcher,
+        "/shipments?per_page=10&sort=number&page=2",
+    )
+    .await;
     assert!(shows_range(&second, 11, 12, 12));
     assert!(second.contains(&odd.number) && !second.contains(&format!(">{}<", numbers[0])));
     let all = load(&w, &w.dispatcher, "/shipments?per_page=25").await;
@@ -97,7 +115,12 @@ async fn the_shipments_grid_searches_the_phone_pages_sorts_and_filters() {
     // Newest first by default; the state filter.
     let newest = load(&w, &w.dispatcher, "/shipments?sort=-number").await;
     assert!(newest.find(&odd.number).unwrap() < newest.find(&numbers[10]).unwrap());
-    let created = load(&w, &w.dispatcher, "/shipments?in.status=created&per_page=25").await;
+    let created = load(
+        &w,
+        &w.dispatcher,
+        "/shipments?in.status=created&per_page=25",
+    )
+    .await;
     assert!(shows_range(&created, 1, 12, 12));
     let delivered = load(&w, &w.dispatcher, "/shipments?in.status=delivered").await;
     assert!(!delivered.contains(&odd.number));
@@ -163,7 +186,12 @@ async fn the_cod_differences_filter_by_who_absorbed_them() {
     let business = load(&w, &w.amal, "/cod-differences?in.cod_absorbed_by=business").await;
     assert!(shows_range(&business, 1, 1, 1));
     assert!(business.contains(&a.number) && !business.contains(&format!(">{}<", b.number)));
-    let found = load(&w, &w.amal, &format!("/cod-differences?search={}", b.number)).await;
+    let found = load(
+        &w,
+        &w.amal,
+        &format!("/cod-differences?search={}", b.number),
+    )
+    .await;
     assert!(shows_range(&found, 1, 1, 1));
 }
 

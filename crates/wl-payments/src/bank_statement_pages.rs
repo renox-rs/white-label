@@ -381,9 +381,9 @@ async fn show(
     let mut reversible = Vec::new();
     for line in &all {
         let payment = bank_match::payment_of_line(&state.db, line.id).await?;
-        reversible.push(payment.is_some_and(|p| {
-            p.status == wl_kernel::payments::PaymentStatus::Received
-        }));
+        reversible.push(
+            payment.is_some_and(|p| p.status == wl_kernel::payments::PaymentStatus::Received),
+        );
     }
     let in_review = import.status == ImportStatus::InReview;
     let lines = all
@@ -477,7 +477,10 @@ async fn describe(state: &AppState, lang: &Lang, line: &BankStatementLine) -> Re
         (
             line.suggestion_kind.clone(),
             line.suggestion_party_id,
-            line.suggestion_targets.clone().map(|j| j.0).unwrap_or_default(),
+            line.suggestion_targets
+                .clone()
+                .map(|j| j.0)
+                .unwrap_or_default(),
             line.suggestion_reason.clone(),
         )
     };
@@ -652,7 +655,11 @@ async fn store_match(
         .await?;
     let mut allocations = Vec::new();
     let mut party = None;
-    for (i, row) in filled(&form.allocations).unwrap_or_default().lines().enumerate() {
+    for (i, row) in filled(&form.allocations)
+        .unwrap_or_default()
+        .lines()
+        .enumerate()
+    {
         if row.trim().is_empty() {
             continue;
         }

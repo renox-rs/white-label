@@ -90,7 +90,10 @@ async fn an_invoice_number_opens_the_invoice_and_its_page_loads_the_related_pane
         .await
         .unwrap();
     let invoice = Invoice::find_or_404(app.db(), id.0).await.unwrap();
-    let number = invoice.number.clone().expect("an issued invoice has a number");
+    let number = invoice
+        .number
+        .clone()
+        .expect("an issued invoice has a number");
 
     let accountant = person(&app, "Adam", ACCOUNTANT).await;
     app.acting_as(&accountant);

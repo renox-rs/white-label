@@ -183,7 +183,11 @@ fn group_view(lang: &Lang, query: &str, group: SearchGroup, with_more: bool) -> 
             )
         }),
         more_label: more.then(|| {
-            texts::t_with(lang, "wl_kernel.search.show_all", &[("count", &group.total)])
+            texts::t_with(
+                lang,
+                "wl_kernel.search.show_all",
+                &[("count", &group.total)],
+            )
         }),
         subject_type: group.subject_type,
         rows: group
@@ -261,7 +265,8 @@ async fn found(db: &Db, access: &Access, lang: &Lang, params: &Params) -> Result
         match search_type(db, access, &q, only, page, PER_PAGE).await? {
             Some(group) if group.total > 0 => {
                 let pages = group.total.div_ceil(PER_PAGE).max(1);
-                let link = |n: u64| format!("/search?q={}&type={}&page={n}", encode(&q), encode(only));
+                let link =
+                    |n: u64| format!("/search?q={}&type={}&page={n}", encode(&q), encode(only));
                 found.prev_url = (page > 1).then(|| link(page - 1));
                 found.next_url = (page < pages).then(|| link(page + 1));
                 found.page_label = Some(texts::t_with(

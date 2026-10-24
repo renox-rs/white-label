@@ -936,7 +936,10 @@ const TEXTS: &[(&str, &str)] = &[
         "property.terminate.credit_refunded",
         "Termination credit refunded",
     ),
-    ("property.terminate.credit_kept", "Termination credit kept on account"),
+    (
+        "property.terminate.credit_kept",
+        "Termination credit kept on account",
+    ),
     (
         "property.credit.damages_waiting",
         "Damages invoice :invoice is not issued yet: issue it, then apply the termination credit left to it by hand.",
@@ -983,7 +986,10 @@ const TEXTS: &[(&str, &str)] = &[
         "property.terminate.credit_not_taken",
         "Refund :refund was asked but credit note :note was not reduced: cancel the refund or reduce the note by hand.",
     ),
-    ("property.statements.published", "Statement published to the owner."),
+    (
+        "property.statements.published",
+        "Statement published to the owner.",
+    ),
     (
         "property.vendor_bills.ticket_line",
         "Vendor bill :bill :supplier — :ticket (unit :unit)",
@@ -1727,7 +1733,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.deposit_forfeit.rent_due", "Unpaid rent"),
     ("property.deposit_forfeit.damages", "Damages"),
     ("property.deposit_forfeit.total", "Total deductions"),
-    ("property.deposit_forfeit.credit_applied", "Termination credit applied first"),
+    (
+        "property.deposit_forfeit.credit_applied",
+        "Termination credit applied first",
+    ),
     ("property.deposit_forfeit.to_rent", "Applied to rent"),
     ("property.deposit_forfeit.to_damages", "Kept for damages"),
     ("property.deposit_forfeit.excess", "Damages invoiced"),

@@ -62,12 +62,18 @@ async fn sal_grid_the_sales_orders_filter_sort_search_and_page() {
     assert!(fills_the_page(&first));
     assert!(first.contains("1–10 of 12"));
     assert!(first.contains(&numbers[11]) && !first.contains(&numbers[0]));
-    assert!(at(&first, &numbers[11]) < at(&first, &numbers[10]), "newest first");
+    assert!(
+        at(&first, &numbers[11]) < at(&first, &numbers[10]),
+        "newest first"
+    );
     assert!(first.contains("Party 7"), "the customer by name");
     let second = load(&t, "/sales-orders?sort=-id&per_page=10&page=2").await;
     assert!(second.contains("11–12 of 12") && second.contains(&numbers[0]));
     let oldest = load(&t, "/sales-orders?sort=id&per_page=25").await;
-    assert!(at(&oldest, &numbers[0]) < at(&oldest, &numbers[1]), "oldest first");
+    assert!(
+        at(&oldest, &numbers[0]) < at(&oldest, &numbers[1]),
+        "oldest first"
+    );
 
     let website = load(&t, "/sales-orders?in.channel=website").await;
     assert!(website.contains("1–5 of 5"));
@@ -90,9 +96,7 @@ async fn sal_grid_the_loyalty_members_search_by_name_or_mobile() {
     let floor = Floor::new(&t).await;
     floor.turn_on(&t, &[]).await;
     for n in 1..=12 {
-        floor
-            .enrol(&t, 100 + n, &format!("+97155000{n:04}"))
-            .await;
+        floor.enrol(&t, 100 + n, &format!("+97155000{n:04}")).await;
     }
     t.app.acting_as(&floor.mia);
 
@@ -143,7 +147,10 @@ async fn sal_grid_the_till_sessions_filter_by_day_sort_and_page() {
     let first = load(&t, "/till-sessions?per_page=10").await;
     assert!(fills_the_page(&first));
     assert!(first.contains("1–10 of 12"));
-    assert!(at(&first, ">T00<") < at(&first, ">T01<"), "the latest day first");
+    assert!(
+        at(&first, ">T00<") < at(&first, ">T01<"),
+        "the latest day first"
+    );
     let second = load(&t, "/till-sessions?per_page=10&page=2").await;
     assert!(second.contains("11–12 of 12") && second.contains(">T11<"));
 
@@ -224,11 +231,11 @@ async fn sal_grid_every_list_is_a_grid_that_fills_the_page() {
             &format!("{path}{separator}search=nothing-like-it&per_page=10"),
         )
         .await;
-        assert!(searched.contains("<form class=\"rx-grid"), "{path} searches");
+        assert!(
+            searched.contains("<form class=\"rx-grid"),
+            "{path} searches"
+        );
     }
     // The accounts to review export for a manager.
-    t.app
-        .get("/loyalty/review?export=csv")
-        .await
-        .assert_ok();
+    t.app.get("/loyalty/review?export=csv").await.assert_ok();
 }

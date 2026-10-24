@@ -12,7 +12,10 @@ use renox::testing::TestApp;
 use wl_kernel::ClientConfig;
 
 /// The demo client of the F&B vertical.
-const DEMO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../clients/demo-fnb/client.toml");
+const DEMO: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../clients/demo-fnb/client.toml"
+);
 
 async fn count(app: &TestApp, query: &str) -> i64 {
     renox::db::sql(query.to_owned())
@@ -83,7 +86,11 @@ async fn the_orders_page_sort_filter_and_search() {
         assert_eq!(range(&second), (11, orders.min(20), orders));
     }
     let oldest = text_of(&app, "select number from fnb_orders order by id limit 1").await;
-    let newest = text_of(&app, "select number from fnb_orders order by id desc limit 1").await;
+    let newest = text_of(
+        &app,
+        "select number from fnb_orders order by id desc limit 1",
+    )
+    .await;
     let by_newest = load(&app, "/orders?per_page=100&sort=-id").await;
     assert!(by_newest.find(&newest).unwrap() < by_newest.find(&oldest).unwrap());
 

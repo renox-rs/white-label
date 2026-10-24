@@ -125,11 +125,8 @@ async fn invoice_document(
     invoice: &Invoice,
 ) -> Result<SearchDocument> {
     let customer = party_name_in(tx, invoice.party_id).await?;
-    let scope = search::scope_in(
-        tx,
-        &[Subject::new(&invoice.source_type, invoice.source_id)],
-    )
-    .await?;
+    let scope =
+        search::scope_in(tx, &[Subject::new(&invoice.source_type, invoice.source_id)]).await?;
     Ok(SearchDocument::new(&invoice.number)
         .secondary(customer)
         .identifier(kinds::NUMBER, &invoice.number)
@@ -249,9 +246,14 @@ where
 async fn user_with(app: &TestApp, name: &str, role: &str, grants: &[&str]) -> User {
     let db = app.db();
     permissions::define_role(db, role, grants).await.unwrap();
-    let user = User::register(db, name, &format!("{name}@gulftower.example"), "password123")
-        .await
-        .unwrap();
+    let user = User::register(
+        db,
+        name,
+        &format!("{name}@gulftower.example"),
+        "password123",
+    )
+    .await
+    .unwrap();
     user.assign_role(db, role).await.unwrap();
     user
 }
@@ -259,14 +261,35 @@ async fn user_with(app: &TestApp, name: &str, role: &str, grants: &[&str]) -> Us
 #[renox::test]
 async fn a_document_reads_another_records_scope_inside_the_indexing_transaction() {
     let app = app().await;
-    let party = indexed(&app, PARTY, Party { id: 0, name: "Al Noor Trading".into() }).await;
+    let party = indexed(
+        &app,
+        PARTY,
+        Party {
+            id: 0,
+            name: "Al Noor Trading".into(),
+        },
+    )
+    .await;
     let lease = Lease::create(
         app.db(),
-        Lease { id: 0, number: "L-1".into(), building_id: 7 },
+        Lease {
+            id: 0,
+            number: "L-1".into(),
+            building_id: 7,
+        },
     )
     .await
     .unwrap();
-    let unit = indexed(&app, UNIT, Unit { id: 0, number: "1204".into(), building_id: 9 }).await;
+    let unit = indexed(
+        &app,
+        UNIT,
+        Unit {
+            id: 0,
+            number: "1204".into(),
+            building_id: 9,
+        },
+    )
+    .await;
 
     // The lease's scope comes from the resolver, read in the transaction
     // that writes the invoice (a second connection would never come on
@@ -287,7 +310,10 @@ async fn a_document_reads_another_records_scope_inside_the_indexing_transaction(
         .await
         .unwrap()
         .expect("a document");
-    assert_eq!((row.scope_type.as_str(), row.scope_id.as_str()), (BUILDINGS, "7"));
+    assert_eq!(
+        (row.scope_type.as_str(), row.scope_id.as_str()),
+        (BUILDINGS, "7")
+    );
     assert_eq!(row.secondary, "Al Noor Trading");
 
     // The unit has no resolver: its own document gives the scope.
@@ -307,7 +333,10 @@ async fn a_document_reads_another_records_scope_inside_the_indexing_transaction(
         .await
         .unwrap()
         .unwrap();
-    assert_eq!((row.scope_type.as_str(), row.scope_id.as_str()), (BUILDINGS, "9"));
+    assert_eq!(
+        (row.scope_type.as_str(), row.scope_id.as_str()),
+        (BUILDINGS, "9")
+    );
 
     // A record that is gone is global, and so is an unknown type.
     let mut tx = app.db().begin().await.unwrap();
@@ -328,7 +357,15 @@ async fn rebuild_builds_the_parties_before_the_invoices_that_read_their_names() 
     let at = |name: &str| order.iter().position(|t| t == name).unwrap();
     assert!(at(PARTY) < at(INVOICE), "{order:?}");
 
-    let party = indexed(&app, PARTY, Party { id: 0, name: "Fatima Al Zaabi".into() }).await;
+    let party = indexed(
+        &app,
+        PARTY,
+        Party {
+            id: 0,
+            name: "Fatima Al Zaabi".into(),
+        },
+    )
+    .await;
     let invoice = indexed(
         &app,
         INVOICE,
@@ -449,8 +486,24 @@ async fn a_secret_record_is_found_only_by_the_holders_of_its_own_permission() {
 #[renox::test]
 async fn the_portal_finds_the_records_of_the_users_own_parties_only() {
     let app = app().await;
-    let tenant_a = indexed(&app, PARTY, Party { id: 0, name: "Tenant A".into() }).await;
-    let tenant_b = indexed(&app, PARTY, Party { id: 0, name: "Tenant B".into() }).await;
+    let tenant_a = indexed(
+        &app,
+        PARTY,
+        Party {
+            id: 0,
+            name: "Tenant A".into(),
+        },
+    )
+    .await;
+    let tenant_b = indexed(
+        &app,
+        PARTY,
+        Party {
+            id: 0,
+            name: "Tenant B".into(),
+        },
+    )
+    .await;
     let invoice = |number: &str, party_id: i64| Invoice {
         id: 0,
         number: number.into(),
@@ -498,7 +551,9 @@ async fn the_portal_finds_the_records_of_the_users_own_parties_only() {
 
     // The note mentioning the invoice is never found in the portal, even
     // when the caller passes its type.
-    let found = search::portal_search(db, &reach, "chased", 50).await.unwrap();
+    let found = search::portal_search(db, &reach, "chased", 50)
+        .await
+        .unwrap();
     assert!(found.is_empty(), "{found:?}");
 
     // A user acting for both parties finds each party's invoice, with the

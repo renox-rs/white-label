@@ -55,7 +55,10 @@ pub const REFUSED_CODE: i64 = -32001;
 /// the framework's 405). No CSRF check: the endpoint only acts on an API
 /// token, never on a session cookie.
 pub fn routes() -> Routes {
-    Routes::new().post(PATH, endpoint).name(ROUTE).without_csrf()
+    Routes::new()
+        .post(PATH, endpoint)
+        .name(ROUTE)
+        .without_csrf()
 }
 
 fn rpc_result(id: &Value, result: Value) -> Response {
@@ -122,7 +125,14 @@ async fn endpoint(State(state): State<AppState>, user: Option<AuthUser>, body: S
     };
     let request: Value = match renox::serde_json::from_str(&body) {
         Ok(request) => request,
-        Err(_) => return rpc_error(StatusCode::BAD_REQUEST, &Value::Null, -32700, "Parse error."),
+        Err(_) => {
+            return rpc_error(
+                StatusCode::BAD_REQUEST,
+                &Value::Null,
+                -32700,
+                "Parse error.",
+            );
+        }
     };
     if !request.is_object() {
         return rpc_error(

@@ -119,7 +119,9 @@ pub async fn search(db: &Db, access: &Access, text: &str, per_type: u64) -> Resu
     };
     let mut groups: Vec<(i64, SearchGroup)> = Vec::new();
     for picked in &rows.picked {
-        let Some(hit) = rows.hit(picked) else { continue };
+        let Some(hit) = rows.hit(picked) else {
+            continue;
+        };
         match groups
             .iter_mut()
             .find(|(_, g)| g.subject_type == picked.subject_type)
@@ -359,23 +361,21 @@ async fn run(
     identifier_condition(&mut s);
     s.push(" THEN 1 ELSE 0 END AS BIGINT) AS idm, ");
     match &fts {
-        Some(expression) => {
-            match dialect {
-                Dialect::Sqlite => {
-                    s.push(&format!(
-                        "COALESCE((SELECT -bm25({FTS_TABLE}, 1.0, 0.4, 0.2, 0.1) FROM {FTS_TABLE} \
+        Some(expression) => match dialect {
+            Dialect::Sqlite => {
+                s.push(&format!(
+                    "COALESCE((SELECT -bm25({FTS_TABLE}, 1.0, 0.4, 0.2, 0.1) FROM {FTS_TABLE} \
                          WHERE {FTS_TABLE} MATCH "
-                    ));
-                    s.bind(DbValue::Text(expression.clone()));
-                    s.push(&format!(" AND {FTS_TABLE}.rowid = d.id), 0)"));
-                }
-                Dialect::Postgres => {
-                    s.push("ts_rank(d.search_vector, to_tsquery('simple', ");
-                    s.bind(DbValue::Text(expression.clone()));
-                    s.push("))");
-                }
+                ));
+                s.bind(DbValue::Text(expression.clone()));
+                s.push(&format!(" AND {FTS_TABLE}.rowid = d.id), 0)"));
             }
-        }
+            Dialect::Postgres => {
+                s.push("ts_rank(d.search_vector, to_tsquery('simple', ");
+                s.bind(DbValue::Text(expression.clone()));
+                s.push("))");
+            }
+        },
         None => s.push("0"),
     }
     s.push(" AS rk FROM wl_search_documents d WHERE (");
@@ -516,17 +516,26 @@ pub(super) fn fts_query(dialect: Dialect, text: &str) -> Option<String> {
             let key = renox::text::match_key(word);
             let alternatives: Vec<String> = std::iter::once(word.clone())
                 .chain(
-                    (key.chars().count() >= 2 && key != *word && key.chars().all(char::is_alphanumeric))
-                        .then_some(key),
+                    (key.chars().count() >= 2
+                        && key != *word
+                        && key.chars().all(char::is_alphanumeric))
+                    .then_some(key),
                 )
                 .collect();
             match dialect {
                 Dialect::Sqlite => {
-                    let parts: Vec<String> =
-                        alternatives.iter().enumerate().map(|(i, a)| {
+                    let parts: Vec<String> = alternatives
+                        .iter()
+                        .enumerate()
+                        .map(|(i, a)| {
                             // The word as the start of a word; its key whole.
-                            if i == 0 { format!("\"{a}\"*") } else { format!("\"{a}\"") }
-                        }).collect();
+                            if i == 0 {
+                                format!("\"{a}\"*")
+                            } else {
+                                format!("\"{a}\"")
+                            }
+                        })
+                        .collect();
                     format!("({})", parts.join(" OR "))
                 }
                 Dialect::Postgres => {

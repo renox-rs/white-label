@@ -1260,8 +1260,7 @@ async fn create(
         Vec::new()
     };
     // Findable from the commit on (BL-AGT-04).
-    wl_kernel::search::index_in(&mut tx, &Subject::new(DOCUMENT_SUBJECT_TYPE, document.id))
-        .await?;
+    wl_kernel::search::index_in(&mut tx, &Subject::new(DOCUMENT_SUBJECT_TYPE, document.id)).await?;
     tx.commit().await?;
 
     if recording {

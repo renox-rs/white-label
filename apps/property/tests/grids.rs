@@ -37,10 +37,20 @@ fn fills_the_page(html: &str, path: &str) {
     assert!(header < grid, "{path}: the header comes first");
     let between = &html[header..grid];
     for wrapper in ["rx-stack", "rx-card", "class=\"card", "rx-panes"] {
-        assert!(!between.contains(wrapper), "{path}: the grid is wrapped in {wrapper}");
+        assert!(
+            !between.contains(wrapper),
+            "{path}: the grid is wrapped in {wrapper}"
+        );
     }
-    assert!(!html.contains("rx-table-wrap"), "{path}: an old table is left");
-    assert_eq!(html.matches("<form class=\"rx-grid").count(), 1, "{path}: one grid");
+    assert!(
+        !html.contains("rx-table-wrap"),
+        "{path}: an old table is left"
+    );
+    assert_eq!(
+        html.matches("<form class=\"rx-grid").count(),
+        1,
+        "{path}: one grid"
+    );
 }
 
 /// Every list of the vertical is a grid right under its header, with the
@@ -160,18 +170,26 @@ async fn a_compliance_row_opens_its_building() {
             .await
             .unwrap();
     }
-    let flags = property::compliance::BuildingFlag::open(t.db()).await.unwrap();
+    let flags = property::compliance::BuildingFlag::open(t.db())
+        .await
+        .unwrap();
     let of = |building: i64| flags.iter().find(|f| f.building_id == building).unwrap().id;
     t.app.acting_as(&manager);
     let html = load(&t, "/property/compliance").await;
     assert!(html.contains(&format!("/property/compliance/{}", of(a.id))));
-    let open = t.app.get(&format!("/property/compliance/{}", of(a.id))).await;
+    let open = t
+        .app
+        .get(&format!("/property/compliance/{}", of(a.id)))
+        .await;
     assert_eq!(open.status.as_u16(), 303);
     let location = open.header("location").unwrap_or_default().to_owned();
     assert!(
         location.ends_with(&format!("/property/buildings/{}", a.id)),
         "{location}"
     );
-    let other = t.app.get(&format!("/property/compliance/{}", of(b.id))).await;
+    let other = t
+        .app
+        .get(&format!("/property/compliance/{}", of(b.id)))
+        .await;
     assert_eq!(other.status.as_u16(), 404);
 }

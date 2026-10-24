@@ -33,7 +33,10 @@ async fn app() -> TestApp {
 }
 
 fn unprocessable<T>(result: Result<T>) -> bool {
-    matches!(result, Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _)))
+    matches!(
+        result,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    )
 }
 
 #[renox::test]
@@ -45,7 +48,9 @@ async fn with_the_modules_off_the_variants_answer_as_the_fallbacks() {
 
     // The plain methods' answers.
     assert!(unprocessable(
-        cheques(state).return_undeposited(state, request(), None).await
+        cheques(state)
+            .return_undeposited(state, request(), None)
+            .await
     ));
     assert!(
         deposits(state)

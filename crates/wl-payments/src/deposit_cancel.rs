@@ -14,8 +14,8 @@ use wl_kernel::Subject;
 use wl_kernel::deposits::{CancelSettlement, SettlementStarted};
 
 use crate::deposit::{Deposit, DepositStatus, start_settlement};
-use crate::deposit_machine::START_SETTLEMENT_BY_SYSTEM;
 use crate::deposit_deductions::{NewLine, PublishRequest, publish_by};
+use crate::deposit_machine::START_SETTLEMENT_BY_SYSTEM;
 
 /// A 422 with `message`.
 fn refused(message: impl Into<String>) -> Error {

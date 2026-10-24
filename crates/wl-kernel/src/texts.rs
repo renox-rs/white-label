@@ -668,7 +668,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_kernel.failed_runs.critical_alerted",
         " (compliance-critical, alert sent)",
     ),
-    ("wl_kernel.failed_runs.rerun_succeeded", " (rerun, succeeded)"),
+    (
+        "wl_kernel.failed_runs.rerun_succeeded",
+        " (rerun, succeeded)",
+    ),
     ("wl_kernel.failed_runs.link", "  Open the run: :url"),
     ("wl_kernel.rule_run.title", "Rule run :id"),
     ("wl_kernel.rule_run.rule", "Rule"),
@@ -682,7 +685,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_kernel.rule_run.failures", "Failures"),
     ("wl_kernel.rule_run.failure_at", "When"),
     ("wl_kernel.rule_run.failure_kind", "What"),
-    ("wl_kernel.rule_run.failures_empty", "This run has not failed."),
+    (
+        "wl_kernel.rule_run.failures_empty",
+        "This run has not failed.",
+    ),
     ("wl_kernel.rule_run.rerun", "Run again"),
     ("wl_kernel.rule_run.rerun_title", "Run this rule again"),
     (
@@ -690,7 +696,10 @@ const TEXTS: &[(&str, &str)] = &[
         "The run is queued again with its attempts reset; the next pass of the rule runs it.",
     ),
     ("wl_kernel.rule_run.cancel", "Cancel"),
-    ("wl_kernel.rule_run.toast.queued", "The run is queued again."),
+    (
+        "wl_kernel.rule_run.toast.queued",
+        "The run is queued again.",
+    ),
     ("wl_kernel.rule_run.status.queued", "Queued"),
     ("wl_kernel.rule_run.status.succeeded", "Succeeded"),
     ("wl_kernel.rule_run.status.skipped", "Skipped"),
@@ -699,7 +708,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_kernel.rule_run.status.stopped", "Stopped"),
     ("wl_kernel.search.title", "Search"),
     ("wl_kernel.search.label", "Search records"),
-    ("wl_kernel.search.placeholder", "Search by number, name or words"),
+    (
+        "wl_kernel.search.placeholder",
+        "Search by number, name or words",
+    ),
     ("wl_kernel.search.submit", "Search"),
     (
         "wl_kernel.search.too_short",
@@ -709,7 +721,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_kernel.search.no_permission",
         "Your role gives access to no record that can be searched.",
     ),
-    ("wl_kernel.search.results_for", "Results for \u{201c}:query\u{201d}"),
+    (
+        "wl_kernel.search.results_for",
+        "Results for \u{201c}:query\u{201d}",
+    ),
     (
         "wl_kernel.search.nothing_for",
         "Nothing found for \u{201c}:query\u{201d}",
@@ -728,7 +743,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_kernel.search.updated", "Updated :at"),
     ("wl_kernel.search.matched", "Matched :value"),
     ("wl_kernel.related.title", "Related"),
-    ("wl_kernel.related.subtitle", "Everything that belongs to :record"),
+    (
+        "wl_kernel.related.subtitle",
+        "Everything that belongs to :record",
+    ),
     ("wl_kernel.related.empty", "No related records"),
     ("wl_kernel.related.more", "and :count more"),
     ("wl_kernel.related.void", "Void"),

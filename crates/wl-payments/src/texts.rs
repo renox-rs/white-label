@@ -25,7 +25,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Spread over the oldest bills first.",
     ),
     ("wl_payments.supplier_pay.propose", "Propose"),
-    ("wl_payments.supplier_pay.no_bills", "No approved bills to pay"),
+    (
+        "wl_payments.supplier_pay.no_bills",
+        "No approved bills to pay",
+    ),
     ("wl_payments.supplier_pay.bills", "Approved bills"),
     ("wl_payments.supplier_pay.bill", "Bill"),
     ("wl_payments.supplier_pay.balance", "Open balance"),
@@ -41,7 +44,10 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_payments.supplier_pay.cheque_bank", "Bank of the cheque"),
     ("wl_payments.supplier_pay.submit", "Pay"),
-    ("wl_payments.supplier_pay.request_exception", "Request exception"),
+    (
+        "wl_payments.supplier_pay.request_exception",
+        "Request exception",
+    ),
     ("wl_payments.supplier_pay.paid", "Supplier paid."),
     (
         "wl_payments.supplier_pay.cheque_issued",
@@ -56,11 +62,26 @@ const TEXTS: &[(&str, &str)] = &[
         "Use Request exception to ask the compliance officer.",
     ),
     // The match engine of the bank reconciliation (BL-PAY-29).
-    ("wl_payments.bank_statements.match.kind.invoices", "Invoices"),
-    ("wl_payments.bank_statements.match.kind.payment", "Payment recorded"),
-    ("wl_payments.bank_statements.match.kind.cheque", "Deposited cheque"),
-    ("wl_payments.bank_statements.match.reason.reference", "reference"),
-    ("wl_payments.bank_statements.match.reason.payer_name", "payer name"),
+    (
+        "wl_payments.bank_statements.match.kind.invoices",
+        "Invoices",
+    ),
+    (
+        "wl_payments.bank_statements.match.kind.payment",
+        "Payment recorded",
+    ),
+    (
+        "wl_payments.bank_statements.match.kind.cheque",
+        "Deposited cheque",
+    ),
+    (
+        "wl_payments.bank_statements.match.reason.reference",
+        "reference",
+    ),
+    (
+        "wl_payments.bank_statements.match.reason.payer_name",
+        "payer name",
+    ),
     (
         "wl_payments.bank_statements.match.reason.oldest_invoices",
         "oldest invoices",
@@ -71,8 +92,14 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_payments.bank_statements.match.reason.cheque", "cheque"),
     ("wl_payments.bank_statements.match.confirm", "Confirm"),
-    ("wl_payments.bank_statements.match.confirm_title", "Confirm the match"),
-    ("wl_payments.bank_statements.match.confirmed", "Match confirmed."),
+    (
+        "wl_payments.bank_statements.match.confirm_title",
+        "Confirm the match",
+    ),
+    (
+        "wl_payments.bank_statements.match.confirmed",
+        "Match confirmed.",
+    ),
     ("wl_payments.bank_statements.match.manual", "Match manually"),
     (
         "wl_payments.bank_statements.match.manual_title",
@@ -97,7 +124,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_payments.bank_statements.match.reverse_message",
         "The payment recorded from this line is reversed and its invoices reopen.",
     ),
-    ("wl_payments.bank_statements.match.reversed", "Match reversed."),
+    (
+        "wl_payments.bank_statements.match.reversed",
+        "Match reversed.",
+    ),
     (
         "wl_payments.bank_statements.match.reverse_requested",
         "The reversal waits for its approval.",
@@ -109,7 +139,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Your deposit, the deductions published to you and the refund.",
     ),
     ("wl_payments.portal_deposit.home", "Portal home"),
-    ("wl_payments.portal_deposit.empty", "No deposit is held for you"),
+    (
+        "wl_payments.portal_deposit.empty",
+        "No deposit is held for you",
+    ),
     ("wl_payments.portal_deposit.deposit", "Deposit"),
     ("wl_payments.portal_deposit.amount", "Amount"),
     ("wl_payments.portal_deposit.refund", "Refund"),
@@ -117,13 +150,19 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.portal_deposit.paid", "Paid"),
     ("wl_payments.portal_deposit.status.held", "Held"),
     ("wl_payments.portal_deposit.status.forfeited", "Kept"),
-    ("wl_payments.portal_deposit.status.transferred", "Transferred"),
+    (
+        "wl_payments.portal_deposit.status.transferred",
+        "Transferred",
+    ),
     ("wl_payments.portal_deposit.deductions", "Deductions"),
     (
         "wl_payments.portal_deposit.published",
         "Version :version, published :date",
     ),
-    ("wl_payments.portal_deposit.dispute_window", "You may dispute"),
+    (
+        "wl_payments.portal_deposit.dispute_window",
+        "You may dispute",
+    ),
     ("wl_payments.portal_deposit.window", "until :date"),
     ("wl_payments.portal_deposit.forfeiture", "Kept because"),
     ("wl_payments.portal_deposit.line", "Deduction"),
@@ -132,13 +171,19 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.portal_deposit.disputed", "Disputed"),
     ("wl_payments.portal_deposit.no_deductions", "No deductions"),
     ("wl_payments.portal_deposit.dispute", "Dispute"),
-    ("wl_payments.portal_deposit.dispute_title", "Dispute deductions"),
+    (
+        "wl_payments.portal_deposit.dispute_title",
+        "Dispute deductions",
+    ),
     (
         "wl_payments.portal_deposit.dispute_hint",
         "Tick the deductions you do not agree with and tell us why.",
     ),
     ("wl_payments.portal_deposit.comment", "Why"),
-    ("wl_payments.portal_deposit.dispute_send", "Send the dispute"),
+    (
+        "wl_payments.portal_deposit.dispute_send",
+        "Send the dispute",
+    ),
     (
         "wl_payments.portal_deposit.dispute_done",
         "We received your dispute. The refund waits until we answer.",

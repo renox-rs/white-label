@@ -1653,7 +1653,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("manufacturing.screen.grid.item_number", "Item number"),
     ("manufacturing.screen.grid.status", "Status"),
     ("manufacturing.screen.grid.made", "Made"),
-    ("manufacturing.screen.grid.planned_quantity", "Planned quantity"),
+    (
+        "manufacturing.screen.grid.planned_quantity",
+        "Planned quantity",
+    ),
     ("manufacturing.screen.grid.planned_start", "Planned start"),
     ("manufacturing.screen.grid.planned_end", "Planned end"),
     ("manufacturing.screen.grid.source", "Source"),
@@ -1662,7 +1665,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("manufacturing.screen.grid.customer", "Customer"),
     ("manufacturing.screen.grid.ended", "How it ended"),
     ("manufacturing.screen.grid.invoices", "Invoices"),
-    ("manufacturing.screen.grid.accepted", "Certificates that count"),
+    (
+        "manufacturing.screen.grid.accepted",
+        "Certificates that count",
+    ),
     ("manufacturing.screen.grid.reason", "Reason"),
     ("manufacturing.screen.grid.scrap", "Scrap value"),
     ("manufacturing.screen.grid.came_back", "Came back"),

@@ -78,6 +78,7 @@ use renox::db::{DateTime, Migration};
 use renox::prelude::*;
 use serde::Serialize;
 
+pub use access::{Access, can_search};
 pub use document::{Identifier, SearchDocument, Sensitivity, kinds, normalize_identifier};
 pub use index::{
     IdentifierMatch, document_of, forget_import_change, identifiers_of, index_in,
@@ -86,13 +87,12 @@ pub use index::{
 pub use order::rebuild_order;
 pub use parties::{SearchPartyRow, parties_of};
 pub use portal::{PORTAL_LIMIT, PortalHit, PortalReach, portal_search, portal_types};
-pub use scope::{register_scope_in, scope_in, scope_of_in};
-pub use access::{Access, can_search};
 pub use query::{
     MIN_QUERY_CHARS, PER_PAGE, PER_TYPE, SearchGroup, SearchHit, SearchResults, mask, search,
     search_type, searchable_query,
 };
 pub use registry::{Searchable, SearchableBuilder, get as searchable_type, registered_types};
+pub use scope::{register_scope_in, scope_in, scope_of_in};
 
 /// The command that builds the index again.
 pub const REBUILD_COMMAND: &str = "search:rebuild";

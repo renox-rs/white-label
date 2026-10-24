@@ -16,8 +16,8 @@ use wl_documents::kinds::{KindSeed, install_seeds};
 use wl_documents::{Document, DocumentSource, DocumentStatus, Documents, WlDocuments};
 use wl_kernel::Subject;
 use wl_kernel::generation::{
-    DataProvider, GenerateRefusal, GenerateRequest, GenerationData, GenerationFuture,
-    LanguageMode, generator, register_data_provider,
+    DataProvider, GenerateRefusal, GenerateRequest, GenerationData, GenerationFuture, LanguageMode,
+    generator, register_data_provider,
 };
 use wl_kernel::numbering::{Reset, Series};
 
@@ -26,8 +26,8 @@ const STATEMENT: &str = "property.owner_statement";
 
 /// A tiny JPEG header the renderer embeds as the logo (1 x 1 pixel, RGB).
 const LOGO: &[u8] = &[
-    0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x11, 0x08, 0x00, 0x01, 0x00, 0x01, 0x03, 0x01, 0x22, 0x00,
-    0x02, 0x11, 0x01, 0x03, 0x11, 0x01, 0xFF, 0xD9,
+    0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x11, 0x08, 0x00, 0x01, 0x00, 0x01, 0x03, 0x01, 0x22, 0x00, 0x02,
+    0x11, 0x01, 0x03, 0x11, 0x01, 0xFF, 0xD9,
 ];
 
 /// The test statements' data, per subject id: each test uses its own ids.
@@ -143,14 +143,19 @@ async fn generate_stores_one_accepted_generated_document_with_a_branded_pdf() {
     assert!(!generated.reused);
     assert_eq!(generated.data_hash.len(), 64);
 
-    let documents = Documents::of_subject(app.db(), &statement(101)).await.unwrap();
+    let documents = Documents::of_subject(app.db(), &statement(101))
+        .await
+        .unwrap();
     assert_eq!(documents.len(), 1, "one document");
     let document = &documents[0];
     assert_eq!(document.id, generated.document.0);
     assert_eq!(document.status, DocumentStatus::Accepted);
     assert_eq!(document.source, DocumentSource::Generated);
     let number = generated.number.clone().expect("the template is numbered");
-    assert!(number.starts_with("OS-") && number.ends_with("-0001"), "{number}");
+    assert!(
+        number.starts_with("OS-") && number.ends_with("-0001"),
+        "{number}"
+    );
     assert_eq!(document.number.as_deref(), Some(number.as_str()));
 
     let generation = Generation::query()
@@ -166,7 +171,10 @@ async fn generate_stores_one_accepted_generated_document_with_a_branded_pdf() {
     let pdf = pdf_of(&app, document).await;
     assert!(pdf.starts_with(b"%PDF-1."));
     let raw = String::from_utf8_lossy(&pdf);
-    assert!(raw.contains("/Subtype /Image") && raw.contains("/Logo Do"), "the logo is drawn");
+    assert!(
+        raw.contains("/Subtype /Image") && raw.contains("/Logo Do"),
+        "the logo is drawn"
+    );
     assert!(
         pdf.windows(LOGO.len()).any(|w| w == LOGO),
         "the company logo is embedded"
@@ -216,8 +224,14 @@ async fn the_same_data_returns_the_same_document_and_changed_data_is_refused() {
     let app = boot().await;
     set_statement(103, json!({ "period": "2026-10", "owner": "Khalid A." }));
     let ask = || GenerateRequest::new("owner_statement", statement(103));
-    let first = Documents::generate(app.state(), ask()).await.unwrap().unwrap();
-    let again = Documents::generate(app.state(), ask()).await.unwrap().unwrap();
+    let first = Documents::generate(app.state(), ask())
+        .await
+        .unwrap()
+        .unwrap();
+    let again = Documents::generate(app.state(), ask())
+        .await
+        .unwrap()
+        .unwrap();
     assert!(again.reused);
     assert_eq!(again.document, first.document);
     assert_eq!(again.number, first.number);
@@ -229,7 +243,10 @@ async fn the_same_data_returns_the_same_document_and_changed_data_is_refused() {
         1
     );
 
-    set_statement(103, json!({ "period": "2026-10", "owner": "Khalid A. (corrected)" }));
+    set_statement(
+        103,
+        json!({ "period": "2026-10", "owner": "Khalid A. (corrected)" }),
+    );
     let refused = Documents::generate(app.state(), ask())
         .await
         .unwrap()

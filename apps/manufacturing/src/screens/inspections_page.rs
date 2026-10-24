@@ -79,7 +79,12 @@ pub(crate) fn grid(lang: &Lang) -> Grid {
     let statuses: Vec<(String, String)> =
         [inspection::OPEN, inspection::PASSED, inspection::FAILED]
             .iter()
-            .map(|status| ((*status).to_owned(), word(lang, "inspection_status", status)))
+            .map(|status| {
+                (
+                    (*status).to_owned(),
+                    word(lang, "inspection_status", status),
+                )
+            })
             .collect();
     let came_back = vec![
         ("whole".to_owned(), text("inspections.whole")),
@@ -177,9 +182,7 @@ pub(crate) async fn show(
     // QC may export the list; the lot, the item and the notes are custom
     // columns and stay on screen.
     let grid = grids::exporting(grid(&lang), true);
-    if let Some(file) =
-        grids::export_file(&grid, true, query.clone(), &request).await?
-    {
+    if let Some(file) = grids::export_file(&grid, true, query.clone(), &request).await? {
         return Ok(file);
     }
     let page = grid.page(query, &request).await?;

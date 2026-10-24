@@ -249,7 +249,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_parties.block_effects.all_effects", "Every effect"),
     ("wl_parties.block_effects.sort", "Order by"),
     ("wl_parties.block_effects.show", "Show"),
-    ("wl_parties.block_effects.empty", "No agreement kind matches"),
+    (
+        "wl_parties.block_effects.empty",
+        "No agreement kind matches",
+    ),
     (
         "wl_parties.block_effects.empty_hint",
         "Clear the search or the effect. The modules that own agreements register their kinds.",

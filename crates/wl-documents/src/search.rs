@@ -33,9 +33,11 @@ pub(crate) fn register(app: &mut Registry) {
         .label("Documents")
         .document_in(|tx, document| Box::pin(document_in(tx, document)))
         .register();
-    app.listen(|event: Transitioned<Document>, state: AppState| async move {
-        index(&state.db, event.key).await
-    });
+    app.listen(
+        |event: Transitioned<Document>, state: AppState| async move {
+            index(&state.db, event.key).await
+        },
+    );
 }
 
 /// The search document of `document`.

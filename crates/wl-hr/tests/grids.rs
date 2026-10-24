@@ -170,7 +170,10 @@ async fn the_employees_page_sort_filter_by_role_and_find_the_name() {
     t.app.acting_as(&hana);
     let file = t.app.get("/hr/employees?export=csv").await;
     file.assert_ok();
-    assert!(file.text().contains("Security guard"), "the export in words");
+    assert!(
+        file.text().contains("Security guard"),
+        "the export in words"
+    );
     let manager = t.user_with("Mona", "manager").await;
     t.app.acting_as(&manager);
     t.app

@@ -299,7 +299,9 @@ async fn a_stopped_run_is_listed_as_stopped() {
     w.send(nov(5)).await;
     let text = w.text_to(&w.admin);
     assert!(
-        text.contains("invoice INV-ACME-2026-0311, occurrence overdue+14; stopped at 2026-11-04 20:00"),
+        text.contains(
+            "invoice INV-ACME-2026-0311, occurrence overdue+14; stopped at 2026-11-04 20:00"
+        ),
         "{text}"
     );
 }
@@ -418,8 +420,8 @@ async fn running_the_job_twice_sends_one_digest() {
 async fn a_stopped_run_records_its_failure() {
     let w = world().await;
     let before = now();
-    let spec = RuleRunSpec::new(REMINDER, Subject::new("invoicing.invoice", 9), "chain")
-        .chain_depth(4);
+    let spec =
+        RuleRunSpec::new(REMINDER, Subject::new("invoicing.invoice", 9), "chain").chain_depth(4);
     let outcome = run_rule(w.app.state(), spec, |_state| async { Ok(()) })
         .await
         .unwrap();
@@ -465,7 +467,11 @@ async fn the_run_page_shows_the_run_and_offers_rerun() {
     page.assert_ok();
     assert!(page.text().contains("Run again"));
     let rerun = w.app.post(&format!("{url}/rerun"), &[("x", "y")]).await;
-    assert!(rerun.status.is_redirection() || rerun.status.is_success(), "{}", rerun.text());
+    assert!(
+        rerun.status.is_redirection() || rerun.status.is_success(),
+        "{}",
+        rerun.text()
+    );
     let queued = RuleRun::find(w.app.db(), run.id).await.unwrap().unwrap();
     assert_eq!(queued.status, RuleRunStatus::Queued);
 }

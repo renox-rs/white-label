@@ -34,8 +34,7 @@ use wl_kernel::{PartyId, Subject};
 use wl_sales::costs::{self, CostInput};
 use wl_sales::report::{self, Filter, GroupBy, Viewer};
 use wl_sales::{
-    Campaign, CostEntry, CostStatus, Lead, LeadSource, NewLead, PartyAcquisition,
-    Purpose,
+    Campaign, CostEntry, CostStatus, Lead, LeadSource, NewLead, PartyAcquisition, Purpose,
 };
 
 const CODE: &str = "LISTING26";

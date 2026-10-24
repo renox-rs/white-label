@@ -8,9 +8,9 @@ mod support;
 use renox::chrono::Duration;
 use renox::db::DateTime;
 use renox::prelude::*;
+use wl_kernel::Subject;
 use wl_kernel::digest::{ItemKind, by_manager, gather};
 use wl_kernel::tickets::{Assignee, OpenTicket, TicketChannel};
-use wl_kernel::Subject;
 use wl_ticketing::late::{Reported, open_reported};
 use wl_ticketing::seed::STANDARD_POLICY;
 use wl_ticketing::{
@@ -77,9 +77,13 @@ async fn boot() -> Booted {
 }
 
 fn request(imran: &User) -> OpenTicket {
-    OpenTicket::new(Subject::new("property.unit", 12), "ac_not_cooling", "AC not cooling")
-        .channel(TicketChannel::Staff)
-        .assign_to(Assignee::user(imran.id))
+    OpenTicket::new(
+        Subject::new("property.unit", 12),
+        "ac_not_cooling",
+        "AC not cooling",
+    )
+    .channel(TicketChannel::Staff)
+    .assign_to(Assignee::user(imran.id))
 }
 
 /// Opens `request` as `by` at the clock `entered`, reported at `reported`.
@@ -245,7 +249,11 @@ async fn the_staff_form_takes_the_reported_time_and_reason() {
     let mut with_reason = form.to_vec();
     with_reason.push(("late_reason", "power cut"));
     t.app.post("/tickets", &with_reason).await;
-    let ticket = Ticket::query().first(t.db()).await.unwrap().expect("a ticket");
+    let ticket = Ticket::query()
+        .first(t.db())
+        .await
+        .unwrap()
+        .expect("a ticket");
     assert!(ticket.late_entry);
     t.app
         .get(&format!("/tickets/{}", ticket.id))

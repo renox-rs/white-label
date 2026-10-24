@@ -88,7 +88,12 @@ pub(crate) fn grid(lang: &Lang) -> Grid {
     let text = |key: &str| t(lang, &format!("manufacturing.screen.{key}"));
     let statuses: Vec<(String, String)> = WorkOrderStatus::ALL
         .iter()
-        .map(|status| (status.as_str().to_owned(), word(lang, "status", status.as_str())))
+        .map(|status| {
+            (
+                status.as_str().to_owned(),
+                word(lang, "status", status.as_str()),
+            )
+        })
         .collect();
     let tones: Vec<(&str, &str)> = WorkOrderStatus::ALL
         .iter()
@@ -253,10 +258,9 @@ pub(crate) async fn show(
 /// A work order in words, for the JSON answer.
 async fn row(state: &AppState, lang: &Lang, order: &WorkOrder) -> Result<Row> {
     let line = match order.line_id {
-        Some(line) => Line::find(&state.db, line).await?.map_or_else(
-            || t(lang, "manufacturing.screen.not_set"),
-            |line| line.code,
-        ),
+        Some(line) => Line::find(&state.db, line)
+            .await?
+            .map_or_else(|| t(lang, "manufacturing.screen.not_set"), |line| line.code),
         None => t(lang, "manufacturing.screen.no_line"),
     };
     Ok(Row {

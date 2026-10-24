@@ -983,7 +983,13 @@ mod tests {
     async fn installing_twice_leaves_nine_and_keeps_edits() {
         let app = TestApp::new(App::new().module(crate::WlSales::new())).await;
         let db = app.db();
-        assert_eq!(install(db).await.unwrap(), Installed { lead_sources: 9, channels: 0 });
+        assert_eq!(
+            install(db).await.unwrap(),
+            Installed {
+                lead_sources: 9,
+                channels: 0
+            }
+        );
         assert!(
             LeadSource::ordered(db)
                 .await

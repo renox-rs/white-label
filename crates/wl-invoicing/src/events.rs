@@ -66,16 +66,18 @@ fn days_after(due: NaiveDate, on: NaiveDate) -> i64 {
 /// The event `transition` gives for `invoice`, as it is after the commit.
 fn event_for(transition: &str, invoice: &Invoice, on: NaiveDate) -> Option<InvoiceEvent> {
     match transition {
-        ISSUE | ISSUE_SYSTEM | INVOICE_ISSUE_APPROVED => Some(InvoiceEvent::Issued(InvoiceIssued {
-            invoice: invoice.invoice_id(),
-            party: invoice.party(),
-            source: invoice.source(),
-            total: invoice.gross_total,
-            net_total: invoice.net_total,
-            issue_date: invoice.issue_date.unwrap_or(on),
-            // `issue` always sets it; the issue date is the fallback.
-            due_date: invoice.due_date.or(invoice.issue_date).unwrap_or(on),
-        })),
+        ISSUE | ISSUE_SYSTEM | INVOICE_ISSUE_APPROVED => {
+            Some(InvoiceEvent::Issued(InvoiceIssued {
+                invoice: invoice.invoice_id(),
+                party: invoice.party(),
+                source: invoice.source(),
+                total: invoice.gross_total,
+                net_total: invoice.net_total,
+                issue_date: invoice.issue_date.unwrap_or(on),
+                // `issue` always sets it; the issue date is the fallback.
+                due_date: invoice.due_date.or(invoice.issue_date).unwrap_or(on),
+            }))
+        }
         ALLOCATE_IN_FULL | RECOVER_IN_FULL => Some(InvoiceEvent::Paid(InvoicePaid {
             invoice: invoice.invoice_id(),
             party: invoice.party(),

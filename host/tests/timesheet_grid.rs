@@ -44,7 +44,10 @@ fn the_timesheets_grid_is_a_child_of_the_page() {
     assert!(lines[at].starts_with("  <rx-grid"), "a direct child");
     let child = |line: &str| line.starts_with("  <") && !line.starts_with("   ");
     for line in lines[at + 1..].iter().filter(|line| child(line)) {
-        assert!(line.starts_with("  </rx-grid"), "`{line}` is below the grid");
+        assert!(
+            line.starts_with("  </rx-grid"),
+            "`{line}` is below the grid"
+        );
     }
     for line in lines[..at].iter().filter(|line| child(line)) {
         assert!(
@@ -63,7 +66,10 @@ async fn the_timesheets_search_the_worker_and_client_sort_and_page() {
     let (from, to, total) = range(&all);
     assert!(total >= 3, "the demo timesheets are listed");
     assert_eq!((from, to), (1, total.min(10)));
-    assert!(all.contains("href=\"/timesheets/"), "the worker links the sheet");
+    assert!(
+        all.contains("href=\"/timesheets/"),
+        "the worker links the sheet"
+    );
 
     let by_worker = page(&app, AMAL, "/timesheets?sort=-worker").await;
     assert_eq!(range(&by_worker).2, total);
@@ -72,7 +78,10 @@ async fn the_timesheets_search_the_worker_and_client_sort_and_page() {
 
     let ravi = page(&app, AMAL, "/timesheets?search=ravi").await;
     let found = range(&ravi).2;
-    assert!(found >= 1 && found < total, "only Ravi's sheets: {found} of {total}");
+    assert!(
+        found >= 1 && found < total,
+        "only Ravi's sheets: {found} of {total}"
+    );
     let text = visible(&ravi);
     assert!(text.contains("Ravi Kumar"));
     assert!(!text.contains("Wasim Khan"), "another worker is not found");

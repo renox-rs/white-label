@@ -81,10 +81,7 @@ fn sort_key(row: &AgeingRow, key: &str) -> SortKey {
 
 /// `report` with its rows in the order `raw` (`?sort=`) asks for; the
 /// order of the report (by party) otherwise.
-pub(crate) fn sorted(
-    mut report: AgeingReport,
-    raw: Option<&str>,
-) -> (AgeingReport, Option<Sort>) {
+pub(crate) fn sorted(mut report: AgeingReport, raw: Option<&str>) -> (AgeingReport, Option<Sort>) {
     let keys = sort_keys(report.labels.len());
     let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
     let sort = Sort::parse(raw, &keys);

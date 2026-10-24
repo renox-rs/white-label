@@ -70,7 +70,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.portal.dispute_done",
         "We received your dispute and will come back to you.",
     ),
-    ("wl_invoicing.portal.statement.title", "Statement of account"),
+    (
+        "wl_invoicing.portal.statement.title",
+        "Statement of account",
+    ),
     ("wl_invoicing.portal.statement.from", "From"),
     ("wl_invoicing.portal.statement.to", "To"),
     ("wl_invoicing.portal.statement.show", "Show"),

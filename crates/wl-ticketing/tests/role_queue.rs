@@ -72,7 +72,10 @@ async fn a_role_ticket_waits_in_every_holders_queue_until_one_takes_it() {
     assert_eq!(ticket.assignee(), None, "no user, no vendor");
     assert_eq!(ticket.assignee_role.as_deref(), Some("hvac"));
     assert_eq!(ticket.assignee_role_display.as_deref(), Some("Hvac"));
-    assert!(ticket.sla_started_at.is_some(), "the SLA starts at the routing");
+    assert!(
+        ticket.sla_started_at.is_some(),
+        "the SLA starts at the routing"
+    );
     let response_due = ticket.response_due.expect("a response due time");
 
     for user in [&nadia, &omar] {
@@ -80,7 +83,10 @@ async fn a_role_ticket_waits_in_every_holders_queue_until_one_takes_it() {
         assert_eq!(queue.iter().map(|q| q.id).collect::<Vec<_>>(), [ticket.id]);
     }
     let told = users(&t.notices.recipients(ASSIGNED));
-    assert!(told.contains(&nadia.id) && told.contains(&omar.id), "{told:?}");
+    assert!(
+        told.contains(&nadia.id) && told.contains(&omar.id),
+        "{told:?}"
+    );
 
     t.app.acting_as(&nadia);
     t.app
@@ -99,7 +105,11 @@ async fn a_role_ticket_waits_in_every_holders_queue_until_one_takes_it() {
     assert_eq!(taken.status, TicketStatus::Assigned);
     assert_eq!(taken.assignee(), Some(Assignee::user(omar.id)));
     assert_eq!(taken.assignee_role, None);
-    assert_eq!(taken.response_due, Some(response_due), "the SLA is unchanged");
+    assert_eq!(
+        taken.response_due,
+        Some(response_due),
+        "the SLA is unchanged"
+    );
     assert_eq!(taken.sla_started_at, ticket.sla_started_at);
     let history = t.history(&ticket).await;
     let last = history.last().expect("the take is in the history");

@@ -464,7 +464,10 @@ async fn ptyeinv11_look_up_in_the_create_form_fills_the_field_and_saves_nothing(
     page.assert_ok();
     let html = page.text();
     assert!(html.contains(&format!(r#"value="{found}""#)), "{html}");
-    assert!(html.contains(r#"value="Delta Trading LLC""#), "what was typed is kept: {html}");
+    assert!(
+        html.contains(r#"value="Delta Trading LLC""#),
+        "what was typed is kept: {html}"
+    );
     assert!(html.contains(r#"value="accounts@delta.example""#), "{html}");
     assert!(html.contains(&format!(r#"value="{DELTA_TRN}""#)), "{html}");
     assert_eq!(asp.calls(), 1);
@@ -523,12 +526,18 @@ async fn ptyeinv11_with_the_connection_down_the_form_lookup_is_off_and_saving_by
     let form = t.app.get("/parties/new").await;
     form.assert_ok();
     let html = form.text();
-    assert!(html.contains("Enter the e-invoicing ID by hand."), "the banner: {html}");
+    assert!(
+        html.contains("Enter the e-invoicing ID by hand."),
+        "the banner: {html}"
+    );
     assert!(
         html.contains("The lookup is not available now; enter the ID by hand"),
         "the reason: {html}"
     );
-    assert!(!html.contains(CREATE_LOOKUP), "no live Look up button: {html}");
+    assert!(
+        !html.contains(CREATE_LOOKUP),
+        "no live Look up button: {html}"
+    );
 
     let page = t.app.post(CREATE_LOOKUP, &typed(DELTA_TRN, "")).await;
     page.assert_ok();

@@ -93,7 +93,10 @@ pub(crate) fn grid(lang: &Lang) -> Grid {
             &text("conformity.customer_specific"),
         ))
         .column(Column::custom("accepted", &text("grid.accepted")))
-        .column(Column::custom("certificates", &text("conformity.certificates")))
+        .column(Column::custom(
+            "certificates",
+            &text("conformity.certificates"),
+        ))
         .sort_by("item_id")
         .empty_state(
             &text("conformity.empty"),

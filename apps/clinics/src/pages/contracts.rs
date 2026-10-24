@@ -234,8 +234,7 @@ async fn index(
         .await?;
     let payers = grid_lookup::party_options(&state, &lang.locale, payer_ids).await;
     let term = grid_lookup::searched(&request, &session, "clinics-contracts");
-    let payer_match =
-        grid_lookup::party_match(&state, term.as_deref(), &["payer_party_id"]).await;
+    let payer_match = grid_lookup::party_match(&state, term.as_deref(), &["payer_party_id"]).await;
     let grid = grid(&lang, payers, &payer_match, can_manage, can_manage);
     if request.param("export").is_some() && !can_manage {
         return Err(Error::Forbidden);

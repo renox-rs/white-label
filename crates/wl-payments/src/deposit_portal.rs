@@ -102,8 +102,9 @@ pub async fn deposits_of(
     lang: &Lang,
     party: PartyId,
 ) -> Result<Vec<PortalDeposit>> {
-    let published: Vec<PublishedDeductions> =
-        deposit_deductions(state).published_for(state, party).await?;
+    let published: Vec<PublishedDeductions> = deposit_deductions(state)
+        .published_for(state, party)
+        .await?;
     let mut out = Vec::new();
     for deposit in Deposit::of_party(&state.db, party).await? {
         let shown = published.iter().find(|p| p.deposit.0 == deposit.id);
@@ -132,11 +133,11 @@ pub async fn deposits_of(
             row.published_text = text(lang, "portal_deposit.published")
                 .replace(":version", &p.version.to_string())
                 .replace(":date", &date_text(p.published_on));
-            row.forfeiture = (p.kind == DeductionKind::Forfeiture)
-                .then(|| p.reason.clone().unwrap_or_default());
-            row.window_text = p.window_ends_on.map(|end| {
-                text(lang, "portal_deposit.window").replace(":date", &date_text(end))
-            });
+            row.forfeiture =
+                (p.kind == DeductionKind::Forfeiture).then(|| p.reason.clone().unwrap_or_default());
+            row.window_text = p
+                .window_ends_on
+                .map(|end| text(lang, "portal_deposit.window").replace(":date", &date_text(end)));
             row.lines = p
                 .lines
                 .iter()
@@ -217,7 +218,10 @@ pub async fn dispute(
         lines,
         comment: form.get("comment").cloned().unwrap_or_default(),
     };
-    match deposit_deductions(state).dispute(state, party, request).await {
+    match deposit_deductions(state)
+        .dispute(state, party, request)
+        .await
+    {
         Ok(()) => Ok(()),
         Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message)) => {
             let mut errors = renox::validation::Errors::new();

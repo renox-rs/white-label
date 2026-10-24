@@ -211,7 +211,9 @@ async fn index(
     }
     let can_export = user.has_permission(permissions::FLEET_CONTRACTS_MANAGE);
     let grid = lists::exporting(grid(&lists::texts_in(&lang)), can_export);
-    if let Some(file) = lists::export_file(&grid, can_export, FleetContract::query(), &request).await? {
+    if let Some(file) =
+        lists::export_file(&grid, can_export, FleetContract::query(), &request).await?
+    {
         return Ok(file);
     }
     let page = grid.page(FleetContract::query(), &request).await?;

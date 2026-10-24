@@ -8,8 +8,8 @@
 //! The subjects are test-only invoices, parties and leases of two buildings,
 //! indexed with `search::index_in` as a module does.
 
-use renox::auth::permissions::{self, Scope};
 use renox::auth::Permissions;
+use renox::auth::permissions::{self, Scope};
 use renox::db::{Migration, capture_queries};
 use renox::prelude::*;
 use renox::testing::TestApp;
@@ -187,19 +187,32 @@ async fn world() -> World {
     let views = dir.path().to_path_buf();
     let app = TestApp::with_config(app, move |c| c.views_path = views.clone()).await;
     let db = app.db();
-    permissions::define_role(db, "finance", &["invoices.view", "parties.view", "leases.view"])
-        .await
-        .unwrap();
+    permissions::define_role(
+        db,
+        "finance",
+        &["invoices.view", "parties.view", "leases.view"],
+    )
+    .await
+    .unwrap();
     permissions::define_role(db, "viewer", &["parties.view", "leases.view"])
         .await
         .unwrap();
-    permissions::define_role(db, "manager", &["invoices.view", "parties.view", "leases.view"])
-        .await
-        .unwrap();
+    permissions::define_role(
+        db,
+        "manager",
+        &["invoices.view", "parties.view", "leases.view"],
+    )
+    .await
+    .unwrap();
     let user = |name: &'static str| async move {
-        User::register(db, name, &format!("{name}@gulftower.example"), "password123")
-            .await
-            .unwrap()
+        User::register(
+            db,
+            name,
+            &format!("{name}@gulftower.example"),
+            "password123",
+        )
+        .await
+        .unwrap()
     };
     let finance = user("finance").await;
     finance.assign_role(db, "finance").await.unwrap();
@@ -322,7 +335,10 @@ async fn without_invoices_view_there_is_no_invoice_group_and_no_count() {
     page.assert_see("Nothing found for");
     // Nor through the type page, nor the functions behind it.
     let only = w
-        .get(&w.viewer, "/search?q=INV-PGP-2026-0004&type=invoicing.invoice")
+        .get(
+            &w.viewer,
+            "/search?q=INV-PGP-2026-0004&type=invoicing.invoice",
+        )
         .await;
     only.assert_ok();
     only.assert_dont_see("data-type=\"invoicing.invoice\"");
@@ -366,7 +382,8 @@ async fn a_manager_of_tower_a_finds_nothing_of_tower_b() {
 async fn al_ali_shows_parties_leases_and_invoices_in_their_groups_identifiers_first() {
     let w = world().await;
     w.party("Mohammed Al Ali", "محمد العلي", "", TOWER_A).await;
-    w.lease("LSE-PGP-2026-0001", "Mohammed Al Ali", TOWER_A).await;
+    w.lease("LSE-PGP-2026-0001", "Mohammed Al Ali", TOWER_A)
+        .await;
     w.invoice("INV-PGP-2026-0004", "Mohammed Al Ali", TOWER_A)
         .await;
     w.invoice("INV-PGP-2026-0006", "Gulf Tower Owners", TOWER_A)
@@ -431,7 +448,10 @@ async fn forty_invoices_show_five_and_show_all_forty_and_the_type_page_pages_the
     page.assert_see("/search?q=Gulf+Tower+Owners&amp;type=invoicing.invoice");
 
     let first = w
-        .get(&w.finance, "/search?q=Gulf+Tower+Owners&type=invoicing.invoice")
+        .get(
+            &w.finance,
+            "/search?q=Gulf+Tower+Owners&type=invoicing.invoice",
+        )
         .await;
     first.assert_ok();
     assert_eq!(rows_of(&first.text(), INVOICE), 25);
@@ -453,8 +473,12 @@ async fn the_page_runs_the_same_number_of_queries_whatever_it_finds() {
     let w = world().await;
     w.party("Gulf Tower Owners", "", "", TOWER_A).await;
     for n in 1..=3 {
-        w.invoice(&format!("INV-PGP-2026-{n:04}"), "Gulf Tower Owners", TOWER_A)
-            .await;
+        w.invoice(
+            &format!("INV-PGP-2026-{n:04}"),
+            "Gulf Tower Owners",
+            TOWER_A,
+        )
+        .await;
     }
     w.app.acting_as(&w.finance);
     // Warm the session and the roles.
@@ -462,12 +486,20 @@ async fn the_page_runs_the_same_number_of_queries_whatever_it_finds() {
     let (page, few) = capture_queries(w.app.get("/search?q=Gulf+Tower+Owners")).await;
     page.assert_ok();
     for n in 4..=40 {
-        w.invoice(&format!("INV-PGP-2026-{n:04}"), "Gulf Tower Owners", TOWER_A)
-            .await;
+        w.invoice(
+            &format!("INV-PGP-2026-{n:04}"),
+            "Gulf Tower Owners",
+            TOWER_A,
+        )
+        .await;
     }
     for n in 1..=12 {
-        w.lease(&format!("LSE-PGP-2026-{n:04}"), "Gulf Tower Owners", TOWER_A)
-            .await;
+        w.lease(
+            &format!("LSE-PGP-2026-{n:04}"),
+            "Gulf Tower Owners",
+            TOWER_A,
+        )
+        .await;
     }
     w.app.acting_as(&w.finance);
     let (page, many) = capture_queries(w.app.get("/search?q=Gulf+Tower+Owners")).await;
@@ -500,7 +532,9 @@ async fn arabic_and_latin_spellings_find_each_other() {
     w.party("Mohammed Al Ali", "", "", TOWER_A).await;
     w.party("F. Noor", "فاطمة نور", "", TOWER_A).await;
     // Arabic typed (محمد), the record is in Latin letters only.
-    let page = w.get(&w.finance, "/search?q=%D9%85%D8%AD%D9%85%D8%AF").await;
+    let page = w
+        .get(&w.finance, "/search?q=%D9%85%D8%AD%D9%85%D8%AF")
+        .await;
     page.assert_ok();
     page.assert_see("Mohammed Al Ali");
     // Latin typed, the first name is in Arabic letters only.

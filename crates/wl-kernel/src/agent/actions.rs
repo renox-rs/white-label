@@ -467,7 +467,8 @@ pub async fn preview(
         fingerprint: planned.fingerprint,
         expires_at: expires.timestamp(),
     };
-    let sealed = renox::serde_json::to_string(&ticket).map_err(|e| Error::from(renox::anyhow::anyhow!(e)))?;
+    let sealed = renox::serde_json::to_string(&ticket)
+        .map_err(|e| Error::from(renox::anyhow::anyhow!(e)))?;
     let note = if planned.requires_approval {
         "Nothing has been written. This is over your limit: confirming submits an approval \
          request, which a person decides."
@@ -734,7 +735,8 @@ impl CustomAction {
 }
 
 /// Gathers a transition's input from the stored record and the arguments.
-pub type InputFn<M> = Arc<dyn Fn(AppState, M, Value) -> BoxFuture<'static, Result<Value>> + Send + Sync>;
+pub type InputFn<M> =
+    Arc<dyn Fn(AppState, M, Value) -> BoxFuture<'static, Result<Value>> + Send + Sync>;
 
 /// Says what a transition will change, for the preview.
 pub type DescribeFn<M> =
@@ -862,23 +864,34 @@ where
                       record: Option<i64>,
                       args: Value|
                       -> BoxFuture<'static, Result<Planned>> {
-                let spec = Arc::clone(&for_preview);
-                Box::pin(async move {
-                    let id = record.unwrap_or_default();
-                    plan(&spec, &call, id, &args).await.map(|(_, _, planned)| planned)
-                })
-            }),
+                    let spec = Arc::clone(&for_preview);
+                    Box::pin(async move {
+                        let id = record.unwrap_or_default();
+                        plan(&spec, &call, id, &args)
+                            .await
+                            .map(|(_, _, planned)| planned)
+                    })
+                },
+            ),
             confirm: Arc::new(
                 move |call: AgentCall,
                       record: Option<i64>,
                       args: Value,
                       fingerprint: String|
                       -> BoxFuture<'static, Result<Confirmed>> {
-                let spec = Arc::clone(&for_confirm);
-                Box::pin(async move {
-                    run(&spec, &call, record.unwrap_or_default(), &args, &fingerprint).await
-                })
-            }),
+                    let spec = Arc::clone(&for_confirm);
+                    Box::pin(async move {
+                        run(
+                            &spec,
+                            &call,
+                            record.unwrap_or_default(),
+                            &args,
+                            &fingerprint,
+                        )
+                        .await
+                    })
+                },
+            ),
         }
     }
 
@@ -983,8 +996,9 @@ where
         ));
     }
     let to = transition.to_state().unwrap_or_default().to_owned();
-    let mut request = TransitionRequest::new(M::TABLE, id, spec.name.clone(), current.clone(), to.clone())
-        .with_input(input.clone());
+    let mut request =
+        TransitionRequest::new(M::TABLE, id, spec.name.clone(), current.clone(), to.clone())
+            .with_input(input.clone());
     request.actor = Some(call.user.clone());
     request.reason = reason;
     let verdict = state_machine::preview(&request, db).await?;
@@ -996,7 +1010,11 @@ where
     }
     let change = match &spec.describe {
         Some(describe) => describe(call.state.clone(), record.clone(), args.clone()).await?,
-        None => Change::new(format!("{}: {}", spec.label, Subject::new(&spec.subject_type, id).words())),
+        None => Change::new(format!(
+            "{}: {}",
+            spec.label,
+            Subject::new(&spec.subject_type, id).words()
+        )),
     }
     .line("Status", format!("{current} → {to}"));
     let requires_approval = verdict == MachinePreview::RequiresApproval;

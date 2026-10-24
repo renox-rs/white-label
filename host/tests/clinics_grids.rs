@@ -105,7 +105,11 @@ async fn the_claims_page_sort_filter_search_and_export() {
         ),
     )
     .await;
-    let found = load(&app, &format!("/clinics/claims?search={}", encode(&patient))).await;
+    let found = load(
+        &app,
+        &format!("/clinics/claims?search={}", encode(&patient)),
+    )
+    .await;
     let (_, _, hits) = range(&found);
     assert!(hits >= 1 && hits <= claims, "{patient}: {hits} claims");
     assert!(found.contains(&number(first)), "{patient}'s claim is found");
@@ -128,14 +132,22 @@ async fn the_policies_authorisations_and_contracts_filter_by_payer() {
     let app = demo().await;
     let policies = count(&app, "select count(*) from clinics_insurance_policies").await;
     assert_eq!(total(&app, "/clinics/policies?per_page=10").await, policies);
-    let payer = count(&app, "select min(payer_party_id) from clinics_insurance_policies").await;
+    let payer = count(
+        &app,
+        "select min(payer_party_id) from clinics_insurance_policies",
+    )
+    .await;
     let of_payer = count(
         &app,
         &format!("select count(*) from clinics_insurance_policies where payer_party_id = {payer}"),
     )
     .await;
     assert_eq!(
-        total(&app, &format!("/clinics/policies?in.payer_party_id={payer}")).await,
+        total(
+            &app,
+            &format!("/clinics/policies?in.payer_party_id={payer}")
+        )
+        .await,
         of_payer
     );
     let member = text_of(
@@ -143,7 +155,11 @@ async fn the_policies_authorisations_and_contracts_filter_by_payer() {
         "select member_id from clinics_insurance_policies order by id limit 1",
     )
     .await;
-    let found = total(&app, &format!("/clinics/policies?search={}", encode(&member))).await;
+    let found = total(
+        &app,
+        &format!("/clinics/policies?search={}", encode(&member)),
+    )
+    .await;
     assert!(found >= 1, "the member id {member} is found");
     let patient = text_of(
         &app,
@@ -151,7 +167,11 @@ async fn the_policies_authorisations_and_contracts_filter_by_payer() {
          (select patient_party_id from clinics_insurance_policies order by id limit 1)",
     )
     .await;
-    let found = total(&app, &format!("/clinics/policies?search={}", encode(&patient))).await;
+    let found = total(
+        &app,
+        &format!("/clinics/policies?search={}", encode(&patient)),
+    )
+    .await;
     assert!(found >= 1, "the patient {patient} is found");
 
     let authorisations = count(&app, "select count(*) from clinics_prior_authorisations").await;
@@ -160,31 +180,56 @@ async fn the_policies_authorisations_and_contracts_filter_by_payer() {
         authorisations
     );
     if authorisations > 0 {
-        let policy = count(&app, "select min(policy_id) from clinics_prior_authorisations").await;
+        let policy = count(
+            &app,
+            "select min(policy_id) from clinics_prior_authorisations",
+        )
+        .await;
         let of_policy = count(
             &app,
-            &format!("select count(*) from clinics_prior_authorisations where policy_id = {policy}"),
+            &format!(
+                "select count(*) from clinics_prior_authorisations where policy_id = {policy}"
+            ),
         )
         .await;
         assert_eq!(
-            total(&app, &format!("/clinics/authorisations?in.policy_id={policy}")).await,
+            total(
+                &app,
+                &format!("/clinics/authorisations?in.policy_id={policy}")
+            )
+            .await,
             of_policy
         );
         let first = count(&app, "select min(id) from clinics_prior_authorisations").await;
-        let found = load(&app, &format!("/clinics/authorisations?search=PA-{first:04}")).await;
+        let found = load(
+            &app,
+            &format!("/clinics/authorisations?search=PA-{first:04}"),
+        )
+        .await;
         assert!(found.contains(&format!(">PA-{first:04}<")));
     }
 
     let contracts = count(&app, "select count(*) from clinics_payer_contracts").await;
-    assert_eq!(total(&app, "/clinics/contracts?per_page=10").await, contracts);
-    let payer = count(&app, "select min(payer_party_id) from clinics_payer_contracts").await;
+    assert_eq!(
+        total(&app, "/clinics/contracts?per_page=10").await,
+        contracts
+    );
+    let payer = count(
+        &app,
+        "select min(payer_party_id) from clinics_payer_contracts",
+    )
+    .await;
     let of_payer = count(
         &app,
         &format!("select count(*) from clinics_payer_contracts where payer_party_id = {payer}"),
     )
     .await;
     assert_eq!(
-        total(&app, &format!("/clinics/contracts?in.payer_party_id={payer}")).await,
+        total(
+            &app,
+            &format!("/clinics/contracts?in.payer_party_id={payer}")
+        )
+        .await,
         of_payer
     );
 }

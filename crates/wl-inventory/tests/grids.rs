@@ -161,15 +161,28 @@ async fn the_orders_and_receipts_filter_by_supplier() {
     let (first, first_line) = t.order(&store, &item, 10_000, 100).await;
     let other = PartyId(999);
     let (second, second_line) = t.order_from(other, &store, &item, 5_000, 100).await;
-    t.receipt(&first, &store, vec![DraftLine::on(first_line.id, 10_000, 10_000)])
-        .await;
-    t.receipt(&second, &store, vec![DraftLine::on(second_line.id, 5_000, 5_000)])
-        .await;
+    t.receipt(
+        &first,
+        &store,
+        vec![DraftLine::on(first_line.id, 10_000, 10_000)],
+    )
+    .await;
+    t.receipt(
+        &second,
+        &store,
+        vec![DraftLine::on(second_line.id, 5_000, 5_000)],
+    )
+    .await;
     let keeper = t.storekeeper("Sami").await;
 
     let orders = page(&t, &keeper, "/purchase-orders?per_page=10").await;
     assert_eq!(range(&orders).2, 2);
-    let of_one = page(&t, &keeper, &format!("/purchase-orders?in.supplier={}", SUPPLIER.0)).await;
+    let of_one = page(
+        &t,
+        &keeper,
+        &format!("/purchase-orders?in.supplier={}", SUPPLIER.0),
+    )
+    .await;
     assert_eq!(range(&of_one).2, 1);
     let receipts = page(&t, &keeper, "/goods-receipts?per_page=10&sort=-when").await;
     assert_eq!(range(&receipts).2, 2);
@@ -194,7 +207,12 @@ async fn a_grid_refresh_gets_the_grid_not_json() {
         .await;
     refresh.assert_ok();
     assert!(refresh.text().contains("rx-grid"), "{}", refresh.text());
-    let json = t.app.request().header("accept", "*/*").get("/dispatches").await;
+    let json = t
+        .app
+        .request()
+        .header("accept", "*/*")
+        .get("/dispatches")
+        .await;
     json.assert_ok();
     assert!(json.text().trim_start().starts_with('['), "{}", json.text());
 

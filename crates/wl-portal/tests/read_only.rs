@@ -11,9 +11,7 @@ use renox::db::sql;
 use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
-use wl_portal::{
-    AccessGrant, GrantStatus, PortalAccess, PortalAccessClosed, PortalAccessReadOnly,
-};
+use wl_portal::{AccessGrant, GrantStatus, PortalAccess, PortalAccessClosed, PortalAccessReadOnly};
 
 use support::{SARA_PARTY, boot};
 
@@ -65,7 +63,9 @@ async fn por03_a_terminated_lease_makes_the_grant_read_only() {
 
     let notice = "Your access is read-only since 31 Dec 2026.";
     for key in ["invoices", "documents", "lease", "requests"] {
-        let page = t.get_as(&sara, &format!("/portal/{SARA_PARTY}/{key}")).await;
+        let page = t
+            .get_as(&sara, &format!("/portal/{SARA_PARTY}/{key}"))
+            .await;
         page.assert_ok();
         assert!(page.text().contains(notice), "{key}");
     }
@@ -126,7 +126,10 @@ async fn por03_the_grant_closes_on_day_91() {
     )
     .await
     .unwrap();
-    assert_eq!(reload(&t, &grant).await.closes_on(90), Some(day(2027, 4, 1)));
+    assert_eq!(
+        reload(&t, &grant).await.closes_on(90),
+        Some(day(2027, 4, 1))
+    );
     assert_eq!(sessions_revoked_at(&t, &sara).await, 0);
     t.app.fake_events();
 

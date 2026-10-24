@@ -267,7 +267,10 @@ pub async fn suggest(
         .collect();
     let references = reference_text(line);
     if let Some(invoice) = open.iter().find(|i| {
-        i.balance == line.amount && i.number.as_deref().is_some_and(|n| mentions(n, &references))
+        i.balance == line.amount
+            && i.number
+                .as_deref()
+                .is_some_and(|n| mentions(n, &references))
     }) {
         return Ok(Some(Suggestion {
             kind: KIND_INVOICES,
@@ -393,7 +396,11 @@ pub async fn confirm(
     if line.status != LineStatus::Suggested || line.drawing_request_id.is_some() {
         return Err(guard("The line is not suggested."));
     }
-    let targets = line.suggestion_targets.clone().map(|t| t.0).unwrap_or_default();
+    let targets = line
+        .suggestion_targets
+        .clone()
+        .map(|t| t.0)
+        .unwrap_or_default();
     line.status = LineStatus::Matched;
     line.match_kind = Some(kind.clone());
     line.match_party_id = line.suggestion_party_id;
@@ -447,10 +454,7 @@ pub async fn match_manually(
     }
     let mut total = 0;
     for (invoice, amount) in allocations {
-        let Some(found) = invoicer(state)
-            .find(&state.db, InvoiceId(*invoice))
-            .await?
-        else {
+        let Some(found) = invoicer(state).find(&state.db, InvoiceId(*invoice)).await? else {
             return Err(guard("An invoice was not found."));
         };
         if found.party != party || found.legal_entity_id != Some(import.legal_entity_id) {
@@ -577,7 +581,9 @@ pub async fn reverse_match(
     id: i64,
 ) -> std::result::Result<Payment, TransitionError> {
     let Some(payment) = payment_of_line(&state.db, id).await? else {
-        return Err(guard("The line has no payment recorded from a confirmed match."));
+        return Err(guard(
+            "The line has no payment recorded from a confirmed match.",
+        ));
     };
     crate::reverse::reverse(
         state,
@@ -596,7 +602,10 @@ mod tests {
 
     #[test]
     fn a_payer_named_like_the_party_is_similar() {
-        assert!(similar_name("Al Noor Trading LLC", "TRF FROM AL NOOR TRADING"));
+        assert!(similar_name(
+            "Al Noor Trading LLC",
+            "TRF FROM AL NOOR TRADING"
+        ));
         assert!(similar_name("Tara Nasser", "IBFT TARA NASSER RENT"));
         assert!(!similar_name("Tara Nasser", "IBFT OMAR SALEH"));
         assert!(!similar_name("LLC", "LLC"));

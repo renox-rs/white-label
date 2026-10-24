@@ -57,7 +57,11 @@ pub(crate) fn register(app: &mut Registry) {
     });
     app.listen(
         |event: Transitioned<CreditNote>, state: AppState| async move {
-            index(&state.db, &[Subject::new(CREDIT_NOTE_SUBJECT_TYPE, event.key)]).await
+            index(
+                &state.db,
+                &[Subject::new(CREDIT_NOTE_SUBJECT_TYPE, event.key)],
+            )
+            .await
         },
     );
     // What an AI assistant reads of an invoice (BL-AGT-07).

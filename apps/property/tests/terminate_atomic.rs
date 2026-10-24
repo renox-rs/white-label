@@ -185,7 +185,10 @@ impl Scene {
         assert_eq!(lease.status, LeaseStatus::NoticeGiven);
         assert!(lease.actual_move_out.is_none());
         assert_eq!(lease.termination_credit, 0);
-        assert_ne!(self.t.unit_now(&self.unit).await.status, UnitStatus::Available);
+        assert_ne!(
+            self.t.unit_now(&self.unit).await.status,
+            UnitStatus::Available
+        );
         assert!(self.t.cheques.returns().is_empty());
         assert_eq!(self.returned(), 0);
         assert!(

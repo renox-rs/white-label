@@ -12,10 +12,10 @@ use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::testing::{TestApp, TestResponse};
 use wl_invoicing::Invoice;
+use wl_kernel::Subject;
 use wl_kernel::agent::{AgentRun, AgentsOn};
 use wl_kernel::approvals::{ApprovalPolicy, ApprovalStatus, ConditionKind, Step, pending_for};
 use wl_kernel::invoicing::{InvoiceStatus, VatCategory};
-use wl_kernel::Subject;
 
 use support::{day, draft_invoice, noon_clock, person, reload, tenant};
 
@@ -294,7 +294,10 @@ async fn approvals_and_voids_are_not_offered_and_a_user_without_the_right_is_ref
         .collect();
     assert!(keys.contains(&"invoicing.invoice.issue"));
     for never in ["approve", "approve_step", "reject", "void"] {
-        assert!(!keys.iter().any(|k| k.ends_with(&format!(".{never}"))), "{never}");
+        assert!(
+            !keys.iter().any(|k| k.ends_with(&format!(".{never}"))),
+            "{never}"
+        );
     }
     tool(
         &app,

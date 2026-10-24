@@ -762,7 +762,10 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
         "logistics.screen.account_changes_empty_text",
         "A change asked from this page or the client portal appears here until it is active, rejected, withdrawn or lapsed.",
     ),
-    ("logistics.screen.account_changes_open", "Bank account changes"),
+    (
+        "logistics.screen.account_changes_open",
+        "Bank account changes",
+    ),
     ("logistics.screen.account_via", "Asked through"),
     ("logistics.screen.account_requested_at", "Asked"),
     ("logistics.screen.account_expires_at", "Lapses"),

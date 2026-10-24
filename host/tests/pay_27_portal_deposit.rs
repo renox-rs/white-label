@@ -23,7 +23,10 @@ use wl_portal::{NewGrant, PortalAccess};
 
 /// Moves the clock to noon of `day` (Asia/Dubai), which is ahead of it.
 fn travel_to(app: &TestApp, day: NaiveDate) {
-    let local = NaiveDateTime::new(day, renox::chrono::NaiveTime::from_hms_opt(12, 0, 0).unwrap());
+    let local = NaiveDateTime::new(
+        day,
+        renox::chrono::NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
+    );
     let ahead = (BusinessCalendar::default().from_local(local) - renox::db::now()).num_seconds();
     assert!(ahead > 0, "{day} is ahead of the clock");
     app.travel(std::time::Duration::from_secs(ahead.unsigned_abs()));

@@ -18,10 +18,7 @@ fn purpose_of(campaign: &Campaign) -> String {
 
 /// The stored name of the marketing channel, empty if unset.
 fn channel_of(campaign: &Campaign) -> String {
-    campaign
-        .marketing_channel
-        .clone()
-        .unwrap_or_default()
+    campaign.marketing_channel.clone().unwrap_or_default()
 }
 
 /// The `CampaignActivated` event for `campaign`.

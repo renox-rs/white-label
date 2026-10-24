@@ -22,7 +22,9 @@ use renox::prelude::*;
 use renox::serde_json::{self, Value};
 use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
-use wl_kernel::notify::{self, Category as NoticeCategory, NotificationTypeDef, NotifyChannel, NotifyRequest};
+use wl_kernel::notify::{
+    self, Category as NoticeCategory, NotificationTypeDef, NotifyChannel, NotifyRequest,
+};
 use wl_kernel::scopes::COMPANY_ADMIN_ROLE;
 use wl_kernel::ticket_routing::{RoleAssignee, default_route, ticket_router};
 use wl_kernel::tickets::{Assignee, OpenTicket};

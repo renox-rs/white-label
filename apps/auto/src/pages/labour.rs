@@ -103,7 +103,9 @@ async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Respo
     }
     let can_export = user.has_permission(permissions::LABOUR_MENU_MANAGE);
     let grid = lists::exporting(grid(&lists::texts_in(&lang)), can_export);
-    if let Some(file) = lists::export_file(&grid, can_export, LabourOperation::query(), &request).await? {
+    if let Some(file) =
+        lists::export_file(&grid, can_export, LabourOperation::query(), &request).await?
+    {
         return Ok(file);
     }
     let operations = grid.page(LabourOperation::query(), &request).await?;

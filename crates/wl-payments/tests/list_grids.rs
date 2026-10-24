@@ -48,9 +48,7 @@ fn fills_the_page(html: &str) -> bool {
 #[renox::test]
 async fn pay_grid_the_bank_statements_search_sort_filter_and_page() {
     let t = boot().await;
-    let dina = t
-        .user("Dina", &[perm::VIEW, perm::BANK_RECONCILE])
-        .await;
+    let dina = t.user("Dina", &[perm::VIEW, perm::BANK_RECONCILE]).await;
     t.app.acting_as(&dina);
     let entity = t.entity("PGP").await.id.to_string();
     for month in 1..=12_u32 {
@@ -63,7 +61,11 @@ async fn pay_grid_the_bank_statements_search_sort_filter_and_page() {
                 .unwrap()
         };
         let account = if month <= 8 { "ENBD-1" } else { "ADCB-2" };
-        let (file, start, end) = (format!("stmt-{month:02}"), start.to_string(), end.to_string());
+        let (file, start, end) = (
+            format!("stmt-{month:02}"),
+            start.to_string(),
+            end.to_string(),
+        );
         t.app
             .htmx()
             .post(
@@ -86,7 +88,10 @@ async fn pay_grid_the_bank_statements_search_sort_filter_and_page() {
     let first = load(&t, "/bank-statements?per_page=10").await;
     assert!(fills_the_page(&first));
     assert!(first.contains("1–10 of 12"));
-    assert!(at(&first, "stmt-12") < at(&first, "stmt-11"), "latest period first");
+    assert!(
+        at(&first, "stmt-12") < at(&first, "stmt-11"),
+        "latest period first"
+    );
     assert!(!first.contains("stmt-01") && !first.contains("stmt-02"));
     let second = load(&t, "/bank-statements?per_page=10&page=2").await;
     assert!(second.contains("11–12 of 12") && second.contains("stmt-01"));
@@ -113,7 +118,9 @@ async fn pay_grid_the_bank_statements_search_sort_filter_and_page() {
 #[renox::test]
 async fn pay_grid_the_expense_claims_search_by_claimant_sort_and_page() {
     let t = boot().await;
-    wl_payments::expense_category::install(t.db()).await.unwrap();
+    wl_payments::expense_category::install(t.db())
+        .await
+        .unwrap();
     let dina = t
         .user("Dina", &[perm::EXPENSES_VIEW, perm::EXPENSES_SUBMIT])
         .await;
@@ -148,7 +155,10 @@ async fn pay_grid_the_expense_claims_search_by_claimant_sort_and_page() {
     let first = load(&t, "/expense-claims?per_page=10").await;
     assert!(fills_the_page(&first));
     assert!(first.contains("1–10 of 12"));
-    assert!(at(&first, "Claim 12") < at(&first, "Claim 11"), "newest first");
+    assert!(
+        at(&first, "Claim 12") < at(&first, "Claim 11"),
+        "newest first"
+    );
     let second = load(&t, "/expense-claims?per_page=10&page=2").await;
     assert!(second.contains("11–12 of 12") && second.contains("Claim 01"));
 
@@ -192,7 +202,10 @@ async fn pay_grid_the_follow_up_tasks_search_sort_and_page() {
     let first = load(&t, "/payments/tasks?per_page=10").await;
     assert!(fills_the_page(&first));
     assert!(first.contains("1–10 of 12"));
-    assert!(at(&first, "Task 01") < at(&first, "Task 02"), "oldest first");
+    assert!(
+        at(&first, "Task 01") < at(&first, "Task 02"),
+        "oldest first"
+    );
     assert!(first.contains("task-done-"), "Mark done stays");
     let second = load(&t, "/payments/tasks?per_page=10&page=2").await;
     assert!(second.contains("11–12 of 12") && second.contains("Task 12"));

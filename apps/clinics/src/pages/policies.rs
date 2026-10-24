@@ -68,8 +68,7 @@ pub(crate) fn grid(
                 .mobile(),
         )
         .column(
-            Column::select("payer_party_id", &text(lang, "policies.payer"), payers)
-                .sortable(false),
+            Column::select("payer_party_id", &text(lang, "policies.payer"), payers).sortable(false),
         )
         .column(
             Column::text("patient_match", &text(lang, "policies.patient"))

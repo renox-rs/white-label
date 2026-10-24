@@ -25,9 +25,9 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::Deserialize;
 use wl_invoicing::portal as invoices;
-use wl_payments::deposit_portal as deposits;
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
+use wl_payments::deposit_portal as deposits;
 use wl_portal::{
     PortalAction, PortalGuard, PortalMenu, PortalSection, SectionFuture, SectionRow,
     read_only_notice, register_section,

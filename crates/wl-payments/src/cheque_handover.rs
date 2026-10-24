@@ -266,7 +266,10 @@ pub async fn issue(state: &AppState, handover: &ChequeHandover) -> Result<Option
     }
     let request =
         GenerateRequest::new(TEMPLATE, handover.subject()).language(LanguageMode::Bilingual);
-    let generated = match generation::generator(state).generate(state, request).await? {
+    let generated = match generation::generator(state)
+        .generate(state, request)
+        .await?
+    {
         Ok(generated) => generated,
         // Documents off, or no template of the client: the return stands
         // without a receipt document.
@@ -305,8 +308,14 @@ async fn after_return(state: &AppState, event: &Transitioned<Cheque>) -> Result 
             let receipt = receipt_reference(today(), cheque.id);
             let mut tx = state.db.begin().await?;
             let reason = event.reason.clone().unwrap_or_default();
-            let row = record_in(&mut tx, &receipt, std::slice::from_ref(&cheque), &reason, None)
-                .await?;
+            let row = record_in(
+                &mut tx,
+                &receipt,
+                std::slice::from_ref(&cheque),
+                &reason,
+                None,
+            )
+            .await?;
             tx.commit().await?;
             row
         }

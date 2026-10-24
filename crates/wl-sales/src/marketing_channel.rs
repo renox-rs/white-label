@@ -85,7 +85,10 @@ pub struct VerticalSeeded {
 impl MarketingChannel {
     /// The module's English name of the channel (the seed's name).
     pub fn english_name(self) -> String {
-        crate::texts::english(&format!("wl_sales.campaigns.channel.{}", self.as_str()), &[])
+        crate::texts::english(
+            &format!("wl_sales.campaigns.channel.{}", self.as_str()),
+            &[],
+        )
     }
 }
 
@@ -276,7 +279,10 @@ mod tests {
 
     #[test]
     fn keys_follow_the_lead_source_rules() {
-        assert_eq!(CampaignChannel::normalize_code(" Listing_Portals "), "listing_portals");
+        assert_eq!(
+            CampaignChannel::normalize_code(" Listing_Portals "),
+            "listing_portals"
+        );
         assert!(CampaignChannel::is_valid_code("tender_invitations"));
         assert!(!CampaignChannel::is_valid_code("listing portals"));
     }

@@ -114,7 +114,10 @@ async fn the_deployments_filter_by_client_and_request_and_find_the_worker() {
     let found = page_as(
         &app,
         AMAL,
-        &format!("/manpower/deployments?search={}&per_page=100", encode(&worker)),
+        &format!(
+            "/manpower/deployments?search={}&per_page=100",
+            encode(&worker)
+        ),
     )
     .await;
     assert!(range(&found).2 >= 1, "the worker {worker} is found");
@@ -129,7 +132,11 @@ async fn the_deployments_filter_by_client_and_request_and_find_the_worker() {
 async fn the_requests_and_contracts_filter_and_search_by_client() {
     let app = demo().await;
     for (list, prefix, table) in [
-        ("/manpower/requests", "/manpower/requests/", "manpower_requests"),
+        (
+            "/manpower/requests",
+            "/manpower/requests/",
+            "manpower_requests",
+        ),
         (
             "/manpower/contracts",
             "/manpower/contracts/",

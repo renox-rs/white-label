@@ -215,8 +215,10 @@ impl Ticket {
         if !self.is_open() {
             return false;
         }
-        let response_late = self.responded_at.is_none() && self.response_due.is_some_and(|due| now > due);
-        let resolution_late = self.resolved_at.is_none() && self.resolution_due.is_some_and(|due| now > due);
+        let response_late =
+            self.responded_at.is_none() && self.response_due.is_some_and(|due| now > due);
+        let resolution_late =
+            self.resolved_at.is_none() && self.resolution_due.is_some_and(|due| now > due);
         response_late || resolution_late
     }
 

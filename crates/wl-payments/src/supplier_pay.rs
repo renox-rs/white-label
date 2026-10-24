@@ -109,7 +109,10 @@ pub enum ExceptionOutcome {
 }
 
 /// The bills of `supplier` that take a payment, oldest first.
-pub async fn payable_bills(state: &AppState, supplier: PartyId) -> Result<Vec<SupplierBillSummary>> {
+pub async fn payable_bills(
+    state: &AppState,
+    supplier: PartyId,
+) -> Result<Vec<SupplierBillSummary>> {
     invoice_search(state)
         .payable_bills_of(&state.db, supplier)
         .await
@@ -139,7 +142,10 @@ pub fn problem(request: &SupplierPayment, bills: &[SupplierBillSummary]) -> Opti
     if request.bills.is_empty() {
         return Some("Choose the bills to pay.".to_owned());
     }
-    if !matches!(request.method, PaymentMethod::Transfer | PaymentMethod::Cheque) {
+    if !matches!(
+        request.method,
+        PaymentMethod::Transfer | PaymentMethod::Cheque
+    ) {
         return Some("A supplier is paid by transfer or by an issued cheque.".to_owned());
     }
     let mut seen = BTreeSet::new();
@@ -181,7 +187,10 @@ pub fn bills_of(payment: &Payment) -> Vec<(SupplierBillId, i64)> {
             rows.iter()
                 .filter_map(|row| {
                     let pair = row.as_array()?;
-                    Some((SupplierBillId(pair.first()?.as_i64()?), pair.get(1)?.as_i64()?))
+                    Some((
+                        SupplierBillId(pair.first()?.as_i64()?),
+                        pair.get(1)?.as_i64()?,
+                    ))
                 })
                 .collect()
         })

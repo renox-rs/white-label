@@ -192,7 +192,11 @@ impl PortalGuard {
             return Ok(Err(Refused::NoAccess));
         }
         if !grants.iter().any(|g| g.is_active_on(day)) && !action.allowed_while_read_only() {
-            let since = grants.iter().filter_map(|g| g.ended_on).max().unwrap_or(day);
+            let since = grants
+                .iter()
+                .filter_map(|g| g.ended_on)
+                .max()
+                .unwrap_or(day);
             return Ok(Err(Refused::GrantReadOnly(since)));
         }
         // Every portal action writes; reading a page is not guarded here.

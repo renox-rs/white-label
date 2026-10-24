@@ -48,9 +48,12 @@ pub fn register() {
             .without_review(),
     );
     register_kind(
-        KindSeed::new(SIGNED_KIND, "Cheque handover receipt signed by the receiver")
-            .name_ar("إيصال تسليم شيكات موقع من المستلم")
-            .subject_type(SUBJECT_TYPE),
+        KindSeed::new(
+            SIGNED_KIND,
+            "Cheque handover receipt signed by the receiver",
+        )
+        .name_ar("إيصال تسليم شيكات موقع من المستلم")
+        .subject_type(SUBJECT_TYPE),
     );
     register_template(
         TemplateSeed::new(TEMPLATE, KIND)

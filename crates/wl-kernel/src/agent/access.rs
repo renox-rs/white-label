@@ -150,11 +150,7 @@ pub fn policy_of(state: &AppState) -> Arc<dyn AgentPolicy> {
 }
 
 /// Checks the policy for `call`; a refusal is a 403 with its words.
-pub async fn check(
-    call: &super::AgentCall,
-    subject_type: Option<&str>,
-    use_: Use,
-) -> Result<()> {
+pub async fn check(call: &super::AgentCall, subject_type: Option<&str>, use_: Use) -> Result<()> {
     let policy = policy_of(&call.state);
     policy
         .check(&call.state.db, &call.user, &call.client, subject_type, use_)

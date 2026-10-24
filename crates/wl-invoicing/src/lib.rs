@@ -2,11 +2,10 @@
 #![warn(missing_docs)]
 
 pub mod ageing;
-mod agent;
 mod ageing_pages;
+mod agent;
 pub mod allocate;
 pub mod allocation;
-mod connector_fields;
 pub mod bad_debt_relief;
 pub mod bill_allocation;
 mod bill_events;
@@ -39,6 +38,7 @@ pub mod cash_forecast;
 pub mod cash_forecast_load;
 mod cash_forecast_pages;
 pub mod config;
+mod connector_fields;
 pub mod credit;
 pub mod credit_note;
 pub mod credit_note_line;
@@ -115,12 +115,12 @@ pub mod recover;
 pub mod recovery;
 pub mod refund;
 pub mod relations;
-pub mod search;
 pub mod reminders;
 pub mod reopen_notices;
 mod report_table;
 pub mod restore;
 pub mod reversal;
+pub mod search;
 pub mod seed;
 pub mod subscription;
 pub mod subscription_machine;

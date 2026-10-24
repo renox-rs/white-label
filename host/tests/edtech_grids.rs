@@ -103,7 +103,10 @@ async fn the_enrolments_page_filter_and_find_the_student() {
     .await;
     let found = load(
         &app,
-        &format!("/edtech/enrolments?search={}&per_page=100", encode(&student)),
+        &format!(
+            "/edtech/enrolments?search={}&per_page=100",
+            encode(&student)
+        ),
     )
     .await;
     assert!(found.contains(&number), "{student}'s enrolment is found");
@@ -127,7 +130,11 @@ async fn the_sessions_batches_certificates_and_courses_page_and_filter() {
     }
     let batches = count(&app, "select count(*) from edtech_batches").await;
     assert_eq!(total(&app, "/edtech/batches?per_page=10").await, batches);
-    let status = text_of(&app, "select status from edtech_batches order by id limit 1").await;
+    let status = text_of(
+        &app,
+        "select status from edtech_batches order by id limit 1",
+    )
+    .await;
     let of_status = count(
         &app,
         &format!("select count(*) from edtech_batches where status = '{status}'"),

@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 use renox::prelude::*;
 use serde::Serialize;
 
-use super::{PANEL_DEPTH, RelatedGroup, ROWS_PER_GROUP, can_open, related};
+use super::{PANEL_DEPTH, ROWS_PER_GROUP, RelatedGroup, can_open, related};
 use crate::search::Access;
 use crate::subject::Subject;
 use crate::texts;
@@ -138,7 +138,8 @@ fn group_view(lang: &Lang, group: RelatedGroup) -> GroupView {
     let listed = u64::try_from(group.records.len().min(ROWS_PER_GROUP)).unwrap_or(0);
     let rest = group.count.saturating_sub(listed);
     GroupView {
-        more: (rest > 0).then(|| texts::t_with(lang, "wl_kernel.related.more", &[("count", &rest)])),
+        more: (rest > 0)
+            .then(|| texts::t_with(lang, "wl_kernel.related.more", &[("count", &rest)])),
         name: group.name,
         label: group.label,
         count: group.count,

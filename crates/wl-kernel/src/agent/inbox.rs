@@ -161,10 +161,7 @@ where
     );
     let mut sources = SOURCES.write().unwrap_or_else(PoisonError::into_inner);
     let source: InboxSource = Arc::new(source);
-    match sources
-        .iter_mut()
-        .find(|(g, n, _)| g == group && n == name)
-    {
+    match sources.iter_mut().find(|(g, n, _)| g == group && n == name) {
         Some(existing) => existing.2 = source,
         None => sources.push((group.to_owned(), name.to_owned(), source)),
     }

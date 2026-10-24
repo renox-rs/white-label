@@ -116,9 +116,7 @@ pub async fn unit_document(tx: &mut Transaction, unit: &Unit) -> Result<SearchDo
         .where_eq("id", unit.building_id)
         .first(&mut *tx)
         .await?;
-    let (code, name) = building
-        .map(|b| (b.code, b.name_en))
-        .unwrap_or_default();
+    let (code, name) = building.map(|b| (b.code, b.name_en)).unwrap_or_default();
     let running: Vec<String> = LeaseStatus::RUNNING
         .iter()
         .map(|s| s.as_str().to_owned())
@@ -154,9 +152,7 @@ pub async fn lease_document(tx: &mut Transaction, lease: &Lease) -> Result<Searc
         .where_eq("id", lease.building_id)
         .first(&mut *tx)
         .await?;
-    let (code, building_name) = building
-        .map(|b| (b.code, b.name_en))
-        .unwrap_or_default();
+    let (code, building_name) = building.map(|b| (b.code, b.name_en)).unwrap_or_default();
     let unit_text = unit
         .map(|u| unit_label(&code, &u.number))
         .unwrap_or_default();

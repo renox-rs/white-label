@@ -120,7 +120,10 @@ async fn the_work_orders_grid_pages_sorts_searches_and_exports() {
         &format!("/manufacturing/work-orders?search={}", encode(&first)),
     )
     .await;
-    assert!(range(&found).2 >= 1 && found.contains(&first), "{first} is found");
+    assert!(
+        range(&found).2 >= 1 && found.contains(&first),
+        "{first} is found"
+    );
 
     // The dashboard's `?status=` links still narrow the list.
     let on_hold = count(
@@ -140,7 +143,10 @@ async fn the_work_orders_grid_pages_sorts_searches_and_exports() {
         .get("/manufacturing/work-orders?export=csv")
         .await;
     assert_eq!(file.status.as_u16(), 200);
-    assert!(file.text().contains(&first), "the export lists the work orders");
+    assert!(
+        file.text().contains(&first),
+        "the export lists the work orders"
+    );
 }
 
 /// The export of the work orders is refused to whom the grid does not offer

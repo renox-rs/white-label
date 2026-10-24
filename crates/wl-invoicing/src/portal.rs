@@ -32,12 +32,10 @@ use std::collections::{BTreeMap, HashMap};
 use renox::chrono::{Datelike, NaiveDate};
 use renox::prelude::*;
 use serde::Serialize;
-use wl_kernel::documents::{dubai_date, today};
-use wl_kernel::invoicing::{
-    CreditNoteStatus, DisputeBy, DisputeRequest, InvoiceId, InvoiceStatus,
-};
-use wl_kernel::payments::PAYMENT_SUBJECT_TYPE;
 use wl_kernel::PartyId;
+use wl_kernel::documents::{dubai_date, today};
+use wl_kernel::invoicing::{CreditNoteStatus, DisputeBy, DisputeRequest, InvoiceId, InvoiceStatus};
+use wl_kernel::payments::PAYMENT_SUBJECT_TYPE;
 
 use crate::allocate::amount_text;
 use crate::allocation::Allocation;
@@ -302,7 +300,11 @@ pub struct Statement {
 /// before `from` make the opening balance, the ones inside are listed in
 /// date order with a running balance, later ones are left out.
 pub fn build_statement(mut movements: Vec<Movement>, from: NaiveDate, to: NaiveDate) -> Statement {
-    movements.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.reference.cmp(&b.reference)));
+    movements.sort_by(|a, b| {
+        a.date
+            .cmp(&b.date)
+            .then_with(|| a.reference.cmp(&b.reference))
+    });
     let opening: i64 = movements
         .iter()
         .filter(|m| m.date < from)
@@ -422,7 +424,11 @@ pub async fn statement_of(
     from: NaiveDate,
     to: NaiveDate,
 ) -> Result<Statement> {
-    Ok(build_statement(movements_of(db, party, to).await?, from, to))
+    Ok(build_statement(
+        movements_of(db, party, to).await?,
+        from,
+        to,
+    ))
 }
 
 /// The current calendar month, the default period.
@@ -480,7 +486,13 @@ pub async fn statement_page(
 ) -> Result<View> {
     let statement = statement_of(&state.db, party, from, to).await?;
     let money = |fils: i64| amount_text("AED", fils);
-    let shown = |fils: i64| if fils == 0 { String::new() } else { money(fils) };
+    let shown = |fils: i64| {
+        if fils == 0 {
+            String::new()
+        } else {
+            money(fils)
+        }
+    };
     let statement_rows = statement
         .lines
         .iter()
@@ -542,7 +554,11 @@ pub async fn dispute(
         errors.add(field, message);
         Error::Validation(renox::validation::ValidationError::new(errors).with_input(form))
     };
-    let amount = match form.get("amount").map(|a| a.trim()).filter(|a| !a.is_empty()) {
+    let amount = match form
+        .get("amount")
+        .map(|a| a.trim())
+        .filter(|a| !a.is_empty())
+    {
         None => None,
         Some(typed) => Some(
             parse_amount(typed)
@@ -550,13 +566,21 @@ pub async fn dispute(
         ),
     };
     let reason = form.get("reason").cloned().unwrap_or_default();
-    let mut request = DisputeRequest::new(InvoiceId(invoice.id), reason, DisputeBy::Party { id: party })
-        .lines(ticked(form));
+    let mut request = DisputeRequest::new(
+        InvoiceId(invoice.id),
+        reason,
+        DisputeBy::Party { id: party },
+    )
+    .lines(ticked(form));
     request.amount = amount;
     match crate::dispute::raise(state, request).await {
         Ok(id) => Ok(id),
         Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message)) => {
-            let field = if message.contains("reason") { "reason" } else { "amount" };
+            let field = if message.contains("reason") {
+                "reason"
+            } else {
+                "amount"
+            };
             Err(invalid(field, message))
         }
         Err(other) => Err(other),

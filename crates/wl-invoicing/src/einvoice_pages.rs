@@ -195,8 +195,13 @@ fn legacy_filters(
     {
         query = query.where_(EInvoiceTransmission::LEGAL_ENTITY_ID.eq(entity));
     }
-    if let Some(status) = request.param("status").map(str::trim).filter(|s| !s.is_empty())
-        && let Some(status) = TransmissionStatus::ALL.iter().find(|s| s.as_str() == status)
+    if let Some(status) = request
+        .param("status")
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        && let Some(status) = TransmissionStatus::ALL
+            .iter()
+            .find(|s| s.as_str() == status)
     {
         query = query.where_(EInvoiceTransmission::STATUS.eq(*status));
     }

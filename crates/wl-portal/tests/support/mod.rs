@@ -567,13 +567,31 @@ impl wl_portal::PortalSection for Stub {
 /// registry; registering again changes nothing.
 pub fn register_sections() {
     for (key, title, audience, permission, order) in [
-        ("requests", "Requests", "tenant", "portal.requests.create", 60),
+        (
+            "requests",
+            "Requests",
+            "tenant",
+            "portal.requests.create",
+            60,
+        ),
         ("lease", "Lease", "tenant", "portal.leases.view", 10),
-        ("documents", "Documents", "tenant", "portal.documents.view", 50),
+        (
+            "documents",
+            "Documents",
+            "tenant",
+            "portal.documents.view",
+            50,
+        ),
         ("invoices", "Invoices", "tenant", "portal.invoices.view", 20),
         ("deposit", "Deposit", "tenant", "portal.leases.view", 40),
         ("cheques", "Cheques", "tenant", "portal.leases.view", 30),
-        ("statements", "Owner statements", "owner", "portal.statements.view", 5),
+        (
+            "statements",
+            "Owner statements",
+            "owner",
+            "portal.statements.view",
+            5,
+        ),
     ] {
         wl_portal::register_section(
             key,
@@ -590,7 +608,9 @@ pub fn register_sections() {
 impl Booted {
     /// Seeds the tenant audience and registers the sections.
     pub async fn with_tenant_portal(&self) {
-        wl_portal::audiences::seed(self.db(), &TENANT).await.unwrap();
+        wl_portal::audiences::seed(self.db(), &TENANT)
+            .await
+            .unwrap();
         register_sections();
     }
 

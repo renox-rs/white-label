@@ -115,9 +115,7 @@ pub(crate) fn grid(lang: &Lang, locations: Vec<(String, String)>, can_export: bo
                     ("out_of_range".to_owned(), t["cold.out_of_range"].clone()),
                 ],
             )
-            .computed(
-                "CASE WHEN {T}.\"out_since\" IS NULL THEN 'in_range' ELSE 'out_of_range' END",
-            )
+            .computed("CASE WHEN {T}.\"out_since\" IS NULL THEN 'in_range' ELSE 'out_of_range' END")
             .badges(&[("in_range", "success"), ("out_of_range", "danger")])
             .mobile(),
         )

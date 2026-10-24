@@ -567,5 +567,8 @@ async fn the_liability_report_groups_by_brand_entity_age_and_expiry_month() {
     let csv = file.text();
     assert!(csv.contains("Brand,Entity,Age of the points,Expiry month,Points,Value"));
     assert!(csv.contains(&format!("Gold,5,Up to 90 days,{month},50,")));
-    assert!(at(&csv, "(client)") < at(&csv, "Gold"), "the most points first");
+    assert!(
+        at(&csv, "(client)") < at(&csv, "Gold"),
+        "the most points first"
+    );
 }

@@ -638,7 +638,10 @@ pub async fn load_with_providers(state: &AppState, config: &SalesConfig) -> Resu
                     campaign: campaign.map(|c| c.id),
                     channel: campaign.and_then(|c| c.marketing_channel.clone()),
                     brand: campaign.and_then(|c| c.brand.clone()),
-                    branch: record.branch.clone().or_else(|| campaign.and_then(Campaign::branch)),
+                    branch: record
+                        .branch
+                        .clone()
+                        .or_else(|| campaign.and_then(Campaign::branch)),
                     entity: campaign
                         .and_then(|c| c.legal_entity_id)
                         .or(record.legal_entity_id),

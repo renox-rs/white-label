@@ -187,7 +187,9 @@ impl PortalMenu {
         if grants.is_empty() {
             return Ok(None);
         }
-        Ok(Some(Self::from_grants(&state.db, party, &grants, day, lang).await?))
+        Ok(Some(
+            Self::from_grants(&state.db, party, &grants, day, lang).await?,
+        ))
     }
 
     /// The menu the readable `grants` for `party` give.
@@ -203,7 +205,13 @@ impl PortalMenu {
         let read_only_since = if grants.iter().any(|g| g.is_active_on(day)) {
             None
         } else {
-            Some(grants.iter().filter_map(|g| g.ended_on).max().unwrap_or(day))
+            Some(
+                grants
+                    .iter()
+                    .filter_map(|g| g.ended_on)
+                    .max()
+                    .unwrap_or(day),
+            )
         };
         let mut entries: Vec<MenuEntry> = all_sections()
             .into_iter()

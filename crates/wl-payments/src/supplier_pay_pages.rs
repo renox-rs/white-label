@@ -141,7 +141,10 @@ fn request_of(
     let mut keys: Vec<&String> = form.keys().collect();
     keys.sort();
     for key in keys {
-        let Some(id) = key.strip_prefix("bill_").and_then(|id| id.parse::<i64>().ok()) else {
+        let Some(id) = key
+            .strip_prefix("bill_")
+            .and_then(|id| id.parse::<i64>().ok())
+        else {
             continue;
         };
         let Some(text) = get(key) else {
@@ -187,7 +190,10 @@ async fn store(
         };
         return Ok((Toast::success(done), renox::HxRefresh).into_response());
     }
-    match supplier_pay::pay(&state, &user, &request).await.map_err(refused)? {
+    match supplier_pay::pay(&state, &user, &request)
+        .await
+        .map_err(refused)?
+    {
         SupplierPayOutcome::Paid(_) => {
             Ok((Toast::success(t("supplier_pay.paid")), renox::HxRefresh).into_response())
         }

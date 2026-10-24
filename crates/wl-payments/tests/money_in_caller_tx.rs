@@ -126,7 +126,10 @@ async fn the_settlement_starts_only_when_the_caller_commits() {
         .await
         .unwrap()
         .expect("a deposit was held");
-    assert_eq!((started.held, started.forfeit, started.version), (500_000, 0, 0));
+    assert_eq!(
+        (started.held, started.forfeit, started.version),
+        (500_000, 0, 0)
+    );
     tx.commit().await.unwrap();
     after.run(state).await.unwrap();
     assert_eq!(

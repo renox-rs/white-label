@@ -27,12 +27,12 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::LegalEntity;
 use wl_kernel::Subject;
 
+use super::report_table::{self, Sort, SortKey};
 use crate::campaign::Campaign;
-use crate::marketing_channel::CampaignChannel;
 use crate::config::config_of;
 use crate::lead_source::LeadSource;
+use crate::marketing_channel::CampaignChannel;
 use crate::permissions;
-use super::report_table::{self, Sort, SortKey};
 use crate::report::{self, Cells, Facts, Filter, GroupBy, Report, Row, Viewer};
 use crate::texts;
 
@@ -121,17 +121,17 @@ fn sort_key(row: &Row, label: &str, key: &str) -> SortKey {
 }
 
 /// The rows of `report` and their `labels` in the order of `sort`.
-fn sorted(
-    mut report: Report,
-    labels: Vec<String>,
-    sort: Option<&Sort>,
-) -> (Report, Vec<String>) {
+fn sorted(mut report: Report, labels: Vec<String>, sort: Option<&Sort>) -> (Report, Vec<String>) {
     let Some(sort) = sort else {
         return (report, labels);
     };
     let mut order: Vec<usize> = (0..report.rows.len()).collect();
     sort.apply(&mut order, |&i, key| {
-        sort_key(&report.rows[i], labels.get(i).map_or("", String::as_str), key)
+        sort_key(
+            &report.rows[i],
+            labels.get(i).map_or("", String::as_str),
+            key,
+        )
     });
     let mut rows: Vec<Option<Row>> = report.rows.drain(..).map(Some).collect();
     let mut names: Vec<Option<String>> = labels.into_iter().map(Some).collect();
@@ -471,7 +471,11 @@ mod tests {
             row("3", 30, 3, Some(30_000)),
         ];
         let total = row("", 90, 22, Some(530_000));
-        let labels = vec!["SPRING26".to_owned(), "autumn".to_owned(), "Winter".to_owned()];
+        let labels = vec![
+            "SPRING26".to_owned(),
+            "autumn".to_owned(),
+            "Winter".to_owned(),
+        ];
         (
             Report {
                 by: GroupBy::Campaign,

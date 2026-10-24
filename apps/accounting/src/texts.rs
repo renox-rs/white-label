@@ -22,10 +22,7 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.engagements.new_description",
         "The client company (a party), the services and the fee. It starts in onboarding.",
     ),
-    (
-        "accounting.engagements.client_party",
-        "Client",
-    ),
+    ("accounting.engagements.client_party", "Client"),
     ("accounting.engagements.client", "Client"),
     ("accounting.engagements.services", "Services"),
     ("accounting.engagements.fee_basis", "Fee basis"),
@@ -676,10 +673,7 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.returns.new_description",
         "The engagement it is prepared under, the tax, the period it covers and the day it is due. It starts in preparation and is linked to the calendar task of the same type and due date.",
     ),
-    (
-        "accounting.returns.engagement_number",
-        "Engagement",
-    ),
+    ("accounting.returns.engagement_number", "Engagement"),
     ("accounting.returns.engagement", "Engagement"),
     ("accounting.returns.kind", "Tax"),
     ("accounting.returns.period", "Period ending"),

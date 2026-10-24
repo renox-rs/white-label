@@ -110,7 +110,11 @@ async fn a_system_issued_invoice_disputes_into_the_receivables_queue_and_omar_ta
 
     for user in [&nadia, &omar] {
         let queue = role_queue::queue_of(app.db(), user.id).await.unwrap();
-        assert!(queue.iter().any(|q| q.id == ticket.id), "in {}'s queue", user.name);
+        assert!(
+            queue.iter().any(|q| q.id == ticket.id),
+            "in {}'s queue",
+            user.name
+        );
         app.acting_as(user);
         app.get("/tickets?queue=mine")
             .await
@@ -137,7 +141,11 @@ async fn a_system_issued_invoice_disputes_into_the_receivables_queue_and_omar_ta
         .assert_redirect(&format!("/tickets/{}", ticket.id));
     let taken = Ticket::find_or_404(app.db(), ticket.id).await.unwrap();
     assert_eq!(taken.assignee(), Some(Assignee::user(omar.id)));
-    assert_eq!(taken.response_due, Some(response_due), "the SLA is unchanged");
+    assert_eq!(
+        taken.response_due,
+        Some(response_due),
+        "the SLA is unchanged"
+    );
     let history = Assignment::history(app.db(), ticket.id).await.unwrap();
     assert_eq!(
         history.last().and_then(|a| a.reason_code.as_deref()),

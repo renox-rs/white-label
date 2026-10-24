@@ -129,8 +129,15 @@ pub async fn credit_in_full(
 ) -> std::result::Result<CreditNote, TransitionError> {
     let mut outcomes = Outcomes::default();
     let mut tx = state.db.begin().await?;
-    let applied =
-        credit_in_full_in(&mut tx, invoice, reason, release_origins, &by, &mut outcomes).await?;
+    let applied = credit_in_full_in(
+        &mut tx,
+        invoice,
+        reason,
+        release_origins,
+        &by,
+        &mut outcomes,
+    )
+    .await?;
     tx.commit().await?;
     outcomes.emit(state).await?;
     Ok(CreditNote::find_or_404(&state.db, applied.id).await?)

@@ -73,7 +73,11 @@ async fn approved_bill(
         number,
         NaiveDate::from_ymd_opt(2026, 10, day).unwrap(),
     )
-    .line(BillLineDraft::new("AC maintenance", net, VatCategory::Standard));
+    .line(BillLineDraft::new(
+        "AC maintenance",
+        net,
+        VatCategory::Standard,
+    ));
     draft.legal_entity_id = Some(entity.id);
     let bill = supplier_bill::create(app.db(), &draft, Some(7))
         .await
@@ -140,7 +144,9 @@ impl Scene {
     }
 
     async fn bill(&self, bill: &SupplierBill) -> SupplierBill {
-        SupplierBill::find_or_404(self.app.db(), bill.id).await.unwrap()
+        SupplierBill::find_or_404(self.app.db(), bill.id)
+            .await
+            .unwrap()
     }
 
     async fn payments(&self) -> Vec<Payment> {
@@ -227,7 +233,11 @@ async fn a_blocked_supplier_is_paid_once_when_the_exception_is_approved() {
         .filter(|p| p.status == PaymentStatus::Received)
         .collect();
     assert_eq!(received.len(), 1, "recorded once");
-    assert_eq!(received[0].recorded_by, Some(s.accountant.id), "as the accountant");
+    assert_eq!(
+        received[0].recorded_by,
+        Some(s.accountant.id),
+        "as the accountant"
+    );
     assert_eq!(received[0].amount, 315_000, "with the stored amounts");
     assert_eq!(s.bill(&s.b101).await.status, SupplierBillStatus::Paid);
     assert_eq!(s.bill(&s.b102).await.status, SupplierBillStatus::Paid);
@@ -271,7 +281,10 @@ async fn reversing_the_3150_payment_reopens_both_bills() {
         .htmx()
         .post(
             &format!("/payments/{}/reverse", payment.id),
-            &[("reason", "entered_in_error"), ("note", "Paid the wrong vendor")],
+            &[
+                ("reason", "entered_in_error"),
+                ("note", "Paid the wrong vendor"),
+            ],
         )
         .await
         .assert_ok();
@@ -285,7 +298,10 @@ async fn reversing_the_3150_payment_reopens_both_bills() {
             .unwrap();
     }
     assert_eq!(
-        Payment::find_or_404(s.app.db(), payment.id).await.unwrap().status,
+        Payment::find_or_404(s.app.db(), payment.id)
+            .await
+            .unwrap()
+            .status,
         PaymentStatus::Reversed
     );
     assert_eq!(s.bill(&s.b101).await.status, SupplierBillStatus::Approved);

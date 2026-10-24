@@ -330,8 +330,11 @@ pub(crate) fn account_grid(lang: &Lang, can_decide: bool, can_withdraw: bool) ->
     if can_decide {
         grid = grid
             .row_action(
-                Action::new(&text("account_approve"), "/remittances/accounts/{id}/approve")
-                    .confirm(&text("account_approve_message")),
+                Action::new(
+                    &text("account_approve"),
+                    "/remittances/accounts/{id}/approve",
+                )
+                .confirm(&text("account_approve_message")),
             )
             .row_action(
                 Action::new(&text("account_reject"), "/remittances/accounts/{id}/reject")
@@ -340,9 +343,12 @@ pub(crate) fn account_grid(lang: &Lang, can_decide: bool, can_withdraw: bool) ->
     }
     if can_withdraw {
         grid = grid.row_action(
-            Action::new(&text("account_withdraw"), "/remittances/accounts/{id}/withdraw")
-                .confirm(&text("account_withdraw_message"))
-                .danger(),
+            Action::new(
+                &text("account_withdraw"),
+                "/remittances/accounts/{id}/withdraw",
+            )
+            .confirm(&text("account_withdraw_message"))
+            .danger(),
         );
     }
     grid

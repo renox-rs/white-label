@@ -86,7 +86,11 @@ async fn suppliers_of(
     for id in ids {
         if let std::collections::btree_map::Entry::Vacant(slot) = names.entry(id) {
             let name = supplier_name(state, lang, id).await;
-            slot.insert(if name.is_empty() { format!("#{id}") } else { name });
+            slot.insert(if name.is_empty() {
+                format!("#{id}")
+            } else {
+                name
+            });
         }
     }
     names
@@ -97,9 +101,13 @@ async fn suppliers_of(
 /// hidden, for the search.
 fn supplier_columns(grid: Grid, lang: &Lang, suppliers: &BTreeMap<i64, String>) -> Grid {
     grid.column(
-        Column::select("supplier", &tr(lang, "orders.supplier"), options_of(suppliers))
-            .computed(&id_key_sql("supplier_party_id"))
-            .mobile(),
+        Column::select(
+            "supplier",
+            &tr(lang, "orders.supplier"),
+            options_of(suppliers),
+        )
+        .computed(&id_key_sql("supplier_party_id"))
+        .mobile(),
     )
     .column(
         Column::text("supplier_name", &tr(lang, "orders.supplier"))

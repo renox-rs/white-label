@@ -88,8 +88,16 @@ async fn enquiry_on(app: &TestApp, code: &str, i: u32) -> Enquiry {
 /// 20 October 2026.
 async fn won(app: &TestApp, enquiry: &Enquiry, n: u32) {
     let party = tenant(app, &format!("Tenant {n}")).await;
-    enquiry::convert(app.state(), enquiry.id, party).await.unwrap();
-    let unit = unit_of(app, &format!("BY{n}"), "101", property::UnitUse::Residential).await;
+    enquiry::convert(app.state(), enquiry.id, party)
+        .await
+        .unwrap();
+    let unit = unit_of(
+        app,
+        &format!("BY{n}"),
+        "101",
+        property::UnitUse::Residential,
+    )
+    .await;
     let lease = draft_lease(app, &unit, party, 0).await;
     property::Lease::query()
         .where_(property::Lease::ID.eq(lease.id))

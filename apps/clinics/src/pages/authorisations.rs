@@ -156,8 +156,7 @@ pub(crate) fn grid(
         )
         .column(Column::custom("patient", &text(lang, "policies.patient")).mobile())
         .column(
-            Column::select("payer_party_id", &text(lang, "policies.payer"), payers)
-                .sortable(false),
+            Column::select("payer_party_id", &text(lang, "policies.payer"), payers).sortable(false),
         )
         .column(
             Column::select("policy_id", &text(lang, "coverage.policy"), policies)

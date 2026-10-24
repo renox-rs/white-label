@@ -130,7 +130,10 @@ pub(crate) fn keyed_sql(column: &str, keys: &BTreeMap<i64, String>) -> String {
 /// `column` value to its label, e.g. a booking to its branch): the SQL of the
 /// select column and its options, one key (`k1`, `k2` …) per distinct label,
 /// sorted by the label.
-pub(crate) fn labelled(column: &str, labels: &BTreeMap<i64, String>) -> (String, Vec<(String, String)>) {
+pub(crate) fn labelled(
+    column: &str,
+    labels: &BTreeMap<i64, String>,
+) -> (String, Vec<(String, String)>) {
     let mut distinct: Vec<&String> = labels.values().collect();
     distinct.sort();
     distinct.dedup();

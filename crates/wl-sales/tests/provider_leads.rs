@@ -135,7 +135,10 @@ async fn the_enquiries_of_a_campaign_count_as_its_leads_without_the_duplicate() 
     assert_eq!(row.won, 2);
     assert_eq!(cells.conversion, "18.2%");
     // The source comes from the record.
-    let paid_ads = LeadSource::by_code(t.db(), "paid_ads").await.unwrap().unwrap();
+    let paid_ads = LeadSource::by_code(t.db(), "paid_ads")
+        .await
+        .unwrap()
+        .unwrap();
     let by_source = report::compute(
         &report::load_with_providers(t.state(), &SalesConfig::default())
             .await

@@ -86,7 +86,12 @@ pub(crate) fn grid(lang: &Lang) -> Grid {
     let text = |key: &str| t(lang, &format!("manufacturing.screen.{key}"));
     let statuses: Vec<(String, String)> = NcrStatus::ALL
         .iter()
-        .map(|status| (status.as_str().to_owned(), word(lang, "ncr_status", status.as_str())))
+        .map(|status| {
+            (
+                status.as_str().to_owned(),
+                word(lang, "ncr_status", status.as_str()),
+            )
+        })
         .collect();
     let tones: Vec<(&str, &str)> = NcrStatus::ALL
         .iter()
@@ -94,7 +99,12 @@ pub(crate) fn grid(lang: &Lang) -> Grid {
         .collect();
     let causes: Vec<(String, String)> = Cause::ALL
         .iter()
-        .map(|cause| (cause.as_str().to_owned(), word(lang, "cause", cause.as_str())))
+        .map(|cause| {
+            (
+                cause.as_str().to_owned(),
+                word(lang, "cause", cause.as_str()),
+            )
+        })
         .collect();
     let dispositions: Vec<(String, String)> = Disposition::ALL
         .iter()

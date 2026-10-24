@@ -458,7 +458,10 @@ async fn without_an_owner_the_ticket_is_unassigned_and_without_ticketing_there_i
         .unwrap();
     assert_eq!(stored(&t, id).await.ticket_id, Some(1));
     let opened = t.tickets.opened();
-    assert_eq!(opened[0].assignee, None, "routed to the role, not to a user");
+    assert_eq!(
+        opened[0].assignee, None,
+        "routed to the role, not to a user"
+    );
     let unassigned = t.notices.of_type(UNASSIGNED);
     assert_eq!(unassigned.len(), 1);
     let to: Vec<i64> = unassigned[0]

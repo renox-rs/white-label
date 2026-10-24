@@ -110,10 +110,14 @@ async fn boot() -> (Booted, TestStore) {
     store.put(STATEMENT_PDF, 180 * 1024);
     store.put(LARGE_SCAN, 12 * 1024 * 1024);
     let provided = store.clone();
-    let t = boot_providers(None, |m| m, move |app| {
-        let store: Arc<dyn DocumentStore> = Arc::new(provided);
-        app.provide(store)
-    })
+    let t = boot_providers(
+        None,
+        |m| m,
+        move |app| {
+            let store: Arc<dyn DocumentStore> = Arc::new(provided);
+            app.provide(store)
+        },
+    )
     .await;
     (t, store)
 }
@@ -142,7 +146,11 @@ async fn a_stored_pdf_is_sent_as_an_attachment_and_logged() {
     assert_eq!(message.channel, NotifyChannel::Email);
     assert_eq!(message.status, MessageStatus::Sent);
     assert_eq!(message.attachment_names.as_deref(), Some(FILE_NAME));
-    assert_eq!(attachments_in(&message.data.0).len(), 1, "the reference is stored");
+    assert_eq!(
+        attachments_in(&message.data.0).len(),
+        1,
+        "the reference is stored"
+    );
 
     let sent = t.email.sent();
     assert_eq!(sent.len(), 1, "one e-mail");
@@ -178,7 +186,9 @@ async fn in_quiet_hours_the_attachment_is_sent_when_they_end() {
     // The file stored now is the one sent.
     store.put(STATEMENT_PDF, 181 * 1024);
     t.clock.set("2026-10-20 08:00");
-    let released = release::run_due(t.app.state(), t.clock.now()).await.unwrap();
+    let released = release::run_due(t.app.state(), t.clock.now())
+        .await
+        .unwrap();
     assert_eq!(released, 1);
     t.run_jobs().await;
     assert_eq!(t.message(ids[0]).await.status, MessageStatus::Sent);
@@ -199,11 +209,16 @@ async fn an_attachment_over_10_mb_is_replaced_by_a_signed_link() {
     let sent = t.email.sent();
     assert_eq!(sent.len(), 1);
     assert!(sent[0].attachments.is_empty(), "no file over 10 MB");
-    assert!(sent[0].body.contains("too large to attach"), "{}", sent[0].body);
     assert!(
-        sent[0]
-            .body
-            .contains(&format!("{FILE_NAME}: https://acme.example/documents/signed/{}/file", LARGE_SCAN.0)),
+        sent[0].body.contains("too large to attach"),
+        "{}",
+        sent[0].body
+    );
+    assert!(
+        sent[0].body.contains(&format!(
+            "{FILE_NAME}: https://acme.example/documents/signed/{}/file",
+            LARGE_SCAN.0
+        )),
         "{}",
         sent[0].body
     );

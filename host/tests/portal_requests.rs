@@ -151,7 +151,9 @@ async fn sara_raises_a_request_with_two_photos_and_sees_it_open() {
     assert_eq!(photos.len(), 2, "both photos are stored on the ticket");
 
     let list = s.app.get(&s.requests()).await;
-    list.assert_ok().assert_see(&ticket.number).assert_see("Open");
+    list.assert_ok()
+        .assert_see(&ticket.number)
+        .assert_see("Open");
 }
 
 /// Done when 2: she does not see the ticket of unit 1205, nor an internal
@@ -230,10 +232,7 @@ async fn a_read_only_grant_keeps_the_list_and_refuses_new_requests() {
         .assert_ok()
         .assert_see(&ticket.number);
     assert_eq!(
-        s.app
-            .get(&format!("{}/new", s.requests()))
-            .await
-            .status,
+        s.app.get(&format!("{}/new", s.requests())).await.status,
         StatusCode::FORBIDDEN
     );
     let before = Ticket::query().count(s.app.db()).await.unwrap();

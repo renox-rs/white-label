@@ -42,10 +42,7 @@ static RESOLVERS: RwLock<BTreeMap<String, ResolverFn>> = RwLock::new(BTreeMap::n
 /// same type again replaces the resolver.
 pub fn register_scope_in<F>(subject_type: &str, resolver: F)
 where
-    F: for<'a> Fn(&'a mut Transaction, i64) -> BoxFuture<'a, Result<Scope>>
-        + Send
-        + Sync
-        + 'static,
+    F: for<'a> Fn(&'a mut Transaction, i64) -> BoxFuture<'a, Result<Scope>> + Send + Sync + 'static,
 {
     RESOLVERS
         .write()

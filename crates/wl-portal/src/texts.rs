@@ -67,10 +67,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_portal.action.deposit_deduction_dispute",
         "Dispute of deposit deductions",
     ),
-    (
-        READ_ONLY_KEY,
-        "Your access is read-only since :date.",
-    ),
+    (READ_ONLY_KEY, "Your access is read-only since :date."),
     ("wl_portal.home.title", "Your portal"),
     ("wl_portal.home.menu", "Menu"),
     ("wl_portal.home.empty", "Nothing to show yet"),

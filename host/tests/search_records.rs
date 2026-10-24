@@ -169,8 +169,14 @@ async fn the_demo_company_is_searchable_and_its_records_show_their_related_recor
         hits(&found, "parties.party").contains(&tenant),
         "{name}: the party; got {found:?}"
     );
-    assert!(hits(&found, "property.lease").contains(&lease), "{name}: the lease");
-    assert!(hits(&found, "property.unit").contains(&unit), "{name}: the unit");
+    assert!(
+        hits(&found, "property.lease").contains(&lease),
+        "{name}: the lease"
+    );
+    assert!(
+        hits(&found, "property.unit").contains(&unit),
+        "{name}: the unit"
+    );
     let invoices = hits(&found, "invoicing.invoice");
     for invoice in &open_invoices {
         assert!(
@@ -232,7 +238,9 @@ async fn the_demo_company_is_searchable_and_its_records_show_their_related_recor
             ),
         )
         .await;
-        let got = search::search(db, &towers, &tenant_name, 200).await.unwrap();
+        let got = search::search(db, &towers, &tenant_name, 200)
+            .await
+            .unwrap();
         assert_eq!(
             hits(&got, "property.lease").contains(&lease_id),
             visible,
@@ -271,7 +279,9 @@ async fn the_demo_company_is_searchable_and_its_records_show_their_related_recor
         ),
     )
     .await;
-    let found = search::search(db, &finance, &cheque_number, 50).await.unwrap();
+    let found = search::search(db, &finance, &cheque_number, 50)
+        .await
+        .unwrap();
     assert!(
         hits(&found, "payments.cheque").contains(&cheque),
         "the cheque {cheque_number}; got {found:?}"
@@ -409,13 +419,12 @@ async fn the_demo_company_is_searchable_and_its_records_show_their_related_recor
             .scalar(db)
             .await
             .unwrap();
-        let documents: i64 = renox::db::sql(
-            "SELECT count(*) FROM wl_search_documents WHERE subject_type = ?",
-        )
-        .bind(*subject_type)
-        .scalar(db)
-        .await
-        .unwrap();
+        let documents: i64 =
+            renox::db::sql("SELECT count(*) FROM wl_search_documents WHERE subject_type = ?")
+                .bind(*subject_type)
+                .scalar(db)
+                .await
+                .unwrap();
         assert!(rows > 0, "the demo has {subject_type} records");
         assert_eq!(documents, rows, "{subject_type}: one document per record");
     }

@@ -561,8 +561,14 @@ async fn index(
     let (waiting, mine) = build(&state, &lang, &user).await?;
     let q = query.q.trim().to_owned();
     let needle = q.to_lowercase();
-    let waiting: Vec<Row> = waiting.into_iter().filter(|row| matches(row, &needle)).collect();
-    let mine: Vec<Row> = mine.into_iter().filter(|row| matches(row, &needle)).collect();
+    let waiting: Vec<Row> = waiting
+        .into_iter()
+        .filter(|row| matches(row, &needle))
+        .collect();
+    let mine: Vec<Row> = mine
+        .into_iter()
+        .filter(|row| matches(row, &needle))
+        .collect();
     if !wl_kernel::negotiate::wants_html(&headers) {
         return Ok(
             Json(renox::serde_json::json!({ "waiting": waiting, "mine": mine })).into_response(),
@@ -593,7 +599,11 @@ async fn index(
         &[("q", q.clone()), ("page", waiting_page.to_string())],
     );
     // `open_tab`, not `tab`: a view value named like a kit tag is shadowed.
-    let open_tab = if query.tab == "mine" { "mine" } else { "waiting" };
+    let open_tab = if query.tab == "mine" {
+        "mine"
+    } else {
+        "waiting"
+    };
     Ok(view(
         "approvals/index.html",
         context! { waiting, mine, waiting_pager, mine_pager, q, open_tab },
@@ -649,7 +659,10 @@ mod tests {
             Some("/approvals?q=al%20quoz&mine_page=2&page=2&tab=waiting")
         );
         let (last, pager) = page_of(&words, rows.clone(), 3, "page", "waiting", &keep);
-        assert_eq!(last.iter().map(|r| r.id).collect::<Vec<_>>(), (51..=60).collect::<Vec<_>>());
+        assert_eq!(
+            last.iter().map(|r| r.id).collect::<Vec<_>>(),
+            (51..=60).collect::<Vec<_>>()
+        );
         assert_eq!(pager.range, "51-60 of 60");
         assert_eq!(pager.next, None);
         // A page past the end shows the last one.

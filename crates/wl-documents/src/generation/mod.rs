@@ -51,8 +51,8 @@ use wl_kernel::generation::{
 use wl_kernel::numbering::Series;
 
 use crate::documents::{
-    DocumentSource, NewDocument, emit_accepted, emit_superseded, file_refusal,
-    record_generated_in, sha256_hex,
+    DocumentSource, NewDocument, emit_accepted, emit_superseded, file_refusal, record_generated_in,
+    sha256_hex,
 };
 use crate::kinds::DocumentKind;
 
@@ -537,7 +537,10 @@ pub fn data_hash(values: &renox::serde_json::Value, mode: LanguageMode) -> Strin
 }
 
 /// Fills `body` with the context; an unknown field is an error.
-fn fill(body: &str, context: &renox::serde_json::Value) -> std::result::Result<String, RenderError> {
+fn fill(
+    body: &str,
+    context: &renox::serde_json::Value,
+) -> std::result::Result<String, RenderError> {
     if body.trim().is_empty() {
         return Ok(String::new());
     }
@@ -555,7 +558,13 @@ fn file_name(title: &str, number: Option<&str>) -> String {
     };
     let clean: String = base
         .chars()
-        .map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') { '-' } else { c })
+        .map(|c| {
+            if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
+                '-'
+            } else {
+                c
+            }
+        })
         .collect();
     format!("{}.pdf", clean.trim())
 }
@@ -657,9 +666,8 @@ pub async fn generate(state: &AppState, request: GenerateRequest) -> Result<Gene
             "address_ar": e.address_ar,
         })),
     });
-    let filled = fill(&template.body_en, &context).and_then(|english| {
-        fill(&template.body_ar, &context).map(|arabic| (english, arabic))
-    });
+    let filled = fill(&template.body_en, &context)
+        .and_then(|english| fill(&template.body_ar, &context).map(|arabic| (english, arabic)));
     let (english, arabic) = match filled {
         Ok(text) => text,
         Err(err) => return Ok(Err(GenerateRefusal::Render(err.0))),
@@ -804,7 +812,11 @@ mod tests {
     fn an_unknown_field_fails_the_fill() {
         assert!(fill("{{ data.missing }}", &json!({ "data": {} })).is_err());
         assert_eq!(
-            fill("Period {{ data.period }}", &json!({ "data": { "period": "2026-10" } })).unwrap(),
+            fill(
+                "Period {{ data.period }}",
+                &json!({ "data": { "period": "2026-10" } })
+            )
+            .unwrap(),
             "Period 2026-10"
         );
     }

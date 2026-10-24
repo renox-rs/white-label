@@ -151,7 +151,10 @@ pub fn line(item: &FailedLine) -> String {
             ("occurrence", &item.occurrence),
             ("reason", &reason),
             ("at", &dubai_text(item.at)),
-            ("error", &item.error.clone().unwrap_or_else(|| "—".to_owned())),
+            (
+                "error",
+                &item.error.clone().unwrap_or_else(|| "—".to_owned()),
+            ),
         ],
     );
     if item.critical {
@@ -350,6 +353,9 @@ mod tests {
 
     #[test]
     fn the_task_runs_at_seven_in_dubai() {
-        assert_eq!((TASK_AT, TASK_ZONE, RULE), ("07:00", "Asia/Dubai", "PLT.RUL.03"));
+        assert_eq!(
+            (TASK_AT, TASK_ZONE, RULE),
+            ("07:00", "Asia/Dubai", "PLT.RUL.03")
+        );
     }
 }

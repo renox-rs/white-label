@@ -4,12 +4,12 @@
 
 use renox::prelude::*;
 use renox::state_machine::{Outcome, TransitionError};
+use wl_kernel::after_commit::AfterCommit;
 use wl_kernel::invoicing::{
     CreditLine, CreditNoteId, CreditNoteSummary, DisputeRequest, DisputeState, DraftLine,
     InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer, ReopenReason,
     Reopened, Unallocate, WriteOffAnswer,
 };
-use wl_kernel::after_commit::AfterCommit;
 use wl_kernel::{LegalEntity, PartyId};
 
 use crate::credit_note::CreditNote;

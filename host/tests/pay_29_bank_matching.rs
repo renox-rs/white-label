@@ -117,13 +117,19 @@ async fn a_line_with_the_invoice_number_is_suggested_and_paid_at_complete() {
     let import = imported(
         &s.app,
         &s.accountant,
-        &[format!("{},Transfer,4500.00,{number},AL NOOR TRADING", day(-1))],
+        &[format!(
+            "{},Transfer,4500.00,{number},AL NOOR TRADING",
+            day(-1)
+        )],
     )
     .await;
     assert_eq!(import.status, ImportStatus::InReview);
     let line = lines(&s.app, &import).await.remove(0);
     assert_eq!(line.status, LineStatus::Suggested);
-    assert_eq!(line.suggestion_kind.as_deref(), Some(bank_match::KIND_INVOICES));
+    assert_eq!(
+        line.suggestion_kind.as_deref(),
+        Some(bank_match::KIND_INVOICES)
+    );
     assert_eq!(line.suggestion_reason.as_deref(), Some("reference"));
     assert_eq!(line.suggestion_party_id, Some(s.tenant.0));
     assert_eq!(
@@ -139,7 +145,12 @@ async fn a_line_with_the_invoice_number_is_suggested_and_paid_at_complete() {
         .assert_see("Confirm");
 
     assert_eq!(
-        post(&s.app, &format!("/bank-statement-lines/{}/confirm", line.id), &[]).await,
+        post(
+            &s.app,
+            &format!("/bank-statement-lines/{}/confirm", line.id),
+            &[]
+        )
+        .await,
         200
     );
     // Nothing is recorded before complete.
@@ -152,7 +163,12 @@ async fn a_line_with_the_invoice_number_is_suggested_and_paid_at_complete() {
         0
     );
     assert_eq!(
-        post(&s.app, &format!("/bank-statements/{}/complete", import.id), &[]).await,
+        post(
+            &s.app,
+            &format!("/bank-statements/{}/complete", import.id),
+            &[]
+        )
+        .await,
         200
     );
     let payments = Payment::query()
@@ -162,8 +178,13 @@ async fn a_line_with_the_invoice_number_is_suggested_and_paid_at_complete() {
         .unwrap();
     assert_eq!(payments.len(), 1, "one transfer");
     assert_eq!(payments[0].amount, 450_000);
-    assert_eq!(payments[0].method, wl_kernel::payments::PaymentMethod::Transfer);
-    let rows = Allocation::all_of(s.app.db(), payments[0].id).await.unwrap();
+    assert_eq!(
+        payments[0].method,
+        wl_kernel::payments::PaymentMethod::Transfer
+    );
+    let rows = Allocation::all_of(s.app.db(), payments[0].id)
+        .await
+        .unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(reload(&s.app, &invoice).await.status, InvoiceStatus::Paid);
 }
@@ -195,7 +216,12 @@ async fn a_line_matched_by_hand_to_two_invoices_records_one_payment_with_two_all
         200
     );
     assert_eq!(
-        post(&s.app, &format!("/bank-statements/{}/complete", import.id), &[]).await,
+        post(
+            &s.app,
+            &format!("/bank-statements/{}/complete", import.id),
+            &[]
+        )
+        .await,
         200
     );
     let payments = Payment::query()
@@ -245,13 +271,26 @@ async fn a_line_for_a_deposited_cheque_clears_it_without_another_payment() {
     )
     .await;
     let line = lines(&s.app, &import).await.remove(0);
-    assert_eq!(line.suggestion_kind.as_deref(), Some(bank_match::KIND_CHEQUE));
     assert_eq!(
-        post(&s.app, &format!("/bank-statement-lines/{}/confirm", line.id), &[]).await,
+        line.suggestion_kind.as_deref(),
+        Some(bank_match::KIND_CHEQUE)
+    );
+    assert_eq!(
+        post(
+            &s.app,
+            &format!("/bank-statement-lines/{}/confirm", line.id),
+            &[]
+        )
+        .await,
         200
     );
     assert_eq!(
-        post(&s.app, &format!("/bank-statements/{}/complete", import.id), &[]).await,
+        post(
+            &s.app,
+            &format!("/bank-statements/{}/complete", import.id),
+            &[]
+        )
+        .await,
         200
     );
     let cheque = Cheque::find_or_404(s.app.db(), summary.id.0).await.unwrap();
@@ -300,7 +339,12 @@ async fn an_accountant_cannot_reverse_a_confirmed_match_a_property_manager_appro
     )
     .await;
     assert_eq!(
-        post(&s.app, &format!("/bank-statements/{}/complete", import.id), &[]).await,
+        post(
+            &s.app,
+            &format!("/bank-statements/{}/complete", import.id),
+            &[]
+        )
+        .await,
         200
     );
     let payment = bank_match::payment_of_line(s.app.db(), line.id)
@@ -310,11 +354,19 @@ async fn an_accountant_cannot_reverse_a_confirmed_match_a_property_manager_appro
 
     // The accountant asks: a request, nothing reversed.
     assert_eq!(
-        post(&s.app, &format!("/bank-statement-lines/{}/reverse", line.id), &[]).await,
+        post(
+            &s.app,
+            &format!("/bank-statement-lines/{}/reverse", line.id),
+            &[]
+        )
+        .await,
         200
     );
     assert_eq!(
-        Payment::find_or_404(s.app.db(), payment.id).await.unwrap().status,
+        Payment::find_or_404(s.app.db(), payment.id)
+            .await
+            .unwrap()
+            .status,
         PaymentStatus::Received
     );
     assert_eq!(reload(&s.app, &first).await.status, InvoiceStatus::Paid);
@@ -332,7 +384,10 @@ async fn an_accountant_cannot_reverse_a_confirmed_match_a_property_manager_appro
         .expect("the approval runs");
     let reversed = Payment::find_or_404(s.app.db(), payment.id).await.unwrap();
     assert_eq!(reversed.status, PaymentStatus::Reversed);
-    assert_eq!(reversed.reversal_note.as_deref(), Some(bank_match::REVERSE_NOTE));
+    assert_eq!(
+        reversed.reversal_note.as_deref(),
+        Some(bank_match::REVERSE_NOTE)
+    );
     for invoice in [&first, &second] {
         let open = reload(&s.app, invoice).await;
         assert_eq!(open.status, InvoiceStatus::Issued, "open again");
@@ -353,9 +408,19 @@ async fn revert_of_an_import_in_review_removes_its_lines_and_records_nothing() {
     )
     .await;
     let line = lines(&s.app, &import).await.remove(0);
-    post(&s.app, &format!("/bank-statement-lines/{}/confirm", line.id), &[]).await;
+    post(
+        &s.app,
+        &format!("/bank-statement-lines/{}/confirm", line.id),
+        &[],
+    )
+    .await;
     assert_eq!(
-        post(&s.app, &format!("/bank-statements/{}/revert", import.id), &[]).await,
+        post(
+            &s.app,
+            &format!("/bank-statements/{}/revert", import.id),
+            &[]
+        )
+        .await,
         200
     );
     assert!(lines(&s.app, &import).await.is_empty());
@@ -384,7 +449,12 @@ async fn a_line_with_no_candidate_stays_unmatched_and_blocks_complete() {
     assert_eq!(line.status, LineStatus::Unmatched);
     assert!(line.suggestion_kind.is_none());
     assert_eq!(
-        post(&s.app, &format!("/bank-statements/{}/complete", import.id), &[]).await,
+        post(
+            &s.app,
+            &format!("/bank-statements/{}/complete", import.id),
+            &[]
+        )
+        .await,
         422
     );
     assert_eq!(

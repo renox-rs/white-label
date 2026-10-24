@@ -106,11 +106,20 @@ async fn the_returns_filter_by_type_and_status_and_keep_the_new_return_sheet() {
         "select count(*) from accounting_returns where status = 'filed'",
     )
     .await;
-    assert_eq!(total(&app, "/accounting/returns?in.status=filed").await, filed);
+    assert_eq!(
+        total(&app, "/accounting/returns?in.status=filed").await,
+        filed
+    );
 
     sign_in(&app, MANAGER_EMAIL).await;
     let engagements = load(&app, "/accounting/engagements").await;
-    assert!(engagements.contains("engagement-new"), "the New engagement sheet");
+    assert!(
+        engagements.contains("engagement-new"),
+        "the New engagement sheet"
+    );
     let packs = load(&app, "/accounting/kpi-packs").await;
-    assert!(packs.contains("kpi-import"), "the Import trial balance sheet");
+    assert!(
+        packs.contains("kpi-import"),
+        "the Import trial balance sheet"
+    );
 }

@@ -281,7 +281,12 @@ pub(crate) fn type_words_sql(column: &str, keys: &[String]) -> String {
                     .chars()
                     .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
         })
-        .map(|key| format!(" WHEN '{key}' THEN '{}'", type_name(key).replace('\'', "''")))
+        .map(|key| {
+            format!(
+                " WHEN '{key}' THEN '{}'",
+                type_name(key).replace('\'', "''")
+            )
+        })
         .collect();
     if cases.is_empty() {
         format!("{{T}}.\"{column}\"")
@@ -337,7 +342,11 @@ fn types_grid(lang: &Lang, keys: &[String]) -> Grid {
                 .searchable()
                 .link("/notification-types/{id}"),
         )
-        .column(Column::text("key", &t("fields.type_key")).searchable().copyable())
+        .column(
+            Column::text("key", &t("fields.type_key"))
+                .searchable()
+                .copyable(),
+        )
         .column(
             Column::text("module", &t("fields.module"))
                 .mobile()

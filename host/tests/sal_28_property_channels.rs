@@ -32,7 +32,14 @@ async fn the_property_seed_offers_the_six_01_channels() {
         .collect();
     assert_eq!(
         active,
-        ["brokers", "email", "listing_portals", "search_ads", "signboards", "social_media"]
+        [
+            "brokers",
+            "email",
+            "listing_portals",
+            "search_ads",
+            "signboards",
+            "social_media"
+        ]
     );
     let other_online = channels
         .iter()

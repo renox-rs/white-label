@@ -278,9 +278,14 @@ async fn world() -> World {
         .await
         .unwrap();
     let user = |name: &'static str| async move {
-        User::register(db, name, &format!("{name}@gulftower.example"), "password123")
-            .await
-            .unwrap()
+        User::register(
+            db,
+            name,
+            &format!("{name}@gulftower.example"),
+            "password123",
+        )
+        .await
+        .unwrap()
     };
     let clerk = user("clerk").await;
     clerk.assign_role(db, "clerk").await.unwrap();
@@ -542,17 +547,11 @@ async fn the_panel_runs_the_same_number_of_queries_whatever_the_number_of_rows()
     // Warm the session.
     w.panel(&w.clerk, &small).await.assert_ok();
     w.app.acting_as(&w.clerk);
-    let (page, few) = capture_queries(
-        w.app
-            .get(&format!("/related/{INVOICE}:{}/panel", small.id)),
-    )
-    .await;
+    let (page, few) =
+        capture_queries(w.app.get(&format!("/related/{INVOICE}:{}/panel", small.id))).await;
     page.assert_ok();
-    let (page, many) = capture_queries(
-        w.app
-            .get(&format!("/related/{INVOICE}:{}/panel", large.id)),
-    )
-    .await;
+    let (page, many) =
+        capture_queries(w.app.get(&format!("/related/{INVOICE}:{}/panel", large.id))).await;
     page.assert_ok();
     page.assert_see("data-group=\"lines\" data-count=\"30\"");
     page.assert_see("and 20 more");

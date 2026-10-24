@@ -180,7 +180,9 @@ async fn index(
     }
     let can_export = user.has_permission(permissions::SUPPLIER_CLAIMS_MANAGE);
     let grid = lists::exporting(grid(&lists::texts_in(&lang)), can_export);
-    if let Some(file) = lists::export_file(&grid, can_export, SupplierClaim::query(), &request).await? {
+    if let Some(file) =
+        lists::export_file(&grid, can_export, SupplierClaim::query(), &request).await?
+    {
         return Ok(file);
     }
     let page = grid.page(SupplierClaim::query(), &request).await?;
