@@ -5,7 +5,6 @@
 
 mod support;
 
-use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_kernel::cheques::{ChequeBounced, ChequeId};
 use wl_sales::SalesOrder;
