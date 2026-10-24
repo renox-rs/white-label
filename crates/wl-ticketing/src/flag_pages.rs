@@ -18,6 +18,7 @@ use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 
+use crate::config::Category;
 use crate::flags::ComplianceFlag;
 use crate::permissions;
 use crate::texts;
@@ -48,10 +49,18 @@ pub struct FlagQuery {
     pub subject_id: Option<i64>,
 }
 
-/// The compliance flags grid: search on the subject, filters by category,
-/// reason and raised date, the oldest first. The visit and contract links
-/// and the age are drawn by the template (`custom`).
-pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+/// The compliance flags grid: search on the subject (in words, "Lease #3",
+/// never `property.lease #3`) and category, filters by category, reason and
+/// raised date, the oldest first. The visit and contract links and the age
+/// are drawn by the template (`custom`). `subject_types` are the types the
+/// subject column names in words, `categories` the (name, name) choices of
+/// the category filter.
+pub fn grid(
+    lang: &Lang,
+    can_export: bool,
+    subject_types: &[String],
+    categories: Vec<(String, String)>,
+) -> Grid {
     let t = |key: &str| texts::t(lang, &format!("wl_ticketing.{key}"));
     let reasons: Vec<(String, String)> = ["no_contract", "visit_missed", "vendor_document_expired"]
         .into_iter()
@@ -69,13 +78,17 @@ pub fn grid(lang: &Lang, can_export: bool) -> Grid {
         .advanced_filter()
         .column(
             Column::text("subject", &t("flags.subject"))
-                .computed("{T}.\"subject_type\" || ' #' || CAST({T}.\"subject_id\" AS TEXT)")
+                .computed(&wl_kernel::subject::words_sql(
+                    "subject_type",
+                    "subject_id",
+                    subject_types,
+                ))
                 .frozen()
                 .mobile()
                 .searchable(),
         )
         .column(
-            Column::text("category", &t("flags.category"))
+            Column::select("category", &t("flags.category"), categories)
                 .computed(category_sql)
                 .searchable()
                 .mobile(),
@@ -139,7 +152,29 @@ async fn index(
         }
     }
     let can_export = user.has_permission(permissions::MANAGE);
-    let grid = grid(&lang, can_export);
+    let mut subject_types: Vec<String> = ComplianceFlag::query()
+        .pluck::<String, _>(&state.db, "subject_type")
+        .await?;
+    subject_types.sort();
+    subject_types.dedup();
+    // The category filter offers the names the column shows, in the page's
+    // language.
+    let mut categories: Vec<(String, String)> = Category::query()
+        .get(&state.db)
+        .await?
+        .into_iter()
+        .map(|c| {
+            let name = if lang.locale == "ar" && !c.name_ar.trim().is_empty() {
+                c.name_ar
+            } else {
+                c.name_en
+            };
+            (name.clone(), name)
+        })
+        .collect();
+    categories.sort();
+    categories.dedup();
+    let grid = grid(&lang, can_export, &subject_types, categories);
     if request.param("export").is_some() && !can_export {
         return Err(Error::Forbidden);
     }

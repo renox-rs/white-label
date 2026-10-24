@@ -1114,6 +1114,70 @@ async fn block_evidence(
 mod tests {
     use super::*;
 
+    fn kind_row(key: &str, label: &str, effect: &str, decider: Option<&str>) -> KindRow {
+        KindRow {
+            key: key.to_owned(),
+            label: label.to_owned(),
+            owner: "module".to_owned(),
+            effect: effect.to_owned(),
+            effect_label: effect.to_owned(),
+            effect_tone: "info",
+            decider_role: decider.map(str::to_owned),
+            source_label: "Default".to_owned(),
+            has_source: false,
+        }
+    }
+
+    /// The block effects list searches, filters by effect and orders (#529).
+    #[test]
+    fn the_block_effects_search_filter_and_order() {
+        let rows = || {
+            vec![
+                kind_row("lease", "Lease", "continue", Some("property_manager")),
+                kind_row("booking", "Booking", "review", Some("clinic_manager")),
+                kind_row("sales_order", "Sales order", "pause", None),
+            ]
+        };
+        let keys = |query: BlockEffectsQuery| {
+            narrow_kinds(rows(), &query)
+                .into_iter()
+                .map(|row| row.key)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            keys(BlockEffectsQuery::default()),
+            ["booking", "lease", "sales_order"]
+        );
+        assert_eq!(
+            keys(BlockEffectsQuery {
+                sort: "-agreement".to_owned(),
+                ..Default::default()
+            }),
+            ["sales_order", "lease", "booking"]
+        );
+        assert_eq!(
+            keys(BlockEffectsQuery {
+                q: "CLINIC".to_owned(),
+                ..Default::default()
+            }),
+            ["booking"]
+        );
+        assert_eq!(
+            keys(BlockEffectsQuery {
+                effect: "pause".to_owned(),
+                ..Default::default()
+            }),
+            ["sales_order"]
+        );
+        assert_eq!(
+            keys(BlockEffectsQuery {
+                sort: "decider".to_owned(),
+                ..Default::default()
+            }),
+            ["sales_order", "booking", "lease"]
+        );
+    }
+
     #[test]
     fn a_refusal_shows_under_its_own_field() {
         let message = |key: &str| texts::english(&format!("wl_parties.errors.{key}"));
@@ -1230,6 +1294,7 @@ pub(crate) struct KindRow {
     key: String,
     label: String,
     owner: String,
+    effect: String,
     effect_label: String,
     effect_tone: &'static str,
     decider_role: Option<String>,
@@ -1243,17 +1308,88 @@ pub(crate) struct KindRow {
 pub(crate) struct BlockEffectsPage {
     tx: Texts,
     kinds: Vec<KindRow>,
+    /// The search as asked (`?q=`).
+    q: String,
+    /// The effect filter as asked (`?effect=`), empty for every effect.
+    effect: String,
+    /// The order as asked (`?sort=`, a column key, `-` first for descending).
+    sort: String,
+    /// `(value, label)` of the effect filter.
+    effects: Vec<(String, String)>,
+    /// `(value, label)` of the order choice.
+    sorts: Vec<(String, String)>,
+}
+
+/// The query of the block effects list: a search, an effect and an order.
+#[derive(Deserialize, Debug, Default)]
+pub struct BlockEffectsQuery {
+    /// Words found in the agreement, owner, decider role or who set it.
+    #[serde(default)]
+    pub q: String,
+    /// `pause`, `continue` or `review`; empty for all.
+    #[serde(default)]
+    pub effect: String,
+    /// `agreement`, `owner`, `effect` or `decider`, `-` first for descending.
+    #[serde(default)]
+    pub sort: String,
+}
+
+/// The kinds of `rows` that match `query`, in its order (by agreement when
+/// none is asked).
+///
+/// Decision: the agreement kinds are the kernel's process-wide registry
+/// (each owning module registers its kind at boot, the vertical overrides
+/// the effect), not a table, so `renox::grid` (which pages a model's query)
+/// cannot list them. The page keeps the grid's search, filter and order as
+/// query-string values narrowed here, and fills the screen with one pane; a
+/// dozen rows need no pages or export.
+pub(crate) fn narrow_kinds(mut rows: Vec<KindRow>, query: &BlockEffectsQuery) -> Vec<KindRow> {
+    let needle = query.q.trim().to_lowercase();
+    let effect = query.effect.trim();
+    rows.retain(|row| {
+        (effect.is_empty() || row.effect == effect)
+            && (needle.is_empty()
+                || [
+                    row.label.as_str(),
+                    row.key.as_str(),
+                    row.owner.as_str(),
+                    row.effect_label.as_str(),
+                    row.decider_role.as_deref().unwrap_or_default(),
+                    row.source_label.as_str(),
+                ]
+                .iter()
+                .any(|text| text.to_lowercase().contains(&needle)))
+    });
+    let (descending, key) = match query.sort.trim().strip_prefix('-') {
+        Some(key) => (true, key),
+        None => (false, query.sort.trim()),
+    };
+    let by = |row: &KindRow| -> String {
+        match key {
+            "owner" => row.owner.to_lowercase(),
+            "effect" => row.effect_label.to_lowercase(),
+            "decider" => row.decider_role.clone().unwrap_or_default().to_lowercase(),
+            _ => row.label.to_lowercase(),
+        }
+    };
+    rows.sort_by(|a, b| by(a).cmp(&by(b)).then_with(|| a.key.cmp(&b.key)));
+    if descending {
+        rows.reverse();
+    }
+    rows
 }
 
 /// `GET /parties/block-effects`: every agreement kind with its effect,
-/// decider role and who set them. Read-only.
-async fn block_effects_page(lang: Lang) -> Result<View> {
+/// decider role and who set them, searched (`?q=`), filtered by effect
+/// (`?effect=`) and ordered (`?sort=`). Read-only.
+async fn block_effects_page(lang: Lang, Query(query): Query<BlockEffectsQuery>) -> Result<View> {
     let t = texts_in(&lang);
     let kinds = kernel_effects::kinds()
         .into_iter()
         .map(|info| KindRow {
             label: kind_label(&lang, &info.key),
             owner: info.owner,
+            effect: info.effect.as_str().to_owned(),
             effect_label: t(&format!("effect.{}", info.effect.as_str())),
             effect_tone: effect_tone(info.effect),
             decider_role: info.decider_role,
@@ -1262,9 +1398,28 @@ async fn block_effects_page(lang: Lang) -> Result<View> {
             key: info.key,
         })
         .collect();
+    let effects = [BlockEffect::Pause, BlockEffect::Continue, BlockEffect::Review]
+        .iter()
+        .map(|e| (e.as_str().to_owned(), t(&format!("effect.{}", e.as_str()))))
+        .collect();
+    let mut sorts = Vec::new();
+    for (key, label) in [
+        ("agreement", "block_effects.agreement"),
+        ("owner", "block_effects.owner"),
+        ("effect", "block_effects.effect"),
+        ("decider", "block_effects.decider"),
+    ] {
+        sorts.push((key.to_owned(), format!("{} \u{2191}", t(label))));
+        sorts.push((format!("-{key}"), format!("{} \u{2193}", t(label))));
+    }
     Ok(View::typed(BlockEffectsPage {
         tx: texts::all(&lang),
-        kinds,
+        kinds: narrow_kinds(kinds, &query),
+        q: query.q.trim().to_owned(),
+        effect: query.effect.trim().to_owned(),
+        sort: query.sort.trim().to_owned(),
+        effects,
+        sorts,
     }))
 }
 
@@ -1315,6 +1470,7 @@ pub fn review_tasks_grid(lang: &Lang, can_export: bool) -> Grid {
         )
         .column(Column::datetime("created_at", &t("review.fields.opened")))
         .sort_by("id")
+        .row_url("/parties/review-tasks/{id}")
         .cards_on_mobile()
         .empty_state(&t("review.empty"), Some(&t("review.empty_hint")));
     if can_export { grid.exports() } else { grid }

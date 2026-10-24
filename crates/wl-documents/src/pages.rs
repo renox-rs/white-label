@@ -664,7 +664,17 @@ pub fn flags_grid(
         ("open".to_owned(), text(lang, "flags.state.open")),
         ("reviewed".to_owned(), text(lang, "flags.state.reviewed")),
     ];
-    let types: Vec<(String, String)> = record_types.into_iter().map(|t| (t.clone(), t)).collect();
+    // The record column and its type filter read in words ("Lease #3",
+    // "Lease"), never `property.lease #3`.
+    let record_sql = wl_kernel::subject::words_sql("record_type", "record_id", &record_types);
+    let types: Vec<(String, String)> = record_types
+        .into_iter()
+        .map(|t| {
+            let words = wl_kernel::subject::words_of(&t, 0);
+            let label = words.strip_suffix(" #0").unwrap_or(&words).to_owned();
+            (t, label)
+        })
+        .collect();
     let grid = Grid::new("wl-documents-flags")
         .title(&text(lang, "flags.title"))
         .per_page(25)
@@ -689,7 +699,8 @@ pub fn flags_grid(
         ))
         .column(
             Column::text("record", &text(lang, "fields.subject"))
-                .computed("{T}.\"record_type\" || ' #' || {T}.\"record_id\"")
+                .computed(&record_sql)
+                .searchable()
                 .mobile(),
         )
         .column(Column::text("guarded", &text(lang, "flags.guarded")).searchable())
@@ -858,6 +869,7 @@ pub fn kinds_grid(lang: &Lang, can_export: bool) -> Grid {
         ))
         .column(Column::bool("enabled", &text(lang, "kinds.enabled")).mobile())
         .sort_by("key")
+        .row_url("/document-kinds/{id}")
         .cards_on_mobile()
         .empty_state(
             &text(lang, "kinds.empty"),
@@ -1003,9 +1015,15 @@ fn override_value(mode: OverrideMode) -> &'static str {
 /// to add an entry, switch an entry's mode and remove an entry. A locked
 /// entry shows why it cannot be changed instead.
 async fn kind_page(State(db): State<Db>, lang: Lang, Path(key): Path<String>) -> Result<View> {
-    let kind = DocumentKind::by_key(&db, &key)
-        .await?
-        .ok_or(Error::NotFound)?;
+    // The grid's row link names the kind by its number (`{id}`); a key is
+    // never all digits.
+    let kind = match DocumentKind::by_key(&db, &key).await? {
+        Some(kind) => kind,
+        None => match key.parse::<i64>() {
+            Ok(id) => DocumentKind::find(&db, id).await?.ok_or(Error::NotFound)?,
+            Err(_) => return Err(Error::NotFound),
+        },
+    };
     let name = kind.name(&lang.locale).to_owned();
     let t = |key: &str, params: &[(&str, &dyn std::fmt::Display)]| {
         texts::t_with(&lang, &format!("wl_documents.{key}"), params)

@@ -135,7 +135,8 @@ pub fn grid(lang: &Lang) -> Grid {
         .column(Column::custom("actions", &t("categories.actions")))
         .sort_by("key")
         .cards_on_mobile()
-        .empty_state(&t("categories.empty"), None)
+        .empty_state(&t("categories.empty"), Some(&t("categories.empty_hint")))
+        // The route needs `tickets.manage`, so the export is open.
         .exports()
 }
 

@@ -374,6 +374,10 @@ const TEXTS: &[(&str, &str)] = &[
         "A category with tickets cannot be deleted.",
     ),
     ("wl_ticketing.categories.empty", "No categories yet"),
+    (
+        "wl_ticketing.categories.empty_hint",
+        "The modules and the client's seed install the categories tickets are opened in.",
+    ),
     ("wl_ticketing.categories.actions", "Actions"),
     ("wl_ticketing.categories.renamed", "Category renamed."),
     ("wl_ticketing.categories.updated", "Category updated."),
@@ -665,6 +669,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_ticketing.deadline.subtitle_open", "Open deadline tasks"),
     ("wl_ticketing.deadline.subtitle_mine", "My deadline tasks"),
     ("wl_ticketing.deadline.empty", "No deadline tasks"),
+    (
+        "wl_ticketing.deadline.empty_hint",
+        "An agreement with a filing or renewal date opens its tasks here.",
+    ),
     ("wl_ticketing.deadline.late", "Late"),
     ("wl_ticketing.deadline.completed_late", "Completed late"),
     ("wl_ticketing.deadline.done", "Done."),

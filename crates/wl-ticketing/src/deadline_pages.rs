@@ -109,7 +109,7 @@ pub struct TaskRow {
     pub title: String,
     /// The task type key (`vat_return`).
     pub task_type: String,
-    /// The agreement, `accounting.engagement #12`.
+    /// The agreement in words, `Engagement #12`.
     pub source: String,
     /// The due date, `2026-11-28`.
     pub due: String,
@@ -179,10 +179,21 @@ async fn row(
     })
 }
 
-/// The deadline tasks grid: search on the title, agreement and owner,
-/// filters by status, due date and owner, by due date. The waiting label of
-/// the client's settings replaces "Waiting".
-pub fn grid(state: &AppState, lang: &Lang, can_export: bool) -> Grid {
+/// The agreement types the deadline tasks have, once each.
+pub async fn source_types(db: &Db) -> Result<Vec<String>> {
+    let mut types: Vec<String> = DeadlineTask::query()
+        .pluck::<String, _>(db, "subject_type")
+        .await?;
+    types.sort();
+    types.dedup();
+    Ok(types)
+}
+
+/// The deadline tasks grid: search on the title, agreement (in words) and
+/// owner, filters by status, due date and owner, by due date. The waiting
+/// label of the client's settings replaces "Waiting". `source_types` are the
+/// agreement types the source column names in words ([`source_types`]).
+pub fn grid(state: &AppState, lang: &Lang, can_export: bool, source_types: &[String]) -> Grid {
     let statuses: Vec<(String, String)> = DeadlineTaskStatus::ALL
         .iter()
         .map(|status| {
@@ -220,8 +231,9 @@ pub fn grid(state: &AppState, lang: &Lang, can_export: bool) -> Grid {
         .column(Column::text("task_type", &text(lang, "deadline.fields.type")).searchable().hidden())
         .column(
             Column::text("source", &text(lang, "deadline.fields.source"))
-                .computed("{T}.\"subject_type\" || ' #' || CAST({T}.\"subject_id\" AS TEXT)")
-                .searchable(),
+                .computed(&wl_kernel::subject::words_sql("subject_type", "subject_id", source_types))
+                .searchable()
+                .mobile(),
         )
         .column(Column::date("due_date", &text(lang, "deadline.fields.due")).mobile())
         .column(Column::date("start_date", &text(lang, "deadline.fields.start")).hidden())
@@ -241,7 +253,10 @@ pub fn grid(state: &AppState, lang: &Lang, can_export: bool) -> Grid {
         .sort_by("due_date,id")
         .row_url("/deadline-tasks/{id}")
         .cards_on_mobile()
-        .empty_state(&text(lang, "deadline.empty"), None);
+        .empty_state(
+            &text(lang, "deadline.empty"),
+            Some(&text(lang, "deadline.empty_hint")),
+        );
     if can_export { grid.exports() } else { grid }
 }
 
@@ -274,7 +289,7 @@ async fn index(
             .where_(DeadlineTask::SUBJECT_TYPE.eq(kind.trim()))
             .where_(DeadlineTask::SUBJECT_ID.eq(id));
         filtered = true;
-        subtitle = format!("{} #{id}", kind.trim());
+        subtitle = wl_kernel::subject::words_of(kind.trim(), id);
     }
     let owner = if query.mine.as_deref() == Some("1") {
         Some(user.id)
@@ -292,7 +307,8 @@ async fn index(
         found = found.where_(DeadlineTask::STATUS.is_in(OPEN));
     }
     let can_export = user.has_permission(permissions::TASKS_MANAGE);
-    let grid = grid(&state, &lang, can_export);
+    let types = source_types(&state.db).await?;
+    let grid = grid(&state, &lang, can_export, &types);
     if request.param("export").is_some() && !can_export {
         return Err(Error::Forbidden);
     }

@@ -80,6 +80,20 @@ async fn the_flags_page_lists_unreviewed_first_and_marks_reviewed_with_a_note() 
         .await
         .assert_ok()
         .assert_dont_see("Work permit expired 2026-11-30");
+    // #529: the record reads in words ("Attendance record #2"), and the grid
+    // searches it.
+    t.app
+        .get("/documents/flags")
+        .await
+        .assert_see("Attendance record #2")
+        .assert_see("Ticket #1")
+        .assert_dont_see("attendance_record #2");
+    t.app
+        .get("/documents/flags?search=Attendance%20record%20%232")
+        .await
+        .assert_ok()
+        .assert_see("Work permit expired 2026-11-30")
+        .assert_dont_see("Insurance expired 2026-10-01");
     // Without documents.review the viewer cannot review.
     t.app
         .htmx()

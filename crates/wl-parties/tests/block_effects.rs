@@ -321,6 +321,29 @@ async fn the_settings_list_shows_the_twelve_kinds_and_the_vertical() {
         .assert_see("clinic_manager")
         .assert_see("finance_manager")
         .assert_see("Default");
+    // The list searches, filters by effect and orders through its address,
+    // and fills the screen in one pane (#529).
+    let found = t.app.get("/parties/block-effects?q=deploy").await;
+    found
+        .assert_ok()
+        .assert_see("Deployment")
+        .assert_see("rx-pane rx-fill")
+        .assert_dont_see("clinic_manager");
+    t.app
+        .get("/parties/block-effects?effect=pause")
+        .await
+        .assert_ok()
+        .assert_dont_see("Deployment");
+    t.app
+        .get("/parties/block-effects?q=zzqqxx-nothing")
+        .await
+        .assert_ok()
+        .assert_see("No agreement kind matches");
+    t.app
+        .get("/parties/block-effects?sort=-agreement")
+        .await
+        .assert_ok()
+        .assert_see("Deployment");
 
     let viewer = t.user("Vera", &[perm::VIEW]).await;
     t.app.acting_as(&viewer);

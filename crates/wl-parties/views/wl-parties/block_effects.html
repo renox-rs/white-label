@@ -1,10 +1,21 @@
 {#- wl-parties: what a block does to each kind of agreement (read-only; the
-    vertical sets the values). Replace it with
-    resources/views/wl-parties/block_effects.html in the app. -#}
+    vertical sets the values). The kinds are the kernel's registry, not a
+    table, so the handler searches (?q=), filters by effect (?effect=) and
+    orders (?sort=) them; the table fills the screen in one pane that scrolls
+    by itself. Replace it with resources/views/wl-parties/block_effects.html
+    in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['block_effects.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['block_effects.title']" :subtitle="tx['block_effects.subtitle']" :back="route('wl_parties.index')" :back-label="tx['title']"/>
-    <rx-table :rows="kinds" as="kind" :key="kind.key" :caption="tx['block_effects.title']" card>
+  <rx-page-header :title="tx['block_effects.title']" :subtitle="tx['block_effects.subtitle']" :back="route('wl_parties.index')" :back-label="tx['title']"/>
+  <form method="get">
+    <rx-toolbar>
+      <rx-input name="q" type="search" :label="tx['block_effects.search']" :value="q" id="block-effects-q"/>
+      <rx-select name="effect" :label="tx['block_effects.effect']" :options="effects" :placeholder="tx['block_effects.all_effects']" :selected="effect" id="block-effects-effect"/>
+      <rx-select name="sort" :label="tx['block_effects.sort']" :options="sorts" :selected="sort or 'agreement'" id="block-effects-sort"/>
+      <rx-button type="submit" :label="tx['block_effects.show']" icon="search"/>
+    </rx-toolbar>
+  </form>
+  <section class="rx-pane rx-fill">
+    <rx-table rx-if="kinds" :rows="kinds" as="kind" :key="kind.key" :caption="tx['block_effects.title']">
       <rx-column :label="tx['block_effects.agreement']">{{ kind.label }}</rx-column>
       <rx-column :label="tx['block_effects.owner']" hide-narrow>{{ kind.owner }}</rx-column>
       <rx-column :label="tx['block_effects.effect']"><rx-badge :kind="kind.effect_tone" :text="kind.effect_label"/></rx-column>
@@ -12,5 +23,6 @@
       <rx-column :label="tx['block_effects.source']" hide-narrow>{{ kind.source_label }}</rx-column>
       <rx-column :label="tx['block_effects.has_source']" hide-narrow><rx-badge rx-if="kind.has_source" kind="success" :text="tx['block_effects.has_source']"/></rx-column>
     </rx-table>
-  </rx-stack>
+    <rx-empty rx-else :title="tx['block_effects.empty']" :message="tx['block_effects.empty_hint']" icon="search"/>
+  </section>
 </rx-page>

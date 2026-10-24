@@ -111,6 +111,33 @@ async fn the_deadline_pages_list_show_and_act_on_the_tasks() {
         .assert_ok()
         .assert_see("CT return")
         .assert_see("VAT Q3 of E-13");
+    // #529: the agreement reads in words, in the column and the subtitle,
+    // never as its type key; the grid searches it, sorts by due date and
+    // pages.
+    t.app
+        .get("/deadline-tasks")
+        .await
+        .assert_see("Engagement #12")
+        .assert_see("Engagement #13")
+        .assert_dont_see("accounting.engagement #");
+    t.app
+        .get("/deadline-tasks?subject_type=accounting.engagement&subject_id=12")
+        .await
+        .assert_see("Engagement #12")
+        .assert_dont_see("accounting.engagement #12");
+    t.app
+        .get("/deadline-tasks?search=Engagement%20%2313")
+        .await
+        .assert_ok()
+        .assert_see("VAT Q3 of E-13")
+        .assert_dont_see("CT return");
+    t.app
+        .get("/deadline-tasks?sort=-due_date&per_page=1")
+        .await
+        .assert_ok()
+        .assert_see("VAT Q3 of E-13")
+        .assert_see("1–1 of 3")
+        .assert_dont_see("CT return");
     // The page: the flags, no reason, and the worker's action.
     t.app
         .get(&format!("/deadline-tasks/{}", vat.0))

@@ -128,7 +128,10 @@ impl<'a> Names<'a> {
 /// The overrides grid: the requests waiting for the viewer's approval and
 /// the viewer's own, told apart by the "list" filter. Search on kind, subject,
 /// guarded transition and reason, filters by status and requester.
-pub fn grid(lang: &Lang, user_id: i64, can_export: bool) -> Grid {
+///
+/// The subject reads in words ("Lease #3", never `property.lease #3`) for the
+/// types of `subject_types`.
+pub fn grid(lang: &Lang, user_id: i64, can_export: bool, subject_types: &[String]) -> Grid {
     let statuses: Vec<(String, String)> = ["requested", "approved", "refused", "used"]
         .into_iter()
         .map(|key| {
@@ -165,7 +168,11 @@ pub fn grid(lang: &Lang, user_id: i64, can_export: bool) -> Grid {
         )
         .column(
             Column::text("subject", &text(lang, "fields.subject"))
-                .computed("{T}.\"subject_type\" || ' #' || {T}.\"subject_id\"")
+                .computed(&wl_kernel::subject::words_sql(
+                    "subject_type",
+                    "subject_id",
+                    subject_types,
+                ))
                 .searchable()
                 .mobile(),
         )
@@ -266,7 +273,12 @@ async fn index(
         ids
     }));
     let can_export = user.has_permission(permissions::MANAGE);
-    let grid = grid(&lang, user.id, can_export);
+    let mut subject_types: Vec<String> = BlockOverride::query()
+        .pluck::<String, _>(&db, "subject_type")
+        .await?;
+    subject_types.sort();
+    subject_types.dedup();
+    let grid = grid(&lang, user.id, can_export, &subject_types);
     if request.param("export").is_some() && !can_export {
         return Err(Error::Forbidden);
     }
