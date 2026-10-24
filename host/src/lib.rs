@@ -232,6 +232,8 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // The party's invoices, statement and deposit in the portal (BL-INV-31,
     // BL-PAY-27).
     app::money_portal::register();
+    // The cheque handover receipt's kind and template (BL-PAY-30).
+    app::cheque_receipts::register();
     // The kernel goes first: its seeder creates the legal entities the other
     // modules' demo data needs, and seeders run in the order modules mount.
     let portal_on = manifest.enabled().contains(&"portal");

@@ -7,6 +7,7 @@ pub mod auto_demo;
 pub mod auto_money;
 pub mod auto_seed;
 pub mod auto_settings;
+pub mod cheque_receipts;
 pub mod clinics_demo;
 pub mod clinics_money;
 pub mod clinics_seed;

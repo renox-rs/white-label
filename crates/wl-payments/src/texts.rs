@@ -7,6 +7,16 @@ use renox::prelude::*;
 
 /// Every key the package uses, with its English text.
 const TEXTS: &[(&str, &str)] = &[
+    // The cheque handover receipt (BL-PAY-30).
+    (
+        "wl_payments.cheques_handed_over.subject",
+        "Cheque handover receipt {{ number }}",
+    ),
+    (
+        "wl_payments.cheques_handed_over.body",
+        "Dear customer, we handed back {{ count }} cheque(s) for {{ total }} on {{ date }}. The receipt {{ number }} is attached.",
+    ),
+    ("wl_payments.cheques.handover_receipt", "Handover receipt"),
     // Pay supplier (BL-PAY-28).
     ("wl_payments.supplier_pay.title", "Pay supplier"),
     ("wl_payments.supplier_pay.amount", "Amount to pay"),

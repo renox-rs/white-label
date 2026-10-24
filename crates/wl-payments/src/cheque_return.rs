@@ -9,8 +9,9 @@
 //! cheque already deposited, or with a final outcome, is never touched.
 //!
 //! One call hands back all the cheques it can against **one** receipt, whose
-//! reference is stored in the history row of every cheque it returned. The
-//! receipt PDF itself comes with document generation (`DOC.GEN.01`).
+//! reference is stored in the history row of every cheque it returned, and
+//! records the handover; the receipt PDF is generated and sent after the
+//! commit ([`crate::cheque_handover`], `DOC.GEN.01`, BL-PAY-30).
 
 use renox::prelude::*;
 use renox::serde_json::json;
@@ -123,6 +124,15 @@ pub async fn return_undeposited_in(
     if returned.is_empty() {
         return Ok((None, outcomes));
     }
+    // One handover receipt for the call (BL-PAY-30); its PDF is generated
+    // and sent after the commit ([`crate::cheque_handover`]).
+    let mut handed = Vec::new();
+    for id in &returned {
+        if let Some(cheque) = Cheque::find(&mut *tx, id.0).await? {
+            handed.push(cheque);
+        }
+    }
+    crate::cheque_handover::record_in(&mut *tx, &receipt, &handed, reason, None).await?;
     Ok((
         Some(ReturnedCheques {
             receipt,

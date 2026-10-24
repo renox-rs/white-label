@@ -335,6 +335,10 @@ pub(crate) struct ShowPage {
     can_write_off: bool,
     /// The invoice write-offs asked for, with where each stands.
     write_offs: Vec<WriteOffRow>,
+    /// The handover receipt the cheque was handed back with (BL-PAY-30).
+    handover_label: Option<String>,
+    /// The receipt's PDF, once generated.
+    handover_url: Option<String>,
     /// Whether "Refer to legal" is offered: a bounced received cheque with
     /// its return certificate.
     can_refer: bool,
@@ -572,7 +576,13 @@ async fn show(
     };
     let replacements = replacement_rows(&db, &t, &cheque).await?;
     let covered = cheque_settle::covered_by_replacements(&db, &cheque).await?;
+    let handover = crate::cheque_handover::ChequeHandover::of_cheque(&db, cheque.id).await?;
     Ok(View::typed(ShowPage {
+        handover_label: handover.as_ref().map(|h| h.title()),
+        handover_url: handover
+            .as_ref()
+            .and_then(|h| h.document_id)
+            .map(|id| format!("/documents/{id}/file")),
         tx: texts::all(&lang),
         title: format!("{} {}", t("cheques.heading"), cheque.number),
         status_label: t(&format!("cheques.status.{}", cheque.status.as_str())),

@@ -30,6 +30,7 @@ pub mod cheque;
 pub mod cheque_bounce;
 pub mod cheque_chase;
 pub mod cheque_deposit;
+pub mod cheque_handover;
 mod cheque_events;
 pub mod cheque_legal;
 mod cheque_machine;
@@ -655,6 +656,9 @@ impl Module for WlPayments {
         app.model::<Cheque>();
         app.model::<ChequeLink>();
         app.model::<ChequeReturn>();
+        app.model::<cheque_handover::ChequeHandover>();
+        // The cheque handover receipt (BL-PAY-30).
+        cheque_handover::register(app);
         app.model::<cheque_settle::ChequeReplacement>();
         app.model::<cheque_write_off::ChequeWriteOff>();
         app.model::<cash_handover::CashHolder>();

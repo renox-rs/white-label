@@ -33,6 +33,7 @@
         <rx-entry :label="tx['cheques.settled']" :value="amounts['settled']"/>
         <rx-entry :label="tx['cheques.open']" :value="amounts['open']"/>
         <rx-entry :label="tx['cheques.fees']" :value="amounts['fees']"/>
+        <rx-entry rx-if="handover_label" :label="tx['cheques.handover_receipt']" :value="handover_label" :url="handover_url"/>
         <rx-entry :label="tx['cheques.custody_note']" rx-if="cheque.custody_note" :value="cheque.custody_note" span="2"/>
         <rx-entry :label="tx['cheques.case']" rx-if="case_label" :value="case_label"/>
         <rx-entry :label="tx['cheques.case_owner']" rx-if="case_owner_name" :value="case_owner_name"/>
