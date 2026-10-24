@@ -61,7 +61,10 @@ sudo systemctl daemon-reload
 ## 2. Get the binary
 
 From CI (`.github/workflows/release.yml`, on a tag): download the `host-<tag>-linux-x86_64`
-artifact. It is built in the Dockerfile's `build` stage on Debian 12, so it runs on Debian 12+
+artifact. The newest main build is the second source: `.github/workflows/release-main.yml` makes
+`white-label-<sha>` on every push to main (binary `white-label`, `REVISION`, `white-label.sha256`,
+`clients/`), which the public demo server autodeploys; use it for a demo or a trial, not for a client
+release. It is built in the Dockerfile's `build` stage on Debian 12, so it runs on Debian 12+
 and Ubuntu 22.04+. Or build it yourself from the repository root:
 
 ```bash
@@ -157,9 +160,14 @@ wl-run() { sudo systemd-run --quiet --wait --collect --pipe -p User=wl-$C -p Wor
 wl-run migrate
 wl-run db:check
 wl-run wl:install            # legal entities from client.toml, approval policies, compliance rules
-wl-run property:install      # the vertical's ticket categories, checklists, SOPs
-for m in documents notify invoicing ticketing sales hr; do wl-run $m:install; done   # only the modules in client.toml
+wl-run property:install      # the vertical's ticket categories, checklists, SOPs; use the client's own, see below
+for m in documents notify invoicing ticketing sales hr delivery; do wl-run $m:install; done   # only the modules in client.toml
 ```
+
+Use the `<app>:install` of the client's `[client] app` instead of `property:install`: `property`,
+`construction`, `logistics`, `accounting`, `clinics`, `fnb`, `manufacturing`, `manpower`, `edtech`
+(`auto:install` for auto). The module loop lists the modules that have an installer (`delivery` only when
+`wl-delivery` is enabled).
 
 `wl:install` and the `<module>:install` commands are idempotent ("where the database lacks
 them"), so running them again is safe. Without `wl:install` there are no legal entities and
@@ -170,11 +178,14 @@ notification types, 11 budget categories, 9 ticketing, 9 sales and 1 HR defaults
 created 0). `systemd-run` itself is *not yet tested*; the sandbox ran the same commands with
 the same variables from a shell.
 
-> **`db:seed`, `migrate:fresh` and `property:demo` refuse to run when `APP_ENV` is
-> production** (message: `... is refused when APP_ENV is production`, exit code 1, before
+> **`migrate:fresh`, `db:seed` and every `<vertical>:demo` command refuse to run when `APP_ENV` is
+> production** (`DEMO_COMMANDS` in `host/src/lib.rs`: `property:demo`, `construction:demo`,
+> `logistics:demo`, `manpower:demo`, `clinics:demo`, `fnb:demo`, `edtech:demo`, `auto:demo`,
+> `manufacturing:demo`) (message: `... is refused when APP_ENV is production`, exit code 1, before
 > anything is opened). `db:seed` would create `admin@example.com` / `password123`;
 > `migrate:fresh` drops every table. *Tested here*: the three commands in production mode, on a
-> scratch database that stayed untouched.
+> scratch database that stayed untouched (only `migrate:fresh`, `db:seed` and `property:demo`
+> were run; the others share the same guard and `host/tests/production_guard.rs` covers three).
 
 ### 3.6 Start
 
