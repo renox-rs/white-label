@@ -29,6 +29,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use renox::auth::permissions::{self, Scope};
 use renox::prelude::*;
 
+use super::SearchDocumentRow;
 use super::registry::{self, Searchable};
 use crate::scopes::Reach;
 
@@ -144,6 +145,18 @@ impl Access {
             .is_some_and(|reach| covers(reach, scope_type, scope_id))
     }
 
+    /// Whether the user may see the stored document `row` of a record of
+    /// `searchable`: the type's permission in the record's scope and, for a
+    /// record that needs a permission of its own
+    /// ([`SearchDocument::requires`](super::SearchDocument::requires)),
+    /// that permission in the record's scope too.
+    pub fn sees_document(&self, searchable: &Searchable, row: &SearchDocumentRow) -> bool {
+        self.sees(searchable.permission(), &row.scope_type, &row.scope_id)
+            && (row.permission.is_empty()
+                || row.permission == searchable.permission()
+                || self.sees(&row.permission, &row.scope_type, &row.scope_id))
+    }
+
     /// The searchable types the user may search, sorted by subject type.
     pub fn searchable_types(&self) -> Vec<Searchable> {
         registry::registered_types()
@@ -175,10 +188,17 @@ pub fn can_search(user: &AuthUser) -> bool {
 
 /// The permissions of every registered searchable type and relation.
 fn wanted_permissions() -> BTreeSet<String> {
-    let mut wanted: BTreeSet<String> = registry::registered_types()
+    let types = registry::registered_types();
+    let mut wanted: BTreeSet<String> = types
         .iter()
         .map(|searchable| searchable.permission().to_owned())
         .collect();
+    // The permissions some records need on top of their type's.
+    wanted.extend(
+        types
+            .iter()
+            .flat_map(|searchable| searchable.record_permissions().iter().cloned()),
+    );
     wanted.extend(crate::related::permissions());
     wanted
 }

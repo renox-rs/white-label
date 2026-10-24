@@ -111,6 +111,8 @@ pub struct SearchDocument {
     scope: Scope,
     legal_entity_id: Option<i64>,
     sensitivity: Sensitivity,
+    parties: Vec<i64>,
+    requires: Option<String>,
 }
 
 impl SearchDocument {
@@ -203,9 +205,46 @@ impl SearchDocument {
         self
     }
 
+    /// A party the record belongs to (the invoice's customer, the ticket's
+    /// requester): the portal search (BL-AGT-05) shows a portal-visible
+    /// record only to the portal users acting for one of its parties. A
+    /// record without a party is never found in the portal. Call it again
+    /// for a record of several parties.
+    pub fn party(mut self, party_id: i64) -> Self {
+        if !self.parties.contains(&party_id) {
+            self.parties.push(party_id);
+        }
+        self
+    }
+
+    /// A permission this record needs on top of its type's (a confidential
+    /// ticket: `tickets.confidential.view`), held in the record's scope. The
+    /// type declares it with
+    /// [`SearchableBuilder::record_permission`](super::SearchableBuilder::record_permission);
+    /// a permission it did not declare is held by nobody, so the record is
+    /// then found by nobody (never by too many).
+    pub fn requires(mut self, permission: impl Into<String>) -> Self {
+        let permission = permission.into();
+        if !permission.trim().is_empty() {
+            self.requires = Some(permission);
+        }
+        self
+    }
+
     /// The identifiers declared so far.
     pub fn identifiers(&self) -> &[Identifier] {
         &self.identifiers
+    }
+
+    /// The parties declared so far ([`party`](Self::party)).
+    pub fn parties(&self) -> &[i64] {
+        &self.parties
+    }
+
+    /// The record's own permission, if it needs one
+    /// ([`requires`](Self::requires)).
+    pub fn required_permission(&self) -> Option<&str> {
+        self.requires.as_deref()
     }
 
     /// The rows stored for `subject`.
@@ -257,7 +296,9 @@ impl SearchDocument {
             forms,
             status: self.status,
             voided: self.voided,
-            permission: permission.to_owned(),
+            // The record's own permission when it needs one; the type's
+            // permission is checked by its subject type in any case.
+            permission: self.requires.unwrap_or_else(|| permission.to_owned()),
             portal_visible,
             scope_type: self.scope.kind().to_owned(),
             scope_id: self.scope.id().to_owned(),

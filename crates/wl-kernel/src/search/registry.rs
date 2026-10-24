@@ -33,6 +33,10 @@ pub struct Searchable {
     portal_visible: bool,
     label: String,
     link: String,
+    after: Vec<String>,
+    record_permissions: Vec<String>,
+    portal_link: Option<String>,
+    portal_permission: Option<String>,
     build: BuildFn,
     ids: IdsFn,
 }
@@ -46,6 +50,10 @@ impl std::fmt::Debug for Searchable {
             .field("portal_visible", &self.portal_visible)
             .field("label", &self.label)
             .field("link", &self.link)
+            .field("after", &self.after)
+            .field("record_permissions", &self.record_permissions)
+            .field("portal_link", &self.portal_link)
+            .field("portal_permission", &self.portal_permission)
             .finish()
     }
 }
@@ -63,6 +71,10 @@ impl Searchable {
             portal_visible: false,
             label: None,
             link: None,
+            after: Vec::new(),
+            record_permissions: Vec::new(),
+            portal_link: None,
+            portal_permission: None,
             document: None,
         }
     }
@@ -98,6 +110,36 @@ impl Searchable {
         self.link.replace("{id}", &id.to_string())
     }
 
+    /// The types whose documents this type's documents read, built before
+    /// it by `search:rebuild` ([`SearchableBuilder::after`]).
+    pub fn after(&self) -> &[String] {
+        &self.after
+    }
+
+    /// The permissions a record of this type may need on top of the type's
+    /// ([`SearchableBuilder::record_permission`]).
+    pub fn record_permissions(&self) -> &[String] {
+        &self.record_permissions
+    }
+
+    /// The portal permission a portal user's grant for the party must give
+    /// to find this type in the portal, if the type asks for one.
+    pub fn portal_permission(&self) -> Option<&str> {
+        self.portal_permission.as_deref()
+    }
+
+    /// Where record `id` of party `party` opens in the portal: the
+    /// registered portal link with `{party}` and `{id}` filled in
+    /// (`/portal/{party}/invoices` → `/portal/7/invoices`); the party's
+    /// portal home without one.
+    pub fn portal_url_of(&self, party: i64, id: i64) -> String {
+        self.portal_link
+            .as_deref()
+            .unwrap_or("/portal/{party}")
+            .replace("{party}", &party.to_string())
+            .replace("{id}", &id.to_string())
+    }
+
     /// The document of record `id`; `None` when the record does not exist.
     pub(super) async fn document_in(
         &self,
@@ -126,6 +168,10 @@ pub struct SearchableBuilder<M> {
     portal_visible: bool,
     label: Option<String>,
     link: Option<String>,
+    after: Vec<String>,
+    record_permissions: Vec<String>,
+    portal_link: Option<String>,
+    portal_permission: Option<String>,
     document: Option<DocumentFn<M>>,
 }
 
@@ -159,6 +205,46 @@ where
     /// record's related records (`/related/invoicing.invoice:42`).
     pub fn link(mut self, link: &str) -> Self {
         self.link = Some(link.to_owned());
+        self
+    }
+
+    /// This type's documents read the documents of `subject_type` (a
+    /// party's name, a lease's building): `search:rebuild` builds that type
+    /// first. Call it once per type; an unknown type is ignored.
+    ///
+    /// ```ignore
+    /// Searchable::of::<Invoice>("invoicing.invoice").after("parties.party")
+    /// ```
+    pub fn after(mut self, subject_type: &str) -> Self {
+        if !self.after.iter().any(|t| t == subject_type) {
+            self.after.push(subject_type.to_owned());
+        }
+        self
+    }
+
+    /// A permission some records of this type need on top of the type's,
+    /// given per record with [`SearchDocument::requires`] (a confidential
+    /// ticket: `tickets.confidential.view`). The search filters by it in the
+    /// statement, in the record's scope, like the type's permission.
+    pub fn record_permission(mut self, permission: &str) -> Self {
+        if !self.record_permissions.iter().any(|p| p == permission) {
+            self.record_permissions.push(permission.to_owned());
+        }
+        self
+    }
+
+    /// Where a record opens in the portal, with `{party}` where the party's
+    /// id goes and optionally `{id}` (`/portal/{party}/invoices`). Without
+    /// it, a portal result opens the party's portal home.
+    pub fn portal_link(mut self, link: &str) -> Self {
+        self.portal_link = Some(link.to_owned());
+        self
+    }
+
+    /// The portal permission (`portal.invoices.view`) a portal user's grant
+    /// for the party must give to find this type in the portal search.
+    pub fn portal_permission(mut self, permission: &str) -> Self {
+        self.portal_permission = Some(permission.to_owned());
         self
     }
 
@@ -242,6 +328,10 @@ where
             table: M::TABLE,
             permission: self.permission,
             portal_visible: self.portal_visible,
+            after: self.after,
+            record_permissions: self.record_permissions,
+            portal_link: self.portal_link,
+            portal_permission: self.portal_permission,
             build,
             ids,
         }

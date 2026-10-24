@@ -12,12 +12,13 @@
 //! record). The documents of any record are this module's generic relation
 //! (`lib.rs`).
 
-use renox::auth::permissions::Scope;
 use renox::db::Transaction;
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use wl_kernel::Subject;
-use wl_kernel::search::{SearchDocument, SearchDocumentRow, Searchable, Sensitivity, kinds};
+use wl_kernel::search::{
+    SearchDocument, SearchDocumentRow, Searchable, Sensitivity, kinds, scope_in,
+};
 
 use crate::documents::Document;
 use crate::expiry::renewal::DOCUMENT_SUBJECT_TYPE;
@@ -94,31 +95,6 @@ async fn stored_in(tx: &mut Transaction, subject: &Subject) -> Result<Option<Sea
         .where_eq("subject_id", subject.subject_id)
         .first(&mut *tx)
         .await
-}
-
-/// The scope of the first of `candidates` that has one: its kernel
-/// machine's scope (read in `tx`), else the scope of its search document;
-/// global when none has one.
-async fn scope_in(tx: &mut Transaction, candidates: &[Subject]) -> Result<Scope> {
-    for subject in candidates {
-        if let Some(machine) =
-            wl_kernel::machines::get(&subject.subject_type).filter(|m| m.has_scope())
-        {
-            // A record that is gone (or a source a test made up) has no
-            // scope: the machine answers `NotFound`.
-            match machine.scope_in(tx, subject.subject_id).await {
-                Ok(scope) if !scope.is_global() => return Ok(scope),
-                Ok(_) | Err(Error::NotFound) => {}
-                Err(error) => return Err(error),
-            }
-        }
-        if let Some(document) = stored_in(tx, subject).await?
-            && !document.scope_type.is_empty()
-        {
-            return Ok(Scope::new(&document.scope_type, &document.scope_id));
-        }
-    }
-    Ok(Scope::global())
 }
 
 /// Writes the search document of document `id` again in its own

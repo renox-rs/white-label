@@ -6,23 +6,23 @@
 //! building: its building), read in the indexing transaction from that
 //! record's kernel machine or search document.
 //!
-//! **Confidential tickets** (`tickets.confidential.view`): the index has one
-//! permission per type, so a confidential ticket is indexed by its number
-//! only, without its title, words or requester; it is found by holders of
-//! `tickets.view` who type its exact number, and its page still asks for the
-//! confidential permission.
+//! **Confidential tickets** (`tickets.confidential.view`): a confidential
+//! ticket needs that permission on top of `tickets.view`
+//! (`SearchDocument::requires`), so only its holders find it, in the
+//! search, the Related panel and the agents' tools alike; it is still
+//! indexed by its number only, without its title, words or requester. Its
+//! requester sees it in the portal and in their own tickets, not here.
 //!
 //! The ticket's unit is declared by the vertical that owns units; its
 //! documents come from the documents module's generic relation.
 
-use renox::auth::permissions::Scope;
 use renox::db::Transaction;
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use wl_kernel::Subject;
 use wl_kernel::parties::PARTY_SUBJECT_TYPE;
 use wl_kernel::related::Relation;
-use wl_kernel::search::{SearchDocument, SearchDocumentRow, Searchable, kinds};
+use wl_kernel::search::{SearchDocument, SearchDocumentRow, Searchable, kinds, scope_in};
 use wl_kernel::tickets::TICKET_SUBJECT_TYPE;
 
 use crate::permissions;
@@ -35,7 +35,9 @@ const PARTIES_VIEW: &str = "parties.view";
 /// its document current after each transition.
 pub(crate) fn register(app: &mut Registry) {
     Searchable::of::<Ticket>(TICKET_SUBJECT_TYPE)
+        .after(PARTY_SUBJECT_TYPE)
         .permission(permissions::VIEW)
+        .record_permission(permissions::CONFIDENTIAL_VIEW)
         .label("Tickets")
         .link("/tickets/{id}")
         .document_in(|tx, ticket| Box::pin(document_in(tx, ticket)))
@@ -78,7 +80,9 @@ pub async fn document_in(tx: &mut Transaction, ticket: &Ticket) -> Result<Search
         .identifier(kinds::NUMBER, ticket.number.clone())
         .status(ticket.status.as_str())
         .scope(scope);
-    if !ticket.confidential {
+    if ticket.confidential {
+        document = document.requires(permissions::CONFIDENTIAL_VIEW);
+    } else {
         let requester = match ticket.requester_party_id {
             Some(id) => stored_in(tx, &Subject::new(PARTY_SUBJECT_TYPE, id))
                 .await?
@@ -101,31 +105,6 @@ async fn stored_in(tx: &mut Transaction, subject: &Subject) -> Result<Option<Sea
         .where_eq("subject_id", subject.subject_id)
         .first(&mut *tx)
         .await
-}
-
-/// The scope of the first of `candidates` that has one: its kernel
-/// machine's scope (read in `tx`), else the scope of its search document;
-/// global when none has one.
-async fn scope_in(tx: &mut Transaction, candidates: &[Subject]) -> Result<Scope> {
-    for subject in candidates {
-        if let Some(machine) =
-            wl_kernel::machines::get(&subject.subject_type).filter(|m| m.has_scope())
-        {
-            // A record that is gone (or a source a test made up) has no
-            // scope: the machine answers `NotFound`.
-            match machine.scope_in(tx, subject.subject_id).await {
-                Ok(scope) if !scope.is_global() => return Ok(scope),
-                Ok(_) | Err(Error::NotFound) => {}
-                Err(error) => return Err(error),
-            }
-        }
-        if let Some(document) = stored_in(tx, subject).await?
-            && !document.scope_type.is_empty()
-        {
-            return Ok(Scope::new(&document.scope_type, &document.scope_id));
-        }
-    }
-    Ok(Scope::global())
 }
 
 /// Writes the document of ticket `id` again in its own transaction.

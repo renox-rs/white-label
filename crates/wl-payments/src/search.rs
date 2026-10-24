@@ -23,7 +23,6 @@
 //!
 //! The relations to a lease are declared by the vertical that owns leases.
 
-use renox::auth::permissions::Scope;
 use renox::db::{DbValue, Transaction, sql};
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
@@ -35,7 +34,7 @@ use wl_kernel::payments::{
     DEPOSIT_SUBJECT_TYPE, PAYMENT_SUBJECT_TYPE, PaymentMethod, REFUND_SUBJECT_TYPE,
 };
 use wl_kernel::related::Relation;
-use wl_kernel::search::{SearchDocument, SearchDocumentRow, Searchable, kinds};
+use wl_kernel::search::{SearchDocument, SearchDocumentRow, Searchable, kinds, scope_in};
 
 use crate::allocation::Allocation;
 use crate::cheque::Cheque;
@@ -54,24 +53,28 @@ const PARTIES_VIEW: &str = "parties.view";
 /// documents current after each transition.
 pub(crate) fn register(app: &mut Registry) {
     Searchable::of::<Payment>(PAYMENT_SUBJECT_TYPE)
+        .after(PARTY_SUBJECT_TYPE)
         .permission(permissions::VIEW)
         .label("Payments")
         .link("/payments/{id}")
         .document_in(|tx, payment| Box::pin(payment_document(tx, payment)))
         .register();
     Searchable::of::<Cheque>(CHEQUE_SUBJECT_TYPE)
+        .after(PARTY_SUBJECT_TYPE)
         .permission(permissions::CHEQUES_VIEW)
         .label("Cheques")
         .link("/cheques/{id}")
         .document_in(|tx, cheque| Box::pin(cheque_document(tx, cheque)))
         .register();
     Searchable::of::<Deposit>(DEPOSIT_SUBJECT_TYPE)
+        .after(PARTY_SUBJECT_TYPE)
         .permission(permissions::DEPOSITS_VIEW)
         .label("Deposits")
         .link("/deposits/{id}")
         .document_in(|tx, deposit| Box::pin(deposit_document(tx, deposit)))
         .register();
     Searchable::of::<Refund>(REFUND_SUBJECT_TYPE)
+        .after(PARTY_SUBJECT_TYPE)
         .permission(permissions::VIEW)
         .label("Refunds")
         .link("/refunds/{id}")
@@ -360,31 +363,6 @@ async fn party_name_in(tx: &mut Transaction, id: i64) -> Result<String> {
         .await?
         .map(|document| document.title)
         .unwrap_or_default())
-}
-
-/// The scope of the first of `candidates` that has one: its kernel
-/// machine's scope (read in `tx`), else the scope of its search document;
-/// global when none has one.
-async fn scope_in(tx: &mut Transaction, candidates: &[Subject]) -> Result<Scope> {
-    for subject in candidates {
-        if let Some(machine) =
-            wl_kernel::machines::get(&subject.subject_type).filter(|m| m.has_scope())
-        {
-            // A record that is gone (or a source a test made up) has no
-            // scope: the machine answers `NotFound`.
-            match machine.scope_in(tx, subject.subject_id).await {
-                Ok(scope) if !scope.is_global() => return Ok(scope),
-                Ok(_) | Err(Error::NotFound) => {}
-                Err(error) => return Err(error),
-            }
-        }
-        if let Some(document) = stored_in(tx, subject).await?
-            && !document.scope_type.is_empty()
-        {
-            return Ok(Scope::new(&document.scope_type, &document.scope_id));
-        }
-    }
-    Ok(Scope::global())
 }
 
 /// Writes the documents of `subjects` again in their own transaction.

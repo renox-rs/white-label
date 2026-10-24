@@ -43,7 +43,7 @@ pub const PER_PAGE: u64 = 25;
 const MAX_WORDS: usize = 8;
 
 /// The full-text table Renox keeps on SQLite for `wl_search_documents`.
-const FTS_TABLE: &str = "\"wl_search_documents_search\"";
+pub(super) const FTS_TABLE: &str = "\"wl_search_documents_search\"";
 
 /// One record found.
 #[derive(Debug, Clone, Serialize)]
@@ -255,22 +255,22 @@ pub fn mask(value: &str) -> String {
 /// A statement being built: its text and its values, in the order of their
 /// `?`.
 #[derive(Default)]
-struct Statement {
-    text: String,
-    binds: Vec<DbValue>,
+pub(super) struct Statement {
+    pub(super) text: String,
+    pub(super) binds: Vec<DbValue>,
 }
 
 impl Statement {
-    fn push(&mut self, text: &str) {
+    pub(super) fn push(&mut self, text: &str) {
         self.text.push_str(text);
     }
 
-    fn bind(&mut self, value: DbValue) {
+    pub(super) fn bind(&mut self, value: DbValue) {
         self.text.push('?');
         self.binds.push(value);
     }
 
-    fn bind_list(&mut self, values: impl IntoIterator<Item = DbValue>) {
+    pub(super) fn bind_list(&mut self, values: impl IntoIterator<Item = DbValue>) {
         let mut first = true;
         for value in values {
             if !first {
@@ -390,19 +390,24 @@ async fn run(
             .reach(searchable.permission())
             .filter(|reach| !reach.is_all())
         {
-            let scopes = reach.scopes();
-            s.push(" AND (");
-            if scopes.is_empty() {
-                s.push("1 = 0");
-            }
-            for (j, scope) in scopes.iter().enumerate() {
-                if j > 0 {
-                    s.push(" OR ");
+            s.push(" AND ");
+            push_scopes(&mut s, reach);
+        }
+        // A record that needs a permission of its own (a confidential
+        // ticket) is seen where the user holds that permission too.
+        if !searchable.record_permissions().is_empty() {
+            s.push(" AND (d.permission = ");
+            s.bind(DbValue::Text(searchable.permission().to_owned()));
+            for extra in searchable.record_permissions() {
+                let Some(reach) = access.reach(extra) else {
+                    continue;
+                };
+                s.push(" OR (d.permission = ");
+                s.bind(DbValue::Text(extra.clone()));
+                if !reach.is_all() {
+                    s.push(" AND ");
+                    push_scopes(&mut s, reach);
                 }
-                s.push("(d.scope_type = ");
-                s.bind(DbValue::Text(scope.kind().to_owned()));
-                s.push(" AND d.scope_id = ");
-                s.bind(DbValue::Text(scope.id().to_owned()));
                 s.push(")");
             }
             s.push(")");
@@ -467,11 +472,32 @@ async fn run(
     })
 }
 
+/// The condition that a document's scope is one of `reach`'s scopes
+/// (never true for an empty list), in parentheses.
+fn push_scopes(s: &mut Statement, reach: &crate::scopes::Reach) {
+    let scopes = reach.scopes();
+    s.push("(");
+    if scopes.is_empty() {
+        s.push("1 = 0");
+    }
+    for (j, scope) in scopes.iter().enumerate() {
+        if j > 0 {
+            s.push(" OR ");
+        }
+        s.push("(d.scope_type = ");
+        s.bind(DbValue::Text(scope.kind().to_owned()));
+        s.push(" AND d.scope_id = ");
+        s.bind(DbValue::Text(scope.id().to_owned()));
+        s.push(")");
+    }
+    s.push(")");
+}
+
 /// The full-text query for `text`: each word as the start of a word, or its
 /// Arabic–Latin match key; every word required. Only letters and digits
 /// reach the database, so the input cannot carry search syntax. `None` when
 /// the text has no word.
-fn fts_query(dialect: Dialect, text: &str) -> Option<String> {
+pub(super) fn fts_query(dialect: Dialect, text: &str) -> Option<String> {
     let normalized = renox::text::normalize_arabic(text);
     let mut seen = BTreeSet::new();
     let words: Vec<String> = normalized

@@ -67,11 +67,13 @@ pub(crate) fn register(app: &mut Registry) {
     // A unit has no page of its own: a result opens its related records
     // (the kernel's page), where its lease, cheques and tickets are.
     Searchable::of::<Unit>(UNIT_SUBJECT_TYPE)
+        .after(PARTY_SUBJECT_TYPE)
         .permission(permissions::UNITS_VIEW)
         .label("Units")
         .document_in(|tx, unit| Box::pin(unit_document(tx, unit)))
         .register();
     Searchable::of::<Lease>(LEASE_SUBJECT_TYPE)
+        .after(PARTY_SUBJECT_TYPE)
         .permission(permissions::LEASES_VIEW)
         .label("Leases")
         .link("/property/leases/{id}")

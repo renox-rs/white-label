@@ -42,6 +42,21 @@
 //! holds each word's Arabic–Latin match key (`renox::text::match_key`), so
 //! "Mohammed" and "محمد" can find each other.
 //!
+//! **Gaps closed after the first modules (#544).** A document that takes
+//! its scope from another record reads it with [`scope_in`], in the
+//! indexing transaction ([`crate::scopes::scope_of`] reads outside it and
+//! deadlocks on SQLite). A type whose documents read another type's (a
+//! party's name) declares it with [`SearchableBuilder::after`], and
+//! `search:rebuild` builds the types in that order ([`rebuild_order`]). A
+//! record that needs a permission on top of its type's (a confidential
+//! ticket) says so with [`SearchDocument::requires`]; the type declares it
+//! with [`SearchableBuilder::record_permission`] and the search, the related
+//! records and the agents filter by it in the record's scope.
+//!
+//! **The portal** (BL-AGT-05, [`portal`]): a document names the parties it
+//! belongs to ([`SearchDocument::party`]); [`portal_search`] finds the
+//! portal-visible records of the portal user's parties only.
+//!
 //! **Reading it** (BL-AGT-02): [`search`] and [`search_type`] answer for an
 //! [`Access`] (what one user may see), filtering by permission and scope in
 //! the statement, before anything is counted or limited; `GET /search` is
@@ -51,8 +66,12 @@
 mod access;
 mod document;
 mod index;
+mod order;
+mod parties;
+pub mod portal;
 mod query;
 mod registry;
+mod scope;
 pub mod web;
 
 use renox::db::{DateTime, Migration};
@@ -62,8 +81,12 @@ use serde::Serialize;
 pub use document::{Identifier, SearchDocument, Sensitivity, kinds, normalize_identifier};
 pub use index::{
     IdentifierMatch, document_of, forget_import_change, identifiers_of, index_in,
-    lookup_identifier, rebuild, rebuild_type, remove_in, undo_import,
+    lookup_identifier, rebuild, rebuild_sequence, rebuild_type, remove_in, undo_import,
 };
+pub use order::rebuild_order;
+pub use parties::{SearchPartyRow, parties_of};
+pub use portal::{PORTAL_LIMIT, PortalHit, PortalReach, portal_search, portal_types};
+pub use scope::{register_scope_in, scope_in, scope_of_in};
 pub use access::{Access, can_search};
 pub use query::{
     MIN_QUERY_CHARS, PER_PAGE, PER_TYPE, SearchGroup, SearchHit, SearchResults, mask, search,
@@ -162,6 +185,7 @@ pub(crate) fn index_migration() -> Migration {
 pub(crate) fn register(app: &mut Registry) {
     app.model::<SearchDocumentRow>()
         .model::<SearchIdentifierRow>()
+        .model::<SearchPartyRow>()
         .view_data::<web::SearchPage>();
     app.nav(web::MENU, web::nav_link());
     app.command(

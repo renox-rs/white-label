@@ -661,7 +661,7 @@ pub async fn can_open(db: &Db, access: &Access, subject: &Subject) -> Result<Opt
     if let Some(searchable) = searchable_type(&subject.subject_type) {
         let document = crate::search::document_of(db, subject).await?;
         return Ok(document
-            .filter(|d| access.sees(searchable.permission(), &d.scope_type, &d.scope_id))
+            .filter(|d| access.sees_document(&searchable, d))
             .map(|d| d.title));
     }
     let reachable = REGISTRY
@@ -724,11 +724,7 @@ fn visible_record(
         log_missing_once(relation, target);
         return None;
     };
-    if !access.sees(
-        searchable.permission(),
-        &document.scope_type,
-        &document.scope_id,
-    ) {
+    if !access.sees_document(&searchable, document) {
         return None;
     }
     Some(RelatedRecord {

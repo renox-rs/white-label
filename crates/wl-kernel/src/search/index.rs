@@ -11,6 +11,7 @@ use renox::import::{ImportChange, Undo, UndoReport};
 use renox::prelude::*;
 
 use super::document::{hash, normalize_identifier};
+use super::order::rebuild_order;
 use super::registry::{self, Searchable};
 use super::{SearchDocumentRow, SearchIdentifierRow, kinds};
 use crate::subject::Subject;
@@ -28,12 +29,14 @@ pub async fn index_in(tx: &mut Transaction, subject: &Subject) -> Result<bool> {
     };
     match searchable.document_in(tx, subject.subject_id).await? {
         Some(document) => {
+            let parties = document.parties().to_vec();
             let (row, identifiers) = document.into_rows(
                 subject,
                 searchable.permission(),
                 searchable.is_portal_visible(),
             );
             write_in(tx, row, identifiers).await?;
+            super::parties::write_in(tx, subject, &parties).await?;
         }
         None => remove_in(tx, subject).await?,
     }
@@ -42,6 +45,7 @@ pub async fn index_in(tx: &mut Transaction, subject: &Subject) -> Result<bool> {
 
 /// Removes the document and identifiers of `subject` (a deleted record).
 pub async fn remove_in(tx: &mut Transaction, subject: &Subject) -> Result {
+    super::parties::remove_in(tx, subject).await?;
     SearchIdentifierRow::query()
         .where_eq("subject_type", subject.subject_type.as_str())
         .where_eq("subject_id", subject.subject_id)
@@ -187,19 +191,37 @@ pub async fn rebuild_type(db: &Db, subject_type: &str) -> Result<u64> {
     Ok(count)
 }
 
-/// Builds every registered type again ([`rebuild_type`]), sorted by
-/// subject type, with the number of documents of each.
+/// Builds every registered type again ([`rebuild_type`]), with the number
+/// of documents of each, in [`rebuild_order`]: a type after the types it
+/// declared with [`SearchableBuilder::after`](super::SearchableBuilder::after)
+/// (the parties before the invoices that read their names), else sorted by
+/// subject type.
 pub async fn rebuild(db: &Db) -> Result<Vec<(String, u64)>> {
     let mut counts = Vec::new();
-    for searchable in registry::registered_types() {
-        let count = rebuild_type(db, searchable.subject_type()).await?;
-        counts.push((searchable.subject_type().to_owned(), count));
+    for subject_type in rebuild_sequence() {
+        let count = rebuild_type(db, &subject_type).await?;
+        counts.push((subject_type, count));
     }
     Ok(counts)
 }
 
+/// The registered types in the order [`rebuild`] builds them.
+pub fn rebuild_sequence() -> Vec<String> {
+    let types: Vec<(String, Vec<String>)> = registry::registered_types()
+        .iter()
+        .map(|searchable| {
+            (
+                searchable.subject_type().to_owned(),
+                searchable.after().to_vec(),
+            )
+        })
+        .collect();
+    rebuild_order(&types)
+}
+
 async fn rebuild_in(tx: &mut Transaction, searchable: &Searchable) -> Result<u64> {
     let subject_type = searchable.subject_type();
+    super::parties::remove_type_in(tx, subject_type).await?;
     SearchIdentifierRow::query()
         .where_eq("subject_type", subject_type)
         .delete(&mut *tx)
