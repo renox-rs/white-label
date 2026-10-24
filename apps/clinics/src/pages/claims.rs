@@ -311,8 +311,8 @@ async fn index(
     let mut names = BTreeMap::new();
     for claim in page.items() {
         for party in [claim.patient(), claim.payer()] {
-            if !names.contains_key(&party.0) {
-                names.insert(party.0, party_name(&state, &lang, party).await);
+            if let std::collections::btree_map::Entry::Vacant(slot) = names.entry(party.0) {
+                slot.insert(party_name(&state, &lang, party).await);
             }
         }
     }

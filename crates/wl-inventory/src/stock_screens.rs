@@ -1138,7 +1138,7 @@ async fn pending_row(
         "waiting": !requests.is_empty(),
         "can_clear": can_clear,
     });
-    let sheet = can_clear.then(|| PendingSheet {
+    let sheet = can_clear.then_some(PendingSheet {
         id: pending.id,
         lot_tracked: item.lot_tracked,
         lots,

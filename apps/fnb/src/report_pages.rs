@@ -442,10 +442,10 @@ async fn rider_faults(
     let page = grid.page(base, &request).await?;
     let mut names = BTreeMap::new();
     for fault in page.items() {
-        if let Some(id) = fault.rider_user_id {
-            if let Some(found) = User::find(&state.db, id).await? {
-                names.insert(id, found.name);
-            }
+        if let Some(id) = fault.rider_user_id
+            && let Some(found) = User::find(&state.db, id).await?
+        {
+            names.insert(id, found.name);
         }
     }
     let faults = page.extend(|fault| {

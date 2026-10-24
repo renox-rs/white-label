@@ -152,7 +152,7 @@ pub async fn stand_in_parties(app: &TestApp) {
     .await
     .expect("the stand-in table");
     let rows: Vec<String> = (1..=300).map(|n| format!("({n}, 'Party {n}')")).collect();
-    renox::db::sql(&format!(
+    renox::db::sql(format!(
         r#"INSERT OR IGNORE INTO "wl_parties_parties" (id, display_name) VALUES {}"#,
         rows.join(", ")
     ))

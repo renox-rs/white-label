@@ -125,15 +125,14 @@ fn conflicts_grid(lang: &Lang, resources: Vec<(String, String)>, can_manage: boo
         .row_url("/scheduling/bookings/{id}")
         .cards_on_mobile()
         .empty_state(&t("conflicts.empty"), None);
-    let grid = if can_manage {
+    if can_manage {
         grid.exports().bulk_action(
             Action::new(&t("conflicts.apply"), "/scheduling/conflicts/resolve")
                 .sheet("conflicts-resolve"),
         )
     } else {
         grid
-    };
-    grid
+    }
 }
 
 /// `GET /scheduling/conflicts`: the conflicted bookings, by start, optionally
