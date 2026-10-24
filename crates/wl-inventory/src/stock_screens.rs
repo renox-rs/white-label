@@ -877,7 +877,8 @@ pub(crate) fn register_labels() {
     use wl_kernel::inventory::{
         GOODS_RECEIPT_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE,
         PENDING_ISSUE_SUBJECT_TYPE, PURCHASE_ORDER_SUBJECT_TYPE, RECALL_SUBJECT_TYPE,
-        STOCK_HOLD_LINE_SUBJECT_TYPE, STOCK_HOLD_SUBJECT_TYPE, TRANSFER_SUBJECT_TYPE,
+        STOCK_HOLD_LINE_SUBJECT_TYPE, STOCK_HOLD_SUBJECT_TYPE, SUPPLIER_RETURN_SUBJECT_TYPE,
+        TRANSFER_SUBJECT_TYPE,
     };
     // The number alone: a page that names a lot (a recall's trace) never
     // names the product.
@@ -895,6 +896,15 @@ pub(crate) fn register_labels() {
     });
     register(LOCATION_SUBJECT_TYPE, |db, id| {
         Box::pin(async move { Ok(Location::find(db, id).await?.map(|row| row.name_en)) })
+    });
+    // A supplier return by its number: a warranty claim names the return its
+    // credit recovers it with.
+    register(SUPPLIER_RETURN_SUBJECT_TYPE, |db, id| {
+        Box::pin(async move {
+            Ok(crate::supplier_return::SupplierReturn::find(db, id)
+                .await?
+                .and_then(|row| row.number))
+        })
     });
     register(STOCK_HOLD_SUBJECT_TYPE, |db, id| {
         Box::pin(async move { Ok(StockHold::find(db, id).await?.and_then(|row| row.number)) })
