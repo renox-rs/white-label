@@ -1,11 +1,9 @@
 {#- clinics: the claims to the payers, a renox::grid (filters by status and
     visit day, sums of what is claimed, paid and denied) that fills the screen.
-    The amount closed after the payer's window is a badge in the header.
+    The amount closed after the payer's window is in the subtitle.
     Replace it with resources/views/clinics/claims.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['claim.title']">
-  <rx-page-header :title="tx['claim.title']" :subtitle="tx['claim.subtitle']">
-    <rx-badge kind="info" :text="kpi"/>
-  </rx-page-header>
+  <rx-page-header :title="tx['claim.title']" :subtitle="tx['claim.subtitle'] ~ ' ' ~ kpi"/>
   <rx-include template="wl-kernel/integration_banner.html"/>
   <rx-grid :page="claims">
     <template rx-if="column.key == 'number'"><a href="{{ row.url }}">{{ row.number }}</a></template>
