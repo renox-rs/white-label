@@ -25,7 +25,9 @@ use std::collections::BTreeMap;
 use crate::screens::dubai_text;
 use renox::axum::http::HeaderMap;
 use renox::axum::response::Redirect;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 
 use crate::bom::{self, Bom, BomStatus};
@@ -154,7 +156,7 @@ fn percent_text(bps: i64) -> String {
     quantity_text(bps * 10)
 }
 
-/// One version in the list.
+/// One version in the list, as the JSON answer has it.
 #[derive(Serialize, Debug, Clone)]
 pub struct BomRow {
     id: i64,
@@ -174,20 +176,75 @@ pub struct BomRow {
 #[view(template = "wl-inventory/boms.html")]
 pub(crate) struct BomsPage {
     tx: Texts,
-    rows: Vec<BomRow>,
+    rows: GridPage<Bom>,
     can_manage: bool,
-    show_cost: bool,
     items: Vec<(String, String)>,
-    status_tabs: Vec<(String, String)>,
-    status_current: String,
 }
 
-/// The list's filter.
-#[derive(Deserialize, Default)]
-pub(crate) struct ListFilter {
-    /// A status key.
-    #[serde(default)]
-    status: String,
+/// The bills grid: search on the item's code and name, filters by status,
+/// version and date. The item is drawn by the template (`custom`); the cost is
+/// a column only for who sees what materials cost.
+pub(crate) fn grid(lang: &Lang, show_cost: bool, can_export: bool) -> Grid {
+    let item = |key: &str, label: &str, column: &str| {
+        Column::related(key, label, "wl_inventory_items", "item_id", column)
+    };
+    let statuses: Vec<(String, String)> =
+        [BomStatus::Draft, BomStatus::Released, BomStatus::Obsolete]
+            .iter()
+            .map(|status| (status.as_str().to_owned(), status_word(lang, *status)))
+            .collect();
+    let mut grid = Grid::new("inventory-boms")
+        .title(&tr(lang, "title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(Column::custom("item", &tr(lang, "item")).frozen().mobile())
+        .column(
+            item("item_code", &tr(lang, "item_code"), "code")
+                .hidden()
+                .searchable(),
+        )
+        .column(
+            item("item_name", &tr(lang, "item_name"), "name_en")
+                .hidden()
+                .searchable(),
+        )
+        .column(Column::number("version", &tr(lang, "version")).mobile())
+        .column(Column::number("id", &tr(lang, "number")).hidden())
+        .column(
+            Column::quantity("output_milli", &tr(lang, "output"))
+                .scale(3)
+                .mobile(),
+        )
+        .column(item("unit", &tr(lang, "unit"), "base_unit"))
+        .column(Column::count_of(
+            "lines",
+            &tr(lang, "lines"),
+            "wl_inventory_bom_lines",
+            "bom_id",
+        ));
+    if show_cost {
+        grid = grid.column(Column::money(
+            "material_cost_per_unit",
+            &wl_kernel::money_label(&tr(lang, "cost")),
+        ));
+    }
+    let grid = grid
+        .column(
+            Column::select("status", &tr(lang, "status"), statuses)
+                .badges(&[
+                    ("draft", "info"),
+                    ("released", "success"),
+                    ("obsolete", "warning"),
+                ])
+                .mobile(),
+        )
+        .column(Column::datetime("released_at", &tr(lang, "released")).hidden())
+        .sort_by("-id")
+        .row_url("/boms/{id}")
+        .cards_on_mobile()
+        .empty_state(&tr(lang, "empty"), Some(&tr(lang, "empty_text")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// The items to choose from, as options of a select.
@@ -219,65 +276,69 @@ async fn list(
     user: AuthUser,
     lang: Lang,
     headers: HeaderMap,
-    Query(filter): Query<ListFilter>,
+    request: GridRequest,
 ) -> Result<Response> {
     if !bom::can_view(&user) {
         return Err(Error::Forbidden);
     }
     let show_cost = sees_cost(&user);
-    let mut rows = Vec::new();
-    for found in Bom::query()
-        .order_by_desc(Bom::ID)
-        .limit(500)
-        .get(&state.db)
-        .await?
-    {
-        if !filter.status.is_empty() && found.status.as_str() != filter.status {
-            continue;
-        }
-        let item = Item::find_or_404(&state.db, found.item_id).await?;
-        let lines = bom::lines_of(&state.db, found.id).await?.len();
-        rows.push(BomRow {
-            id: found.id,
-            url: url(found.id),
-            item: format!("{} · {}", item.code, item_name(&item, &lang)),
-            version: format!("v{}", found.version),
-            lines: i64::try_from(lines).unwrap_or(0),
-            status: status_word(&lang, found.status),
-            status_code: found.status.as_str().to_owned(),
-            status_kind: status_kind(found.status),
-            cost: if !show_cost {
-                String::new()
-            } else if found.status == BomStatus::Draft {
-                tr(&lang, "cost_pending")
-            } else {
-                money(found.material_cost_per_unit)
-            },
-            makes: amount(found.output_milli, &item.base_unit),
-        });
-    }
+    let status = request.param("status").unwrap_or_default().to_owned();
     if !wl_kernel::negotiate::wants_html(&headers) {
+        let mut rows = Vec::new();
+        for found in Bom::query().order_by_desc(Bom::ID).get(&state.db).await? {
+            if !status.is_empty() && found.status.as_str() != status {
+                continue;
+            }
+            let item = Item::find_or_404(&state.db, found.item_id).await?;
+            let lines = bom::lines_of(&state.db, found.id).await?.len();
+            rows.push(BomRow {
+                id: found.id,
+                url: url(found.id),
+                item: format!("{} · {}", item.code, item_name(&item, &lang)),
+                version: format!("v{}", found.version),
+                lines: i64::try_from(lines).unwrap_or(0),
+                status: status_word(&lang, found.status),
+                status_code: found.status.as_str().to_owned(),
+                status_kind: status_kind(found.status),
+                cost: if !show_cost {
+                    String::new()
+                } else if found.status == BomStatus::Draft {
+                    tr(&lang, "cost_pending")
+                } else {
+                    money(found.material_cost_per_unit)
+                },
+                makes: amount(found.output_milli, &item.base_unit),
+            });
+        }
         return json(&rows);
     }
-    let mut tabs = vec![(URL.to_owned(), tr(&lang, "all"))];
-    for status in ["draft", "released", "obsolete"] {
-        tabs.push((
-            format!("{URL}?status={status}"),
-            tr(&lang, &format!("status.{status}")),
-        ));
+    let can_export = bom::can_manage(&user) || bom::may_release(&user);
+    let grid = grid(&lang, show_cost, can_export);
+    let mut query = Bom::query();
+    if let Some(one) = [BomStatus::Draft, BomStatus::Released, BomStatus::Obsolete]
+        .into_iter()
+        .find(|s| s.as_str() == status)
+    {
+        query = query.where_(Bom::STATUS.eq(one));
     }
+    if let Some(file) = crate::stock_screens::exported(&grid, &query, &request, can_export).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut extra = std::collections::HashMap::new();
+    for found in page.items() {
+        let item = Item::find_or_404(&state.db, found.item_id).await?;
+        extra.insert(
+            found.id,
+            json!({ "item": format!("{} · {}", item.code, item_name(&item, &lang)) }),
+        );
+    }
+    let page = page.extend(|found| extra.get(&found.id).cloned().unwrap_or_else(|| json!({})));
     Ok(View::typed(BomsPage {
         tx: tx(&lang),
-        rows,
+        rows: page,
         can_manage: bom::can_manage(&user),
-        show_cost,
         items: item_options(&state, &lang, None).await?,
-        status_tabs: tabs,
-        status_current: if filter.status.is_empty() {
-            URL.to_owned()
-        } else {
-            format!("{URL}?status={}", filter.status)
-        },
     })
     .into_response())
 }

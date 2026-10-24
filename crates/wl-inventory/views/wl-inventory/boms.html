@@ -1,32 +1,19 @@
-{#- wl-inventory: the bills of materials by item and version, with a form to
-    start one. A version is opened for its components and the actions that
+{#- wl-inventory: the bills of materials by item and version, a renox::grid that
+    fills the screen (search on the item's code and name, filters by status),
+    with a form to start one. A version is opened for its components and the actions that
     release and retire it. Replace it with resources/views/wl-inventory/boms.html
     in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['title']">
-  <rx-stack>
-    <rx-page-header :title="tx['title']" :subtitle="tx['subtitle']" :back="route('wl_inventory.stock')" :back-label="tx['stock']"/>
-    <rx-row rx-if="can_manage">
-      <rx-action-sheet id="new-bom" :label="tx['new']" :action="route('wl_inventory.bom_make')"
-                       :title="tx['new']" :description="tx['new_description']" :submit-label="tx['new_save']" variant="primary" icon="plus">
-        <rx-select name="item" :label="tx['item']" :options="items" :selected="''" id="new-bom-item" required/>
-        <rx-input name="output" :label="tx['output']" :hint="tx['output_hint']" id="new-bom-output" inputmode="decimal"/>
-        <rx-input name="yield_percent" :label="tx['yield']" :hint="tx['yield_hint']" id="new-bom-yield" inputmode="decimal"/>
-        <rx-input name="hours" :label="tx['hours']" :hint="tx['hours_hint']" id="new-bom-hours" inputmode="decimal"/>
-      </rx-action-sheet>
-    </rx-row>
-    <rx-link-tabs :items="status_tabs" :current="status_current" :label="tx['filter']"/>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['title']" card>
-      <rx-column :label="tx['item']">
-        <rx-stack>
-          <span><a href="{{ row.url }}">{{ row.item }}</a> - {{ row.version }}</span>
-          <span><rx-badge :kind="row.status_kind" :text="row.status"/></span>
-        </rx-stack>
-      </rx-column>
-      <rx-column :label="tx['number']" hide-narrow>#{{ row.id }}</rx-column>
-      <rx-column :label="tx['output']" hide-narrow>{{ row.makes }}</rx-column>
-      <rx-column :label="tx['lines']" align="num">{{ row.lines }}</rx-column>
-      <rx-column :label="tx['cost']" hide-narrow>{{ row.cost }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['empty']" :message="tx['empty_text']" icon="clipboard-list"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['title']" :subtitle="tx['subtitle']" :back="route('wl_inventory.stock')" :back-label="tx['stock']">
+    <rx-action-sheet rx-if="can_manage" id="new-bom" :label="tx['new']" :action="route('wl_inventory.bom_make')"
+                     :title="tx['new']" :description="tx['new_description']" :submit-label="tx['new_save']" variant="primary" icon="plus">
+      <rx-select name="item" :label="tx['item']" :options="items" :selected="''" id="new-bom-item" required/>
+      <rx-input name="output" :label="tx['output']" :hint="tx['output_hint']" id="new-bom-output" inputmode="decimal"/>
+      <rx-input name="yield_percent" :label="tx['yield']" :hint="tx['yield_hint']" id="new-bom-yield" inputmode="decimal"/>
+      <rx-input name="hours" :label="tx['hours']" :hint="tx['hours_hint']" id="new-bom-hours" inputmode="decimal"/>
+    </rx-action-sheet>
+  </rx-page-header>
+  <rx-grid :page="rows">
+    <template rx-if="column.key == 'item'">{{ row.item }}</template>
+  </rx-grid>
 </rx-page>
