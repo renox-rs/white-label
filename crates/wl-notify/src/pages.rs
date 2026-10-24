@@ -760,6 +760,7 @@ fn log_grid(lang: &Lang, keys: &[String]) -> Grid {
                 )
                 .searchable(),
         )
+        .column(Column::text("attachment_names", &t("fields.attachments")).searchable())
         .sort_by("-id")
         .cards_on_mobile()
         .exports()

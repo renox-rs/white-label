@@ -178,6 +178,13 @@ pub fn compose(
     message.channel = route.channel;
     message.address = route.address.clone();
     message.contact_point_id = route.contact_point;
+    // Only an e-mail carries the request's documents (BL-NTF-10).
+    let names: Vec<String> = message
+        .attachments()
+        .into_iter()
+        .map(|a| a.file_name)
+        .collect();
+    message.attachment_names = (!names.is_empty()).then(|| names.join(", "));
     message
 }
 

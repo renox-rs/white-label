@@ -23,6 +23,7 @@ pub mod deadlines;
 pub mod delivery;
 pub mod deposits;
 pub mod digest;
+pub mod document_store;
 pub mod documents;
 pub mod drawings;
 pub mod einvoice;

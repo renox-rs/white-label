@@ -146,6 +146,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_notify.fields.status", "Status"),
     ("wl_notify.fields.attempts", "Attempts"),
     ("wl_notify.fields.last_error", "Last error"),
+    ("wl_notify.fields.attachments", "Attachments"),
     ("wl_notify.fields.id", "No."),
     ("wl_notify.fields.reference", "Reference"),
     ("wl_notify.fields.outcome", "Outcome"),

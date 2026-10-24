@@ -13,6 +13,7 @@ pub mod overrides;
 pub mod pages;
 pub mod registrations;
 pub mod sops;
+pub mod store;
 pub mod subject_pages;
 mod texts;
 
@@ -138,6 +139,7 @@ impl Module for WlDocuments {
             .merge(subject_pages::routes())
             .merge(sops::web::routes())
             .merge(acknowledgements::web::routes())
+            .merge(store::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -198,6 +200,9 @@ impl Module for WlDocuments {
         // `DOC.GEN.01`: `Documents::generate` other modules call through
         // `wl_kernel::generation::generator`.
         wl_kernel::generation::provide_generator(app, TemplateGenerator);
+        // The stored files other modules read (wl-notify's attachments) and
+        // their signed download links.
+        wl_kernel::document_store::provide_document_store(app, store::StoredDocuments);
         // The kinds modules and verticals register, and the kinds for
         // registrations and certifications every client gets (#54), are
         // installed by this module's command and seeder; both keep the

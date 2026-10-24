@@ -129,6 +129,10 @@ pub struct Message {
     /// The broadcast it belongs to: a party gets one message per broadcast
     /// (#61 A3).
     pub broadcast_id: Option<i64>,
+    /// The file names of the documents an e-mail carries, comma-separated;
+    /// a file sent as a signed download link is marked `(link)`. `None`
+    /// without attachments and on channels that carry no file (BL-NTF-10).
+    pub attachment_names: Option<String>,
     /// The lifecycle state; changed only by a transition.
     pub status: MessageStatus,
     /// How many sends were tried.
@@ -165,6 +169,15 @@ impl Message {
             subject_type: self.subject_type.clone(),
             subject_id: self.subject_id,
         }
+    }
+
+    /// The documents it carries (from its data); none on a channel that
+    /// carries no file.
+    pub fn attachments(&self) -> Vec<wl_kernel::document_store::NotifyAttachment> {
+        if self.channel != NotifyChannel::Email {
+            return Vec::new();
+        }
+        wl_kernel::document_store::attachments_in(&self.data.0)
     }
 
     /// The id of its fallback chain: the first message's.

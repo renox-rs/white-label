@@ -50,6 +50,20 @@ pub struct Outgoing {
     pub body: String,
     /// The sender ID an SMS goes out with (`AD-...` for a broadcast), if any.
     pub sender_id: Option<String>,
+    /// The files an e-mail carries (read from the stored documents at send
+    /// time); always empty on other channels.
+    pub attachments: Vec<OutgoingFile>,
+}
+
+/// A file attached to an outgoing e-mail.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutgoingFile {
+    /// The name the recipient sees.
+    pub file_name: String,
+    /// The MIME type.
+    pub content_type: String,
+    /// The content.
+    pub bytes: Vec<u8>,
 }
 
 impl Outgoing {
@@ -66,7 +80,17 @@ impl Outgoing {
                 .unwrap_or_else(|| message.type_key.clone()),
             body: message.rendered_body.clone(),
             sender_id: None,
+            attachments: Vec::new(),
         }
+    }
+
+    /// The same, carrying `files` when it is an e-mail (other channels
+    /// carry no file).
+    pub fn with_attachments(mut self, files: Vec<OutgoingFile>) -> Self {
+        if self.channel == NotifyChannel::Email {
+            self.attachments = files;
+        }
+        self
     }
 
     /// The same, sent with `sender_id`.
@@ -391,6 +415,8 @@ pub struct ProviderNotice {
     pub body: String,
     /// The sender ID of an SMS.
     pub sender_id: Option<String>,
+    /// The files of an e-mail.
+    pub attachments: Vec<OutgoingFile>,
 }
 
 impl Outgoing {
@@ -402,6 +428,7 @@ impl Outgoing {
             title: self.title.clone(),
             body: self.body.clone(),
             sender_id: self.sender_id.clone(),
+            attachments: self.attachments.clone(),
         }
     }
 }
@@ -420,11 +447,19 @@ impl Notification for ProviderNotice {
     }
 
     fn to_mail(&self, _to: &Recipient, _state: &AppState) -> Result<Mail> {
-        Ok(Mail::new(
+        let mut mail = Mail::new(
             self.address.clone(),
             self.title.clone(),
             self.body.clone(),
-        ))
+        );
+        for file in &self.attachments {
+            mail = mail.attach(
+                file.file_name.clone(),
+                file.content_type.clone(),
+                file.bytes.clone(),
+            );
+        }
+        Ok(mail)
     }
 
     fn to_channel(&self, _channel: &str, _to: &Recipient, _state: &AppState) -> Result<Value> {

@@ -22,11 +22,12 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use renox::state_machine::{Outcome, StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
+use wl_kernel::document_store::{ATTACHMENT_LINK_TTL, MAX_ATTACHMENT_BYTES, document_store};
 use wl_kernel::notify::{Category, MessageFailed, NotifyChannel, Urgency};
 
 use crate::broadcast_recipients;
 use crate::cap;
-use crate::channels::{self, Outgoing, SendError, SendErrorKind};
+use crate::channels::{self, Outgoing, OutgoingFile, SendError, SendErrorKind};
 use crate::give_up::{self, Applied};
 use crate::machine::{DEFER, FAIL, RETRY, SEND, SUPPRESS};
 use crate::message::{FREQUENCY_CAP, INVALID_CONTACT_POINT, Message, MessageStatus, RecipientKind};
@@ -121,7 +122,7 @@ pub async fn send(state: &AppState, id: i64) -> Result<SendOutcome> {
 /// Sends message `id` once, if it is `queued`, as of `now`: the instant the
 /// send window and the quiet hours are checked against and `sent_at` is set to.
 pub async fn send_at(state: &AppState, id: i64, now: DateTime) -> Result<SendOutcome> {
-    let Some(message) = Message::find(&state.db, id).await? else {
+    let Some(mut message) = Message::find(&state.db, id).await? else {
         return Ok(SendOutcome::Skipped);
     };
     if message.status != MessageStatus::Queued {
@@ -161,13 +162,40 @@ pub async fn send_at(state: &AppState, id: i64, now: DateTime) -> Result<SendOut
             return Ok(SendOutcome::Skipped);
         }
     }
+    // The documents an e-mail carries, read now: a deferred message sends
+    // the stored version (BL-NTF-10).
+    let attached = match attachment_files(state, &message).await? {
+        Ok(attached) => attached,
+        Err(error) => {
+            drop(party_lock);
+            return failed(state, message, None, error).await;
+        }
+    };
+    if let Some(note) = &attached.link_note
+        && message.attachment_names != attached.names
+    {
+        // Once per message: a retry finds the names marked `(link)`.
+        message.rendered_body = format!("{}\n\n{note}", message.rendered_body.trim_end());
+        message.attachment_names.clone_from(&attached.names);
+        Message::query()
+            .where_(Message::ID.eq(message.id))
+            .update(
+                &state.db,
+                &[
+                    ("rendered_body", &message.rendered_body),
+                    ("attachment_names", &message.attachment_names),
+                ],
+            )
+            .await?;
+    }
     let provider = channels::providers(state)
         .for_channel(message.channel)
         .filter(|p| p.available(state));
     let (name, result) = match (provider, message.address.as_deref()) {
         (Some(provider), Some(address)) => {
             let outgoing = Outgoing::of(&message, address)
-                .with_sender_id(sender_id(state, &message).as_deref());
+                .with_sender_id(sender_id(state, &message).as_deref())
+                .with_attachments(attached.files);
             (Some(provider.name()), provider.send(state, &outgoing).await)
         }
         (None, _) => (
@@ -194,6 +222,79 @@ pub async fn send_at(state: &AppState, id: i64, now: DateTime) -> Result<SendOut
             failed(state, message, name, error).await
         }
     }
+}
+
+/// Why a message `fail`s when a document it carries cannot be read.
+pub const ATTACHMENT_MISSING: &str = "attachment_missing";
+
+/// The files an e-mail carries, or the note with their download links.
+#[derive(Debug, Default)]
+struct Attached {
+    /// The files to attach.
+    files: Vec<OutgoingFile>,
+    /// The text added to the body when the files are too large to attach.
+    link_note: Option<String>,
+    /// The file names for the log, marked `(link)`, when sent as links.
+    names: Option<String>,
+}
+
+/// The documents `message` carries, read from the store: attached when they
+/// total at most [`MAX_ATTACHMENT_BYTES`], else replaced by signed download
+/// links valid 30 days (the body says so). A document that cannot be read
+/// is a permanent error with [`ATTACHMENT_MISSING`]. Other channels carry
+/// no file.
+async fn attachment_files(
+    state: &AppState,
+    message: &Message,
+) -> Result<std::result::Result<Attached, SendError>> {
+    let refs = message.attachments();
+    if refs.is_empty() {
+        return Ok(Ok(Attached::default()));
+    }
+    let missing = |name: &str| {
+        SendError::permanent(ATTACHMENT_MISSING, format!("attachment missing: {name}"))
+    };
+    let store = document_store(state);
+    let mut files = Vec::with_capacity(refs.len());
+    for attachment in &refs {
+        let Some(file) = store.read(state, attachment.document).await? else {
+            return Ok(Err(missing(&attachment.file_name)));
+        };
+        files.push(OutgoingFile {
+            file_name: attachment.file_name.clone(),
+            content_type: file.mime_type,
+            bytes: file.bytes,
+        });
+    }
+    let total: u64 = files.iter().map(|f| f.bytes.len() as u64).sum();
+    if total <= MAX_ATTACHMENT_BYTES {
+        return Ok(Ok(Attached {
+            files,
+            ..Attached::default()
+        }));
+    }
+    let mut lines = Vec::with_capacity(refs.len());
+    for attachment in &refs {
+        let Some(link) = store.download_link(state, attachment.document, ATTACHMENT_LINK_TTL)?
+        else {
+            return Ok(Err(missing(&attachment.file_name)));
+        };
+        lines.push(format!("{}: {link}", attachment.file_name));
+    }
+    let intro = if message.language == "ar" {
+        "الملفات أكبر من أن تُرفق. نزّلها من الروابط التالية خلال 30 يوماً:"
+    } else {
+        "The files are too large to attach. Download them from these links within 30 days:"
+    };
+    let names: Vec<String> = refs
+        .iter()
+        .map(|a| format!("{} (link)", a.file_name))
+        .collect();
+    Ok(Ok(Attached {
+        files: Vec::new(),
+        link_note: Some(format!("{intro}\n{}", lines.join("\n"))),
+        names: Some(names.join(", ")),
+    }))
 }
 
 /// Reports how the provider of the channel answered to the integration
