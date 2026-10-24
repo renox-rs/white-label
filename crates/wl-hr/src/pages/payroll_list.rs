@@ -53,9 +53,11 @@ pub(crate) struct IndexPage {
     month: String,
 }
 
-/// The payroll runs grid: filters by kind and status, the number of lines
-/// and the total net of each run (sums of its lines), and a sum of the totals.
-pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+/// The payroll runs grid: filters by kind, status and year (`years`, the
+/// years that have a run; the first four characters of the period), the
+/// number of lines and the total net of each run (sums of its lines), and a
+/// sum of the totals.
+pub(crate) fn grid(lang: &Lang, years: Vec<(String, String)>, can_export: bool) -> Grid {
     let t = |key: &str| text(lang, key);
     let kinds: Vec<(String, String)> = ["regular", "off_cycle", "supplementary"]
         .iter()
@@ -89,6 +91,11 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                 .mobile()
                 .searchable()
                 .link("/hr/payroll/{id}"),
+        )
+        .column(
+            Column::select("year", &t("payroll.list.year"), years)
+                .computed("SUBSTR({T}.\"period\", 1, 4)")
+                .hidden(),
         )
         .column(Column::select("run_type", &t("payroll.list.kind"), kinds).mobile())
         .column(
@@ -132,10 +139,24 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
 
 /// `GET /hr/payroll`: the grid, or its export (`?export=`, with
 /// `payroll.prepare` or `payroll.approve`).
-async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     let can_export = user.has_permission(permissions::PAYROLL_PREPARE)
         || user.has_permission(permissions::PAYROLL_APPROVE);
-    let grid = grid(&lang, can_export);
+    let mut years: Vec<String> = PayrollRun::query()
+        .pluck::<String, _>(&state.db, "period")
+        .await?
+        .iter()
+        .filter_map(|period| period.get(..4).map(str::to_owned))
+        .collect();
+    years.sort_unstable_by(|a, b| b.cmp(a));
+    years.dedup();
+    let years = years.into_iter().map(|year| (year.clone(), year)).collect();
+    let grid = grid(&lang, years, can_export);
     if request.param("export").is_some() && !can_export {
         return Err(Error::Forbidden);
     }

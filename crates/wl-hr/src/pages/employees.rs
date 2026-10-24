@@ -193,11 +193,19 @@ pub(crate) struct IndexPage {
     expiring_only: bool,
 }
 
-/// The employees grid: search on the number, title, role and department,
-/// filters by status and type, the onboarding progress and the documents
-/// ending drawn by the template (`custom`). No pay column: the list shows
-/// nothing that needs `employees.sensitive.view`, so an export holds none.
-pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+/// The employees grid: search on the name (`name_match`, see
+/// [`super::grid_lookup`]), number, title, role and department, filters by
+/// role (`roles`, the roles in use), status and type, the onboarding progress
+/// and the documents ending drawn by the template (`custom`). The hire date
+/// is drawn in words (`01 Nov 2026`) and sorted and filtered on the hidden
+/// date column. No pay column: the list shows nothing that needs
+/// `employees.sensitive.view`, so an export holds none.
+pub(crate) fn grid(
+    lang: &Lang,
+    roles: Vec<(String, String)>,
+    name_match: &str,
+    can_export: bool,
+) -> Grid {
     let t = |key: &str| text(lang, key);
     let statuses: Vec<(String, String)> = [
         EmployeeStatus::Onboarding,
@@ -245,6 +253,7 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                 .mobile()
                 .searchable(),
         )
+        .column(Column::select("job_role", &t("employees.job_role"), roles).hidden())
         .column(
             Column::text("job_title", &t("employees.job_title"))
                 .hidden()
@@ -258,6 +267,7 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
         .column(Column::select("employment_type", &t("employees.employment_type"), types).hidden())
         // The hire date as `01 Nov 2026` (drawn by the template, like the page).
         .column(Column::custom("hire_date_text", &t("employees.hire_date")))
+        .column(Column::date("hire_date", &t("employees.hire_date")).hidden())
         .column(Column::date("last_working_day", &t("employees.last_working_day")).hidden())
         .column(Column::custom("progress", &t("employees.progress")))
         .column(
@@ -273,6 +283,14 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                     ("onboarding_cancelled", "info"),
                 ])
                 .mobile(),
+        )
+        .column(
+            Column::text("name_match", &t("employees.name"))
+                .computed(name_match)
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
         )
         .sort_by("-id")
         .row_url("/hr/employees/{id}")
@@ -313,6 +331,7 @@ async fn index(
     user: AuthUser,
     lang: Lang,
     Query(query): Query<IndexQuery>,
+    session: Session,
     request: GridRequest,
 ) -> Result<Response> {
     let expiring_only = query.documents.as_deref() == Some("expiring")
@@ -351,7 +370,14 @@ async fn index(
             employees.where_(Employee::ID.is_in(if ids.is_empty() { vec![-1] } else { ids }));
     }
     let can_export = user.has_permission(permissions::EMPLOYEES_MANAGE);
-    let grid = grid(&lang, can_export);
+    let roles = super::grid_lookup::worded_options(
+        Employee::query()
+            .pluck::<String, _>(&state.db, "job_role")
+            .await?,
+    );
+    let term = super::grid_lookup::searched(&request, &session, "hr-employees");
+    let name_match = super::grid_lookup::employee_match(&state, term.as_deref()).await;
+    let grid = grid(&lang, roles, &name_match, can_export);
     if request.param("export").is_some() && !can_export {
         return Err(Error::Forbidden);
     }

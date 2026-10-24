@@ -1,6 +1,7 @@
 //! The back-office pages of the HR module, each behind its permission.
 
 pub mod employees;
+pub(crate) mod grid_lookup;
 pub mod leave;
 pub mod pay_accounts;
 pub mod payroll;

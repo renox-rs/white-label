@@ -202,7 +202,8 @@ fn leave_grid(id: &str, title: &str, lang: &Lang, queue: bool) -> Grid {
         .cards_on_mobile()
 }
 
-/// The grid of *My leave*: no export, the person's own requests.
+/// The grid of *My leave*: no export (the person's own requests), no row
+/// link (a leave request has no page of its own; cancel is in the row).
 pub(crate) fn my_grid(lang: &Lang) -> Grid {
     let t = |key: &str| text(lang, key);
     leave_grid("hr-my-leave", &t("my_leave.title"), lang, false)
@@ -419,10 +420,20 @@ pub(crate) struct QueuePage {
 }
 
 /// The grid of the queue: the requests to decide and those decided lately,
-/// exportable by who may approve.
-pub(crate) fn queue_grid(lang: &Lang) -> Grid {
+/// exportable by who may approve. The search finds a request by the
+/// employee's name too (`name_match`, see [`super::grid_lookup`]). No row
+/// link: a leave request has no page of its own; its actions are in the row.
+pub(crate) fn queue_grid(lang: &Lang, name_match: &str) -> Grid {
     let t = |key: &str| text(lang, key);
     leave_grid("hr-leave-queue", &t("queue.title"), lang, true)
+        .column(
+            Column::text("name_match", &t("queue.who"))
+                .computed(name_match)
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
+        )
         .exports()
         .empty_state(&t("queue.empty"), Some(&t("queue.empty_text")))
 }
@@ -443,6 +454,7 @@ async fn queue(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
+    session: Session,
     request: GridRequest,
 ) -> Result<Response> {
     if !user.has_permission(permissions::LEAVE_APPROVE)
@@ -482,7 +494,9 @@ async fn queue(
     } else {
         visible
     }));
-    let grid = queue_grid(&lang);
+    let term = super::grid_lookup::searched(&request, &session, "hr-leave-queue");
+    let name_match = super::grid_lookup::of_employee_match(&state, term.as_deref()).await?;
+    let grid = queue_grid(&lang, &name_match);
     if let Some(file) = grid.export(query.clone(), &request).await? {
         return Ok(file);
     }

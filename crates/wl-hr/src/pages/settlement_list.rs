@@ -41,8 +41,10 @@ pub(crate) struct IndexPage {
 
 /// The settlements grid: filters by status, the dues, recoveries, net and
 /// paid in AED with their sums. The employee's name and the legal deadline
-/// (a badge when overdue) are drawn by the template (`custom`).
-pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+/// (a badge when overdue) are drawn by the template (`custom`); the search
+/// finds a settlement by the employee's name too (`name_match`, see
+/// [`super::grid_lookup`]).
+pub(crate) fn grid(lang: &Lang, name_match: &str, can_export: bool) -> Grid {
     let t = |key: &str| texts::t(lang, &format!("wl_hr.{key}"));
     let statuses: Vec<(String, String)> = [
         SettlementStatus::Draft,
@@ -136,6 +138,14 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
         )
         .column(Column::date("last_working_day", &t("employees.last_working_day")).hidden())
         .column(Column::custom("deadline", &t("settlement.deadline")).mobile())
+        .column(
+            Column::text("name_match", &t("settlement.list.employee"))
+                .computed(name_match)
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
+        )
         .sort_by("-id")
         .row_url("/hr/settlements/{id}")
         .cards_on_mobile()
@@ -152,6 +162,7 @@ async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
+    session: Session,
     request: GridRequest,
 ) -> Result<Response> {
     if ![
@@ -166,7 +177,9 @@ async fn index(
     }
     let can_export = user.has_permission(permissions::SETTLEMENTS_PREPARE)
         || user.has_permission(permissions::SETTLEMENTS_APPROVE);
-    let grid = grid(&lang, can_export);
+    let term = super::grid_lookup::searched(&request, &session, "hr-settlements");
+    let name_match = super::grid_lookup::of_employee_match(&state, term.as_deref()).await?;
+    let grid = grid(&lang, &name_match, can_export);
     if request.param("export").is_some() && !can_export {
         return Err(Error::Forbidden);
     }

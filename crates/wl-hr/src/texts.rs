@@ -1659,6 +1659,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.payroll.list.kind", "Kind"),
     ("wl_hr.payroll.list.reason", "Reason"),
     ("wl_hr.payroll.list.total", "Total net"),
+    ("wl_hr.payroll.list.year", "Year"),
     ("wl_hr.payroll.list.empty", "No payroll runs yet"),
     (
         "wl_hr.payroll.list.empty_hint",
