@@ -111,7 +111,8 @@ What exists today:
 
 ## Order
 
-1. Search and related records in `wl-kernel`, first on Property (01).
+1. Search and related records in `wl-kernel`, first on Property (01), then the modules and
+   verticals of F2–F10, which were all built by 2026-10-24 (BL-AGT-11 to BL-AGT-13).
 2. R26 and R27 in Renox, shown on the bike shop example.
 3. Read-only connector in `white-label` (search, fetch, related, reports, inbox), piloted with
    one Property client.
@@ -123,7 +124,7 @@ The issues:
   [#83](https://github.com/renox-rs/renox/issues/83) (R27),
   [#84](https://github.com/renox-rs/renox/issues/84) (R28).
 - `white-label`: epic [#540](https://github.com/renox-rs/white-label/issues/540), BL-AGT-01 to
-  BL-AGT-10 (#541–#550, [backlog](../backlog/modules/wl-agents.md)).
+  BL-AGT-13 (#541–#550, #552–#554, [backlog](../backlog/modules/wl-agents.md)).
 - renoxium.com: test assumption A6 with 5 prospects
   ([renoxium#13](https://github.com/renox-rs/renoxium/issues/13)), the bikeshop demo with an
   assistant ([#14](https://github.com/renox-rs/renoxium/issues/14)), a blog post
