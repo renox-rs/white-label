@@ -132,6 +132,11 @@ async fn draft_for(state: &AppState, project: &Project, day: NaiveDate) -> Resul
         ..Ipa::new(project.id)
     };
     draft.insert(&mut tx).await?;
+    wl_kernel::search::index_in(
+        &mut tx,
+        &wl_kernel::Subject::new(crate::ipa::SUBJECT_TYPE, draft.id),
+    )
+    .await?;
     tx.commit().await?;
     Ok(Some(Made {
         draft,

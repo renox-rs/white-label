@@ -74,6 +74,8 @@ pub(crate) struct IpaPage {
     replaces: Option<Link>,
     links: Vec<Link>,
     deductions: Vec<DeductionRow>,
+    /// The address of the IPA's Related panel (BL-AGT-12).
+    related_panel: String,
 }
 
 /// The page of `ipa` of `project`, with the IPA it `replaced` and its
@@ -175,6 +177,7 @@ pub(crate) fn page(
             .iter()
             .map(|line| DeductionRow::of(lang, line))
             .collect(),
+        related_panel: wl_kernel::related::web::panel_url_of(&ipa.subject()),
     })
     .into_response()
 }

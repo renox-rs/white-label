@@ -127,6 +127,7 @@ pub async fn accept(
     project
         .insert_in_state(&mut tx, ProjectStatus::Setup, &reason)
         .await?;
+    wl_kernel::search::index_in(&mut tx, &project.subject()).await?;
     tx.commit().await?;
     Ok(Awarded::Started(project))
 }

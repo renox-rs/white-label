@@ -41,5 +41,6 @@
         <rx-slot name="empty"><rx-empty :title="tx['ipa.no_deductions']" icon="minus"/></rx-slot>
       </rx-table>
     </rx-card>
+    <div id="ipa-related" hx-get="{{ related_panel }}" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

@@ -397,6 +397,8 @@ async fn keep_document_in(
         ..GuaranteeDocument::default()
     };
     document.insert(&mut *tx).await?;
+    // The bank's number is how the guarantee is found (BL-AGT-12).
+    wl_kernel::search::index_in(&mut *tx, &Subject::new(SUBJECT_TYPE, id)).await?;
     Ok(())
 }
 
@@ -586,6 +588,7 @@ pub async fn register(
         ..Guarantee::new(project.id, new.kind, new.amount)
     };
     guarantee.save(&state.db).await?;
+    crate::search::index(&state.db, &Subject::new(SUBJECT_TYPE, guarantee.id)).await?;
     Ok(guarantee)
 }
 

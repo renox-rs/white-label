@@ -372,6 +372,7 @@ pub async fn ensure_final_account_in(
         ..Ipa::new(project_id)
     };
     made.insert(&mut *tx).await?;
+    wl_kernel::search::index_in(&mut *tx, &Subject::new(SUBJECT_TYPE, made.id)).await?;
     Ok(made)
 }
 

@@ -497,6 +497,7 @@ async fn resubmit_effects(tx: &mut Transaction, variation: &Variation) -> Result
         ..variation.clone()
     };
     copy.insert(&mut *tx).await?;
+    wl_kernel::search::index_in(&mut *tx, &Subject::new(SUBJECT_TYPE, copy.id)).await?;
     let revision = Some(next);
     Variation::query()
         .where_(Variation::ID.eq(variation.id))
@@ -768,6 +769,7 @@ pub async fn create(
         &crate::omission::priced(&state.db, new).await?,
     );
     variation.save(&state.db).await?;
+    crate::search::index(&state.db, &Subject::new(SUBJECT_TYPE, variation.id)).await?;
     Ok(Variation::find_or_404(&state.db, variation.id).await?)
 }
 
@@ -828,6 +830,7 @@ pub async fn update_draft(
         &crate::omission::priced(&state.db, new).await?,
     );
     variation.save(&state.db).await?;
+    crate::search::index(&state.db, &Subject::new(SUBJECT_TYPE, id)).await?;
     Ok(Variation::find_or_404(&state.db, id).await?)
 }
 

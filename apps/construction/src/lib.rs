@@ -28,6 +28,7 @@ pub mod registration;
 pub mod release;
 pub mod retention;
 pub mod retention_deduction;
+pub mod search;
 mod screen_texts;
 mod screens;
 pub mod seed;
@@ -133,6 +134,9 @@ impl Module for Construction {
             .model::<AbsenceCase>();
         project::register();
         variation::register();
+        // The records in the global search and the Related panel (BL-AGT-12).
+        search::register();
+        search::listen(app);
         variation::listen(app);
         renox::state_machine::register::<Ipa>();
         renox::state_machine::register::<Retention>();
