@@ -177,8 +177,15 @@ pub(crate) fn grid(
     awaiting: bool,
     can_see_credit: bool,
     held_only: bool,
+    channels: &[String],
 ) -> Grid {
     let t = |key: &str| text(lang, key);
+    // The channels are free text (`phone`, `website`, an aggregator's code):
+    // the ones the orders use are the options of the channel filter.
+    let channel_options: Vec<(String, String)> = channels
+        .iter()
+        .map(|c| (c.clone(), channel_label(c)))
+        .collect();
     let statuses: Vec<(String, String)> = SalesOrderStatus::ALL
         .iter()
         .map(|status| {
@@ -212,7 +219,9 @@ pub(crate) fn grid(
             .mobile()
             .searchable(),
         )
-        .column(Column::text("channel", &t("orders.channel")).searchable())
+        .column(
+            Column::select("channel", &t("orders.channel"), channel_options).searchable(),
+        )
         .column(Column::text("payment_mode", &t("orders.payment_mode")).hidden())
         .column(
             Column::text("external_number", &t("orders.external_number"))
@@ -294,6 +303,27 @@ pub(crate) struct IndexPage {
     delivery_options: Vec<[String; 2]>,
 }
 
+/// A channel as the filter names it: `website` as "Website", `meta_ads` as
+/// "Meta ads".
+fn channel_label(channel: &str) -> String {
+    let words = channel.replace(['_', '-'], " ");
+    let mut chars = words.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
+/// The channels the orders came through, once each.
+async fn channels(db: &Db) -> Result<Vec<String>> {
+    let mut channels: Vec<String> = SalesOrder::query()
+        .pluck::<String, _>(db, "channel")
+        .await?;
+    channels.sort();
+    channels.dedup();
+    Ok(channels)
+}
+
 /// `GET /sales-orders`: the orders, newest first. An order waiting for
 /// its online payment is not in the list; `?awaiting=1` lists those instead
 /// (BL-SAL-02: they are invisible to fulfilment until the payment is
@@ -325,7 +355,15 @@ async fn index(
         SalesOrder::query().where_(SalesOrder::STATUS.ne(SalesOrderStatus::AwaitingPayment))
     };
     let can_export = user.has_permission(permissions::SALES_ORDERS_APPROVE);
-    let grid = grid(&lang, can_export, awaiting, can_see_credit, held_only);
+    let channels = channels(db).await?;
+    let grid = grid(
+        &lang,
+        can_export,
+        awaiting,
+        can_see_credit,
+        held_only,
+        &channels,
+    );
     if request.param("export").is_some() && !can_export {
         return Err(Error::Forbidden);
     }

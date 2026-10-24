@@ -431,7 +431,9 @@ async fn attach_sales_order(
 }
 
 /// The review grid: the accounts that earned on more sales in a day than the
-/// limit, with "Mark reviewed" in each row's menu.
+/// limit, with "Mark reviewed" in each row's menu, and the export (the page
+/// needs `loyalty.manage`, which may export it; the member's name is a
+/// template column and stays out of the file).
 pub(crate) fn review_grid(lang: &Lang) -> Grid {
     let t = |key: &str| text(lang, key);
     Grid::new("sales-loyalty-review")
@@ -454,6 +456,7 @@ pub(crate) fn review_grid(lang: &Lang) -> Grid {
         .column(Column::custom("party", &t("loyalty.member")).mobile())
         .column(Column::date("on_date", &t("loyalty.review.day")).mobile())
         .column(Column::number("sales_count", &t("loyalty.review.sales")).mobile())
+        .column(Column::datetime("created_at", &t("loyalty.review.created_at")).hidden())
         .sort_by("-on_date")
         .row_action(
             Action::new(&t("loyalty.review.resolve"), "/loyalty/review/{id}/resolve")
@@ -464,6 +467,7 @@ pub(crate) fn review_grid(lang: &Lang) -> Grid {
             &t("loyalty.review.empty"),
             Some(&t("loyalty.review.empty_hint")),
         )
+        .exports()
 }
 
 /// What the review page needs.
@@ -482,8 +486,12 @@ async fn review(
     request: GridRequest,
 ) -> Result<Response> {
     let db = state.db.clone();
-    let query = LoyaltyReview::query().where_(LoyaltyReview::RESOLVED_AT.is_null());
-    let page = review_grid(&lang).page(query, &request).await?;
+    let query = || LoyaltyReview::query().where_(LoyaltyReview::RESOLVED_AT.is_null());
+    let grid = review_grid(&lang);
+    if let Some(file) = grid.export(query(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query(), &request).await?;
     let mut parties = Vec::new();
     for item in page.items() {
         let name = match LoyaltyAccount::find(&db, item.account_id).await? {
