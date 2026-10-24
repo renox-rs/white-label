@@ -33,9 +33,11 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use renox::chrono::NaiveDate;
+use renox::db::Transaction;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::after_commit::AfterCommit;
 use crate::invoicing::VatCategory;
 use crate::parties::PartyId;
 use crate::payments::Direction;
@@ -457,6 +459,24 @@ pub trait Cheques: Send + Sync + 'static {
     fn return_undeposited<'a>(
         &'a self,
         _state: &'a AppState,
+        _request: ReturnCheques,
+        _by: Option<i64>,
+    ) -> ChequeFuture<'a, Option<ReturnedCheques>> {
+        Box::pin(async { Err(payments_off("the cheques cannot be returned")) })
+    }
+
+    /// [`Cheques::return_undeposited`] inside the caller's open transaction
+    /// `tx` (BL-KRN-11): the cheques move in `tx`, the receipt is written
+    /// only in `tx` (a rollback leaves the cheques `received` and the receipt
+    /// unused), and the events (`ChequeReturned`, …) are queued on `after`
+    /// for the caller to run after its commit. It never commits. The default
+    /// answers as [`Cheques::return_undeposited`] does with payments off
+    /// (422).
+    fn return_undeposited_in<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _tx: &'a mut Transaction,
+        _after: &'a mut AfterCommit,
         _request: ReturnCheques,
         _by: Option<i64>,
     ) -> ChequeFuture<'a, Option<ReturnedCheques>> {

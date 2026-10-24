@@ -101,11 +101,15 @@ pub fn plan_lines<'a>(
 }
 
 /// The net that issued credit notes credited, by invoice line id.
-pub async fn credited_by_line(db: &Db, invoice_id: i64) -> Result<HashMap<i64, i64>> {
+pub async fn credited_by_line<'c>(
+    db: impl renox::db::Executor<'c>,
+    invoice_id: i64,
+) -> Result<HashMap<i64, i64>> {
+    let mut conn = db.into_conn();
     let issued: Vec<i64> = CreditNote::query()
         .where_(CreditNote::INVOICE_ID.eq(invoice_id))
         .where_(CreditNote::STATUS.is_in([CreditNoteStatus::Issued, CreditNoteStatus::Applied]))
-        .get(db)
+        .get(conn.reborrow())
         .await?
         .into_iter()
         .map(|n| n.id)
@@ -115,7 +119,7 @@ pub async fn credited_by_line(db: &Db, invoice_id: i64) -> Result<HashMap<i64, i
     }
     let lines = CreditNoteLine::query()
         .where_(CreditNoteLine::CREDIT_NOTE_ID.is_in(issued))
-        .get(db)
+        .get(conn.reborrow())
         .await?;
     let mut by_line = HashMap::new();
     for line in lines {
@@ -160,14 +164,15 @@ fn build(
 }
 
 /// Plans `lines` on `invoice`, from its stored lines and the credit issued.
-async fn plan_for(
-    db: &Db,
+async fn plan_for<'c>(
+    db: impl renox::db::Executor<'c>,
     invoice: &Invoice,
     lines: &[CreditLine],
     reason: &str,
 ) -> Result<(Vec<InvoiceLine>, Vec<(i64, i64)>)> {
-    let invoice_lines = crate::invoicer::lines_of(db, invoice.id).await?;
-    let credited = credited_by_line(db, invoice.id).await?;
+    let mut conn = db.into_conn();
+    let invoice_lines = crate::invoicer::lines_of(conn.reborrow(), invoice.id).await?;
+    let credited = credited_by_line(conn.reborrow(), invoice.id).await?;
     let planned = plan(invoice.status, reason, lines, &invoice_lines, &credited)
         .map_err(refused)?
         .into_iter()
@@ -206,17 +211,18 @@ pub(crate) struct Prepared {
 /// Plans `lines` on invoice `invoice_id` as it is now and builds the draft
 /// credit note of `kind` with its lines. The legal entity, currency and
 /// rate are the invoice's. Refusals are those of [`draft`].
-pub(crate) async fn prepare(
-    db: &Db,
+pub(crate) async fn prepare<'c>(
+    db: impl renox::db::Executor<'c>,
     invoice_id: i64,
     lines: &[CreditLine],
     reason: &str,
     kind: CreditNoteKind,
     created_by: Option<i64>,
 ) -> Result<Prepared> {
+    let mut conn = db.into_conn();
     // The invoice as it is now, not as the caller loaded it.
-    let invoice = Invoice::find_or_404(db, invoice_id).await?;
-    let (invoice_lines, planned) = plan_for(db, &invoice, lines, reason).await?;
+    let invoice = Invoice::find_or_404(conn.reborrow(), invoice_id).await?;
+    let (invoice_lines, planned) = plan_for(conn.reborrow(), &invoice, lines, reason).await?;
     let mut note = CreditNote {
         invoice_id: invoice.id,
         legal_entity_id: invoice.legal_entity_id,
@@ -390,6 +396,18 @@ pub(crate) struct Outcomes {
 }
 
 impl Outcomes {
+    /// Queues them on the caller's `after` (a transaction-aware contract
+    /// call, BL-KRN-11): they are emitted when the caller runs it after its
+    /// commit, and never on a rollback.
+    pub fn queue_on(self, after: &mut wl_kernel::after_commit::AfterCommit) {
+        for outcome in self.notes {
+            after.push(move |state: AppState| async move { outcome.emit(&state).await });
+        }
+        for outcome in self.invoices {
+            after.push(move |state: AppState| async move { outcome.emit(&state).await });
+        }
+    }
+
     /// Emits them all (after the commit).
     pub async fn emit(self, state: &AppState) -> std::result::Result<(), TransitionError> {
         for outcome in self.notes {
@@ -404,8 +422,8 @@ impl Outcomes {
 
 /// What the issue guards need for `invoice`, whose issuing entity is
 /// looked up in `db`.
-pub(crate) async fn issue_input(
-    db: &Db,
+pub(crate) async fn issue_input<'c>(
+    db: impl renox::db::Executor<'c>,
     invoice: &Invoice,
     lines: usize,
     line_problem: Option<String>,
@@ -622,8 +640,28 @@ pub async fn credit_partly(
     reason: &str,
     by: By<'_>,
 ) -> std::result::Result<CreditNote, TransitionError> {
+    let mut outcomes = Outcomes::default();
+    let mut tx = state.db.begin().await?;
+    let done = credit_partly_in(&mut tx, invoice_id, lines, reason, &by, &mut outcomes).await?;
+    tx.commit().await?;
+    outcomes.emit(state).await?;
+    Ok(done)
+}
+
+/// [`credit_partly`] inside the caller's transaction `tx` (the Invoicer's
+/// `credit_partly_in`, BL-KRN-11): every read and write is in `tx`, the
+/// number comes from the series in `tx`, and the outcomes are left in
+/// `outcomes` to emit after the caller's commit. Nothing is committed.
+pub(crate) async fn credit_partly_in(
+    tx: &mut renox::db::Transaction,
+    invoice_id: i64,
+    lines: &[CreditLine],
+    reason: &str,
+    by: &By<'_>,
+    outcomes: &mut Outcomes,
+) -> std::result::Result<CreditNote, TransitionError> {
     let prepared = prepare(
-        &state.db,
+        &mut *tx,
         invoice_id,
         lines,
         reason,
@@ -631,15 +669,10 @@ pub async fn credit_partly(
         by.id(),
     )
     .await?;
-    let input = issue_input(&state.db, &prepared.invoice, prepared.lines.len(), None).await?;
-    let mut outcomes = Outcomes::default();
-    let mut tx = state.db.begin().await?;
-    let (note, _) = insert_in(&mut tx, prepared).await?;
-    let issued = issue_in(&mut tx, &note, &input, &by, &mut outcomes).await?;
-    let done = allocate_step(&mut tx, issued, &by, &mut outcomes).await?;
-    tx.commit().await?;
-    outcomes.emit(state).await?;
-    Ok(done)
+    let input = issue_input(&mut *tx, &prepared.invoice, prepared.lines.len(), None).await?;
+    let (note, _) = insert_in(tx, prepared).await?;
+    let issued = issue_in(tx, &note, &input, by, outcomes).await?;
+    allocate_step(tx, issued, by, outcomes).await
 }
 
 /// Uses `amount` of the remaining balance of issued credit note `note` on

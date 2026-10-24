@@ -14,7 +14,7 @@
 
 use renox::prelude::*;
 use renox::serde_json::json;
-use renox::state_machine::{StateMachine, Transition, TransitionError};
+use renox::state_machine::{Outcome, StateMachine, Transition, TransitionError};
 use wl_kernel::cheques::{ChequeId, ChequeStatus, ReturnCheques, ReturnedCheques};
 use wl_kernel::documents::today;
 
@@ -60,6 +60,32 @@ pub async fn return_undeposited(
     request: &ReturnCheques,
     by: Option<i64>,
 ) -> Result<Option<ReturnedCheques>> {
+    let mut tx = state.db.begin().await?;
+    let (returned, outcomes) = return_undeposited_in(&mut tx, request, by).await?;
+    if returned.is_none() {
+        return Ok(None);
+    }
+    tx.commit().await?;
+    for outcome in outcomes {
+        outcome.emit(state).await?;
+    }
+    Ok(returned)
+}
+
+/// [`return_undeposited`] inside the caller's transaction `tx` (the kernel's
+/// `Cheques::return_undeposited_in`, BL-KRN-11): the cheques move and the
+/// receipt is recorded in their history rows in `tx` only, so a rollback
+/// leaves them `received` and the receipt unused. Nothing is committed; the
+/// outcomes are returned for the caller to emit after its commit.
+///
+/// # Errors
+///
+/// 422 for a blank reason; nothing is written then.
+pub async fn return_undeposited_in(
+    tx: &mut renox::db::Transaction,
+    request: &ReturnCheques,
+    by: Option<i64>,
+) -> Result<(Option<ReturnedCheques>, Vec<Outcome<Cheque>>)> {
     let reason = request.reason.trim();
     if reason.is_empty() {
         return Err(Error::Status(
@@ -69,12 +95,11 @@ pub async fn return_undeposited(
     }
     let first = request.cheques.first().map_or(0, |id| id.0);
     let receipt = receipt_reference(today(), first);
-    let mut tx = state.db.begin().await?;
     let mut returned: Vec<ChequeId> = Vec::new();
     let mut skipped: Vec<ChequeId> = Vec::new();
     let mut outcomes = Vec::new();
     for id in &request.cheques {
-        let found = Cheque::find(&mut tx, id.0).await?;
+        let found = Cheque::find(&mut *tx, id.0).await?;
         let Some(cheque) = found.filter(|c| {
             matches!(
                 c.status,
@@ -89,24 +114,23 @@ pub async fn return_undeposited(
             .by_system()
             .reason(reason)
             .meta(json!({ "receipt": receipt, "requested_by": by }))
-            .run_in(&mut tx)
+            .run_in(&mut *tx)
             .await
             .map_err(TransitionError::into_error)?;
         outcomes.push(outcome);
         returned.push(*id);
     }
     if returned.is_empty() {
-        return Ok(None);
+        return Ok((None, outcomes));
     }
-    tx.commit().await?;
-    for outcome in outcomes {
-        outcome.emit(state).await?;
-    }
-    Ok(Some(ReturnedCheques {
-        receipt,
-        returned,
-        skipped,
-    }))
+    Ok((
+        Some(ReturnedCheques {
+            receipt,
+            returned,
+            skipped,
+        }),
+        outcomes,
+    ))
 }
 
 #[cfg(test)]

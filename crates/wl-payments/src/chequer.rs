@@ -489,6 +489,24 @@ impl Cheques for ChequeBook {
         Box::pin(async move { crate::cheque_return::return_undeposited(state, &request, by).await })
     }
 
+    fn return_undeposited_in<'a>(
+        &'a self,
+        _state: &'a AppState,
+        tx: &'a mut renox::db::Transaction,
+        after: &'a mut wl_kernel::after_commit::AfterCommit,
+        request: ReturnCheques,
+        by: Option<i64>,
+    ) -> ChequeFuture<'a, Option<ReturnedCheques>> {
+        Box::pin(async move {
+            let (returned, outcomes) =
+                crate::cheque_return::return_undeposited_in(tx, &request, by).await?;
+            for outcome in outcomes {
+                after.push(move |state: AppState| async move { outcome.emit(&state).await });
+            }
+            Ok(returned)
+        })
+    }
+
     fn uncleared_amount<'a>(
         &'a self,
         db: &'a Db,

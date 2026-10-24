@@ -127,22 +127,44 @@ pub async fn credit_in_full(
     release_origins: bool,
     by: By<'_>,
 ) -> std::result::Result<CreditNote, TransitionError> {
+    let mut outcomes = Outcomes::default();
+    let mut tx = state.db.begin().await?;
+    let applied =
+        credit_in_full_in(&mut tx, invoice, reason, release_origins, &by, &mut outcomes).await?;
+    tx.commit().await?;
+    outcomes.emit(state).await?;
+    Ok(CreditNote::find_or_404(&state.db, applied.id).await?)
+}
+
+/// [`credit_in_full`] inside the caller's transaction `tx` (the Invoicer's
+/// `credit_in_full_in`, BL-KRN-11): every read and write is in `tx`, the
+/// number comes from the series in `tx`, and the outcomes are left in
+/// `outcomes` to emit after the caller's commit. Nothing is committed.
+/// Returns the applied credit note.
+pub(crate) async fn credit_in_full_in(
+    tx: &mut renox::db::Transaction,
+    invoice: &Invoice,
+    reason: &str,
+    release_origins: bool,
+    by: &By<'_>,
+    outcomes: &mut Outcomes,
+) -> std::result::Result<CreditNote, TransitionError> {
     let reason = reason.trim();
     if reason.is_empty() {
         return Err(TransitionError::ReasonRequired);
     }
-    let now = Invoice::find_or_404(&state.db, invoice.id).await?;
+    let now = Invoice::find_or_404(&mut *tx, invoice.id).await?;
     if ![InvoiceStatus::Issued, InvoiceStatus::Overdue].contains(&now.status) {
         return Err(TransitionError::NotFrom(now.status.to_string()));
     }
-    let invoice_lines = crate::invoicer::lines_of(&state.db, invoice.id).await?;
+    let invoice_lines = crate::invoicer::lines_of(&mut *tx, invoice.id).await?;
     let requested: Vec<CreditLine> = invoice_lines
         .iter()
         .filter(|line| line.net_amount > 0)
         .map(|line| CreditLine::new(line.position, line.net_amount))
         .collect();
     let mut prepared = prepare(
-        &state.db,
+        &mut *tx,
         invoice.id,
         &requested,
         reason,
@@ -152,7 +174,7 @@ pub async fn credit_in_full(
     .await?;
     prepared.note.release_origins = release_origins;
     let entity = match prepared.invoice.legal_entity_id {
-        Some(id) => LegalEntity::find(&state.db, id).await?,
+        Some(id) => LegalEntity::find(&mut *tx, id).await?,
         None => None,
     };
     let current = prepared.invoice.clone();
@@ -164,24 +186,9 @@ pub async fn credit_in_full(
         // `prepare` planned every line against the credit already issued.
         line_problem: None,
     };
-
-    let mut outcomes = Outcomes::default();
-    let mut tx = state.db.begin().await?;
-    let (note, _) = insert_in(&mut tx, prepared).await?;
-    let issued = issue_in(&mut tx, &note, &input, &by, &mut outcomes).await?;
-    let applied = cancel_in(
-        &mut tx,
-        &issued,
-        &current,
-        reason,
-        release_origins,
-        &by,
-        &mut outcomes,
-    )
-    .await?;
-    tx.commit().await?;
-    outcomes.emit(state).await?;
-    Ok(CreditNote::find_or_404(&state.db, applied.id).await?)
+    let (note, _) = insert_in(tx, prepared).await?;
+    let issued = issue_in(tx, &note, &input, by, outcomes).await?;
+    cancel_in(tx, &issued, &current, reason, release_origins, by, outcomes).await
 }
 
 /// Cancels `current` with issued credit note `issued` in `tx`: all of the

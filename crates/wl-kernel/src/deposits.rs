@@ -36,9 +36,11 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use renox::chrono::NaiveDate;
+use renox::db::Transaction;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::after_commit::AfterCommit;
 use crate::invoicing::InvoiceId;
 use crate::parties::PartyId;
 use crate::payments::{DepositId, RefundId};
@@ -474,6 +476,21 @@ pub trait Deposits: Send + Sync + 'static {
     fn start_settlement<'a>(
         &'a self,
         _state: &'a AppState,
+        _source: &'a Subject,
+    ) -> DepositFuture<'a, Option<SettlementStarted>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// [`Deposits::start_settlement`] inside the caller's open transaction
+    /// `tx` (BL-KRN-11): the deposit is `settlement_pending` only once the
+    /// caller commits, and its events are queued on `after` for the caller to
+    /// run after the commit. It never commits. The default answers as
+    /// [`Deposits::start_settlement`] does with payments off: no deposit.
+    fn start_settlement_in<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _tx: &'a mut Transaction,
+        _after: &'a mut AfterCommit,
         _source: &'a Subject,
     ) -> DepositFuture<'a, Option<SettlementStarted>> {
         Box::pin(async { Ok(None) })

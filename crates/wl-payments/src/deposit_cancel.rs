@@ -9,11 +9,12 @@
 //! accountant's, after the dispute window, as for any settlement.
 
 use renox::prelude::*;
-use renox::state_machine::TransitionError;
+use renox::state_machine::{Outcome, StateMachine, TransitionError};
 use wl_kernel::Subject;
 use wl_kernel::deposits::{CancelSettlement, SettlementStarted};
 
 use crate::deposit::{Deposit, DepositStatus, start_settlement};
+use crate::deposit_machine::START_SETTLEMENT_BY_SYSTEM;
 use crate::deposit_deductions::{NewLine, PublishRequest, publish_by};
 
 /// A 422 with `message`.
@@ -109,25 +110,55 @@ pub(crate) async fn settle(
 ///
 /// The database's errors, or the machine's refusal.
 pub(crate) async fn begin(state: &AppState, source: &Subject) -> Result<Option<SettlementStarted>> {
+    // The variant in a transaction of its own.
+    let mut tx = state.db.begin().await?;
+    let Some((started, outcome)) = begin_in(&mut tx, source).await? else {
+        return Ok(None);
+    };
+    tx.commit().await?;
+    outcome.emit(state).await?;
+    Ok(Some(started))
+}
+
+/// [`begin`] inside the caller's transaction `tx` (the kernel's
+/// `Deposits::start_settlement_in`, BL-KRN-11): the deposit is found and
+/// moved to `settlement_pending` in `tx`, so it is only once the caller
+/// commits. Nothing is committed; the outcome is returned for the caller to
+/// emit after its commit. `None` when the source holds no deposit.
+///
+/// # Errors
+///
+/// The database's errors, or the machine's refusal.
+pub(crate) async fn begin_in(
+    tx: &mut renox::db::Transaction,
+    source: &Subject,
+) -> Result<Option<(SettlementStarted, Outcome<Deposit>)>> {
     let Some(deposit) = Deposit::query()
         .where_(Deposit::SOURCE_TYPE.eq(source.subject_type.as_str()))
         .where_(Deposit::SOURCE_ID.eq(source.subject_id))
         .where_(Deposit::STATUS.eq(DepositStatus::Held))
         .order_by_desc(Deposit::ID)
-        .first(&state.db)
+        .first(&mut *tx)
         .await?
     else {
         return Ok(None);
     };
-    let started = start_settlement(state, None, &deposit)
+    let outcome = deposit
+        .transition(START_SETTLEMENT_BY_SYSTEM)
+        .by_system()
+        .run_in(&mut *tx)
         .await
         .map_err(TransitionError::into_error)?;
-    Ok(Some(SettlementStarted {
-        deposit: started.deposit_id(),
-        held: started.held_amount,
-        forfeit: 0,
-        version: 0,
-    }))
+    let started = Deposit::find_or_404(&mut *tx, deposit.id).await?;
+    Ok(Some((
+        SettlementStarted {
+            deposit: started.deposit_id(),
+            held: started.held_amount,
+            forfeit: 0,
+            version: 0,
+        },
+        outcome,
+    )))
 }
 
 #[cfg(test)]

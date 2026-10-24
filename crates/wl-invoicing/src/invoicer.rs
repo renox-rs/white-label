@@ -9,6 +9,7 @@ use wl_kernel::invoicing::{
     InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer, ReopenReason,
     Reopened, Unallocate, WriteOffAnswer,
 };
+use wl_kernel::after_commit::AfterCommit;
 use wl_kernel::{LegalEntity, PartyId};
 
 use crate::credit_note::CreditNote;
@@ -41,6 +42,14 @@ impl Invoicer for Invoices {
 
     fn discard_draft<'a>(&'a self, db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, bool> {
         Box::pin(async move { discard_draft(db, id).await })
+    }
+
+    fn discard_draft_in<'a>(
+        &'a self,
+        tx: &'a mut renox::db::Transaction,
+        id: InvoiceId,
+    ) -> InvoiceFuture<'a, bool> {
+        Box::pin(async move { discard_draft_in(tx, id).await })
     }
 
     fn find<'a>(&'a self, db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
@@ -264,11 +273,71 @@ impl Invoicer for Invoices {
         reason: String,
         by: Option<i64>,
     ) -> InvoiceFuture<'a, CreditNoteId> {
+        // The plain method is the variant in a transaction of its own.
         Box::pin(async move {
-            crate::credit_notes::credit_partly(state, invoice.0, &lines, &reason, By::System(by))
-                .await
-                .map(|note| note.credit_note_id())
-                .map_err(TransitionError::into_error)
+            let mut tx = state.db.begin().await?;
+            let mut after = AfterCommit::new();
+            let note = self
+                .credit_partly_in(state, &mut tx, &mut after, invoice, lines, reason, by)
+                .await?;
+            tx.commit().await?;
+            after.run(state).await?;
+            Ok(note)
+        })
+    }
+
+    fn credit_in_full_in<'a>(
+        &'a self,
+        _state: &'a AppState,
+        tx: &'a mut renox::db::Transaction,
+        after: &'a mut AfterCommit,
+        invoice: InvoiceId,
+        reason: String,
+        by: Option<i64>,
+    ) -> InvoiceFuture<'a, CreditNoteId> {
+        Box::pin(async move {
+            let invoice = Invoice::find_or_404(&mut *tx, invoice.0).await?;
+            let mut outcomes = crate::credit_notes::Outcomes::default();
+            // The origins are released only by the back office's sheet.
+            let note = crate::credit::credit_in_full_in(
+                tx,
+                &invoice,
+                &reason,
+                false,
+                &By::System(by),
+                &mut outcomes,
+            )
+            .await
+            .map_err(TransitionError::into_error)?;
+            outcomes.queue_on(after);
+            Ok(note.credit_note_id())
+        })
+    }
+
+    fn credit_partly_in<'a>(
+        &'a self,
+        _state: &'a AppState,
+        tx: &'a mut renox::db::Transaction,
+        after: &'a mut AfterCommit,
+        invoice: InvoiceId,
+        lines: Vec<CreditLine>,
+        reason: String,
+        by: Option<i64>,
+    ) -> InvoiceFuture<'a, CreditNoteId> {
+        Box::pin(async move {
+            let mut outcomes = crate::credit_notes::Outcomes::default();
+            let note = crate::credit_notes::credit_partly_in(
+                tx,
+                invoice.0,
+                &lines,
+                &reason,
+                &By::System(by),
+                &mut outcomes,
+            )
+            .await
+            .map_err(TransitionError::into_error)?;
+            outcomes.queue_on(after);
+            Ok(note.credit_note_id())
         })
     }
 
@@ -411,24 +480,32 @@ pub async fn create_draft(db: &Db, draft: InvoiceDraft) -> Result<Invoice> {
 /// spec `discard`): a draft has no number and was never sent. Returns `false`
 /// and changes nothing for an invoice that is not a draft or does not exist.
 pub async fn discard_draft(db: &Db, id: InvoiceId) -> Result<bool> {
-    let Some(invoice) = Invoice::find(db, id.0).await? else {
+    let mut tx = db.begin().await?;
+    let gone = discard_draft_in(&mut tx, id).await?;
+    tx.commit().await?;
+    Ok(gone)
+}
+
+/// [`discard_draft`] inside the caller's transaction `tx`
+/// ([`Invoicer::discard_draft_in`], BL-KRN-11): nothing is committed, so a
+/// rollback keeps the draft.
+pub async fn discard_draft_in(tx: &mut renox::db::Transaction, id: InvoiceId) -> Result<bool> {
+    let Some(invoice) = Invoice::find(&mut *tx, id.0).await? else {
         return Ok(false);
     };
     if invoice.status != InvoiceStatus::Draft {
         return Ok(false);
     }
-    let mut tx = db.begin().await?;
     renox::db::sql("DELETE FROM wl_invoicing_invoice_lines WHERE invoice_id = ?")
         .bind(id.0)
-        .execute(&mut tx)
+        .execute(&mut *tx)
         .await?;
     // Not the status column of the machine: a draft is gone, not moved.
     let gone =
         renox::db::sql("DELETE FROM wl_invoicing_invoices WHERE id = ? AND status = 'draft'")
             .bind(id.0)
-            .execute(&mut tx)
+            .execute(&mut *tx)
             .await?;
-    tx.commit().await?;
     Ok(gone > 0)
 }
 
@@ -489,7 +566,10 @@ pub async fn replace_draft(db: &Db, id: InvoiceId, draft: InvoiceDraft) -> Resul
 }
 
 /// The lines of invoice `invoice_id`, in order.
-pub async fn lines_of(db: &Db, invoice_id: i64) -> Result<Vec<InvoiceLine>> {
+pub async fn lines_of<'c>(
+    db: impl renox::db::Executor<'c>,
+    invoice_id: i64,
+) -> Result<Vec<InvoiceLine>> {
     InvoiceLine::query()
         .where_(InvoiceLine::INVOICE_ID.eq(invoice_id))
         .order_by(InvoiceLine::POSITION)

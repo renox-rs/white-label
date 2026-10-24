@@ -28,9 +28,11 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use renox::chrono::NaiveDate;
+use renox::db::Transaction;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::after_commit::AfterCommit;
 use crate::inventory::SupplierReturnDispatched;
 use crate::numbering::{Reset, Series};
 use crate::parties::PartyId;
@@ -765,6 +767,18 @@ pub trait Invoicer: Send + Sync + 'static {
         Box::pin(async { Ok(false) })
     }
 
+    /// [`Invoicer::discard_draft`] inside the caller's open transaction `tx`
+    /// (BL-KRN-11): it never commits, so a caller's rollback keeps the draft.
+    /// The default answers as [`Invoicer::discard_draft`] does with
+    /// invoicing off: `false`.
+    fn discard_draft_in<'a>(
+        &'a self,
+        _tx: &'a mut Transaction,
+        _id: InvoiceId,
+    ) -> InvoiceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
     /// The invoice with this id.
     fn find<'a>(&'a self, db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>>;
 
@@ -950,6 +964,44 @@ pub trait Invoicer: Send + Sync + 'static {
     fn credit_partly<'a>(
         &'a self,
         _state: &'a AppState,
+        invoice: InvoiceId,
+        _lines: Vec<CreditLine>,
+        _reason: String,
+        _by: Option<i64>,
+    ) -> InvoiceFuture<'a, CreditNoteId> {
+        Box::pin(async move { Err(crediting_off(invoice)) })
+    }
+
+    /// [`Invoicer::credit_in_full`] inside the caller's open transaction `tx`
+    /// (BL-KRN-11): every read and write is in `tx`, the credit note number
+    /// comes from the gapless series in `tx` (a rollback gives it back), and
+    /// the events (`CreditNoteIssued`, `InvoiceCredited`, …) are queued on
+    /// `after` for the caller to run after its commit. It never commits. The
+    /// default answers as [`Invoicer::credit_in_full`] does with invoicing
+    /// off (422).
+    #[allow(clippy::too_many_arguments)]
+    fn credit_in_full_in<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _tx: &'a mut Transaction,
+        _after: &'a mut AfterCommit,
+        invoice: InvoiceId,
+        _reason: String,
+        _by: Option<i64>,
+    ) -> InvoiceFuture<'a, CreditNoteId> {
+        Box::pin(async move { Err(crediting_off(invoice)) })
+    }
+
+    /// [`Invoicer::credit_partly`] inside the caller's open transaction `tx`
+    /// (BL-KRN-11), as [`Invoicer::credit_in_full_in`]: nothing committed,
+    /// the number taken in `tx`, the events queued on `after`. The default
+    /// answers as [`Invoicer::credit_partly`] does with invoicing off (422).
+    #[allow(clippy::too_many_arguments)]
+    fn credit_partly_in<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _tx: &'a mut Transaction,
+        _after: &'a mut AfterCommit,
         invoice: InvoiceId,
         _lines: Vec<CreditLine>,
         _reason: String,

@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod after_commit;
 pub mod approvals;
 pub mod attendance;
 pub mod automation;
@@ -87,6 +88,7 @@ pub use approvals::{
     ApprovalDecided, ApprovalDecision, ApprovalEnd, ApprovalInterceptor, ApprovalPolicy,
     ApprovalRequest, ApprovalRequested, ApprovalStatus, PolicyDefault, Require, Required,
 };
+pub use after_commit::AfterCommit;
 pub use automation::{AutomationFailed, RuleRun, RuleRunSpec, RuleRunStatus, RunOutcome, run_rule};
 pub use bank_statements::{BankBalance, BankStatements, NoBankStatements};
 pub use block_effects::{

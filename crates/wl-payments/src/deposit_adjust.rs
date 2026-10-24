@@ -702,6 +702,23 @@ impl Deposits for DepositBook {
         Box::pin(async move { crate::deposit_cancel::begin(state, source).await })
     }
 
+    fn start_settlement_in<'a>(
+        &'a self,
+        _state: &'a AppState,
+        tx: &'a mut renox::db::Transaction,
+        after: &'a mut wl_kernel::after_commit::AfterCommit,
+        source: &'a Subject,
+    ) -> DepositFuture<'a, Option<SettlementStarted>> {
+        Box::pin(async move {
+            let Some((started, outcome)) = crate::deposit_cancel::begin_in(tx, source).await?
+            else {
+                return Ok(None);
+            };
+            after.push(move |state: AppState| async move { outcome.emit(&state).await });
+            Ok(Some(started))
+        })
+    }
+
     fn adjust<'a>(
         &'a self,
         state: &'a AppState,
