@@ -15,7 +15,9 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::validation::{Errors, ValidationError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
@@ -26,7 +28,6 @@ use crate::acquisition_change::{
 };
 use crate::campaign::Campaign;
 use crate::lead_source::LeadSource;
-use crate::notices::aed;
 use crate::{permissions, texts};
 
 /// The texts a template reads as `tx['acquisitions.title']`.
@@ -65,65 +66,137 @@ fn invalid(field: &str, message: String, input: &impl Serialize) -> Error {
     ValidationError::new(errors).with_input(input).into()
 }
 
-/// One acquisition set with no source.
-#[derive(Serialize, Debug, Clone)]
-pub struct MissingRow {
-    /// The acquisition.
-    pub id: i64,
-    /// The party's name.
-    pub party: String,
-    /// The first sale, e.g. `invoicing.invoice:9`.
-    pub first_sale: String,
-    /// Its date.
-    pub first_sale_date: Option<String>,
-    /// Its value, `AED 2,000.00`.
-    pub value: String,
+/// The acquisitions-with-no-source grid: search on the customer, sum of the
+/// converted values. The customer's name, the first sale and the button that
+/// asks for a change are drawn by the template (`custom`).
+pub(crate) fn missing_grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let grid = Grid::new("sales-acquisition-missing")
+        .title(&t("acquisitions.missing.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::custom("party", &t("acquisitions.party"))
+                .frozen()
+                .mobile(),
+        )
+        .column(
+            Column::related(
+                "customer",
+                &t("acquisitions.party"),
+                "wl_parties_parties",
+                "party_id",
+                "display_name",
+            )
+            .hidden()
+            .searchable(),
+        )
+        .column(Column::custom("first_sale", &t("acquisitions.first_sale")).mobile())
+        .column(Column::date("first_sale_date", &t("acquisitions.first_sale_date")).mobile())
+        .column(
+            Column::money("first_sale_value", &t("acquisitions.value"))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(Column::custom("actions", ""))
+        .sort_by("id")
+        .cards_on_mobile()
+        .empty_state(
+            &t("acquisitions.missing.empty"),
+            Some(&t("acquisitions.missing.empty_hint")),
+        );
+    if can_export { grid.exports() } else { grid }
 }
 
-/// One change of source or campaign.
+/// The changes grid: search on the reason and the people, filters by kind
+/// and status. What changes, and the approve and reject buttons, are drawn
+/// by the template (`custom`).
+pub(crate) fn changes_grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let kinds = vec![
+        ("acquisition".to_owned(), t("changes.kind.acquisition")),
+        ("lead".to_owned(), t("changes.kind.lead")),
+    ];
+    let statuses: Vec<(String, String)> = ChangeStatus::ALL
+        .iter()
+        .map(|status| {
+            (
+                status.as_str().to_owned(),
+                text(lang, &format!("changes.status.{}", status.as_str())),
+            )
+        })
+        .collect();
+    let grid = Grid::new("sales-acquisition-changes")
+        .title(&t("changes.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(Column::select("kind", &t("changes.kind"), kinds))
+        .column(Column::custom("what", &t("changes.what")).frozen().mobile())
+        .column(Column::text("reason", &t("changes.reason")).searchable())
+        .column(
+            Column::related(
+                "requester",
+                &t("changes.requested_by"),
+                "users",
+                "requested_by",
+                "name",
+            )
+            .searchable(),
+        )
+        .column(
+            Column::related(
+                "approver",
+                &t("changes.decided_by"),
+                "users",
+                "decided_by",
+                "name",
+            )
+            .searchable(),
+        )
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("pending", "warning"),
+                    ("applied", "success"),
+                    ("rejected", "danger"),
+                ])
+                .mobile(),
+        )
+        .column(Column::datetime("created_at", &t("changes.created_at")).hidden())
+        .column(Column::custom("actions", ""))
+        .sort_by("-id")
+        .cards_on_mobile()
+        .empty_state(&t("changes.empty"), Some(&t("changes.empty_hint")));
+    if can_export { grid.exports() } else { grid }
+}
+
+/// One change the viewer can decide, for its approve and reject sheets.
 #[derive(Serialize, Debug, Clone)]
-pub struct ChangeRow {
+pub struct DecideSheet {
     /// The change.
     pub id: i64,
-    /// `acquisition` or `lead`, in the page's language.
-    pub kind: String,
     /// `Referral → Paid ads (SPRING26)`.
     pub what: String,
-    /// Why.
-    pub reason: String,
-    /// The requester's name.
-    pub requested_by: String,
-    /// The approver's name, once decided.
-    pub decided_by: String,
-    /// The status in the page's language.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
-    /// Whether the user can approve or reject it now.
-    pub can_decide: bool,
 }
 
-/// What the page needs.
+/// What the page needs. `tab` is `missing` or `changes`.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-sales/acquisition_exceptions.html")]
 pub(crate) struct ExceptionsPage {
     tx: Texts,
-    missing: Vec<MissingRow>,
-    changes: Vec<ChangeRow>,
+    tab: &'static str,
+    missing: Option<GridPage<PartyAcquisition>>,
+    changes: Option<GridPage<AcquisitionChange>>,
+    missing_count: u64,
+    pending_count: u64,
+    /// The acquisitions of the page, for their change-request sheets.
+    request_sheets: Vec<i64>,
+    /// The changes of the page the viewer can approve or reject.
+    decide_sheets: Vec<DecideSheet>,
     sources: Vec<(String, String)>,
     can_manage: bool,
-}
-
-/// The name of user `id`, else `#id`.
-async fn user_name(db: &Db, id: Option<i64>) -> String {
-    match id {
-        Some(id) => User::find(db, id)
-            .await
-            .ok()
-            .flatten()
-            .map_or_else(|| format!("#{id}"), |u| u.name),
-        None => String::new(),
-    }
 }
 
 /// `Source (CODE)`, else `—`.
@@ -148,72 +221,102 @@ async fn label(
     })
 }
 
-/// `GET /sales/acquisition-exceptions`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
-    let directory = wl_kernel::parties::directory(&state);
-    let mut missing = Vec::new();
-    let rows = PartyAcquisition::query()
-        .where_(PartyAcquisition::SOURCE_MISSING.eq(true))
-        .where_(PartyAcquisition::SUPERSEDED_BY.is_null())
-        .order_by(PartyAcquisition::ID)
-        .get(&state.db)
-        .await?;
-    for row in rows {
-        let name = directory
-            .display_name(&state.db, PartyId(row.party_id), &lang.locale)
-            .await
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| format!("#{}", row.party_id));
-        missing.push(MissingRow {
-            id: row.id,
-            party: name,
-            first_sale: row.first_sale().map(|s| s.to_string()).unwrap_or_default(),
-            first_sale_date: row.first_sale_date.map(|d| d.to_string()),
-            value: format!("AED {}", aed(row.first_sale_value)),
-        });
-    }
+/// `GET /sales/acquisition-exceptions`: the acquisitions with no source and
+/// the changes of source or campaign, one tab each (`?tab=changes`). It opens
+/// on the changes when one waits for the viewer's decision.
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
+    let db = &state.db;
     let can_manage = user.has_permission(permissions::CAMPAIGNS_MANAGE);
-    let mut changes = Vec::new();
-    let rows = AcquisitionChange::query()
-        .order_by_desc(AcquisitionChange::ID)
-        .get(&state.db)
-        .await?;
-    for change in rows {
-        let before = label(
-            &state.db,
-            change.old_source_id,
-            change.old_campaign_id,
-            &lang.locale,
-        )
-        .await?;
-        let after = label(
-            &state.db,
-            Some(change.new_source_id),
-            change.new_campaign_id,
-            &lang.locale,
-        )
-        .await?;
-        let (status, kind) = match change.status {
-            ChangeStatus::Pending => ("pending", "warning"),
-            ChangeStatus::Applied => ("applied", "success"),
-            ChangeStatus::Rejected => ("rejected", "error"),
-        };
-        changes.push(ChangeRow {
-            id: change.id,
-            kind: text(&lang, &format!("changes.kind.{}", change.kind)),
-            what: format!("{before} → {after}"),
-            reason: change.reason.clone(),
-            requested_by: user_name(&state.db, Some(change.requested_by)).await,
-            decided_by: user_name(&state.db, change.decided_by).await,
-            status: text(&lang, &format!("changes.status.{status}")),
-            status_kind: kind,
-            can_decide: can_manage
+    let no_source = || {
+        PartyAcquisition::query()
+            .where_(PartyAcquisition::SOURCE_MISSING.eq(true))
+            .where_(PartyAcquisition::SUPERSEDED_BY.is_null())
+    };
+    let pending =
+        || AcquisitionChange::query().where_(AcquisitionChange::STATUS.eq(ChangeStatus::Pending));
+    let missing_count = no_source().count(db).await?;
+    let pending_count = pending().count(db).await?;
+    let waiting_for_me = can_manage
+        && pending()
+            .where_(AcquisitionChange::REQUESTED_BY.ne(user.id))
+            .count(db)
+            .await?
+            > 0;
+    let tab = match request.param("tab") {
+        Some("changes") => "changes",
+        Some("missing") => "missing",
+        _ if waiting_for_me => "changes",
+        _ => "missing",
+    };
+    // The route needs `acquisition.reports.view`, so the viewer may export.
+    let (mut missing, mut changes) = (None, None);
+    let (mut request_sheets, mut decide_sheets) = (Vec::new(), Vec::new());
+    if tab == "missing" {
+        let grid = missing_grid(&lang, true);
+        if let Some(file) = grid.export(no_source(), &request).await? {
+            return Ok(file);
+        }
+        let directory = wl_kernel::parties::directory(&state);
+        let page = grid.page(no_source(), &request).await?;
+        let mut extra = Vec::new();
+        for row in page.items() {
+            let name = directory
+                .display_name(db, PartyId(row.party_id), &lang.locale)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| format!("#{}", row.party_id));
+            request_sheets.push(row.id);
+            extra.push(json!({
+                "party": name,
+                "first_sale": row.first_sale().map(|s| s.to_string()).unwrap_or_default(),
+            }));
+        }
+        let mut extra = extra.into_iter();
+        missing = Some(page.extend(|_| extra.next().unwrap_or_default()));
+    } else {
+        let grid = changes_grid(&lang, true);
+        if let Some(file) = grid.export(AcquisitionChange::query(), &request).await? {
+            return Ok(file);
+        }
+        let page = grid.page(AcquisitionChange::query(), &request).await?;
+        let mut extra = Vec::new();
+        for change in page.items() {
+            let before = label(
+                db,
+                change.old_source_id,
+                change.old_campaign_id,
+                &lang.locale,
+            )
+            .await?;
+            let after = label(
+                db,
+                Some(change.new_source_id),
+                change.new_campaign_id,
+                &lang.locale,
+            )
+            .await?;
+            let what = format!("{before} → {after}");
+            let can_decide = can_manage
                 && change.status == ChangeStatus::Pending
-                && change.requested_by != user.id,
-        });
+                && change.requested_by != user.id;
+            if can_decide {
+                decide_sheets.push(DecideSheet {
+                    id: change.id,
+                    what: what.clone(),
+                });
+            }
+            extra.push(json!({ "what": what, "can_decide": can_decide }));
+        }
+        let mut extra = extra.into_iter();
+        changes = Some(page.extend(|_| extra.next().unwrap_or_default()));
     }
-    let sources = LeadSource::ordered(&state.db)
+    let sources = LeadSource::ordered(db)
         .await?
         .into_iter()
         .filter(|s| s.active)
@@ -221,11 +324,17 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .collect();
     Ok(View::typed(ExceptionsPage {
         tx: texts::all(&lang),
+        tab,
         missing,
         changes,
+        missing_count,
+        pending_count,
+        request_sheets,
+        decide_sheets,
         sources,
         can_manage,
-    }))
+    })
+    .into_response())
 }
 
 /// The change form.

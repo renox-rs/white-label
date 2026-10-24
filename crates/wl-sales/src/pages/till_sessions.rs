@@ -14,7 +14,9 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::Serialize;
 use wl_kernel::sales::OpenTill;
 
@@ -121,34 +123,116 @@ async fn row_of(state: &AppState, lang: &Lang, session: &TillSession) -> Result<
     })
 }
 
+/// The till sessions grid: search on the till, outlet and cashier, filters by
+/// status and day, sum of the counted cash and the differences. What the till
+/// should hold is worked out from the sales of an open session, so the
+/// template draws it (`custom`).
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let statuses: Vec<(String, String)> = TillSessionStatus::ALL
+        .iter()
+        .map(|status| {
+            (
+                status.as_str().to_owned(),
+                text(lang, &format!("till.status.{}", status.as_str())),
+            )
+        })
+        .collect();
+    let grid = Grid::new("sales-till-sessions")
+        .title(&t("till.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("till", &t("till.till"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/till-sessions/{id}"),
+        )
+        .column(Column::text("location", &t("till.location")).searchable())
+        .column(Column::date("business_date", &t("till.date")).mobile())
+        .column(
+            Column::related(
+                "cashier",
+                &t("till.cashier"),
+                "users",
+                "cashier_user_id",
+                "name",
+            )
+            .searchable(),
+        )
+        .column(Column::money("float_amount", &t("till.float_label")).hidden())
+        .column(Column::custom("expected", &t("till.expected")).mobile())
+        .column(
+            Column::money("counted_cash", &t("till.counted"))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("variance", &t("till.variance"))
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("open", "info"),
+                    ("counting", "warning"),
+                    ("closed", "success"),
+                    ("reviewed", "success"),
+                ])
+                .mobile(),
+        )
+        .sort_by("-business_date")
+        .row_url("/till-sessions/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("till.empty"), Some(&t("till.empty_hint")));
+    if can_export { grid.exports() } else { grid }
+}
+
 /// What the list needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-sales/till_sessions.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    sessions: Vec<SessionRow>,
+    sessions: GridPage<TillSession>,
     can_open: bool,
 }
 
-/// `GET /till-sessions`: the latest sessions, newest first.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+/// `GET /till-sessions`: the sessions, newest day first (`?export=` with
+/// `pos.review`).
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if !can_see(&user) {
         return Err(Error::Forbidden);
     }
-    let latest = TillSession::query()
-        .order_by_desc(TillSession::ID)
-        .limit(60)
-        .get(&state.db)
-        .await?;
-    let mut sessions = Vec::new();
-    for session in &latest {
-        sessions.push(row_of(&state, &lang, session).await?);
+    let can_export = user.has_permission(permissions::POS_REVIEW);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
     }
+    let query = TillSession::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut expected = Vec::new();
+    for session in page.items() {
+        let view = till_sessions::view_of(&state.db, session).await?;
+        expected.push(money(view.expected));
+    }
+    let mut expected = expected.into_iter();
+    let sessions = page.extend(|_| json!({ "expected": expected.next().unwrap_or_default() }));
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         sessions,
         can_open: user.has_permission(permissions::POS_OPEN_TILL),
-    }))
+    })
+    .into_response())
 }
 
 /// `POST /till-sessions`: opens a session for the signed-in cashier, today.

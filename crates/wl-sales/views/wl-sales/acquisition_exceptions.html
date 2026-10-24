@@ -1,43 +1,44 @@
 {#- wl-sales: the acquisition exceptions report: acquisitions a sale created
     with no source, and the changes of source or campaign with their reason
-    and approver (SAL.ACL.09). Replace it with
+    and approver (SAL.ACL.09). One renox::grid at a time, a tab each, so the
+    grid fills the screen. Replace it with
     resources/views/wl-sales/acquisition_exceptions.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['acquisitions.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['acquisitions.title']" :subtitle="tx['acquisitions.subtitle']"/>
-    <rx-table :rows="missing" as="row" :key="row.id" :caption="tx['acquisitions.missing.title']" card>
-      <rx-column :label="tx['acquisitions.party']">{{ row.party }}</rx-column>
-      <rx-column :label="tx['acquisitions.first_sale']" hide-narrow>{{ row.first_sale }}</rx-column>
-      <rx-column :label="tx['acquisitions.first_sale_date']" hide-narrow>{{ row.first_sale_date or "" }}</rx-column>
-      <rx-column :label="tx['acquisitions.value']">{{ row.value }}</rx-column>
-      <rx-row-actions>
-        <rx-action-sheet rx-if="can_manage" :id="'change-acquisition-' ~ row.id" :label="tx['changes.request']" :action="route('wl_sales.acquisition_change', row.id)"
-                         :title="tx['changes.request_title']" :submit-label="tx['changes.request']" icon="pencil">
-          <rx-select name="source" :label="tx['changes.source']" :options="sources" :id="'change-acquisition-source-' ~ row.id" required/>
-          <rx-input name="campaign" :label="tx['changes.campaign']" :id="'change-acquisition-campaign-' ~ row.id"/>
-          <rx-textarea name="reason" :label="tx['changes.reason']" :id="'change-acquisition-reason-' ~ row.id" required/>
-        </rx-action-sheet>
-      </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['acquisitions.missing.empty']" icon="inbox"/></rx-slot>
-    </rx-table>
-    <rx-table :rows="changes" as="change" :key="change.id" :caption="tx['changes.title']" card>
-      <rx-column :label="tx['changes.kind']" hide-narrow>{{ change.kind }}</rx-column>
-      <rx-column :label="tx['changes.what']">{{ change.what }}</rx-column>
-      <rx-column :label="tx['changes.reason']" hide-narrow>{{ change.reason }}</rx-column>
-      <rx-column :label="tx['changes.requested_by']" hide-narrow>{{ change.requested_by }}</rx-column>
-      <rx-column :label="tx['changes.decided_by']" hide-narrow>{{ change.decided_by }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge :kind="change.status_kind" :text="change.status"/></rx-column>
-      <rx-row-actions>
-        <template rx-if="change.can_decide">
-          <rx-confirm :id="'approve-change-' ~ change.id" :label="tx['changes.approve']" :action="route('wl_sales.acquisition_change.approve', change.id)" method="POST"
-                      :title="tx['changes.approve']" :message="change.what" :confirm-label="tx['changes.approve']" :cancel-label="tx['cancel']" icon="check"/>
-          <rx-action-sheet :id="'reject-change-' ~ change.id" :label="tx['changes.reject']" :action="route('wl_sales.acquisition_change.reject', change.id)"
-                           :title="tx['changes.reject']" :submit-label="tx['changes.reject']" icon="x" danger>
-            <rx-textarea name="reason" :label="tx['changes.reason']" :id="'reject-change-reason-' ~ change.id"/>
-          </rx-action-sheet>
-        </template>
-      </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['changes.empty']" icon="history"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['acquisitions.title']" :subtitle="tx['acquisitions.subtitle']">
+    <rx-link-button :href="route('wl_sales.acquisition_exceptions') ~ '?tab=missing'" :label="tx['acquisitions.missing.title'] ~ ' (' ~ missing_count ~ ')'" :variant="'primary' if tab == 'missing' else 'plain'"/>
+    <rx-link-button :href="route('wl_sales.acquisition_exceptions') ~ '?tab=changes'" :label="tx['changes.title'] ~ ' (' ~ pending_count ~ ')'" :variant="'primary' if tab == 'changes' else 'plain'"/>
+  </rx-page-header>
+  <rx-grid rx-if="missing" :page="missing">
+    <template rx-if="column.key == 'party'">{{ row.party }}</template>
+    <template rx-elif="column.key == 'first_sale'">{{ row.first_sale }}</template>
+    <template rx-elif="column.key == 'actions'">
+      <rx-open-button rx-if="can_manage" :id="'change-acquisition-' ~ row.id" :label="tx['changes.request']" icon="pencil" size="small"/>
+    </template>
+  </rx-grid>
+  <rx-grid rx-if="changes" :page="changes">
+    <template rx-if="column.key == 'what'">{{ row.what }}</template>
+    <template rx-elif="column.key == 'actions'">
+      <template rx-if="row.can_decide">
+        <rx-open-button :id="'approve-change-' ~ row.id" :label="tx['changes.approve']" icon="check" size="small"/>
+        <rx-open-button :id="'reject-change-' ~ row.id" :label="tx['changes.reject']" variant="plain-danger" icon="x" size="small"/>
+      </template>
+    </template>
+  </rx-grid>
+  {#- The sheets of the rows on this page: forms sent with htmx. -#}
+  <template rx-if="can_manage">
+    <rx-action-sheet rx-for="id in request_sheets" :button="false" :id="'change-acquisition-' ~ id" :label="tx['changes.request']" :action="route('wl_sales.acquisition_change', id)"
+                     :title="tx['changes.request_title']" :submit-label="tx['changes.request']" icon="pencil">
+      <rx-select name="source" :label="tx['changes.source']" :options="sources" :id="'change-acquisition-source-' ~ id" required/>
+      <rx-input name="campaign" :label="tx['changes.campaign']" :id="'change-acquisition-campaign-' ~ id"/>
+      <rx-textarea name="reason" :label="tx['changes.reason']" :id="'change-acquisition-reason-' ~ id" required/>
+    </rx-action-sheet>
+    <template rx-for="change in decide_sheets">
+      <rx-confirm :button="false" :id="'approve-change-' ~ change.id" :label="tx['changes.approve']" :action="route('wl_sales.acquisition_change.approve', change.id)" method="POST"
+                  :title="tx['changes.approve']" :message="change.what" :confirm-label="tx['changes.approve']" :cancel-label="tx['cancel']" icon="check"/>
+      <rx-action-sheet :button="false" :id="'reject-change-' ~ change.id" :label="tx['changes.reject']" :action="route('wl_sales.acquisition_change.reject', change.id)"
+                       :title="tx['changes.reject']" :submit-label="tx['changes.reject']" icon="x" danger>
+        <rx-textarea name="reason" :label="tx['changes.reason']" :id="'reject-change-reason-' ~ change.id"/>
+      </rx-action-sheet>
+    </template>
+  </template>
 </rx-page>
