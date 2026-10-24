@@ -171,9 +171,12 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
         )
         .column(Column::date("filed_on", &t("returns.filed_on")).hidden())
         .column(
-            Column::money("tax_payable", &t("returns.tax_payable"))
-                .hidden()
-                .summary(Summary::Sum),
+            Column::money(
+                "tax_payable",
+                &wl_kernel::money_label(&t("returns.tax_payable")),
+            )
+            .hidden()
+            .summary(Summary::Sum),
         )
         .sort_by("-number")
         .row_url("/accounting/returns/{id}")

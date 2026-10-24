@@ -345,7 +345,7 @@ pub(crate) fn orders_grid(lang: &Lang, can_export: bool) -> Grid {
             .hidden(),
         )
         .column(
-            Column::money("total", &t["total"])
+            Column::money("total", &wl_kernel::money_label(&t["total"]))
                 .mobile()
                 .summary(Summary::Sum),
         )

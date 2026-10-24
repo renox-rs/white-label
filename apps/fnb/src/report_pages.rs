@@ -187,12 +187,12 @@ pub(crate) fn refunds_grid(lang: &Lang) -> Grid {
             .hidden(),
         )
         .column(
-            Column::money("net", &t["report.net"])
+            Column::money("net", &wl_kernel::money_label(&t["report.net"]))
                 .hidden()
                 .summary(Summary::Sum),
         )
         .column(
-            Column::money("gross", &t["report.gross"])
+            Column::money("gross", &wl_kernel::money_label(&t["report.gross"]))
                 .mobile()
                 .summary(Summary::Sum),
         )
@@ -299,7 +299,7 @@ pub(crate) fn failed_grid(lang: &Lang) -> Grid {
             .hidden(),
         )
         .column(
-            Column::money("total", &t["total"])
+            Column::money("total", &wl_kernel::money_label(&t["total"]))
                 .mobile()
                 .summary(Summary::Sum),
         )
@@ -400,7 +400,7 @@ pub(crate) fn faults_grid(lang: &Lang) -> Grid {
         )
         .column(Column::select("category", &t["report.category"], categories).mobile())
         .column(
-            Column::money("amount", &t["amount"])
+            Column::money("amount", &wl_kernel::money_label(&t["amount"]))
                 .mobile()
                 .summary(Summary::Sum),
         )

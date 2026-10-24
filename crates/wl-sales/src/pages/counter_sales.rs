@@ -131,12 +131,12 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
             .searchable(),
         )
         .column(
-            Column::money("gross_total", &t("counter.total"))
+            Column::money("gross_total", &wl_kernel::money_label(&t("counter.total")))
                 .mobile()
                 .summary(Summary::Sum),
         )
         .column(
-            Column::money("vat_total", &t("counter.vat"))
+            Column::money("vat_total", &wl_kernel::money_label(&t("counter.vat")))
                 .hidden()
                 .summary(Summary::Sum),
         )

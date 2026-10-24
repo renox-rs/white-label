@@ -79,10 +79,7 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
             .link("/hr/settlements/{id}"),
         )
         .column(Column::custom("employee", &t("settlement.list.employee")).mobile())
-        .column(
-            Column::text("reason", &t("settlement.reason"))
-                .searchable(),
-        )
+        .column(Column::text("reason", &t("settlement.reason")).searchable())
         .column(
             Column::select("status", &t("fields.status"), statuses)
                 .badges(&[
@@ -96,7 +93,7 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                 .mobile(),
         )
         .column(
-            Column::money("dues", &t("settlement.list.dues"))
+            Column::money("dues", &wl_kernel::money_label(&t("settlement.list.dues")))
                 .computed(
                     "({T}.\"unpaid_salary\" + {T}.\"leave_encashment\" + {T}.\"gratuity\" \
                      + {T}.\"notice_pay\" + {T}.\"other_dues\")",
@@ -104,20 +101,23 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                 .summary(Summary::Sum),
         )
         .column(
-            Column::money("recoveries_total", &t("settlement.list.recoveries"))
-                .computed(
-                    "({T}.\"recoveries\" + {T}.\"advance_recoveries\" + {T}.\"fine_recoveries\" \
+            Column::money(
+                "recoveries_total",
+                &wl_kernel::money_label(&t("settlement.list.recoveries")),
+            )
+            .computed(
+                "({T}.\"recoveries\" + {T}.\"advance_recoveries\" + {T}.\"fine_recoveries\" \
                      + {T}.\"court_debt_recoveries\" + {T}.\"damage_recoveries\")",
-                )
-                .summary(Summary::Sum),
+            )
+            .summary(Summary::Sum),
         )
         .column(
-            Column::money("net", &t("settlement.list.net"))
+            Column::money("net", &wl_kernel::money_label(&t("settlement.list.net")))
                 .mobile()
                 .summary(Summary::Sum),
         )
         .column(
-            Column::money("paid", &t("settlement.list.paid"))
+            Column::money("paid", &wl_kernel::money_label(&t("settlement.list.paid")))
                 .computed(
                     "(SELECT COALESCE(SUM(\"wl_hr_settlement_payments\".\"amount\"), 0) \
                      FROM \"wl_hr_settlement_payments\" \

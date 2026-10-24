@@ -108,19 +108,25 @@ pub fn grid(lang: &Lang, can_export: bool) -> Grid {
             "code",
         ))
         .column(
-            Column::money("total", &t("expense_claims.total"))
+            Column::money("total", &wl_kernel::money_label(&t("expense_claims.total")))
                 .mobile()
                 .summary(Summary::Sum),
         )
         .column(
-            Column::money("vat_total", &t("expense_claims.vat"))
-                .hidden()
-                .summary(Summary::Sum),
+            Column::money(
+                "vat_total",
+                &wl_kernel::money_label(&t("expense_claims.vat")),
+            )
+            .hidden()
+            .summary(Summary::Sum),
         )
         .column(
-            Column::money("drawing_amount", &t("expense_claims.drawing"))
-                .hidden()
-                .summary(Summary::Sum),
+            Column::money(
+                "drawing_amount",
+                &wl_kernel::money_label(&t("expense_claims.drawing")),
+            )
+            .hidden()
+            .summary(Summary::Sum),
         )
         .column(
             Column::select("status", &t("fields.status"), statuses)

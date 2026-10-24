@@ -136,7 +136,7 @@ pub(crate) fn grid(lang: &Lang, aggregators: &[[String; 2]], can_export: bool) -
         .column(Column::date("period_to", &t["payout.period_to"]).hidden())
         .column(Column::number("line_count", &t["payout.lines"]).hidden())
         .column(
-            Column::money("net_total", &t["payout.net"])
+            Column::money("net_total", &wl_kernel::money_label(&t["payout.net"]))
                 .mobile()
                 .summary(Summary::Sum),
         )

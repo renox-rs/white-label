@@ -125,12 +125,15 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
         .column(Column::custom("orders", &t["closing.orders"]))
         .column(Column::custom("sales", &t["closing.sales"]).mobile())
         .column(
-            Column::money("counted_cash", &t["closing.counted"])
-                .hidden()
-                .summary(Summary::Sum),
+            Column::money(
+                "counted_cash",
+                &wl_kernel::money_label(&t["closing.counted"]),
+            )
+            .hidden()
+            .summary(Summary::Sum),
         )
         .column(
-            Column::money("variance", &t["closing.variance"])
+            Column::money("variance", &wl_kernel::money_label(&t["closing.variance"]))
                 .mobile()
                 .summary(Summary::Sum),
         )

@@ -195,7 +195,7 @@ pub(crate) fn grid(lang: &Lang, batches: &[Batch], party_match: &str, can_export
                 .searchable(),
         )
         .column(
-            Column::money("fee", &text(lang, "enrolments.fee"))
+            Column::money("fee", &wl_kernel::money_label(&text(lang, "enrolments.fee")))
                 .computed(
                     "CASE WHEN {T}.\"price\" > {T}.\"discount\" \
                      THEN {T}.\"price\" - {T}.\"discount\" ELSE 0 END",
@@ -204,12 +204,12 @@ pub(crate) fn grid(lang: &Lang, batches: &[Batch], party_match: &str, can_export
                 .summary(Summary::Sum),
         )
         .column(
-            Column::money("price", &text(lang, "enrolments.price"))
+            Column::money("price", &wl_kernel::money_label(&text(lang, "enrolments.price")))
                 .hidden()
                 .summary(Summary::Sum),
         )
         .column(
-            Column::money("discount", &text(lang, "enrolments.discount"))
+            Column::money("discount", &wl_kernel::money_label(&text(lang, "enrolments.discount")))
                 .hidden()
                 .summary(Summary::Sum),
         )

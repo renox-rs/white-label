@@ -313,9 +313,12 @@ pub fn deliveries_grid(lang: &Lang, can_export: bool) -> Grid {
                 .mobile(),
         )
         .column(
-            Column::money("amount_to_collect", &t("fields.amount_to_collect"))
-                .hidden()
-                .summary(Summary::Sum),
+            Column::money(
+                "amount_to_collect",
+                &wl_kernel::money_label(&t("fields.amount_to_collect")),
+            )
+            .hidden()
+            .summary(Summary::Sum),
         )
         .column(Column::datetime("created_at", &t("fields.date")).hidden())
         .sort_by("-created_at")

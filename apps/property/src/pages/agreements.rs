@@ -162,7 +162,13 @@ pub(crate) fn grid(lang: &Lang) -> Grid {
         )
         .column(Column::custom("owner", &t("agreements.owner")).mobile())
         .column(Column::custom("fee", &t("agreements.fee")).mobile())
-        .column(Column::money("fee_fixed", &t("agreements.fee_fixed")).hidden())
+        .column(
+            Column::money(
+                "fee_fixed",
+                &wl_kernel::money_label(&t("agreements.fee_fixed")),
+            )
+            .hidden(),
+        )
         .column(Column::date("start_date", &t("agreements.start")).mobile())
         .column(Column::date("end_date", &t("agreements.last_day")).hidden())
         .column(

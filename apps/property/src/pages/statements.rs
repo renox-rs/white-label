@@ -137,32 +137,44 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
         .column(Column::date("period_start", &t("statements.period_start")).mobile())
         .column(Column::date("period_end", &t("statements.period_end")))
         .column(
-            Column::money("brought_forward", &t("statements.brought_forward"))
+            Column::money(
+                "brought_forward",
+                &wl_kernel::money_label(&t("statements.brought_forward")),
+            )
+            .hidden()
+            .summary(Summary::Sum),
+        )
+        .column(
+            Column::money(
+                "collected",
+                &wl_kernel::money_label(&t("statements.collected")),
+            )
+            .hidden()
+            .summary(Summary::Sum),
+        )
+        .column(
+            Column::money(
+                "expenses",
+                &wl_kernel::money_label(&t("statements.expenses")),
+            )
+            .hidden()
+            .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("fee", &wl_kernel::money_label(&t("statements.fee")))
                 .hidden()
                 .summary(Summary::Sum),
         )
         .column(
-            Column::money("collected", &t("statements.collected"))
-                .hidden()
-                .summary(Summary::Sum),
+            Column::money(
+                "adjustments",
+                &wl_kernel::money_label(&t("statements.adjustments")),
+            )
+            .hidden()
+            .summary(Summary::Sum),
         )
         .column(
-            Column::money("expenses", &t("statements.expenses"))
-                .hidden()
-                .summary(Summary::Sum),
-        )
-        .column(
-            Column::money("fee", &t("statements.fee"))
-                .hidden()
-                .summary(Summary::Sum),
-        )
-        .column(
-            Column::money("adjustments", &t("statements.adjustments"))
-                .hidden()
-                .summary(Summary::Sum),
-        )
-        .column(
-            Column::money("balance", &t("statements.balance"))
+            Column::money("balance", &wl_kernel::money_label(&t("statements.balance")))
                 .computed(
                     "{T}.\"brought_forward\" + {T}.\"collected\" - {T}.\"expenses\" \
                      - {T}.\"fee\" + {T}.\"adjustments\"",

@@ -342,12 +342,24 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
             )
             .searchable(),
         )
-        .column(Column::money("cod_amount", &text("cod")).summary(Summary::Sum))
-        .column(Column::money("cod_collected", &text("cod_collected")).summary(Summary::Sum))
         .column(
-            Column::money("cod_difference", &text("cod_difference"))
-                .mobile()
+            Column::money("cod_amount", &wl_kernel::money_label(&text("cod")))
                 .summary(Summary::Sum),
+        )
+        .column(
+            Column::money(
+                "cod_collected",
+                &wl_kernel::money_label(&text("cod_collected")),
+            )
+            .summary(Summary::Sum),
+        )
+        .column(
+            Column::money(
+                "cod_difference",
+                &wl_kernel::money_label(&text("cod_difference")),
+            )
+            .mobile()
+            .summary(Summary::Sum),
         )
         .column(Column::text("cod_absorbed_by", &text("cod_absorbed_by")).mobile())
         .column(

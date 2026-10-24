@@ -54,6 +54,14 @@ pub mod segments;
 pub mod subject;
 pub mod subscriptions;
 mod texts;
+
+/// A money column label with the currency code appended, e.g. `Contract value (AED)`.
+///
+/// Grid money cells without `currency_from` render a bare number, so the code
+/// goes in the label (amounts are fils in AED by design in the demo clients).
+pub fn money_label(label: &str) -> String {
+    format!("{label} (AED)")
+}
 pub mod tickets;
 pub mod timesheets;
 pub mod usage;

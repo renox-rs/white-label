@@ -95,9 +95,12 @@ pub(crate) fn missing_grid(lang: &Lang, can_export: bool) -> Grid {
         .column(Column::custom("first_sale", &t("acquisitions.first_sale")).mobile())
         .column(Column::date("first_sale_date", &t("acquisitions.first_sale_date")).mobile())
         .column(
-            Column::money("first_sale_value", &t("acquisitions.value"))
-                .mobile()
-                .summary(Summary::Sum),
+            Column::money(
+                "first_sale_value",
+                &wl_kernel::money_label(&t("acquisitions.value")),
+            )
+            .mobile()
+            .summary(Summary::Sum),
         )
         .column(Column::custom("actions", ""))
         .sort_by("id")

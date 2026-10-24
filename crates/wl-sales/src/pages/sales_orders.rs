@@ -187,7 +187,7 @@ pub(crate) fn grid(lang: &Lang, can_export: bool, awaiting: bool) -> Grid {
                 .searchable(),
         )
         .column(
-            Column::money("gross_total", &t("orders.total"))
+            Column::money("gross_total", &wl_kernel::money_label(&t("orders.total")))
                 .mobile()
                 .summary(Summary::Sum),
         )

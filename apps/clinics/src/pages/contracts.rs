@@ -119,9 +119,15 @@ pub(crate) fn grid(lang: &Lang, can_export: bool, can_edit: bool) -> Grid {
                 .mobile()
                 .searchable(),
         )
-        .column(Column::custom("agreement", &text(lang, "contract.agreement")))
+        .column(Column::custom(
+            "agreement",
+            &text(lang, "contract.agreement"),
+        ))
         .column(Column::custom("copay", &text(lang, "contract.copay")).mobile())
-        .column(Column::money("deductible", &text(lang, "contract.deductible")))
+        .column(Column::money(
+            "deductible",
+            &wl_kernel::money_label(&text(lang, "contract.deductible")),
+        ))
         .column(Column::date("valid_from", &text(lang, "contract.valid_from")).hidden())
         .column(Column::date("valid_to", &text(lang, "contract.valid_to")).mobile())
         .column(Column::custom("windows", &text(lang, "contract.windows")).hidden())
@@ -136,13 +142,10 @@ pub(crate) fn grid(lang: &Lang, can_export: bool, can_edit: bool) -> Grid {
     if can_edit {
         grid = grid.column(Column::custom("edit", &text(lang, "contract.edit")).frozen_right());
     }
-    let grid = grid
-        .sort_by("-id")
-        .cards_on_mobile()
-        .empty_state(
-            &text(lang, "contract.empty"),
-            Some(&text(lang, "contract.subtitle")),
-        );
+    let grid = grid.sort_by("-id").cards_on_mobile().empty_state(
+        &text(lang, "contract.empty"),
+        Some(&text(lang, "contract.subtitle")),
+    );
     if can_export { grid.exports() } else { grid }
 }
 

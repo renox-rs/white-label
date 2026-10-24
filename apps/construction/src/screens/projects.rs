@@ -3,8 +3,8 @@
 
 use renox::grid::{Column, Grid, GridRequest, Summary};
 use renox::prelude::*;
-use serde::Serialize;
 use renox::serde_json::json;
+use serde::Serialize;
 use wl_kernel::documents::today;
 
 use super::{Texts, closing_url, ipa_kind, ipa_url, tx, variations_url, word};
@@ -47,17 +47,7 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                 .mobile()
                 .searchable(),
         )
-        .column(
-            Column::related(
-                "client",
-                &text("projects.client"),
-                "wl_parties_parties",
-                "client_party_id",
-                "display_name",
-            )
-            .mobile()
-            .searchable(),
-        )
+        .column(Column::custom("client", &text("projects.client")).mobile())
         .column(
             Column::select("status", &text("projects.status"), statuses)
                 .badges(&[
@@ -72,20 +62,26 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                 .mobile(),
         )
         .column(
-            Column::money("contract_value", &text("projects.contract_value"))
-                .mobile()
-                .summary(Summary::Sum),
+            Column::money(
+                "contract_value",
+                &wl_kernel::money_label(&text("projects.contract_value")),
+            )
+            .mobile()
+            .summary(Summary::Sum),
         )
         .column(Column::date("completion_due_on", &text("projects.completion_due")).hidden())
         .column(
-            Column::money("budget", &text("projects.budget"))
+            Column::money("budget", &wl_kernel::money_label(&text("projects.budget")))
                 .hidden()
                 .summary(Summary::Sum),
         )
         .column(
-            Column::money("advance_paid", &text("projects.advance_paid"))
-                .hidden()
-                .summary(Summary::Sum),
+            Column::money(
+                "advance_paid",
+                &wl_kernel::money_label(&text("projects.advance_paid")),
+            )
+            .hidden()
+            .summary(Summary::Sum),
         )
         .column(Column::text("emirate", &text("projects.emirate")).hidden())
         .column(Column::custom("ipas", &text("projects.ipas")))
@@ -94,10 +90,7 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
         .sort_by("code")
         .row_url("/construction/projects/{id}/closing")
         .cards_on_mobile()
-        .empty_state(
-            &text("projects.empty"),
-            Some(&text("projects.empty_text")),
-        );
+        .empty_state(&text("projects.empty"), Some(&text("projects.empty_text")));
     if can_export { grid.exports() } else { grid }
 }
 
@@ -155,6 +148,21 @@ pub(crate) async fn page(
             .get(&state.db)
             .await?
     };
+    let mut clients = std::collections::BTreeMap::new();
+    for project in page.items() {
+        clients.entry(project.client_party_id).or_insert(
+            wl_kernel::parties::directory(state)
+                .display_name(
+                    &state.db,
+                    wl_kernel::PartyId(project.client_party_id),
+                    &lang.locale,
+                )
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| format!("#{}", project.client_party_id)),
+        );
+    }
     let page = page.extend(|project| {
         let waiting = |found: usize, key: &str, days: i64| {
             (found > 0).then(|| english(key, &[("count", &found), ("days", &days)]))
@@ -197,6 +205,7 @@ pub(crate) async fn page(
             })
             .collect();
         json!({
+            "client": clients.get(&project.client_party_id),
             "ipas": links,
             "flags": flags,
             "closing_url": closing_url(project.id),

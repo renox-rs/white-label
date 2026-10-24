@@ -186,22 +186,25 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
         )
         .column(Column::date("period_end", &text("remit_period")).hidden())
         .column(
-            Column::money("cod_total", &text("remit_cod"))
+            Column::money("cod_total", &wl_kernel::money_label(&text("remit_cod")))
                 .hidden()
                 .summary(Summary::Sum),
         )
         .column(
-            Column::money("fee_total", &text("remit_fees"))
+            Column::money("fee_total", &wl_kernel::money_label(&text("remit_fees")))
                 .hidden()
                 .summary(Summary::Sum),
         )
         .column(
-            Column::money("adjustment_total", &text("remit_adjustments"))
-                .hidden()
-                .summary(Summary::Sum),
+            Column::money(
+                "adjustment_total",
+                &wl_kernel::money_label(&text("remit_adjustments")),
+            )
+            .hidden()
+            .summary(Summary::Sum),
         )
         .column(
-            Column::money("net", &text("remit_net"))
+            Column::money("net", &wl_kernel::money_label(&text("remit_net")))
                 .mobile()
                 .summary(Summary::Sum),
         )

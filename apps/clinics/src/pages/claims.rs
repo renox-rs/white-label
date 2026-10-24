@@ -187,13 +187,13 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
         .column(Column::custom("payer", &text(lang, "policies.payer")))
         .column(Column::date("visit_date", &text(lang, "claim.visit_date")))
         .column(
-            Column::money("claimed", &text(lang, "claim.claimed"))
+            Column::money("claimed", &wl_kernel::money_label(&text(lang, "claim.claimed")))
                 .mobile()
                 .summary(Summary::Sum),
         )
-        .column(Column::money("paid", &text(lang, "claim.paid")).summary(Summary::Sum))
+        .column(Column::money("paid", &wl_kernel::money_label(&text(lang, "claim.paid"))).summary(Summary::Sum))
         .column(
-            Column::money("denied", &text(lang, "claim.denied"))
+            Column::money("denied", &wl_kernel::money_label(&text(lang, "claim.denied")))
                 .hidden()
                 .summary(Summary::Sum),
         )

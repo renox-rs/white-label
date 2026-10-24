@@ -221,12 +221,12 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
         .column(Column::date("start_date", &t("leases.start_date")))
         .column(Column::date("end_date", &t("leases.end_date")))
         .column(
-            Column::money("annual_rent", &t("leases.annual_rent"))
+            Column::money("annual_rent", &wl_kernel::money_label(&t("leases.annual_rent")))
                 .mobile()
                 .summary(Summary::Sum),
         )
         .column(
-            Column::money("deposit_amount", &t("leases.deposit"))
+            Column::money("deposit_amount", &wl_kernel::money_label(&t("leases.deposit")))
                 .hidden()
                 .summary(Summary::Sum),
         )

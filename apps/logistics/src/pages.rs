@@ -241,7 +241,7 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
         )
         .column(Column::number("parcel_count", &text(lang, "parcels")).hidden())
         .column(
-            Column::money("cod_amount", &text(lang, "cod"))
+            Column::money("cod_amount", &wl_kernel::money_label(&text(lang, "cod")))
                 .mobile()
                 .summary(Summary::Sum),
         )

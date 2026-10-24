@@ -150,7 +150,7 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
             .hidden(),
         )
         .column(
-            Column::money("gross_value", &t("returns.value"))
+            Column::money("gross_value", &wl_kernel::money_label(&t("returns.value")))
                 .mobile()
                 .summary(Summary::Sum),
         )

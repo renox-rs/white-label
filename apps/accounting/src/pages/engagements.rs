@@ -179,9 +179,12 @@ pub(crate) fn grid(lang: &Lang) -> Grid {
         )
         .column(Column::select("fee_basis", &t("engagements.fee_basis"), fee_bases).hidden())
         .column(
-            Column::money("retainer_fee", &t("engagements.retainer_fee"))
-                .hidden()
-                .summary(Summary::Sum),
+            Column::money(
+                "retainer_fee",
+                &wl_kernel::money_label(&t("engagements.retainer_fee")),
+            )
+            .hidden()
+            .summary(Summary::Sum),
         )
         .column(Column::date("start_date", &t("engagements.start")).hidden())
         .column(Column::date("activated_on", &t("engagements.activated_on")).hidden())
@@ -189,10 +192,7 @@ pub(crate) fn grid(lang: &Lang) -> Grid {
         .sort_by("-number")
         .row_url("/accounting/engagements/{id}")
         .cards_on_mobile()
-        .empty_state(
-            &t("engagements.empty"),
-            Some(&t("engagements.empty_text")),
-        )
+        .empty_state(&t("engagements.empty"), Some(&t("engagements.empty_text")))
         .exports()
 }
 
@@ -231,11 +231,7 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /accounting/engagements`.
-async fn index(
-    user: AuthUser,
-    lang: Lang,
-    request: GridRequest,
-) -> Result<Response> {
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
     require(&user, permissions::ENGAGEMENTS_VIEW)?;
     let grid = grid(&lang);
     let query = Engagement::query();
@@ -840,11 +836,7 @@ fn template_text(lang: &Lang, template: NeutralTemplate) -> String {
 /// `GET /accounting/engagements/export`: every engagement as CSV, the grid's
 /// export with the neutral reason only (`ACC.ACL.14`). The grid's own export
 /// menu answers `?export=csv` on the list; this URL keeps answering too.
-async fn export(
-    user: AuthUser,
-    lang: Lang,
-    request: GridRequest,
-) -> Result<Response> {
+async fn export(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
     require(&user, permissions::ENGAGEMENTS_VIEW)?;
     grid(&lang)
         .export_as(

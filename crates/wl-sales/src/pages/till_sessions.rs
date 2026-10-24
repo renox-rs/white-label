@@ -162,15 +162,21 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
             )
             .searchable(),
         )
-        .column(Column::money("float_amount", &t("till.float_label")).hidden())
+        .column(
+            Column::money(
+                "float_amount",
+                &wl_kernel::money_label(&t("till.float_label")),
+            )
+            .hidden(),
+        )
         .column(Column::custom("expected", &t("till.expected")).mobile())
         .column(
-            Column::money("counted_cash", &t("till.counted"))
+            Column::money("counted_cash", &wl_kernel::money_label(&t("till.counted")))
                 .hidden()
                 .summary(Summary::Sum),
         )
         .column(
-            Column::money("variance", &t("till.variance"))
+            Column::money("variance", &wl_kernel::money_label(&t("till.variance")))
                 .summary(Summary::Sum),
         )
         .column(

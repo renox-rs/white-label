@@ -1,5 +1,5 @@
 {#- construction: the projects the person may see, a renox::grid (search on
-    the code, name and client, filters by status, sums of the contract value)
+    the code and name, filters by status, sums of the contract value)
     that fills the screen. What waits on a project (an IPA or a variation the
     client has not answered, a guarantee about to end) is a badge in its row.
     Replace it with resources/views/construction/projects.html in the app. -#}
@@ -13,7 +13,8 @@
     </template>
   </rx-page-header>
   <rx-grid :page="projects">
-    <template rx-if="column.key == 'ipas'">
+    <template rx-if="column.key == 'client'">{{ row.client }}</template>
+    <template rx-elif="column.key == 'ipas'">
       <template rx-for="ipa in row.ipas"><a href="{{ ipa.url }}">{{ ipa.label }}</a> </template>
       <span rx-if="not row.ipas" class="rx-subtitle">{{ tx['projects.no_ipas'] }}</span>
     </template>

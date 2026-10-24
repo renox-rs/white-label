@@ -111,7 +111,7 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
             "run_id",
         ))
         .column(
-            Column::money("total", &t("payroll.list.total"))
+            Column::money("total", &wl_kernel::money_label(&t("payroll.list.total")))
                 .computed(
                     "(SELECT COALESCE(SUM(\"wl_hr_payroll_lines\".\"net_amount\"), 0) \
                      FROM \"wl_hr_payroll_lines\" WHERE \"wl_hr_payroll_lines\".\"run_id\" = {T}.\"id\")",
@@ -132,11 +132,7 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
 
 /// `GET /hr/payroll`: the grid, or its export (`?export=`, with
 /// `payroll.prepare` or `payroll.approve`).
-async fn index(
-    user: AuthUser,
-    lang: Lang,
-    request: GridRequest,
-) -> Result<Response> {
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
     let can_export = user.has_permission(permissions::PAYROLL_PREPARE)
         || user.has_permission(permissions::PAYROLL_APPROVE);
     let grid = grid(&lang, can_export);
