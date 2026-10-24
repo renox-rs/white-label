@@ -322,3 +322,86 @@ async fn a_page_is_refused_to_a_person_who_may_not_read_it() {
         t.get(&stranger, &path).await.assert_forbidden();
     }
 }
+
+/// #532: the projects list is a standard grid right under its header: it
+/// searches the code and the name, sorts on the contract value, filters by
+/// status, pages ten at a time and offers the page sizes.
+#[renox::test]
+async fn the_projects_grid_searches_sorts_filters_and_pages() {
+    let t = boot().await;
+    let pm = t.project_manager("Amal").await;
+    let mut codes = Vec::new();
+    for n in 1..=12_i64 {
+        let status = if n % 4 == 0 {
+            ProjectStatus::OnHold
+        } else {
+            ProjectStatus::InProgress
+        };
+        let project = t.project(status, Some(&pm)).await;
+        Project::query()
+            .where_(Project::ID.eq(project.id))
+            .update(t.db(), &[("contract_value", &aed(100_000 * n))])
+            .await
+            .unwrap();
+        codes.push(project.code.clone());
+    }
+    let palm = t.project(ProjectStatus::InProgress, Some(&pm)).await;
+    Project::query()
+        .where_(Project::ID.eq(palm.id))
+        .update(
+            t.db(),
+            &[
+                ("name", &String::from("Palm Villa extension")),
+                ("contract_value", &aed(5_000_000)),
+            ],
+        )
+        .await
+        .unwrap();
+
+    // The grid is the page's content under the header, with the search box
+    // and the page sizes.
+    let page = t.browse(&pm, "/construction/projects").await;
+    page.assert_ok();
+    let html = page.text();
+    let header = html.find("class=\"rx-page-header\"").expect("a header");
+    let grid = html.find("<form class=\"rx-grid").expect("a grid");
+    assert!(header < grid);
+    let between = &html[header..grid];
+    assert!(!between.contains("rx-stack") && !between.contains("rx-card"));
+    assert!(!html.contains("rx-table-wrap"), "no old table");
+    assert!(html.contains("name=\"search\"") && html.contains("per_page"));
+    assert!(html.contains("1–13 of 13"), "thirteen projects");
+
+    // Ten to a page: the second page holds three.
+    let second = t
+        .browse(&pm, "/construction/projects?sort=code&per_page=10&page=2")
+        .await
+        .text();
+    assert!(second.contains("11–13 of 13"));
+    assert!(second.contains(&palm.code) && !second.contains(&format!(">{}<", codes[0])));
+
+    // The name finds the project.
+    let found = t
+        .browse(&pm, "/construction/projects?search=Palm%20Villa")
+        .await
+        .text();
+    assert!(found.contains("1–1 of 1") && found.contains(&palm.code));
+
+    // The largest contract first.
+    let by_value = t
+        .browse(&pm, "/construction/projects?sort=-contract_value")
+        .await
+        .text();
+    let first = by_value.find(&palm.code).unwrap();
+    let next = by_value.find(&codes[11]).unwrap();
+    assert!(first < next, "AED 5,000,000 before AED 1,200,000");
+    assert!(by_value.contains("5,000,000.00"));
+
+    // The projects on hold.
+    let on_hold = t
+        .browse(&pm, "/construction/projects?in.status=on_hold")
+        .await
+        .text();
+    assert!(on_hold.contains("1–3 of 3"));
+    assert!(on_hold.contains(&codes[3]) && !on_hold.contains(&palm.code));
+}

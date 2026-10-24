@@ -14,8 +14,8 @@ use crate::project::{Project, ProjectStatus};
 use crate::texts::english;
 use crate::watch::{self, EXPIRY_DAYS, WAIT_DAYS};
 
-/// The projects grid: search on the code, name and client, filters by
-/// status and emirate, sums of the contract value and the budget. The IPAs,
+/// The projects grid: search on the code and name, filters by status and
+/// emirate, sums of the contract value and the budget. The IPAs,
 /// the flags and the report links are drawn by the template (`custom`).
 pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
     let t = tx(lang);
