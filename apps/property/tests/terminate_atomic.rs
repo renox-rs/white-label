@@ -2,10 +2,10 @@
 //! the fakes): `terminate` and its money effects succeed together, or a step
 //! that would fail refuses `terminate` with its reason and nothing changes.
 //!
-//! The money contracts cannot join the transition's transaction yet
-//! (BL-KRN-11): `terminate` checks the steps that can be known to fail before
-//! it runs, so a refused `terminate` leaves the lease, the unit, the invoices,
-//! the cheques and the deposit as they were.
+//! `terminate` runs the money effects in its own transaction through the
+//! contracts' transaction-aware variants (BL-KRN-11), and checks first the
+//! steps that can be known to fail, so a refused `terminate` leaves the lease,
+//! the unit, the invoices, the cheques and the deposit as they were.
 //!
 //! The lease runs 2027-01-01 to 2027-12-31 at AED 9,000 a month with 12
 //! monthly cheques; the tenant leaves on 2027-06-20, so June (10 of 30 days)

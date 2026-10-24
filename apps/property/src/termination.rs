@@ -17,8 +17,11 @@
 //! termination penalty, a fine) stays. A charge is recurring when it is rent
 //! or its type has more than one charge in the plan.
 //!
-//! **After the commit** ([`settle`]), with the contracts of the kernel, which
-//! cannot join the transition's transaction:
+//! **In the same transaction** ([`terminate`], BL-PRP-33), through the
+//! kernel contracts' transaction-aware variants (BL-KRN-11), the money
+//! effects run too, so the lease, the unit, the charges, the credit notes, the
+//! cheques and the deposit change together or not at all; their events are
+//! emitted after the commit:
 //!
 //! - the invoices issued for periods after the cutoff are credited pro rata by
 //!   a partial credit note: amount × days after the cutoff ÷ days in the
@@ -42,23 +45,24 @@
 //!   so it cannot be refunded twice; the refund waits for another user's
 //!   approval, `FIN.ACL.04`), `keep` leaves it on the credit notes for the
 //!   tenant to use;
-//! - `LeaseTerminated` is emitted, which turns the tenant's portal read-only.
+//! - after the commit, the credit is held or handled (the Refund flow has no
+//!   transaction-aware variant yet, so a refund request that fails is a task
+//!   for the accountant) and `LeaseTerminated` is emitted, which turns the
+//!   tenant's portal read-only.
 //!
-//! **Before the transition** ([`money_problem`], BL-PRP-33): the spec runs the
-//! money effects "all in one transaction" and rolls the whole `terminate` back
-//! when crediting one invoice fails. The kernel's money contracts cannot join
-//! the transition's transaction yet (their transaction-aware variants are
-//! BL-KRN-11), so [`terminate`] first checks every step that can be known to
-//! fail: an invoice to credit that cannot be found, a draft that straddles the
-//! cutoff, a rent line without the credit left. Such a `terminate` is refused
-//! with the reason and nothing changes: the lease stays `notice_given`, no
-//! credit note, return or deposit settlement is made, no task is opened and no
-//! `LeaseTerminated` is emitted; the user fixes the cause and runs it again.
+//! When one money step fails (crediting the second invoice, say), the whole
+//! `terminate` rolls back and is refused with the reason: the lease stays
+//! `notice_given`, no credit note, return or deposit settlement exists, no
+//! task is opened and no `LeaseTerminated` is emitted; the user fixes the
+//! cause and runs it again. Before it opens the transaction, [`terminate`]
+//! also checks the steps that can be known to fail ([`money_problem`]: an
+//! invoice that cannot be found, a draft straddling the cutoff, a rent line
+//! without the credit left) to give a clearer reason.
 //!
-//! A step that still fails after the commit (a refusal the check cannot see)
-//! does not stop the others: the accountant gets one task that lists what to
-//! finish by hand, as for a cancellation. It goes away with BL-KRN-11, when
-//! the effects run inside the transition's transaction.
+//! [`settle`] (and [`settle_keeping`]) is the after-commit path that a
+//! `terminate` run elsewhere (a forced termination, [`crate::force`]) still
+//! uses: a step that fails there does not stop the others and the accountant
+//! gets one task that lists what to finish by hand.
 //!
 //! **`PRP.RUL.13`** ([`chase_ejari`], daily 02:00 Asia/Dubai): 7 days after the
 //! lease became `terminated`, when an Ejari or Tawtheeq number is recorded and
@@ -80,8 +84,9 @@ use std::collections::BTreeSet;
 use renox::chrono::{Duration, NaiveDate};
 use renox::db::Transaction;
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, TransitionCtx, TransitionError};
+use renox::state_machine::{Outcome, StateMachine, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
+use wl_kernel::after_commit::AfterCommit;
 use wl_kernel::cheques::{ChequeId, ChequeStatus, ReturnCheques, cheques};
 use wl_kernel::deposits::deposits;
 use wl_kernel::documents::today;
@@ -450,15 +455,207 @@ pub async fn terminate(
     {
         return Err(TransitionError::Guard(reason));
     }
-    let reason = english("property.terminate.history", &[]);
-    let _outcome = lease
+    // What the money effects will do, read before the transaction opens.
+    let plan = plan_money(state, &lease, &input).await?;
+    let history = english("property.terminate.history", &[]);
+    let reason = english(
+        "property.terminate.reason",
+        &[("lease", &lease.number_with_version())],
+    );
+    let by = Some(user.id);
+    // The lease, the unit, the charges and the money effects in one
+    // transaction (BL-PRP-33, the contracts' variants of BL-KRN-11).
+    let mut tx = state.db.begin().await?;
+    let outcome = lease
         .transition(TERMINATE)
         .by(user)
-        .reason(reason)
+        .reason(history)
         .input(&input)
-        .run(state)
+        .run_in(&mut tx)
         .await?;
+    let mut after = AfterCommit::new();
+    let mut done = Settlement::default();
+    let mut notes = Vec::new();
+    if matches!(outcome, Outcome::Done(_)) {
+        let ran = money_in(
+            state, &mut tx, &mut after, &lease, &plan, &reason, by, &mut done, &mut notes,
+        )
+        .await;
+        if let Err(error) = ran {
+            // Dropping the transaction rolls everything back: the lease, the
+            // unit, the charges, the credit notes, the cheques, the deposit.
+            drop(tx);
+            let text = error.to_string();
+            return Err(TransitionError::Guard(english(
+                "property.terminate.money_failed",
+                &[("reason", &text)],
+            )));
+        }
+    }
+    tx.commit().await?;
+    outcome.emit(state).await?;
+    after.run(state).await?;
+    if done.ran {
+        let terminated = load(state, id).await?;
+        let move_out = termination.move_out;
+        finish_settlement(state, &terminated, move_out, by, &notes, done)
+            .await
+            .map_err(TransitionError::Failed)?;
+    }
     load(state, id).await
+}
+
+/// The money effects of terminating `lease` with `input`, worked out before
+/// the transaction opens (every read happens here).
+#[derive(Debug, Clone, Default)]
+struct MoneyPlan {
+    /// The invoices to credit pro rata, with the net amount.
+    credits: Vec<(i64, i64)>,
+    /// The draft invoices wholly after the cutoff, with their charge.
+    discards: Vec<(i64, i64)>,
+    /// The cheques to hand back.
+    returns: Vec<ChequeId>,
+}
+
+/// The [`MoneyPlan`] of terminating `lease` with `input`.
+async fn plan_money(state: &AppState, lease: &Lease, input: &TerminateInput) -> Result<MoneyPlan> {
+    let mut plan = MoneyPlan::default();
+    let Some(move_out) = input.move_out else {
+        return Ok(plan);
+    };
+    let cut = cutoff(move_out, input.rent_due_until.or(lease.rent_due_until));
+    let charges = lease.charges(&state.db).await?;
+    let live: Vec<&LeaseCharge> = charges
+        .iter()
+        .filter(|c| c.status != ChargeStatus::Cancelled || c.due_date > cut)
+        .collect();
+    let ranges = periods(live.iter().copied(), lease.end_date);
+    for charge in charges
+        .iter()
+        .filter(|c| c.status == ChargeStatus::Invoiced && is_recurring(c, &live))
+    {
+        let (Some(invoice_id), Some(period)) = (charge.invoice_id, ranges.get(&charge.id)) else {
+            continue;
+        };
+        let net = credit_for(charge.amount, *period, cut);
+        if net == 0 {
+            continue;
+        }
+        let Some(invoice) = invoicer(state)
+            .find(&state.db, InvoiceId(invoice_id))
+            .await?
+        else {
+            continue;
+        };
+        match invoice.status {
+            InvoiceStatus::Draft if period.0 > cut => plan.discards.push((invoice_id, charge.id)),
+            InvoiceStatus::Issued
+            | InvoiceStatus::PartiallyPaid
+            | InvoiceStatus::Overdue
+            | InvoiceStatus::Paid => plan.credits.push((invoice_id, net)),
+            _ => {}
+        }
+    }
+    plan.returns = of_version(state, lease)
+        .await?
+        .iter()
+        .filter(|c| {
+            matches!(
+                c.status,
+                ChequeStatus::Received | ChequeStatus::DueForDeposit
+            ) && c.date > cut
+        })
+        .map(|c| c.id)
+        .collect();
+    Ok(plan)
+}
+
+/// Runs `plan` inside the transaction `tx` of `terminate`, the events queued
+/// on `after`: the credit notes, the drafts discarded, the cheques returned
+/// against one receipt, the deposit settlement started, and the lease marked
+/// as settled (so the after-commit path does not run them again). The first
+/// failure is returned; the caller rolls everything back.
+#[allow(clippy::too_many_arguments)]
+async fn money_in(
+    state: &AppState,
+    tx: &mut Transaction,
+    after: &mut AfterCommit,
+    lease: &Lease,
+    plan: &MoneyPlan,
+    reason: &str,
+    by: Option<i64>,
+    done: &mut Settlement,
+    notes: &mut Vec<CreditNoteId>,
+) -> Result {
+    let contract = invoicer(state);
+    for (invoice, net) in &plan.credits {
+        let note = contract
+            .credit_partly_in(
+                state,
+                &mut *tx,
+                &mut *after,
+                InvoiceId(*invoice),
+                vec![CreditLine::new(1, *net)],
+                reason.to_owned(),
+                by,
+            )
+            .await
+            .map_err(|error| refused(problem_line(&format!("invoice {invoice}"), &error)))?;
+        done.credited.push((*invoice, *net));
+        done.credit += net;
+        notes.push(note);
+    }
+    for (invoice, charge) in &plan.discards {
+        if contract
+            .discard_draft_in(&mut *tx, InvoiceId(*invoice))
+            .await?
+        {
+            done.discarded.push(*invoice);
+            LeaseCharge::query()
+                .where_(LeaseCharge::ID.eq(*charge))
+                .update(
+                    &mut *tx,
+                    &[
+                        ("status", &ChargeStatus::Cancelled),
+                        ("updated_at", &renox::db::now()),
+                    ],
+                )
+                .await?;
+        }
+    }
+    if !plan.returns.is_empty()
+        && let Some(back) = cheques(state)
+            .return_undeposited_in(
+                state,
+                &mut *tx,
+                &mut *after,
+                ReturnCheques::new(plan.returns.clone(), reason),
+                by,
+            )
+            .await
+            .map_err(|error| refused(problem_line("cheques", &error)))?
+    {
+        done.returned = back.returned;
+        done.receipt = Some(back.receipt);
+    }
+    done.deposit = deposits(state)
+        .start_settlement_in(state, &mut *tx, &mut *after, &lease.agreement())
+        .await
+        .map_err(|error| refused(problem_line("deposit", &error)))?
+        .map(|started| started.deposit.0);
+    Lease::query()
+        .where_(Lease::ID.eq(lease.id))
+        .update(
+            &mut *tx,
+            &[
+                ("money_settled_at", &Some(renox::db::now())),
+                ("termination_credit", &done.credit),
+                ("updated_at", &renox::db::now()),
+            ],
+        )
+        .await?;
+    done.ran = true;
+    Ok(())
 }
 
 /// What [`settle`] did.
@@ -683,12 +880,28 @@ pub async fn settle_keeping(
         Err(error) => done.problems.push(problem_line("deposit", &error)),
     }
 
-    // 3b. The credit that the invoices did not use: held for the deductions
-    // of the deposit being settled, else as the property manager chose.
+    // 3b. The credit, what is left by hand, the event.
+    finish_settlement(state, &lease, move_out, by, &notes, done).await
+}
+
+/// The end of the money effects of the terminated `lease`, after the commit:
+/// the credit the invoices did not use is held for the deductions of the
+/// deposit being settled, else handled as the property manager chose; what
+/// was credited is stored, what failed is a task for the accountant, and
+/// `LeaseTerminated` is emitted.
+async fn finish_settlement(
+    state: &AppState,
+    lease: &Lease,
+    move_out: NaiveDate,
+    by: Option<i64>,
+    notes: &[CreditNoteId],
+    mut done: Settlement,
+) -> Result<Settlement> {
+    let id = lease.id;
     if done.deposit.is_some() {
-        hold_credit(state, &notes, &mut done).await;
+        hold_credit(state, notes, &mut done).await;
     } else {
-        settle_credit(state, &lease, &notes, by, &mut done).await;
+        settle_credit(state, lease, notes, by, &mut done).await;
     }
 
     // 4. What was credited, what is left by hand, the event.

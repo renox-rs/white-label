@@ -997,6 +997,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Vendor bill :bill :supplier — :building, owner's share",
     ),
     (
+        "property.terminate.money_failed",
+        "The termination was not recorded and nothing was changed: :reason",
+    ),
+    (
         "property.terminate.invoice_missing",
         "Invoice :invoice of the lease cannot be found: nothing was changed.",
     ),

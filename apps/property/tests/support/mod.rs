@@ -852,6 +852,17 @@ impl Cheques for ChequeBook {
         Box::pin(async { Ok(0) })
     }
 
+    fn return_undeposited_in<'a>(
+        &'a self,
+        state: &'a AppState,
+        _tx: &'a mut renox::db::Transaction,
+        _after: &'a mut wl_kernel::AfterCommit,
+        request: ReturnCheques,
+        by: Option<i64>,
+    ) -> ChequeFuture<'a, Option<ReturnedCheques>> {
+        self.return_undeposited(state, request, by)
+    }
+
     fn return_undeposited<'a>(
         &'a self,
         _state: &'a AppState,
@@ -1155,6 +1166,16 @@ impl Deposits for DepositBook {
                 .unwrap()
                 .contains_key(&source.to_string()))
         })
+    }
+
+    fn start_settlement_in<'a>(
+        &'a self,
+        state: &'a AppState,
+        _tx: &'a mut renox::db::Transaction,
+        _after: &'a mut wl_kernel::AfterCommit,
+        source: &'a Subject,
+    ) -> DepositFuture<'a, Option<SettlementStarted>> {
+        self.start_settlement(state, source)
     }
 
     fn start_settlement<'a>(
@@ -1595,6 +1616,37 @@ impl Invoicer for InvoiceDesk {
             });
             Ok(CreditNoteId(i64::try_from(credits.len()).unwrap_or(0)))
         })
+    }
+
+    fn discard_draft_in<'a>(
+        &'a self,
+        _tx: &'a mut renox::db::Transaction,
+        id: InvoiceId,
+    ) -> InvoiceFuture<'a, bool> {
+        Box::pin(async move {
+            let mut all = self.0.lock().unwrap();
+            let is_draft = all
+                .get(&id.0)
+                .is_some_and(|i| i.summary.status == InvoiceStatus::Draft);
+            if is_draft {
+                all.remove(&id.0);
+            }
+            Ok(is_draft)
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn credit_partly_in<'a>(
+        &'a self,
+        state: &'a AppState,
+        _tx: &'a mut renox::db::Transaction,
+        _after: &'a mut wl_kernel::AfterCommit,
+        invoice: InvoiceId,
+        lines: Vec<CreditLine>,
+        reason: String,
+        by: Option<i64>,
+    ) -> InvoiceFuture<'a, CreditNoteId> {
+        self.credit_partly(state, invoice, lines, reason, by)
     }
 
     fn unallocate_all<'a>(
