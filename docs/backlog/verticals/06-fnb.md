@@ -1,6 +1,6 @@
 # Epic: 06 F&B — negative flows
 
-> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
+> Status: in use (F1–F10 built; open items in [README](../README.md) §7) · Last updated: 2026-10-24
 
 This epic builds the negative flows the review fixes added to
 [06-fnb.md](../../verticals/06-fnb.md): failed own-rider deliveries and the refund rule

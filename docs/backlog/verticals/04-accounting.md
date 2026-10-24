@@ -1,6 +1,6 @@
 # Epic: 04 Accounting — negative flows
 
-> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
+> Status: in use (F1–F10 built; open items in [README](../README.md) §7) · Last updated: 2026-10-24
 
 This epic builds the negative flows of the 04 Accounting app (`apps/accounting`): engagement
 activation guards, the unsigned letter, suspension with the statutory deadline notice, resumption,
