@@ -215,6 +215,17 @@ async fn accepting_needs_the_signed_document_and_then_the_lines_are_read_only() 
     }
     assert!(!html.contains("edit-rate-line-"), "no edit sheet");
     no_raw_words(&html);
+    // On a phone the lines table scrolls inside its own box (AC8).
+    fits_a_phone(&html);
+    // The card lists the version with the day it was accepted and the signed
+    // acceptance (AC1).
+    let card_page = page(&app, AMAL, &format!("/rate-cards/{card}")).await;
+    let row = manpower_screens_support::cells_of_row(&card_page, ">v2<");
+    let accepted = format!("{}, rate-card-v2-signed.pdf", words(day(0)));
+    assert!(
+        row.iter().any(|cell| cell.contains(&accepted)),
+        "the v2 row says when it was accepted: {row:?}"
+    );
 
     let line = scalar(
         &app,
