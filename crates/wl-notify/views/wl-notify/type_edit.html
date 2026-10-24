@@ -3,12 +3,16 @@
     in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['types.edit_title']">
   <rx-stack>
-    <rx-page-header :title="kind.key" :subtitle="tx['types.edit_subtitle']"
+    <rx-page-header :title="kind.name" :subtitle="tx['types.edit_subtitle']"
                     :back="route('wl_notify.types')" :back-label="tx['types.title']"/>
     <rx-form action="{{ route('wl_notify.type_update', kind.key) }}" novalidate>
       <rx-card>
         <rx-form-errors/>
         <rx-stack>
+          <rx-infolist>
+            <rx-entry :label="tx['fields.key']" :value="kind.key"/>
+            <rx-entry :label="tx['fields.module']" :value="kind.module"/>
+          </rx-infolist>
           <rx-checkbox rx-for="reaction in reactions" :name="reaction.name" :label="reaction.label" :checked="reaction.checked" :id="'reaction-' ~ reaction.name"/>
           <rx-input name="staff_role" :label="tx['fields.staff_role']" :hint="tx['types.staff_role_hint']" :value="staff_role" id="type-staff-role"/>
         </rx-stack>

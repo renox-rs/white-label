@@ -12,6 +12,8 @@ const TEXTS: &[(&str, &str)] = &[
     ("auto.none", "—"),
     ("auto.fields.status", "Status"),
     ("auto.history.system", "System"),
+    ("auto.records.draft_invoice", "Draft invoice"),
+    ("auto.records.draft_bill", "Draft payer bill"),
 ];
 
 /// Every text of the app: this file's and those of the later parts.

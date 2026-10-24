@@ -1,391 +1,425 @@
-//! The insurance repairs: Sara Al Mansoori's Fortuner, hit in a car park, its
-//! claim registered with the police report, the estimate submitted and
-//! approved by Gulf Shield line by line with the excess, the body work
-//! running; and Khalid Obaid's Tiida, whose estimate is with Desert Falcon.
-//! Also the two job cards that went another way: the Sunny's estimate the
-//! customer declined, and the Pajero waiting for an alternator ordered from
-//! the supplier.
+//! The insurance claims, one in each state of the machine: registered,
+//! awaiting the survey, estimate submitted, approved, supplementary pending,
+//! rejected, withdrawn by the customer, total loss, invoiced, settled and
+//! voided. The insurance coordinator talks to the insurers, the technician
+//! drafts the lines, the workshop manager accepts the police report, the
+//! accountant bills (a payer bill for the insurer, an invoice for the excess).
 
+use auto::claims::{self, Answer, NewClaim, Withdrawal};
+use auto::job_cards::{self, NewLabour};
+use auto::{InsuranceClaim, LabourLine};
+use renox::chrono::TimeDelta;
 use renox::prelude::*;
-use wl_documents::{Document, DocumentKind, DocumentStatus};
+use renox::upload::Upload;
+use wl_documents::{Documents, NewDocument};
+use wl_kernel::documents::today;
+use wl_kernel::payer_bills::{PayerBillId, Remittance, RemittanceLine, payer_bills};
+use wl_kernel::payments::PaymentMethod;
 
-use super::{ADVISOR_EMAIL, INSURANCE_EMAIL, Seed, TECH_EMAIL, TECH2_EMAIL, WORKSHOP_EMAIL, day};
+use super::super::demo_data::{at, day};
+use super::{AISHA, CARLA, NABIL, SAMI, Seed, WALEED};
+
+/// How far a claim goes in its story.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Stage {
+    Registered,
+    Survey,
+    Submitted,
+    Approved,
+    Supplementary,
+    Rejected,
+    Withdrawn,
+    TotalLoss,
+    Invoiced,
+    Settled,
+    Voided,
+}
+
+/// A claim of the story: key, insurer key, vehicle, the customer who signs,
+/// day of the accident report, how far it goes, police report number.
+struct Case {
+    key: &'static str,
+    insurer: &'static str,
+    car: &'static str,
+    customer: &'static str,
+    day: i64,
+    stage: Stage,
+    report: &'static str,
+}
+
+const CASES: &[Case] = &[
+    Case {
+        key: "registered",
+        insurer: "falcon",
+        car: "cl1",
+        customer: "Mona Hassan",
+        day: -12,
+        stage: Stage::Registered,
+        report: "DXB-PR-6101",
+    },
+    Case {
+        key: "survey",
+        insurer: "falcon",
+        car: "cl2",
+        customer: "Priya Nair",
+        day: -11,
+        stage: Stage::Survey,
+        report: "DXB-PR-6102",
+    },
+    Case {
+        key: "submitted",
+        insurer: "falcon",
+        car: "cl3",
+        customer: "Yousef Al Mansoori",
+        day: -10,
+        stage: Stage::Submitted,
+        report: "SHJ-PR-6103",
+    },
+    Case {
+        key: "approved",
+        insurer: "falcon",
+        car: "cl4",
+        customer: "Khalid Ibrahim",
+        day: -14,
+        stage: Stage::Approved,
+        report: "DXB-PR-6104",
+    },
+    Case {
+        key: "supplementary",
+        insurer: "falcon",
+        car: "cl5",
+        customer: "Fatima Al Zaabi",
+        day: -13,
+        stage: Stage::Supplementary,
+        report: "DXB-PR-6105",
+    },
+    Case {
+        key: "rejected",
+        insurer: "crescent",
+        car: "cl6",
+        customer: "Ahmed Raza",
+        day: -26,
+        stage: Stage::Rejected,
+        report: "DXB-PR-6106",
+    },
+    Case {
+        key: "withdrawn",
+        insurer: "falcon",
+        car: "cl7",
+        customer: "Layla Haddad",
+        day: -30,
+        stage: Stage::Withdrawn,
+        report: "AJM-PR-6107",
+    },
+    Case {
+        key: "total_loss",
+        insurer: "falcon",
+        car: "cl8",
+        customer: "Omar Saleh",
+        day: -25,
+        stage: Stage::TotalLoss,
+        report: "DXB-PR-6108",
+    },
+    Case {
+        key: "invoiced",
+        insurer: "falcon",
+        car: "cl9",
+        customer: "Noor Khalid",
+        day: -22,
+        stage: Stage::Invoiced,
+        report: "DXB-PR-6109",
+    },
+    Case {
+        key: "settled",
+        insurer: "crescent",
+        car: "cl10",
+        customer: "Hamdan Saeed",
+        day: -60,
+        stage: Stage::Settled,
+        report: "SHJ-PR-6110",
+    },
+    Case {
+        key: "voided",
+        insurer: "crescent",
+        car: "cl11",
+        customer: "Salim Obaid",
+        day: -15,
+        stage: Stage::Voided,
+        report: "DXB-PR-6111",
+    },
+];
 
 impl Seed {
-    /// The insurer record of the party `key`.
-    async fn insurer(&self, key: &str) -> Result<i64> {
-        let party = self.parties[key].0;
-        let rows = renox::db::sql(format!(
-            "select id from auto_insurers where party_id = {party}"
-        ))
-        .fetch_all(self.db())
-        .await?;
-        let row = rows
-            .first()
-            .ok_or_else(|| renox::anyhow::anyhow!("demo seed: the insurer {key}"))?;
-        Ok(row.try_get::<i64>("id")?)
-    }
-
-    /// The police accident report of job card `job`, uploaded by the
-    /// advisor and accepted by the workshop manager (the second user,
-    /// `AUT.ACL.20`). Nothing when the document kinds are not installed.
-    async fn police_report(&self, job: i64, number: &str) -> Result {
-        let Some(kind) = DocumentKind::by_key(self.db(), auto::seed::POLICE_REPORT_KIND).await?
-        else {
-            return Ok(());
-        };
-        let card = auto::JobCard::find_or_404(self.db(), job).await?;
-        let subject = card.subject();
-        Document::create(
-            self.db(),
-            Document {
-                subject_type: subject.subject_type.clone(),
-                subject_id: subject.subject_id,
-                kind_id: kind.id,
-                title: "Police accident report".into(),
-                number: Some(number.to_owned()),
-                issue_date: Some(day(-4)),
-                issuing_authority: Some("Dubai Police".into()),
-                current_version: 1,
-                status: DocumentStatus::Accepted,
-                uploaded_by: Some(self.user(ADVISOR_EMAIL).await?.id),
-                reviewed_by: Some(self.user(WORKSHOP_EMAIL).await?.id),
-                reviewed_at: Some(renox::db::now()),
-                accepted_at: Some(renox::db::now()),
-                ..Default::default()
-            },
+    /// The police report on the claim: attached by the coordinator and
+    /// accepted by the workshop manager, a second user (a legal block).
+    async fn police_report(&self, claim: &InsuranceClaim, number: &str) -> Result {
+        let report = Documents::attach(
+            &self.state,
+            Some(self.who(CARLA)),
+            NewDocument::new(
+                claim.subject(),
+                "police_report",
+                Upload::new(
+                    "police-report.pdf",
+                    "application/pdf",
+                    format!("%PDF-1.7 police report {number}").into_bytes(),
+                ),
+            )
+            .number(number),
         )
-        .await?;
+        .await?
+        .expect("the report is attached");
+        Documents::accept(&self.state, self.who(WALEED), &report).await?;
         Ok(())
     }
 
-    /// An accident job card: checked in with the police report, inspected
-    /// and priced by `technician`.
-    async fn accident_job(
-        &mut self,
-        key: &'static str,
-        technician: &str,
-        hours_ago: i64,
-        police: &str,
-        lines: &[(&str, &str, &str, &str)],
-        hours: &str,
-    ) -> Result<i64> {
-        let id = self
-            .check_in(key, key, "accident_estimate", hours_ago)
-            .await?;
-        let vehicle = auto::Vehicle::find_or_404(self.db(), self.vehicles[key]).await?;
-        let owner = wl_parties::Party::find(self.db(), vehicle.owner_party_id)
-            .await?
-            .map(|p| p.legal_name_en)
-            .unwrap_or_default();
-        self.on_job(
-            ADVISOR_EMAIL,
-            id,
-            "intake",
-            &[
-                (
-                    "complaint",
-                    "Accident damage to the front, insurance repair",
-                ),
-                ("odometer", &vehicle.odometer_km.to_string()),
-                ("fuel", "quarter"),
-                ("condition", "Front bumper cracked, left headlamp broken"),
-                ("acknowledged_by", &owner),
-                ("accident", "on"),
-                ("police_report", police),
-            ],
-        )
-        .await?;
-        let tech = self.user(technician).await?;
-        self.on_job(
-            ADVISOR_EMAIL,
-            id,
-            "technician",
-            &[("technician", &tech.id.to_string())],
-        )
-        .await?;
-        self.police_report(id, police).await?;
-        self.on_job(technician, id, "inspect", &[]).await?;
-        self.on_job(
-            technician,
-            id,
-            "labour",
-            &[("operation", "BODY-PAINT"), ("hours", hours)],
-        )
-        .await?;
-        for (code, name, quantity, price) in lines {
-            self.on_job(
-                technician,
-                id,
-                "parts",
-                &[
-                    ("item_code", code),
-                    ("description", name),
-                    ("quantity", quantity),
-                    ("unit_price", price),
-                    ("condition", "new"),
-                ],
-            )
-            .await?;
+    /// The insurer's answer to the estimate, line by line at their price.
+    fn answer(&self, reference: &str, lines: &[LabourLine]) -> Answer {
+        let mut answer = Answer::new(reference, &format!("{reference}-approval-email"));
+        for line in lines {
+            answer = answer.labour(line.id, line.price());
         }
-        Ok(id)
+        answer
     }
 
-    /// The claim of job card `job` with insurer `insurer`, registered by the
-    /// insurance coordinator, the estimate sent and submitted; its id.
-    async fn claim(
-        &self,
-        job: i64,
-        vehicle: &str,
-        insurer: &str,
-        numbers: (&str, &str, &str),
-        excess: &str,
-    ) -> Result<i64> {
-        let (policy, claim_no, police) = numbers;
-        let made = self
-            .driver
-            .post(
-                INSURANCE_EMAIL,
-                "/auto/claims",
-                &[
-                    ("insurer", &self.insurer(insurer).await?.to_string()),
-                    ("vehicle", &self.vehicles[vehicle].to_string()),
-                    ("job_card", &job.to_string()),
-                    ("policy_no", policy),
-                    ("claim_no", claim_no),
-                    ("accident_date", &day(-4).to_string()),
-                    ("police_report_no", police),
-                    ("police_report_date", &day(-4).to_string()),
-                    ("repair_type", "non_agency"),
-                    ("excess", excess),
-                ],
-            )
-            .await?;
-        let id = made
-            .redirected_id()
-            .ok_or_else(|| renox::anyhow::anyhow!("demo seed: the claim of {vehicle}"))?;
-        // The advisor sends the estimate; the claim submits what was sent.
-        self.on_job(
-            ADVISOR_EMAIL,
-            job,
-            "send",
-            &[
-                ("promised_for", &day(5).to_string()),
-                ("warranty_days", "180"),
-            ],
-        )
-        .await?;
-        self.driver
-            .post(INSURANCE_EMAIL, &format!("/auto/claims/{id}/submit"), &[])
-            .await?;
-        Ok(id)
-    }
-
-    /// The insurance repairs, the declined estimate and the job waiting for a
-    /// part.
+    /// All the claims of the story.
     pub(crate) async fn claims(&mut self) -> Result {
-        // Fortuner: approved by Gulf Shield, the body work running.
-        let fortuner = self
-            .accident_job(
-                "fortuner",
-                TECH_EMAIL,
-                52,
-                "DXB-PR-2026-118734",
-                &[
-                    ("BMP-FR-FT", "Front bumper, Fortuner", "1", "1,780"),
-                    ("HDL-LH-FT", "Headlamp left, Fortuner", "1", "1,320"),
-                ],
-                "6",
-            )
-            .await?;
-        let claim = self
-            .claim(
-                fortuner,
-                "fortuner",
-                "shield",
-                ("GS-MTR-0048821", "GS-CLM-26-07713", "DXB-PR-2026-118734"),
-                "500",
-            )
-            .await?;
-        let mut answer: Vec<(String, String)> = vec![
-            ("reference".to_owned(), "GS-APR-26-07713".to_owned()),
-            (
-                "document".to_owned(),
-                "Approval letter GS-APR-26-07713".to_owned(),
-            ),
-            ("excess".to_owned(), "500".to_owned()),
-        ];
-        for line in self.lines("auto_job_labour_lines", fortuner).await? {
-            answer.push((format!("line_labour_{line}"), "1,440".to_owned()));
+        for case in CASES {
+            self.claim_case(case).await?;
         }
-        for (line, amount) in self
-            .lines("auto_job_part_lines", fortuner)
-            .await?
-            .into_iter()
-            .zip(["1,780", "1,250"])
-        {
-            answer.push((format!("line_part_{line}"), amount.to_owned()));
-        }
-        let pairs: Vec<(&str, &str)> = answer
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_str()))
-            .collect();
-        self.driver
-            .post(
-                INSURANCE_EMAIL,
-                &format!("/auto/claims/{claim}/approve"),
-                &pairs,
+        Ok(())
+    }
+
+    async fn claim_case(&mut self, case: &Case) -> Result {
+        let insurer = self.insurers[case.insurer].clone();
+        let vehicle = self.vehicle(case.car).clone();
+        let carla = self.who(CARLA).clone();
+        let sami = self.who(SAMI).clone();
+        let nabil = self.who(NABIL).clone();
+        let with_estimate = case.stage >= Stage::Submitted && case.stage != Stage::Voided;
+        // Day 0 of the case: the vehicle comes in, the claim is registered,
+        // the estimate is drafted and sent.
+        let (card, claim, lines) = at!(self, day(case.day), {
+            let card = self
+                .check_in(
+                    case.car,
+                    case.customer,
+                    "Accident damage on the right side",
+                    NABIL,
+                    0,
+                    0,
+                )
+                .await?;
+            let mut lines = Vec::new();
+            if with_estimate {
+                let drafted = self
+                    .draft(
+                        card.id,
+                        NABIL,
+                        &[
+                            ("Door panel repair", 3_000, 12_000),
+                            ("Respray and polish", 2_000, 12_000),
+                        ],
+                        &[],
+                    )
+                    .await?;
+                lines = drafted.labour;
+                self.send(card.id).await?;
+            }
+            let claim = claims::register(
+                &self.state,
+                &carla,
+                NewClaim::new(
+                    insurer.id,
+                    vehicle.id,
+                    &format!("POL-{}", 7_000 + vehicle.id),
+                    &format!("{}-2026-{:03}", case.insurer.to_uppercase(), vehicle.id),
+                    today() - TimeDelta::days(3),
+                )
+                .job_card(card.id)
+                .police_report(case.report, Some(today() - TimeDelta::days(2)))
+                .excess(20_000),
             )
             .await?;
-        for line in self.lines("auto_job_part_lines", fortuner).await? {
-            self.on_job(TECH_EMAIL, fortuner, &format!("parts/{line}/issue"), &[])
+            Ok::<_, renox::Error>((card, claim, lines))
+        })?;
+        self.cards.insert(case.key, card.id);
+        self.claims.insert(case.key, claim.id);
+        if case.stage == Stage::Registered {
+            return Ok(());
+        }
+        if case.stage == Stage::Voided {
+            at!(self, day(case.day + 1), {
+                claims::void(&self.state, &carla, claim.id, "Registered twice by mistake").await
+            })?;
+            return Ok(());
+        }
+
+        // Survey booked, estimate submitted, the insurer answers.
+        at!(self, day(case.day + 1), {
+            self.police_report(&claim, case.report).await?;
+            claims::book_survey(&self.state, &carla, claim.id).await
+        })?;
+        if case.stage == Stage::Survey {
+            return Ok(());
+        }
+        at!(self, day(case.day + 2), {
+            claims::submit_estimate(&self.state, &carla, claim.id).await
+        })?;
+        if case.stage == Stage::Submitted {
+            return Ok(());
+        }
+        if case.stage == Stage::Rejected {
+            at!(self, day(case.day + 4), {
+                claims::reject(
+                    &self.state,
+                    &carla,
+                    claim.id,
+                    "The policy had lapsed on the day of the accident",
+                )
+                .await
+            })?;
+            return Ok(());
+        }
+        let reference = format!("LPO-{}", 8_000 + vehicle.id);
+        at!(self, day(case.day + 4), {
+            claims::approve(
+                &self.state,
+                &carla,
+                claim.id,
+                self.answer(&reference, &lines),
+            )
+            .await
+        })?;
+        if case.stage == Stage::Approved {
+            // The job goes on: the first line is done.
+            at!(self, day(case.day + 5), {
+                job_cards::record_work(
+                    &self.state,
+                    &nabil,
+                    lines[0].id,
+                    auto::WorkStatus::Done,
+                    None,
+                )
+                .await
+            })?;
+            return Ok(());
+        }
+        if case.stage == Stage::Supplementary {
+            at!(self, day(case.day + 5), {
+                job_cards::record_work(
+                    &self.state,
+                    &nabil,
+                    lines[0].id,
+                    auto::WorkStatus::Done,
+                    None,
+                )
+                .await?;
+                job_cards::add_labour(
+                    &self.state,
+                    &nabil,
+                    card.id,
+                    NewLabour::hourly("Straighten the frame rail", 3_000, 12_000),
+                )
+                .await?;
+                job_cards::send_estimate(
+                    &self.state,
+                    &sami,
+                    card.id,
+                    auto::job_cards::Promise::default(),
+                )
+                .await?;
+                claims::request_supplementary(
+                    &self.state,
+                    &sami,
+                    claim.id,
+                    "Frame rail bent behind the bumper",
+                )
+                .await
+            })?;
+            return Ok(());
+        }
+        if case.stage == Stage::Withdrawn {
+            at!(self, day(case.day + 6), {
+                job_cards::record_work(
+                    &self.state,
+                    &nabil,
+                    lines[0].id,
+                    auto::WorkStatus::Done,
+                    None,
+                )
+                .await?;
+                claims::withdraw(
+                    &self.state,
+                    &carla,
+                    claim.id,
+                    Withdrawal::new("Withdrawn by the customer: the car is sold")
+                        .document("withdrawal-letter-107")
+                        .stop(),
+                )
+                .await
+            })?;
+            return Ok(());
+        }
+        if case.stage == Stage::TotalLoss {
+            at!(self, day(case.day + 6), {
+                job_cards::record_work(
+                    &self.state,
+                    &nabil,
+                    lines[0].id,
+                    auto::WorkStatus::Done,
+                    None,
+                )
+                .await?;
+                claims::declare_total_loss(
+                    &self.state,
+                    &carla,
+                    claim.id,
+                    "falcon-total-loss-notice-108",
+                )
+                .await
+            })?;
+            return Ok(());
+        }
+
+        // The repair: the work, the QC (the claim completes by itself), the
+        // collection, then the accountant bills the insurer and the customer.
+        at!(self, day(case.day + 8), {
+            for line in &lines {
+                job_cards::record_work(&self.state, &nabil, line.id, auto::WorkStatus::Done, None)
+                    .await?;
+            }
+            self.quality(card.id, NABIL, true).await?;
+            self.deliver(card.id, case.customer).await
+        })?;
+        let invoiced = at!(self, day(case.day + 9), {
+            claims::invoice(&self.state, self.who(AISHA), claim.id).await
+        })?;
+        if case.stage == Stage::Invoiced {
+            return Ok(());
+        }
+        // Settled: the insurer's advice pays its part, the customer pays the
+        // excess.
+        let bill = invoiced
+            .payer_bill_id
+            .ok_or_else(|| renox::anyhow::anyhow!("demo seed: no payer bill"))?;
+        at!(self, day(case.day + 30), {
+            let bills = payer_bills(&self.state);
+            let mut advice = Remittance::new("CRS-ADV-1", today());
+            for line in bills.lines(self.db(), PayerBillId(bill)).await? {
+                advice = advice.line(RemittanceLine::paid(line.id, line.claimed));
+            }
+            bills
+                .record_remittance(&self.state, PayerBillId(bill), advice, self.who(AISHA))
+                .await
+        })?;
+        if let Some(invoice) = invoiced.customer_invoice_id {
+            self.pay_invoice(invoice, PaymentMethod::Card, None, case.day + 31, "")
                 .await?;
         }
-
-        // Tiida: the estimate is with Desert Falcon.
-        let tiida = self
-            .accident_job(
-                "tiida",
-                TECH2_EMAIL,
-                38,
-                "DXB-PR-2026-121905",
-                &[("WPR-BLD-24", "Wiper blade 24 in", "2", "35")],
-                "4",
-            )
-            .await?;
-        self.claim(
-            tiida,
-            "tiida",
-            "falcon",
-            ("DF-MOT-77310", "DF-26-04452", "DXB-PR-2026-121905"),
-            "350",
-        )
-        .await?;
-
-        // Sunny: the customer declined the clutch estimate.
-        let sunny = self.check_in("sunny", "sunny", "diagnosis", 75).await?;
-        self.intake(sunny, "Clutch slipping on hills", "189,760", "Ravi Kumar")
-            .await?;
-        let tech = self.user(TECH2_EMAIL).await?;
-        self.on_job(
-            ADVISOR_EMAIL,
-            sunny,
-            "technician",
-            &[("technician", &tech.id.to_string())],
-        )
-        .await?;
-        self.on_job(TECH2_EMAIL, sunny, "inspect", &[]).await?;
-        self.on_job(
-            TECH2_EMAIL,
-            sunny,
-            "labour",
-            &[("operation", "CLUTCH"), ("hours", "4")],
-        )
-        .await?;
-        self.on_job(
-            TECH2_EMAIL,
-            sunny,
-            "parts",
-            &[
-                ("item_code", "CLT-KIT-NS"),
-                ("description", "Clutch kit, Nissan Sunny"),
-                ("quantity", "1"),
-                ("unit_price", "980"),
-                ("condition", "new"),
-            ],
-        )
-        .await?;
-        self.on_job(
-            ADVISOR_EMAIL,
-            sunny,
-            "send",
-            &[
-                ("promised_for", &day(1).to_string()),
-                ("warranty_days", "90"),
-            ],
-        )
-        .await?;
-        self.on_job(
-            ADVISOR_EMAIL,
-            sunny,
-            "decline",
-            &[(
-                "reason",
-                "Customer will sell the car; asked for the old clutch to stay",
-            )],
-        )
-        .await?;
-
-        // Pajero: the alternator is on special order from the supplier.
-        let pajero = self.check_in("pajero", "pajero", "diagnosis", 80).await?;
-        self.intake(
-            pajero,
-            "Battery light on, battery drains overnight",
-            "152,640",
-            "Omar Siddiqui",
-        )
-        .await?;
-        self.on_job(
-            ADVISOR_EMAIL,
-            pajero,
-            "technician",
-            &[("technician", &tech.id.to_string())],
-        )
-        .await?;
-        self.on_job(TECH2_EMAIL, pajero, "inspect", &[]).await?;
-        self.on_job(
-            TECH2_EMAIL,
-            pajero,
-            "labour",
-            &[("operation", "DIAG"), ("hours", "2")],
-        )
-        .await?;
-        self.on_job(
-            TECH2_EMAIL,
-            pajero,
-            "parts",
-            &[
-                ("item_code", "ALT-PJ-90A"),
-                ("description", "Alternator 90 A, Pajero"),
-                ("quantity", "1"),
-                ("unit_price", "2,150"),
-                ("condition", "new"),
-                ("special_order", "on"),
-                ("source", "local_supplier"),
-            ],
-        )
-        .await?;
-        self.on_job(
-            ADVISOR_EMAIL,
-            pajero,
-            "send",
-            &[
-                ("promised_for", &day(3).to_string()),
-                ("warranty_days", "180"),
-            ],
-        )
-        .await?;
-        self.on_job(
-            ADVISOR_EMAIL,
-            pajero,
-            "approve",
-            &[
-                ("name", "Omar Siddiqui"),
-                ("method", "recorded"),
-                ("signature", ""),
-            ],
-        )
-        .await?;
-        if let Some(line) = self.lines("auto_job_part_lines", pajero).await?.first() {
-            self.on_job(
-                ADVISOR_EMAIL,
-                pajero,
-                &format!("parts/{line}/expected"),
-                &[("expected", &day(3).to_string())],
-            )
-            .await?;
-        }
-        self.on_job(TECH2_EMAIL, pajero, "wait-parts", &[]).await?;
+        at!(self, day(case.day + 31), {
+            claims::settle_if_paid(&self.state, claim.id).await
+        })?;
         Ok(())
     }
 }

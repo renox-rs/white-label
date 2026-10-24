@@ -22,6 +22,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_scheduling.bookings.service", "Service"),
     ("wl_scheduling.bookings.when", "Starts"),
     ("wl_scheduling.bookings.resources", "With"),
+    ("wl_scheduling.bookings.party_id", "Party no."),
+    ("wl_scheduling.bookings.first_resource", "First resource"),
+    ("wl_scheduling.bookings.ends", "Ends"),
+    ("wl_scheduling.bookings.source", "Booked through"),
     ("wl_scheduling.bookings.new", "Book an appointment"),
     ("wl_scheduling.new.title", "Book an appointment"),
     (
@@ -328,6 +332,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_scheduling.conflicts.empty", "No bookings in conflict"),
     ("wl_scheduling.conflicts.resource", "Resource"),
+    ("wl_scheduling.conflicts.causes", "Cause"),
     ("wl_scheduling.conflicts.all", "All resources"),
     ("wl_scheduling.conflicts.any", "The first that can take it"),
     ("wl_scheduling.conflicts.day", "Day"),

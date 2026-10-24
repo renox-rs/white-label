@@ -159,7 +159,7 @@
         <rx-column :label="tx['vehicles.plate']" hide-narrow>{{ row.plate }}</rx-column>
         <rx-column :label="tx['fleet.po']">{{ row.po }}</rx-column>
         <rx-column :label="tx['fields.status']">{{ row.status }}</rx-column>
-        <rx-column :label="tx['fleet.invoice_ref']" hide-narrow>{{ row.invoice }}</rx-column>
+        <rx-column :label="tx['fleet.invoice_ref']" hide-narrow><a rx-if="row.invoice_url" href="{{ row.invoice_url }}">{{ row.invoice }}</a><template rx-else>{{ row.invoice }}</template></rx-column>
         <rx-slot name="empty"><rx-empty :title="tx['fleet.jobs_empty']" icon="wrench"/></rx-slot>
       </rx-table>
       <template rx-if="can_po">
@@ -179,7 +179,7 @@
         <rx-column :label="tx['fleet.invoice_kind']" hide-narrow>{{ row.kind }}</rx-column>
         <rx-column :label="tx['fleet.jobs']" align="num">{{ row.jobs }}</rx-column>
         <rx-column :label="tx['fleet.net']" align="num">{{ row.net }}</rx-column>
-        <rx-column :label="tx['fleet.invoice_ref']">{{ row.invoice }}</rx-column>
+        <rx-column :label="tx['fleet.invoice_ref']"><a rx-if="row.invoice_url" href="{{ row.invoice_url }}">{{ row.invoice }}</a><template rx-else>{{ row.invoice }}</template></rx-column>
         <rx-slot name="empty"><rx-empty :title="tx['fleet.invoices_empty']" icon="receipt"/></rx-slot>
       </rx-table>
     </rx-card>

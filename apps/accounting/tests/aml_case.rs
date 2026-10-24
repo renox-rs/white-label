@@ -395,6 +395,18 @@ async fn staff_raise_a_concern_and_see_nothing_of_the_case() {
         t.party_row(client.company).await.status,
         PartyStatus::Active
     );
+    // The MLRO reads its history in words: opened by the one who raised it
+    // (#493), not the key `accounting.aml.transition.insert` and "System".
+    let page = t
+        .get(&mlro, &format!("/accounting/aml-cases/{}", cases[0].id))
+        .await;
+    page.assert_ok();
+    let html = page.text();
+    assert!(!html.contains("aml.transition.insert"), "{html}");
+    let history = &html[html.rfind("<table").expect("the history table")..];
+    assert!(history.contains("Opened"), "{history}");
+    assert!(history.contains(&manager.name), "{history}");
+    assert!(!history.contains("System"), "{history}");
     // A concern needs no tasks to close, but it must be reviewed first.
     t.post(
         &mlro,

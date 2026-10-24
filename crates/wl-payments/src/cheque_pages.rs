@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 use renox::auth::User;
 use renox::auth::permissions::{Scope, users_with_role_in};
 use renox::chrono::NaiveDate;
-use renox::grid::{Column, Grid, GridPage, GridRequest};
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::{self, TransitionError};
@@ -138,8 +138,9 @@ pub(crate) fn status_kind(status: ChequeStatus) -> &'static str {
 }
 
 /// The cheques grid: party, number, bank, date, amounts, direction and status.
-pub fn grid(lang: &Lang) -> Grid {
-    grid_with(&texts_in(lang))
+pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let grid = grid_with(&texts_in(lang));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// [`grid`] with the texts of `t`.
@@ -147,6 +148,9 @@ fn grid_with(t: Text<'_>) -> Grid {
     let codes: Vec<&str> = STATUSES.iter().map(|s| s.as_str()).collect();
     Grid::new("wl-payment-cheques")
         .title(&t("cheques.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::number("id", "#")
                 .frozen()
@@ -169,8 +173,16 @@ fn grid_with(t: Text<'_>) -> Grid {
         )
         .column(Column::text("bank", &t("cheques.bank")).searchable())
         .column(Column::date("cheque_date", &t("cheques.date")))
-        .column(Column::money("amount", &t("fields.amount")).currency_from("currency"))
-        .column(Column::money("open_amount", &t("cheques.open")).currency_from("currency"))
+        .column(
+            Column::money("amount", &t("fields.amount"))
+                .currency_from("currency")
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("open_amount", &t("cheques.open"))
+                .currency_from("currency")
+                .summary(Summary::Sum),
+        )
         .column(Column::select(
             "direction",
             &t("fields.direction"),
@@ -216,17 +228,27 @@ async fn index(
     user: AuthUser,
     lang: Lang,
     request: GridRequest,
-) -> Result<View> {
+) -> Result<Response> {
     // The cheques received with the agreements of the user's scope.
     let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::CHEQUES_VIEW).await?;
     let query = reach
         .apply(&state.db, Cheque::query(), "agreement_type", "agreement_id")
         .await?;
-    let cheques = grid(&lang).page(query, &request).await?;
+    // The export is for those who manage them.
+    let can_export = user.has_permission(permissions::CHEQUES_MANAGE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let cheques = grid.page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         cheques,
-    }))
+    })
+    .into_response())
 }
 
 /// One document a cheque pays.

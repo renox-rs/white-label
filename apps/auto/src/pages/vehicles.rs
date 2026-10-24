@@ -13,13 +13,17 @@
 //! (`PartyDirectory::search`), never typed as an id; a party code such as
 //! `P-00023` is accepted too.
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 
+use super::lists;
 use super::{
     Texts, parse_km, parse_number, parse_optional_id, party_choices, party_name, party_of, require,
     text,
 };
+use crate::fleet_contract::FleetContract;
 use crate::number_text;
 use crate::permissions;
 use crate::texts;
@@ -42,35 +46,6 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
-/// What the list can be narrowed by.
-#[derive(Deserialize, Default, Debug, Clone)]
-pub struct Filter {
-    /// Text in the plate, VIN, make or model.
-    #[serde(default)]
-    q: String,
-    /// `fleet` or `private`; blank for every vehicle.
-    #[serde(default)]
-    kind: String,
-}
-
-impl Filter {
-    /// The list's address with this filter.
-    fn href(&self) -> String {
-        if self.kind.is_empty() {
-            "/auto/vehicles".to_owned()
-        } else {
-            format!("/auto/vehicles?kind={}", self.kind)
-        }
-    }
-
-    fn with_kind(&self, kind: &str) -> Filter {
-        Filter {
-            kind: kind.to_owned(),
-            ..self.clone()
-        }
-    }
-}
-
 /// The odometer as people read it: `52,000 km`.
 pub(crate) fn km_text(km: i64) -> String {
     format!("{} km", number_text(km))
@@ -84,25 +59,6 @@ fn emirate_options() -> Vec<[String; 2]> {
         .collect()
 }
 
-/// One vehicle of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct VehicleRow {
-    /// The primary key.
-    pub id: i64,
-    /// `Dubai A 12345`.
-    pub plate: String,
-    /// The VIN, or a dash.
-    pub vin: String,
-    /// `Toyota Hilux 2022`.
-    pub vehicle: String,
-    /// The owner's name.
-    pub owner: String,
-    /// Fleet or private.
-    pub kind: String,
-    /// `52,000 km`.
-    pub odometer: String,
-}
-
 /// `Toyota Hilux 2022`.
 pub(crate) fn vehicle_text(vehicle: &Vehicle) -> String {
     match vehicle.model_year {
@@ -111,16 +67,57 @@ pub(crate) fn vehicle_text(vehicle: &Vehicle) -> String {
     }
 }
 
+/// The vehicles grid: the plate first and frozen, what the vehicle is, the
+/// VIN, whose it is, private or fleet, and the odometer in kilometres;
+/// searched by plate, VIN, make or model.
+pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
+    let kinds = lists::options(t, "vehicles.kind", ["fleet", "private"]);
+    Grid::new("auto-vehicles")
+        .title(&t("vehicles.title"))
+        .column(
+            Column::text("plate", &t("vehicles.plate"))
+                .computed(&lists::own_plate_sql())
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/auto/vehicles/{id}"),
+        )
+        .column(
+            Column::text("vehicle", &t("vehicles.make"))
+                .computed(
+                    "{T}.\"make\" || ' ' || {T}.\"model_name\" || \
+                     CASE WHEN {T}.\"model_year\" IS NULL THEN '' \
+                     ELSE ' ' || CAST({T}.\"model_year\" AS TEXT) END",
+                )
+                .mobile()
+                .searchable(),
+        )
+        .column(
+            Column::text("vin", &t("vehicles.vin"))
+                .searchable()
+                .copyable(),
+        )
+        .column(Column::custom("owner", &t("vehicles.owner")).mobile())
+        .column(
+            Column::select("kind", &t("vehicles.kind"), kinds)
+                .computed(
+                    "CASE WHEN {T}.\"fleet_contract_id\" IS NULL THEN 'private' ELSE 'fleet' END",
+                )
+                .badges(&[("fleet", "info"), ("private", "neutral")]),
+        )
+        .column(Column::number("odometer_km", &t("vehicles.odometer")).mobile())
+        .sort_by("plate")
+        .row_url("/auto/vehicles/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("vehicles.empty"), None)
+}
+
 /// What the list page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "auto/vehicles.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    rows: Vec<VehicleRow>,
-    kind_tabs: Vec<(String, String)>,
-    kind_current: String,
-    kind: String,
-    q: String,
+    vehicles: GridPage<Vehicle>,
     emirate_options: Vec<[String; 2]>,
     can_manage: bool,
 }
@@ -130,56 +127,20 @@ async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
-    Query(filter): Query<Filter>,
+    request: GridRequest,
 ) -> Result<View> {
     require(&user, permissions::VEHICLES_VIEW)?;
-    let found = vehicles::search(&state.db, &filter.q).await?;
-    let mut rows = Vec::new();
-    for vehicle in found {
-        let fleet = vehicle.is_fleet();
-        match filter.kind.as_str() {
-            "fleet" if !fleet => continue,
-            "private" if fleet => continue,
-            _ => {}
-        }
-        rows.push(VehicleRow {
-            id: vehicle.id,
-            plate: vehicle.plate(),
-            vin: vehicle.vin.clone().unwrap_or_else(|| text(&lang, "none")),
-            vehicle: vehicle_text(&vehicle),
-            owner: party_name(&state, &lang.locale, vehicle.owner_party_id).await,
-            kind: text(
-                &lang,
-                if fleet {
-                    "vehicles.kind.fleet"
-                } else {
-                    "vehicles.kind.private"
-                },
-            ),
-            odometer: km_text(vehicle.odometer_km),
-        });
-    }
-    let kind_tabs = vec![
-        (
-            filter.with_kind("").href(),
-            text(&lang, "vehicles.filter.all"),
-        ),
-        (
-            filter.with_kind("fleet").href(),
-            text(&lang, "vehicles.filter.fleet"),
-        ),
-        (
-            filter.with_kind("private").href(),
-            text(&lang, "vehicles.filter.private"),
-        ),
-    ];
+    let page = grid(&lists::texts_in(&lang))
+        .page(Vehicle::query(), &request)
+        .await?;
+    let ids: Vec<i64> = page.items().iter().map(|v| v.owner_party_id).collect();
+    let names = lists::party_names(&state, &lang, ids).await;
+    let vehicles = page.extend(|vehicle| {
+        json!({ "owner": names.get(&vehicle.owner_party_id).cloned().unwrap_or_default() })
+    });
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        rows,
-        kind_tabs,
-        kind_current: filter.href(),
-        kind: filter.kind.clone(),
-        q: filter.q.clone(),
+        vehicles,
         emirate_options: emirate_options(),
         can_manage: user.has_permission(permissions::VEHICLES_MANAGE),
     }))
@@ -354,6 +315,7 @@ pub(crate) struct ShowPage {
     can_manage: bool,
     emirate_options: Vec<[String; 2]>,
     owner_options: Vec<[String; 2]>,
+    fleet_options: Vec<[String; 2]>,
     emirate: String,
     plate_code: String,
     plate_number: String,
@@ -391,6 +353,13 @@ async fn show(
         }
     };
     let history = super::job_cards::history_rows(&state, &lang, vehicle.id).await?;
+    let contract = match vehicle.fleet_contract_id {
+        Some(contract_id) => FleetContract::find(&state.db, contract_id).await?,
+        None => None,
+    };
+    let contract_label = contract
+        .as_ref()
+        .map(|c| format!("{} · {}", c.number(), c.title));
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         id: vehicle.id,
@@ -407,9 +376,9 @@ async fn show(
             .clone()
             .unwrap_or_else(|| text(&lang, "none")),
         owner: owner.clone(),
-        fleet: vehicle
-            .fleet_contract_id
-            .map_or_else(|| text(&lang, "none"), |id| format!("#{id}")),
+        fleet: contract_label
+            .clone()
+            .unwrap_or_else(|| text(&lang, "none")),
         odometer: km_text(vehicle.odometer_km),
         odometer_at: vehicle
             .odometer_at
@@ -420,6 +389,10 @@ async fn show(
         can_manage: user.has_permission(permissions::VEHICLES_MANAGE),
         emirate_options: emirate_options(),
         owner_options: vec![[vehicle.owner_party_id.to_string(), owner]],
+        fleet_options: match (vehicle.fleet_contract_id, contract_label) {
+            (Some(contract_id), Some(label)) => vec![[contract_id.to_string(), label]],
+            _ => Vec::new(),
+        },
         emirate: vehicle.plate_emirate.as_str().to_owned(),
         plate_code: vehicle.plate_code.clone(),
         plate_number: vehicle.plate_number.clone(),

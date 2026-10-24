@@ -28,6 +28,7 @@
 //! actions answer with a toast and a refresh; a refusal answers 422 with its
 //! lines.
 
+use renox::grid::{Column, ExportFormat, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::state_machine::history;
 use serde::{Deserialize, Serialize};
@@ -36,7 +37,10 @@ use wl_kernel::deadlines::deadline_tasks;
 use wl_kernel::documents::{dubai_text, today};
 
 use super::returns::{ReturnRow, rows as return_rows};
-use super::{Texts, invalid, parse_aed, parse_id, party_name, require, text, user_name};
+use super::{
+    Texts, client_column, invalid, number_column, parse_aed, parse_id, party_name, require, text,
+    user_name,
+};
 use crate::cdd::CddFile;
 use crate::cdd_files;
 use crate::client_notices::{self, ClientNotice, NeutralTemplate};
@@ -109,16 +113,6 @@ pub(crate) fn status_label(lang: &Lang, status: EngagementStatus) -> String {
     text(lang, &format!("engagements.status.{}", status.as_str()))
 }
 
-/// The neutral reason of an engagement in the page's language; empty when
-/// it has none.
-pub(crate) fn reason_label(lang: &Lang, engagement: &Engagement) -> String {
-    engagement
-        .reason_code
-        .as_deref()
-        .map(|code| reasons::label(lang, code))
-        .unwrap_or_default()
-}
-
 /// The reason code `code` as a reader sees it: the neutral text, except that
 /// the holders of `parties.block_reason.view` (the MLRO and deputy) read
 /// *CDD rejected* where everybody else reads *Declined* (BL-ACC-02: "the
@@ -131,44 +125,99 @@ fn shown_label(lang: &Lang, code: &str, sees_restricted: bool) -> String {
     }
 }
 
-/// One engagement of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct EngagementRow {
-    /// The primary key.
-    pub id: i64,
-    /// The number.
-    pub number: String,
-    /// The client's name.
-    pub client: String,
-    /// The services.
-    pub title: String,
-    /// The status in the page's language.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
-    /// The neutral reason, if any.
-    pub reason: String,
+/// The engagements grid: search on the number, client and services, filters
+/// by status, fee basis and reason, sums of the retainer. The reason is the
+/// neutral label of the stored code, so neither the page nor an export names
+/// a restricted reason (`ACC.ACL.14`).
+pub(crate) fn grid(lang: &Lang) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let statuses: Vec<(String, String)> = EngagementStatus::ALL
+        .iter()
+        .map(|s| (s.as_str().to_owned(), status_label(lang, *s)))
+        .collect();
+    let fee_bases: Vec<(String, String)> = FeeBasis::ALL
+        .iter()
+        .map(|b| {
+            (
+                b.as_str().to_owned(),
+                t(&format!("engagements.fee_basis.{}", b.as_str())),
+            )
+        })
+        .collect();
+    Grid::new("accounting-engagements")
+        .title(&t("engagements.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(number_column(
+            &t("engagements.number"),
+            "ENG",
+            "/accounting/engagements/{id}",
+        ))
+        .column(client_column(&t("engagements.client"), "client_party_id"))
+        .column(
+            Column::text("title", &t("engagements.services"))
+                .mobile()
+                .searchable(),
+        )
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("active", "success"),
+                    ("suspended", "warning"),
+                    ("onboarding", "info"),
+                    ("ended", "info"),
+                    ("declined", "info"),
+                ])
+                .mobile(),
+        )
+        .column(
+            Column::text("reason", &t("engagements.reason"))
+                .computed(&reason_sql(lang))
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::select("fee_basis", &t("engagements.fee_basis"), fee_bases).hidden())
+        .column(
+            Column::money(
+                "retainer_fee",
+                &wl_kernel::money_label(&t("engagements.retainer_fee")),
+            )
+            .hidden()
+            .summary(Summary::Sum),
+        )
+        .column(Column::date("start_date", &t("engagements.start")).hidden())
+        .column(Column::date("activated_on", &t("engagements.activated_on")).hidden())
+        .column(Column::date("ended_on", &t("engagements.ended_on")).hidden())
+        .sort_by("-number")
+        .row_url("/accounting/engagements/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("engagements.empty"), Some(&t("engagements.empty_text")))
+        .exports()
 }
 
-/// The rows of `engagements` as `lang` reads them.
-pub(crate) async fn rows(
-    state: &AppState,
-    lang: &Lang,
-    engagements: &[Engagement],
-) -> Vec<EngagementRow> {
-    let mut rows = Vec::with_capacity(engagements.len());
-    for engagement in engagements {
-        rows.push(EngagementRow {
-            id: engagement.id,
-            number: engagement.number(),
-            client: party_name(state, lang, engagement.client()).await,
-            title: engagement.title.clone(),
-            status: status_label(lang, engagement.status),
-            status_kind: status_kind(engagement.status),
-            reason: reason_label(lang, engagement),
-        });
+/// SQL that turns the stored neutral reason code into its label for `lang`;
+/// a code the app does not know reads as *On hold*, as everywhere else.
+fn reason_sql(lang: &Lang) -> String {
+    let quoted = |code: &str| reasons::label(lang, code).replace('\'', "''");
+    let mut sql = String::from("CASE WHEN {T}.\"reason_code\" IS NULL THEN NULL");
+    for code in [
+        reasons::ON_HOLD,
+        reasons::RELATIONSHIP_ENDED,
+        reasons::NON_PAYMENT,
+        reasons::CLIENT_REQUEST,
+        reasons::OTHER,
+        reasons::LETTER_NOT_SIGNED,
+        reasons::CLIENT_WITHDREW,
+        reasons::NOT_ACCEPTED,
+    ] {
+        sql.push_str(&format!(
+            " WHEN {{T}}.\"reason_code\" = '{code}' THEN '{}'",
+            quoted(code)
+        ));
     }
-    rows
+    sql.push_str(&format!(" ELSE '{}' END", quoted(reasons::ON_HOLD)));
+    sql
 }
 
 /// What the list page needs.
@@ -176,18 +225,20 @@ pub(crate) async fn rows(
 #[view(template = "accounting/engagements.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    engagements: Vec<EngagementRow>,
+    engagements: GridPage<Engagement>,
     can_create: bool,
     fee_bases: Vec<[String; 2]>,
 }
 
 /// `GET /accounting/engagements`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
     require(&user, permissions::ENGAGEMENTS_VIEW)?;
-    let all = Engagement::query()
-        .order_by_desc(Engagement::ID)
-        .get(&state.db)
-        .await?;
+    let grid = grid(&lang);
+    let query = Engagement::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
     let fee_bases = FeeBasis::ALL
         .iter()
         .map(|b| {
@@ -199,10 +250,11 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .collect();
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        engagements: rows(&state, &lang, &all).await,
+        engagements: page,
         can_create: user.has_permission(permissions::ENGAGEMENTS_MANAGE),
         fee_bases,
-    }))
+    })
+    .into_response())
 }
 
 /// The form that creates an engagement.
@@ -781,57 +833,18 @@ fn template_text(lang: &Lang, template: NeutralTemplate) -> String {
     text(lang, &format!("client_notices.{}_body", template.as_str()))
 }
 
-/// A CSV field: quoted when it holds a comma, a quote or a line break.
-fn csv_field(value: &str) -> String {
-    if value.contains([',', '"', '\n', '\r']) {
-        format!("\"{}\"", value.replace('"', "\"\""))
-    } else {
-        value.to_owned()
-    }
-}
-
-/// `GET /accounting/engagements/export`: every engagement as CSV, with its
-/// neutral reason only (`ACC.ACL.14`).
-async fn export(
-    State(state): State<AppState>,
-    user: AuthUser,
-    lang: Lang,
-) -> Result<renox::Download> {
+/// `GET /accounting/engagements/export`: every engagement as CSV, the grid's
+/// export with the neutral reason only (`ACC.ACL.14`). The grid's own export
+/// menu answers `?export=csv` on the list; this URL keeps answering too.
+async fn export(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
     require(&user, permissions::ENGAGEMENTS_VIEW)?;
-    let all = Engagement::query()
-        .order_by(Engagement::ID)
-        .get(&state.db)
-        .await?;
-    let header = [
-        text(&lang, "engagements.number"),
-        text(&lang, "engagements.client"),
-        text(&lang, "engagements.services"),
-        text(&lang, "fields.status"),
-        text(&lang, "engagements.reason"),
-    ];
-    let mut lines = vec![
-        header
-            .iter()
-            .map(|h| csv_field(h))
-            .collect::<Vec<_>>()
-            .join(","),
-    ];
-    for row in rows(&state, &lang, &all).await {
-        lines.push(
-            [row.number, row.client, row.title, row.status, row.reason]
-                .iter()
-                .map(|f| csv_field(f))
-                .collect::<Vec<_>>()
-                .join(","),
-        );
-    }
-    let mut body = lines.join("\n");
-    body.push('\n');
-    Ok(renox::Download::bytes(
-        "engagements.csv",
-        "text/csv; charset=utf-8",
-        body.into_bytes(),
-    ))
+    grid(&lang)
+        .export_as(
+            Engagement::query().order_by(Engagement::ID),
+            ExportFormat::Csv,
+            &request,
+        )
+        .await
 }
 
 /// The form that sends a neutral template.

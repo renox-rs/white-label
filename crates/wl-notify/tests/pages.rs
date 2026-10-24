@@ -30,7 +30,7 @@ async fn the_types_page_shows_statutory_reaction_and_staff_role() {
     let html = page.text();
     let row = |key: &str| {
         let start = html
-            .find(&format!(">{key}<"))
+            .find(&format!("data-grid-copy=\"{key}\""))
             .unwrap_or_else(|| panic!("no row for `{key}`"));
         let end = html[start..]
             .find("</tr>")
@@ -53,7 +53,7 @@ async fn the_types_page_shows_statutory_reaction_and_staff_role() {
     }
     assert!(!notice.contains(">No<"), "{notice}");
     let receipt = row(support::RECEIPT);
-    assert!(receipt.contains(">None<"), "{receipt}");
+    assert!(receipt.contains("None"), "{receipt}");
 }
 
 /// AC9: the log shows the given-up SMS as "Not delivered (gave up)" and the
@@ -88,21 +88,12 @@ async fn the_log_never_shows_a_given_up_message_as_sent() {
         .assert_see("550 mailbox unknown")
         .assert_see("504 gateway timeout");
     let html = page.text();
-    // Only the counter's label says "Sent", and it counts nothing; no badge
-    // reads "Sent" or "Delivered".
-    assert!(!html.contains(">Delivered<"), "{html}");
-    let sent_label = html.find(">Sent<").expect("the Sent counter");
-    let after = &html[sent_label..];
-    let value_at = after.find("rx-stat__value").expect("the counter's value");
-    let value = &after[value_at..];
-    let number: String = value
-        .chars()
-        .skip_while(|c| *c != '>')
-        .skip(1)
-        .take_while(|c| *c != '<')
-        .collect();
-    assert_eq!(number.trim(), "0", "{after}");
-    assert_eq!(html.matches(">Sent<").count(), 1, "{html}");
+    // Only the counter's label says "Sent", and it counts nothing; no row
+    // reads "Sent" or "Delivered" (the filter's choices do, so look at the rows).
+    assert!(html.contains("0 · Sent"), "{html}");
+    let rows = &html[html.find("<tbody").expect("the rows")..];
+    assert!(!rows.contains(">Delivered<"), "{rows}");
+    assert!(!rows.contains(">Sent<"), "{rows}");
 }
 
 #[renox::test]

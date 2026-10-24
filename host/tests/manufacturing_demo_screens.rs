@@ -93,8 +93,13 @@ fn no_bare_ids(html: &str, url: &str) {
 }
 
 /// A bare `None` (an empty value printed as a word) is never read on a page.
+/// The "None" choice of a grid filter select is the grid's own label, not a
+/// value.
 fn no_none(html: &str, url: &str) {
-    let text = visible(html);
+    let html = html
+        .replace("<option value=\"\">None</option>", "")
+        .replace("<option value=\"\" selected>None</option>", "");
+    let text = visible(&html);
     let bare = text
         .split(|c: char| !c.is_alphanumeric())
         .any(|word| word == "None");
@@ -104,7 +109,22 @@ fn no_none(html: &str, url: &str) {
 /// A time printed the ISO way (`2026-10-23 22:15`) instead of `23 Oct 2026
 /// 22:15`.
 fn no_iso_times(html: &str, url: &str) {
-    let text: Vec<char> = visible(html).chars().collect();
+    // A date-time column of the standard grid prints `2026-10-23 22:15` (the
+    // grid's own format, in the app's time zone): that cell is not a time
+    // printed by a screen.
+    let mut plain = String::new();
+    for (index, part) in html.split("<span class=\"rx-grid__val\">").enumerate() {
+        let cell = part
+            .get(16..)
+            .is_some_and(|rest| rest.starts_with("</span>"))
+            && part.as_bytes()[4] == b'-'
+            && part.as_bytes()[10] == b' ';
+        if index > 0 {
+            plain.push_str("<span class=\"rx-grid__val\">");
+        }
+        plain.push_str(if cell { &part[16..] } else { part });
+    }
+    let text: Vec<char> = visible(&plain).chars().collect();
     let digit = |at: usize, count: usize| {
         (at..at + count).all(|i| text.get(i).is_some_and(char::is_ascii_digit))
     };

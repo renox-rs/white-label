@@ -19,7 +19,7 @@
 //! task); the kernel's transition route serves `<rx-transition-actions>` for
 //! `approve` and `reject`. A refused guard answers 422 under the field.
 
-use renox::grid::{Column, Grid, GridPage, GridRequest};
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::{self, Available, StateMachine, TransitionError};
@@ -129,8 +129,9 @@ pub(crate) const SOURCE_KINDS: [&str; 7] = [
 
 /// The refunds grid: party, source, amount, method, status; filters by
 /// status, source and method.
-pub fn grid(lang: &Lang) -> Grid {
-    grid_with(&texts_in(lang))
+pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let grid = grid_with(&texts_in(lang));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// [`grid`] with the texts of `t`.
@@ -138,6 +139,9 @@ fn grid_with(t: Text<'_>) -> Grid {
     let methods: Vec<&str> = PaymentMethod::ALL.iter().map(|m| m.as_str()).collect();
     Grid::new("wl-payment-refunds")
         .title(&t("refunds.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::number("id", "#")
                 .frozen()
@@ -158,7 +162,11 @@ fn grid_with(t: Text<'_>) -> Grid {
             &t("refunds.source"),
             options(&t, "refunds.source_kind", &SOURCE_KINDS),
         ))
-        .column(Column::money("amount", &t("fields.amount")).currency_from("currency"))
+        .column(
+            Column::money("amount", &t("fields.amount"))
+                .currency_from("currency")
+                .summary(Summary::Sum),
+        )
         .column(Column::select(
             "method",
             &t("fields.method"),
@@ -201,18 +209,28 @@ async fn index(
     user: AuthUser,
     lang: Lang,
     request: GridRequest,
-) -> Result<View> {
+) -> Result<Response> {
     // The refunds of the payments in the user's scope.
     let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
     let query = match crate::scoped::refund_ids(&state.db, &reach).await? {
         None => Refund::query(),
         Some(ids) => Refund::query().where_in("id", ids),
     };
-    let refunds = grid(&lang).page(query, &request).await?;
+    // The export is for those who manage them.
+    let can_export = user.has_permission(permissions::REFUNDS_APPROVE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let refunds = grid.page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         refunds,
-    }))
+    })
+    .into_response())
 }
 
 /// One attempt as the refund page shows it.

@@ -1,10 +1,10 @@
-{#- wl-attendance: the timesheets (09 Manpower MPW.ACL.09): the worker, the
-    client, the period, the hours and where each one stands in words, with
-    filters for the client, the month and the status. Replace it with
+{#- wl-attendance: the timesheets (09 Manpower MPW.ACL.09), a renox::grid
+    (filters by standing and kind, search on the reason, the sum of the
+    minutes) that fills the screen. The client and the month narrow the list
+    from the header. Replace it with
     resources/views/wl-attendance/timesheets.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['title']">
-  <rx-stack>
-    <rx-page-header :title="tx['title']" :subtitle="tx['subtitle']"/>
+  <rx-page-header :title="tx['title']" :subtitle="tx['subtitle']">
     <form method="get" action="{{ route('wl_attendance.timesheets') }}">
       <input type="hidden" name="status" value="{{ status }}">
       <rx-toolbar>
@@ -13,16 +13,12 @@
         <rx-button type="submit" :label="tx['show']" icon="search"/>
       </rx-toolbar>
     </form>
-    <rx-link-tabs :items="status_tabs" :current="status_current" :label="tx['status_filter']"/>
-    <rx-table :rows="rows" as="sheet" :key="sheet.id" :caption="tx['title']" card>
-      <rx-column :label="tx['worker']"><a href="{{ sheet.url }}">{{ sheet.worker }}</a></rx-column>
-      <rx-column :label="tx['client']" hide-narrow>{{ sheet.client }}</rx-column>
-      <rx-column :label="tx['work']" hide-narrow>{{ sheet.work }}</rx-column>
-      <rx-column :label="tx['month']">{{ sheet.month }}</rx-column>
-      <rx-column :label="tx['period']" hide-narrow>{{ sheet.period }}</rx-column>
-      <rx-column :label="tx['hours']" align="num">{{ sheet.hours }}</rx-column>
-      <rx-column :label="tx['status']"><rx-badge :kind="sheet.status_kind" :text="sheet.status"/><rx-badge rx-if="sheet.adjustment" kind="info" :text="tx['adjustment_tag']"/></rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['empty']" :message="tx['empty_text']" icon="clock"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  </rx-page-header>
+  <rx-grid :page="rows">
+    <template rx-if="column.key == 'worker'"><a href="{{ row.url }}">{{ row.worker }}</a></template>
+    <template rx-elif="column.key == 'client'">{{ row.client }}</template>
+    <template rx-elif="column.key == 'work'">{{ row.work }}</template>
+    <template rx-elif="column.key == 'period'">{{ row.period }}</template>
+    <template rx-elif="column.key == 'hours'">{{ row.hours }}</template>
+  </rx-grid>
 </rx-page>

@@ -1,9 +1,9 @@
-{#- auto: the labour menu: the flat-rate and hourly operations an estimate is
-    drafted from, with the standard hours and the price; the action that puts
-    an operation on the menu. Replace it with
+{#- auto: the labour menu, a renox::grid: the flat-rate and hourly operations
+    an estimate is drafted from, with the standard hours and the price; the
+    actions that put an operation on the menu, take it off and put it back.
+    Replace it with
     resources/views/auto/labour_menu.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['labour.title']">
-  <rx-stack>
     <rx-page-header :title="tx['labour.title']" :subtitle="tx['labour.subtitle']">
       <template rx-if="can_manage">
         <rx-action-sheet id="labour-new" :label="tx['labour.new']" :action="route('auto.labour_menu_create')"
@@ -17,18 +17,17 @@
         </rx-action-sheet>
       </template>
     </rx-page-header>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['labour.title']" card>
-      <rx-column :label="tx['labour.code']">{{ row.code }}</rx-column>
-      <rx-column :label="tx['labour.name']">{{ row.name }}</rx-column>
-      <rx-column :label="tx['labour.pricing']" hide-narrow>{{ row.pricing }}</rx-column>
-      <rx-column :label="tx['labour.hours']" align="num" hide-narrow>{{ row.hours }}</rx-column>
-      <rx-column :label="tx['labour.rate']" align="num">{{ row.rate }}</rx-column>
-      <rx-column :label="tx['fields.status']">{{ row.active }}</rx-column>
-      <rx-row-actions>
-        <rx-confirm rx-if="can_manage and row.is_active" :id="'labour-off-' ~ row.id" :label="tx['labour.take_off']" :action="route('auto.labour_menu_active', row.id)" method="POST"
-                    :title="tx['labour.take_off']" :message="row.name" :confirm-label="tx['labour.take_off']" :cancel-label="tx['button_cancel']" icon="trash"/>
-      </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['labour.empty']" icon="clipboard-list"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+    <rx-grid :page="operations">
+      <template rx-if="column.key == 'actions' and can_manage"><rx-open-button :id="'labour-switch-' ~ row.id" :label="tx['labour.take_off'] if row.standing == 'on' else tx['labour.put_back']" size="small"/></template>
+    </rx-grid>
+    <template rx-if="can_manage">
+      <template rx-for="sheet in sheets">
+        <rx-confirm rx-if="sheet[2]" :button="false" :id="'labour-switch-' ~ sheet[0]" :label="tx['labour.take_off']" :action="route('auto.labour_menu_active', sheet[0])" method="POST"
+                    :title="tx['labour.take_off']" :message="sheet[1]" :confirm-label="tx['labour.take_off']" :cancel-label="tx['button_cancel']" icon="trash"/>
+        <rx-action-sheet rx-else :button="false" :id="'labour-switch-' ~ sheet[0]" :label="tx['labour.put_back']" :action="route('auto.labour_menu_active', sheet[0])"
+                         :title="tx['labour.put_back']" :description="sheet[1]" :submit-label="tx['labour.put_back']" icon="check">
+          <input type="hidden" name="on" value="1">
+        </rx-action-sheet>
+      </template>
+    </template>
 </rx-page>

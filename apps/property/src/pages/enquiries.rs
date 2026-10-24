@@ -7,6 +7,7 @@
 //! | `GET /property/enquiries` | `property.enquiries` | `units.view`, in some building |
 //! | `POST /property/enquiries` | `property.enquiry_create` | `leases.create` |
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
@@ -27,23 +28,51 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
-/// One enquiry of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct EnquiryRow {
-    /// The primary key.
-    pub id: i64,
-    /// Who asked.
-    pub prospect: String,
-    /// How to reach them.
-    pub contact: String,
-    /// The source in the page's language.
-    pub source: String,
-    /// The campaign code, or a dash.
-    pub campaign: String,
-    /// The day it came in.
-    pub received: String,
-    /// Whether it converted to a tenant.
-    pub converted: bool,
+/// The enquiries grid: search on the prospect, contact and campaign, a
+/// filter by lead source. The contact is exported for those who record
+/// enquiries only.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let sources: Vec<(String, String)> = LEAD_SOURCES
+        .iter()
+        .map(|code| ((*code).to_owned(), t(&format!("enquiries.source_{code}"))))
+        .collect();
+    let grid = Grid::new("property-enquiries")
+        .title(&t("enquiries.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("prospect_name", &t("enquiries.prospect"))
+                .frozen()
+                .mobile()
+                .searchable(),
+        )
+        .column(
+            Column::text("contact", &t("enquiries.contact"))
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::select("source", &t("enquiries.source"), sources).mobile())
+        .column(Column::text("campaign", &t("enquiries.campaign")).searchable())
+        .column(Column::date("received_on", &t("enquiries.received")).mobile())
+        .column(
+            Column::select(
+                "converted",
+                &t("enquiries.converted"),
+                vec![
+                    ("yes".to_owned(), t("enquiries.converted_yes")),
+                    ("no".to_owned(), t("enquiries.converted_no")),
+                ],
+            )
+            .computed("CASE WHEN {T}.\"converted_party_id\" IS NULL THEN 'no' ELSE 'yes' END")
+            .badges(&[("yes", "success")])
+            .hidden(),
+        )
+        .sort_by("-received_on")
+        .cards_on_mobile()
+        .empty_state(&t("enquiries.empty"), Some(&t("enquiries.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the page needs.
@@ -51,7 +80,7 @@ pub struct EnquiryRow {
 #[view(template = "property/enquiries.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    enquiries: Vec<EnquiryRow>,
+    enquiries: GridPage<Enquiry>,
     sources: Vec<(String, String)>,
     can_record: bool,
     today: String,
@@ -78,40 +107,50 @@ pub struct CreateForm {
 }
 
 /// `GET /property/enquiries`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     // The enquiries about the units of the user's buildings, and those that
     // name no unit (a prospect's first call belongs to no building yet).
     let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::UNITS_VIEW).await?;
     let units = reach.ids(&state.db, crate::unit::UNIT_SUBJECT_TYPE).await?;
-    let source_name = |code: &str| text(&lang, &format!("enquiries.source_{code}"));
-    let enquiries = Enquiry::recent(&state.db)
-        .await?
-        .into_iter()
-        .filter(|e| match (&units, e.unit_id) {
-            (None, _) | (Some(_), None) => true,
-            (Some(units), Some(unit)) => units.contains(&unit),
-        })
-        .map(|e| EnquiryRow {
-            id: e.id,
-            prospect: e.prospect_name.clone(),
-            contact: e.contact.clone(),
-            source: source_name(&e.source),
-            campaign: e.campaign.clone().unwrap_or_else(|| "—".to_owned()),
-            received: e.received_on.to_string(),
-            converted: e.is_converted(),
-        })
-        .collect();
+    let query = match units {
+        None => Enquiry::query(),
+        Some(units) => Enquiry::query().where_any(|group| {
+            group
+                .where_null("unit_id")
+                .where_in("unit_id", units.iter().copied())
+        }),
+    };
+    let can_record = user.has_permission_anywhere(permissions::LEASES_CREATE);
+    let grid = grid(&lang, can_record);
+    if request.param("export").is_some() && !can_record {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let enquiries = grid.page(query, &request).await?;
     let sources = LEAD_SOURCES
         .iter()
-        .map(|code| ((*code).to_owned(), source_name(code)))
+        .map(|code| {
+            (
+                (*code).to_owned(),
+                text(&lang, &format!("enquiries.source_{code}")),
+            )
+        })
         .collect();
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         enquiries,
         sources,
-        can_record: user.has_permission_anywhere(permissions::LEASES_CREATE),
+        can_record,
         today: today().to_string(),
-    }))
+    })
+    .into_response())
 }
 
 /// `POST /property/enquiries`.

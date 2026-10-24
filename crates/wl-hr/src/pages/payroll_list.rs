@@ -14,13 +14,13 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use serde::{Deserialize, Serialize};
 
 use crate::employee::Employee;
-use crate::pages::payroll::{aed_text, run_kind};
-use crate::payroll::{PayrollLine, PayrollRun};
+use crate::payroll::{PayrollRun, PayrollRunStatus};
 use crate::{calculation, hours, permissions, texts};
 
 type Texts = BTreeMap<&'static str, String>;
@@ -43,68 +43,113 @@ fn text(lang: &Lang, key: &str) -> String {
     texts::t(lang, &format!("wl_hr.{key}"))
 }
 
-/// One run of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct RunRow {
-    /// The primary key.
-    pub id: i64,
-    /// The page of the run.
-    pub url: String,
-    /// The month, e.g. `2026-10`.
-    pub period: String,
-    /// The kind in words.
-    pub kind: String,
-    /// The status in words.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
-    /// How many lines.
-    pub lines: usize,
-    /// The total net, `AED 12,500.00`.
-    pub total: String,
-}
-
 /// The list page.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-hr/payroll_runs.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    runs: Vec<RunRow>,
+    runs: GridPage<PayrollRun>,
     can_create: bool,
     month: String,
 }
 
-/// `GET /hr/payroll`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
-    let runs = PayrollRun::query()
-        .order_by_desc(PayrollRun::PERIOD)
-        .order_by_desc(PayrollRun::ID)
-        .get(&state.db)
-        .await?;
-    let mut rows = Vec::new();
-    for run in runs {
-        let lines = run.lines(&state.db).await?;
-        rows.push(row_of(&lang, &run, &lines));
-    }
-    Ok(View::typed(IndexPage {
-        tx: texts::all(&lang),
-        runs: rows,
-        can_create: user.has_permission(permissions::PAYROLL_PREPARE),
-        month: wl_kernel::documents::today().format("%Y-%m").to_string(),
-    }))
+/// The payroll runs grid: filters by kind and status, the number of lines
+/// and the total net of each run (sums of its lines), and a sum of the totals.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let kinds: Vec<(String, String)> = ["regular", "off_cycle", "supplementary"]
+        .iter()
+        .map(|kind| ((*kind).to_owned(), t(&format!("payroll.kind.{kind}"))))
+        .collect();
+    let statuses: Vec<(String, String)> = [
+        PayrollRunStatus::Draft,
+        PayrollRunStatus::Calculated,
+        PayrollRunStatus::Approved,
+        PayrollRunStatus::Submitted,
+        PayrollRunStatus::Rejected,
+        PayrollRunStatus::PartiallyRejected,
+        PayrollRunStatus::Paid,
+    ]
+    .iter()
+    .map(|status| {
+        (
+            status.as_str().to_owned(),
+            t(&format!("payroll.status.{}", status.as_str())),
+        )
+    })
+    .collect();
+    let grid = Grid::new("hr-payroll-runs")
+        .title(&t("payroll.list.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("period", &t("payroll.list.period"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/hr/payroll/{id}"),
+        )
+        .column(Column::select("run_type", &t("payroll.list.kind"), kinds).mobile())
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("draft", "info"),
+                    ("calculated", "info"),
+                    ("approved", "info"),
+                    ("submitted", "info"),
+                    ("rejected", "danger"),
+                    ("partially_rejected", "warning"),
+                    ("paid", "success"),
+                ])
+                .mobile(),
+        )
+        .column(Column::count_of(
+            "lines",
+            &t("payroll.lines"),
+            "wl_hr_payroll_lines",
+            "run_id",
+        ))
+        .column(
+            Column::money("total", &wl_kernel::money_label(&t("payroll.list.total")))
+                .computed(
+                    "(SELECT COALESCE(SUM(\"wl_hr_payroll_lines\".\"net_amount\"), 0) \
+                     FROM \"wl_hr_payroll_lines\" WHERE \"wl_hr_payroll_lines\".\"run_id\" = {T}.\"id\")",
+                )
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(Column::text("reason", &t("payroll.list.reason")).hidden().searchable())
+        .sort_by("-period")
+        .row_url("/hr/payroll/{id}")
+        .cards_on_mobile()
+        .empty_state(
+            &t("payroll.list.empty"),
+            Some(&t("payroll.list.empty_hint")),
+        );
+    if can_export { grid.exports() } else { grid }
 }
 
-fn row_of(lang: &Lang, run: &PayrollRun, lines: &[PayrollLine]) -> RunRow {
-    RunRow {
-        id: run.id,
-        url: format!("/hr/payroll/{}", run.id),
-        period: run.period.clone(),
-        kind: text(lang, &format!("payroll.kind.{}", run.run_type)),
-        status: text(lang, &format!("payroll.status.{}", run.status.as_str())),
-        status_kind: run_kind(run.status),
-        lines: lines.len(),
-        total: aed_text(lines.iter().map(|l| l.net_amount).sum()),
+/// `GET /hr/payroll`: the grid, or its export (`?export=`, with
+/// `payroll.prepare` or `payroll.approve`).
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
+    let can_export = user.has_permission(permissions::PAYROLL_PREPARE)
+        || user.has_permission(permissions::PAYROLL_APPROVE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
     }
+    if let Some(file) = grid.export(PayrollRun::query(), &request).await? {
+        return Ok(file);
+    }
+    let runs = grid.page(PayrollRun::query(), &request).await?;
+    Ok(View::typed(IndexPage {
+        tx: texts::all(&lang),
+        runs,
+        can_create: user.has_permission(permissions::PAYROLL_PREPARE),
+        month: wl_kernel::documents::today().format("%Y-%m").to_string(),
+    })
+    .into_response())
 }
 
 /// The form of *New run*.

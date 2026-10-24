@@ -1,17 +1,17 @@
-{#- auto: the fleet service contracts, newest first, with the fleet, the term,
-    the vehicles under contract and the status in words; searched by number or
-    title and narrowed by where they stand with link tabs; the action that
+{#- auto: the fleet service contracts, a renox::grid (newest first, the number
+    frozen, the fleet, the term, the vehicles under contract, the labour rate
+    and the status in words; searched by number or name, filtered and sorted by
+    column); the action that
     agrees a contract (the fleet and its contact from the party picker).
     Replace it with resources/views/auto/fleet_contracts.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['fleet.title']">
-  <rx-stack>
     <rx-page-header :title="tx['fleet.title']" :subtitle="tx['fleet.subtitle']">
       <template rx-if="can_create">
         <rx-action-sheet id="fleet-new" :label="tx['fleet.new']" :action="route('auto.fleet_create')"
                          :title="tx['fleet.new']" :description="tx['fleet.new_description']" :submit-label="tx['fleet.new']" icon="plus">
           <rx-select name="fleet" :label="tx['fleet.fleet']" :options="[]" :placeholder="tx['fleet.fleet_placeholder']" options-url="{{ route('auto.party_options') }}" id="fleet-new-fleet" required/>
           <rx-select name="contact" :label="tx['fleet.contact']" :options="[]" :placeholder="tx['fleet.contact_placeholder']" options-url="{{ route('auto.party_options') }}" id="fleet-new-contact"/>
-          <rx-input name="title" :label="tx['fleet.name']" id="fleet-new-name" required/>
+          <rx-input name="title" :label="tx['fleet.name']" id="fleet-new-title" required/>
           <rx-input name="start_date" type="date" :label="tx['fleet.start']" id="fleet-new-start" required/>
           <rx-input name="end_date" type="date" :label="tx['fleet.end']" :hint="tx['fleet.end_hint']" id="fleet-new-end" required/>
           <rx-input name="labour_rate" :label="tx['fleet.labour_rate']" :hint="tx['fleet.money_hint']" id="fleet-new-rate"/>
@@ -23,22 +23,7 @@
         </rx-action-sheet>
       </template>
     </rx-page-header>
-    <form method="get" action="{{ route('auto.fleet_contracts') }}">
-      <input type="hidden" name="tab" value="{{ tab }}">
-      <rx-toolbar>
-        <rx-input name="q" :label="tx['fleet.search']" :value="q" id="filter-q"/>
-        <rx-button type="submit" :label="tx['fleet.show']" icon="search"/>
-      </rx-toolbar>
-    </form>
-    <rx-link-tabs :items="status_tabs" :current="tab_current" :label="tx['fleet.filter']"/>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['fleet.title']" card>
-      <rx-column :label="tx['fleet.number']"><a href="{{ route('auto.fleet_contract', row.id) }}">{{ row.number }}</a></rx-column>
-      <rx-column :label="tx['fleet.name']">{{ row.title }}</rx-column>
-      <rx-column :label="tx['fleet.fleet']" hide-narrow>{{ row.fleet }}</rx-column>
-      <rx-column :label="tx['fleet.term']" hide-narrow>{{ row.term }}</rx-column>
-      <rx-column :label="tx['fleet.vehicles']" align="num">{{ row.vehicles }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['fleet.empty']" icon="calendar-check"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-grid :page="contracts">
+    <template rx-if="column.key == 'fleet'">{{ row.fleet }}</template>
+  </rx-grid>
 </rx-page>

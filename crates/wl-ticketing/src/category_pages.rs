@@ -15,6 +15,7 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -85,12 +86,67 @@ pub struct CategoryRow {
     pub contract_end_label: String,
 }
 
+/// The categories grid: search on the names, key and assignee role, filters
+/// on the charging, compliance, contract-end and availability settings. The
+/// settings are changed in the sheets under the grid, opened by the buttons
+/// of the `actions` column (`custom`).
+pub fn grid(lang: &Lang) -> Grid {
+    let t = |key: &str| texts::t(lang, &format!("wl_ticketing.{key}"));
+    let invoice_on = vec![
+        ("resolve".to_owned(), t("categories.on_resolve")),
+        ("close".to_owned(), t("categories.on_close")),
+    ];
+    Grid::new("wl-ticketing-categories")
+        .title(&t("categories.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("name_en", &t("categories.name"))
+                .frozen()
+                .mobile()
+                .searchable(),
+        )
+        .column(
+            Column::text("name_ar", &t("categories.name_ar"))
+                .searchable()
+                .hidden(),
+        )
+        .column(
+            Column::text("key", &t("categories.key"))
+                .searchable()
+                .copyable()
+                .mobile(),
+        )
+        .column(Column::text("default_assignee_role", &t("categories.assignee_role")).searchable())
+        .column(Column::bool("chargeable", &t("categories.charging")))
+        .column(Column::select("invoice_on", &t("categories.invoice_on"), invoice_on).hidden())
+        .column(Column::bool(
+            "compliance_critical",
+            &t("categories.compliance"),
+        ))
+        .column(Column::bool(
+            "contract_end_reassign_only",
+            &t("categories.contract_end"),
+        ))
+        .column(Column::bool("platform", &t("categories.platform")).hidden())
+        .column(Column::bool("confidential", &t("fields.confidential")).hidden())
+        .column(Column::bool("active", &t("categories.status")).mobile())
+        .column(Column::custom("actions", &t("categories.actions")))
+        .sort_by("key")
+        .cards_on_mobile()
+        .empty_state(&t("categories.empty"), None)
+        .exports()
+}
+
 /// What the list needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-ticketing/categories.html")]
 pub(crate) struct CategoriesPage {
     tx: Texts,
-    categories: Vec<CategoryRow>,
+    categories: GridPage<Category>,
+    /// The sheets of the categories on this page.
+    sheets: Vec<CategoryRow>,
     /// `(value, label)` pairs for the status select: `1` on, `0` off.
     status_options: Vec<(String, String)>,
     /// `(value, label)` pairs for the chargeable select.
@@ -103,14 +159,19 @@ pub(crate) struct CategoriesPage {
     contract_end_options: Vec<(String, String)>,
 }
 
-/// `GET /ticket-categories`: every category, with rename, turn off and
-/// delete (not for a platform category).
-async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
-    let rows = Category::query()
-        .order_by(Category::KEY)
-        .get(&db)
-        .await?
-        .into_iter()
+/// `GET /ticket-categories`: every category as a grid (or its export), with
+/// rename, turn off and delete (not for a platform category) in sheets.
+async fn index(lang: Lang, request: GridRequest) -> Result<Response> {
+    let grid = grid(&lang);
+    let query = Category::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let rows = page
+        .items()
+        .iter()
+        .cloned()
         .map(|c| CategoryRow {
             chargeable: c.chargeable,
             compliance_critical: c.compliance_critical,
@@ -146,7 +207,8 @@ async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
         .collect();
     Ok(View::typed(CategoriesPage {
         tx: texts::all(&lang),
-        categories: rows,
+        categories: page,
+        sheets: rows,
         status_options: vec![
             (
                 "1".to_owned(),
@@ -197,7 +259,8 @@ async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
                 texts::t(&lang, "wl_ticketing.categories.on_close"),
             ),
         ],
-    }))
+    })
+    .into_response())
 }
 
 /// The rename form.

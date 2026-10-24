@@ -249,3 +249,7 @@ a.app-card:hover .app-card__icon { transform: scale(1.06); }
   .app-card, .app-card__icon { transition: none; }
   a.app-card:hover, a.app-card:hover .app-card__icon { transform: none; }
 }
+
+/* A page title that is one long word (a key, a reference) wraps instead of
+   widening the page past a phone's screen (#494). */
+.rx-page-header__text > * { overflow-wrap: anywhere; }

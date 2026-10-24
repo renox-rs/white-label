@@ -1,19 +1,13 @@
-{#- wl-notify: the notification types, with each one's statutory flag,
-    give-up reaction (in run order) and staff role told. Replace it with
-    resources/views/wl-notify/types.html in the app. -#}
+{#- wl-notify: the notification types, a renox::grid (search, filters by module,
+    category, urgency and statutory) that fills the screen, with each one's
+    statutory flag, give-up reaction (in run order) and staff role told.
+    Replace it with resources/views/wl-notify/types.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['types.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['types.title']" :subtitle="tx['types.subtitle']"/>
-    <rx-table :rows="types" as="kind" :key="kind.key" :caption="tx['types.title']" card>
-      <rx-column :label="tx['fields.key']"><a href="{{ route('wl_notify.type_edit', kind.key) }}">{{ kind.key }}</a></rx-column>
-      <rx-column :label="tx['fields.module']" hide-narrow>{{ kind.module }}</rx-column>
-      <rx-column :label="tx['fields.category']" hide-narrow>{{ kind.category }}</rx-column>
-      <rx-column :label="tx['fields.urgency']" hide-narrow>{{ kind.urgency }}</rx-column>
-      <rx-column :label="tx['fields.channels']">{{ kind.channels }}</rx-column>
-      <rx-column :label="tx['fields.statutory']"><rx-badge rx-if="kind.statutory" kind="warning" :text="kind.statutory_label"/><span rx-else>{{ kind.statutory_label }}</span></rx-column>
-      <rx-column :label="tx['fields.give_up']">{{ kind.give_up }}</rx-column>
-      <rx-column :label="tx['fields.staff_role']">{{ kind.staff_role }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['types.empty']" :message="tx['types.empty_hint']" icon="bell"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['types.title']" :subtitle="tx['types.subtitle']"/>
+  <rx-grid :page="types">
+    <template rx-if="column.key == 'channels'">{{ row.channels }}</template>
+    <template rx-elif="column.key == 'give_up'">{{ row.give_up }}</template>
+    <template rx-elif="column.key == 'staff_role'">{{ row.staff_role }}</template>
+    <template rx-elif="column.key == 'edit'"><a href="{{ row.edit_url }}">{{ tx['types.edit'] }}</a></template>
+  </rx-grid>
 </rx-page>

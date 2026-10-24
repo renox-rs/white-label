@@ -477,13 +477,14 @@ async fn list_pending_issues(
     user: AuthUser,
     lang: Lang,
     headers: renox::axum::http::HeaderMap,
+    request: renox::grid::GridRequest,
 ) -> Result<Response> {
     if !user.has_permission_anywhere(permissions::STOCK_ADJUST) {
         return Err(Error::Forbidden);
     }
     // A browser gets the page; everything else gets the JSON.
     if wl_kernel::negotiate::wants_html(&headers) {
-        return crate::stock_screens::pending_page(&state, &user, &lang).await;
+        return crate::stock_screens::pending_page(&state, &user, &lang, request).await;
     }
     let mut rows = Vec::new();
     for pending in crate::pending_issue::open_of(&state.db).await? {

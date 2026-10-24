@@ -14,6 +14,7 @@ pub mod tax_profiles;
 
 use std::collections::BTreeMap;
 
+use renox::grid::Column;
 use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_kernel::parties::directory;
@@ -35,6 +36,98 @@ pub fn routes() -> Routes {
         .merge(letters::routes())
         .merge(aml::routes())
         .merge(kpi::routes())
+        .merge(
+            Routes::new()
+                .get("/accounting/parties/options", party_options)
+                .name("accounting.party_options")
+                .get("/accounting/engagements/options", engagement_options)
+                .name("accounting.engagement_options")
+                .require_auth(),
+        )
+}
+
+/// `GET /accounting/parties/options`: the parties a picker offers as the
+/// person types their name or code (`?q=`), or the labels of the values it
+/// holds (`?values=`): the client of a new engagement or of a trial balance,
+/// a UBO or director of a CDD file. Asked by name, never as a party number
+/// (#495).
+async fn party_options(
+    State(state): State<AppState>,
+    user: AuthUser,
+    query: renox::select::OptionQuery,
+) -> Result<Json<Vec<renox::select::SelectOption>>> {
+    use crate::permissions::{CDD_PREPARE, ENGAGEMENTS_MANAGE, KPI_MANAGE};
+    if ![ENGAGEMENTS_MANAGE, KPI_MANAGE, CDD_PREPARE]
+        .iter()
+        .any(|permission| user.has_permission(permission))
+    {
+        return Err(Error::Forbidden);
+    }
+    let directory = directory(&state);
+    let mut parties = Vec::new();
+    if query.is_lookup() {
+        for id in query.values_as::<i64>() {
+            parties.extend(directory.find(&state.db, PartyId(id)).await?);
+        }
+    } else {
+        parties = directory.search(&state.db, &query.q, 20).await?;
+    }
+    Ok(Json(
+        parties
+            .into_iter()
+            .map(|party| {
+                renox::select::SelectOption::new(
+                    party.id.0,
+                    format!("{} · {}", party.code, party.display_name),
+                )
+            })
+            .collect(),
+    ))
+}
+
+/// `GET /accounting/engagements/options`: the engagements a return can be
+/// prepared under, by number, client or services (`?q=`), or the labels of
+/// the values held (`?values=`).
+async fn engagement_options(
+    State(state): State<AppState>,
+    user: AuthUser,
+    query: renox::select::OptionQuery,
+) -> Result<Json<Vec<renox::select::SelectOption>>> {
+    require(&user, crate::permissions::RETURNS_PREPARE)?;
+    let engagements = if query.is_lookup() {
+        let ids = query.values_as::<i64>();
+        crate::Engagement::query()
+            .where_(crate::Engagement::ID.is_in(ids))
+            .get(&state.db)
+            .await?
+    } else {
+        crate::Engagement::query()
+            .where_(crate::Engagement::STATUS.is_in([
+                crate::EngagementStatus::Active,
+                crate::EngagementStatus::Suspended,
+            ]))
+            .order_by(crate::Engagement::ID)
+            .get(&state.db)
+            .await?
+    };
+    let directory = directory(&state);
+    let needle = query.q.trim().to_lowercase();
+    let mut options = Vec::new();
+    for engagement in engagements {
+        let client = directory
+            .find(&state.db, engagement.client())
+            .await?
+            .map(|party| party.display_name)
+            .unwrap_or_default();
+        let label = format!("{} · {} · {}", engagement.number(), client, engagement.title);
+        if needle.is_empty() || query.is_lookup() || label.to_lowercase().contains(&needle) {
+            options.push(renox::select::SelectOption::new(engagement.id, label));
+        }
+        if options.len() >= 20 {
+            break;
+        }
+    }
+    Ok(Json(options))
 }
 
 /// The app text `key` (without the `accounting.` prefix).
@@ -54,6 +147,35 @@ pub(crate) fn require(user: &AuthUser, permission: &str) -> Result {
     } else {
         Err(Error::Forbidden)
     }
+}
+
+/// The grid column of a record's number (`ENG-0007`): its id padded to four
+/// digits, so people search and sort by what they read. It is the frozen link
+/// to `url` (`{id}` is the row's id).
+pub(crate) fn number_column(label: &str, prefix: &str, url: &str) -> Column {
+    Column::text("number", label)
+        .computed(&format!(
+            "'{prefix}-' || CASE WHEN {{T}}.\"id\" < 10 THEN '000' \
+             WHEN {{T}}.\"id\" < 100 THEN '00' WHEN {{T}}.\"id\" < 1000 THEN '0' \
+             ELSE '' END || CAST({{T}}.\"id\" AS TEXT)"
+        ))
+        .frozen()
+        .mobile()
+        .searchable()
+        .link(url)
+}
+
+/// The grid column of the client company's name, read from its party.
+pub(crate) fn client_column(label: &str, foreign_key: &str) -> Column {
+    Column::related(
+        "client",
+        label,
+        "wl_parties_parties",
+        foreign_key,
+        "display_name",
+    )
+    .mobile()
+    .searchable()
 }
 
 /// The name of `party` in the page's language, else `#id`.

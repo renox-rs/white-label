@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use renox::auth::User;
 use renox::chrono::{Duration, NaiveDate, NaiveDateTime};
-use renox::grid::{Column, Grid, GridPage, GridRequest};
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::{self, Available, StateMachine};
@@ -127,7 +127,7 @@ fn cost_kind(status: CostStatus) -> &'static str {
 /// The campaigns grid: search on code and name, filters by status and
 /// channel. The costs and the share of the budget they use are computed
 /// from the approved entries (the only ones any total counts), in AED.
-pub fn grid(lang: &Lang) -> Grid {
+pub fn grid(lang: &Lang, can_export: bool) -> Grid {
     let options = |keys: Vec<(&str, String)>| -> Vec<(String, String)> {
         keys.into_iter().map(|(k, v)| (k.to_owned(), v)).collect()
     };
@@ -157,8 +157,11 @@ pub fn grid(lang: &Lang) -> Grid {
         "(SELECT COALESCE(SUM(e.\"amount\"), 0) FROM \"{}\" e WHERE e.\"campaign_id\" = {{T}}.\"id\" AND e.\"status\" = 'approved')",
         CostEntry::TABLE
     );
-    Grid::new("wl-sales-campaigns")
+    let grid = Grid::new("wl-sales-campaigns")
         .title(&text(lang, "campaigns.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::text("code", &text(lang, "campaigns.fields.code"))
                 .frozen()
@@ -177,27 +180,26 @@ pub fn grid(lang: &Lang) -> Grid {
             &text(lang, "campaigns.fields.channel"),
             channels,
         ))
-        .column(Column::date(
-            "start_date",
-            &text(lang, "campaigns.fields.start_date"),
-        ))
-        .column(Column::date(
-            "end_date",
-            &text(lang, "campaigns.fields.end_date"),
-        ))
+        .column(
+            Column::date("start_date", &text(lang, "campaigns.fields.start_date")).mobile(),
+        )
+        .column(Column::date("end_date", &text(lang, "campaigns.fields.end_date")).hidden())
         .column(
             Column::number("budget_aed", &text(lang, "campaigns.fields.budget_aed"))
                 .decimals(2)
-                .computed("(1.0 * {T}.\"budget\" / 100)"),
+                .computed("(1.0 * {T}.\"budget\" / 100)")
+                .summary(Summary::Sum),
         )
         .column(
             Column::number("approved_aed", &text(lang, "campaigns.fields.approved_aed"))
                 .decimals(2)
-                .computed(&format!("(1.0 * {approved} / 100)")),
+                .computed(&format!("(1.0 * {approved} / 100)"))
+                .summary(Summary::Sum),
         )
         .column(
             Column::number("used_percent", &text(lang, "campaigns.fields.used_percent"))
                 .decimals(0)
+                .hidden()
                 .computed(&format!(
                     "(CASE WHEN {{T}}.\"budget\" > 0 THEN 100.0 * {approved} / {{T}}.\"budget\" END)"
                 )),
@@ -214,7 +216,11 @@ pub fn grid(lang: &Lang) -> Grid {
         .sort_by("-start_date")
         .row_url("/campaigns/{id}")
         .cards_on_mobile()
-        .empty_state(&text(lang, "campaigns.empty"), None)
+        .empty_state(
+            &text(lang, "campaigns.empty"),
+            Some(&text(lang, "campaigns.empty_hint")),
+        );
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list page needs.
@@ -227,15 +233,24 @@ pub(crate) struct IndexPage {
     can_lead_sources: bool,
 }
 
-/// `GET /campaigns`: the grid.
-async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<View> {
-    let campaigns = grid(&lang).page(Campaign::query(), &request).await?;
+/// `GET /campaigns`: the grid (`?export=` with `campaigns.manage`).
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
+    let can_manage = user.has_permission(permissions::CAMPAIGNS_MANAGE);
+    let grid = grid(&lang, can_manage);
+    if request.param("export").is_some() && !can_manage {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(Campaign::query(), &request).await? {
+        return Ok(file);
+    }
+    let campaigns = grid.page(Campaign::query(), &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         campaigns,
-        can_create: user.has_permission(permissions::CAMPAIGNS_MANAGE),
-        can_lead_sources: user.has_permission(permissions::CAMPAIGNS_MANAGE),
-    }))
+        can_create: can_manage,
+        can_lead_sources: can_manage,
+    })
+    .into_response())
 }
 
 /// One cost entry as the campaign page shows it.

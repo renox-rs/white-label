@@ -1,25 +1,17 @@
-{#- accounting: the KPI packs, newest first, with the action that imports a
+{#- accounting: the KPI packs, a renox::grid (search on the number and client,
+    filters by status) that fills the screen, and the action that imports a
     trial balance (a new draft, or the open draft recalculated). Replace it
     with resources/views/accounting/kpi_packs.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['kpi.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['kpi.title']" :subtitle="tx['kpi.subtitle']">
-      <template rx-if="can_import">
-        <rx-action-sheet id="kpi-import" :label="tx['kpi.import']" :action="route('accounting.kpi_import')"
-                         :title="tx['kpi.import']" :description="tx['kpi.import_description']" :submit-label="tx['kpi.import']" icon="upload">
-          <rx-input name="client" :label="tx['kpi.client_party']" id="kpi-import-client" required/>
-          <rx-input name="period" :label="tx['kpi.period_field']" id="kpi-import-period" required/>
-          <rx-textarea name="csv" :label="tx['kpi.csv']" id="kpi-import-csv" required/>
-        </rx-action-sheet>
-      </template>
-    </rx-page-header>
-    <rx-table :rows="packs" as="row" :key="row.id" :caption="tx['kpi.title']" card>
-      <rx-column :label="tx['kpi.number']"><a href="{{ route('accounting.kpi_pack', row.id) }}">{{ row.number }}</a></rx-column>
-      <rx-column :label="tx['kpi.client']">{{ row.client }}</rx-column>
-      <rx-column :label="tx['kpi.period']">{{ row.period }}</rx-column>
-      <rx-column :label="tx['kpi.version']" hide-narrow>{{ row.version }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['kpi.empty']" icon="file-text"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['kpi.title']" :subtitle="tx['kpi.subtitle']">
+    <template rx-if="can_import">
+      <rx-action-sheet id="kpi-import" :label="tx['kpi.import']" :action="route('accounting.kpi_import')"
+                       :title="tx['kpi.import']" :description="tx['kpi.import_description']" :submit-label="tx['kpi.import']" icon="upload">
+        <rx-select name="client" :label="tx['kpi.client_party']" :options="[]" :placeholder="tx['pickers.search']" options-url="{{ route('accounting.party_options') }}" id="kpi-import-client" required/>
+        <rx-input name="period" :label="tx['kpi.period_field']" id="kpi-import-period" required/>
+        <rx-textarea name="csv" :label="tx['kpi.csv']" id="kpi-import-csv" required/>
+      </rx-action-sheet>
+    </template>
+  </rx-page-header>
+  <rx-grid :page="packs"/>
 </rx-page>

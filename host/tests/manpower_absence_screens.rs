@@ -73,14 +73,14 @@ async fn the_list_shows_the_case_of_the_absent_worker_in_a_table() {
     );
     assert_eq!(
         cells_of_row(&html, "Kamal Hossain")
-            .get(1)
+            .get(3)
             .map(String::as_str),
         Some("9"),
         "nine days absent, in the cell of the days column"
     );
     no_raw_words(&html);
-    // At 390 px the table scrolls inside its box.
-    says(&html, &["rx-table-wrap"]);
+    // At 390 px the table scrolls inside the grid's own box.
+    says(&html, &["rx-grid__scroll"]);
     fits_a_phone(&html);
 
     let user = person(&app, HR).await;

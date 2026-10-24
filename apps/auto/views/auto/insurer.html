@@ -7,7 +7,7 @@
     <rx-page-header :title="name" :subtitle="tx['insurers.subtitle_one']" :back="route('auto.insurers')" :back-label="tx['insurers.title']">
       <rx-action-sheet :id="'insurer-edit-' ~ id" :label="tx['insurers.edit']" :action="route('auto.insurer_update', id)"
                        :title="tx['insurers.edit']" :description="tx['insurers.edit_description']" :submit-label="tx['insurers.edit']" icon="pencil">
-        <rx-input name="agreement" type="number" :label="tx['insurers.agreement']" :hint="tx['insurers.agreement_hint']" :value="raw_agreement" :id="'insurer-edit-agreement-' ~ id"/>
+        <rx-select name="agreement" :label="tx['insurers.agreement']" :hint="tx['insurers.agreement_hint']" :options="agreement_options" :selected="raw_agreement" :placeholder="tx['insurers.agreement_placeholder']" options-url="{{ route('auto.payer_agreement_options') }}" :id="'insurer-edit-agreement-' ~ id"/>
         <rx-input name="email" :label="tx['insurers.email']" :value="raw_email" :id="'insurer-edit-email-' ~ id"/>
         <rx-textarea name="surveyors" :label="tx['insurers.surveyors']" :value="raw_surveyors" :id="'insurer-edit-surveyors-' ~ id"/>
         <rx-input name="terms" type="number" :label="tx['insurers.terms']" :hint="tx['insurers.terms_hint']" :value="raw_terms" :id="'insurer-edit-terms-' ~ id"/>
@@ -28,7 +28,7 @@
         <rx-entry :label="tx['insurers.labour_rate']" :value="labour_rate"/>
         <rx-entry :label="tx['insurers.storage_rate']" :value="storage_rate"/>
         <rx-entry :label="tx['insurers.agreement']" :value="agreement"/>
-        <rx-entry :label="tx['insurers.rate_card']" :value="rate_card"/>
+        <rx-entry :label="tx['insurers.rate_card']" :value="rate_card" :url="rate_card_url or none"/>
       </rx-infolist>
     </rx-card>
   </rx-stack>

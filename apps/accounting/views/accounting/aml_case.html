@@ -7,8 +7,8 @@
     <rx-page-header :title="number" :subtitle="client" :back="route('accounting.aml_cases')" :back-label="tx['aml.title']"
                     :badge="status" :badge-kind="status_kind">
       <template rx-if="can_review">
-        <rx-confirm :id="'aml-review-' ~ id" :label="tx['aml.review']" :action="route('accounting.aml_case_review', id)" method="POST"
-                    :title="tx['aml.review']" :message="tx['aml.review_message']" :confirm-label="tx['aml.review']" :cancel-label="tx['button_cancel']" icon="search"/>
+        <rx-action-sheet :id="'aml-review-' ~ id" :label="tx['aml.review']" :action="route('accounting.aml_case_review', id)" variant="primary"
+                    :title="tx['aml.review']" :description="tx['aml.review_message']" :submit-label="tx['aml.review']" icon="search"></rx-action-sheet>
       </template>
       <template rx-if="can_close">
         <rx-action-sheet :id="'aml-close-' ~ id" :label="tx['aml.close']" :action="route('accounting.aml_case_close', id)"

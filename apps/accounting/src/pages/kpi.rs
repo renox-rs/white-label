@@ -19,13 +19,14 @@
 //! company. Each time a client user opens a pack it is recorded in the audit
 //! trail ([`crate::kpi_packs::record_view`]).
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
 use wl_kernel::portal::portal_users;
 
-use super::{Texts, invalid, parse_id, party_name, require, text};
+use super::{Texts, client_column, invalid, number_column, parse_id, party_name, require, text};
 use crate::kpi::{CATEGORIES, KpiKind, KpiPack, KpiStatus, kpis};
 use crate::kpi_machine::WITHDRAW_REASONS;
 use crate::kpi_packs;
@@ -71,23 +72,43 @@ fn status_label(lang: &Lang, status: KpiStatus) -> String {
     text(lang, &format!("kpi.status.{}", status.as_str()))
 }
 
-/// One pack of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct PackRow {
-    /// The primary key.
-    pub id: i64,
-    /// The number.
-    pub number: String,
-    /// The client's name.
-    pub client: String,
-    /// The period (its last day).
-    pub period: String,
-    /// The version.
-    pub version: i64,
-    /// The status.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
+/// The KPI packs grid: search on the number and client, filters by status and
+/// period.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let statuses: Vec<(String, String)> = KpiStatus::ALL
+        .iter()
+        .map(|s| (s.as_str().to_owned(), status_label(lang, *s)))
+        .collect();
+    let grid = Grid::new("accounting-kpi-packs")
+        .title(&t("kpi.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(number_column(
+            &t("kpi.number"),
+            "KPI",
+            "/accounting/kpi-packs/{id}",
+        ))
+        .column(client_column(&t("kpi.client"), "client_party_id"))
+        .column(Column::date("period_end", &t("kpi.period")).mobile())
+        .column(Column::number("version", &t("kpi.version")))
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("published", "success"),
+                    ("withdrawn", "danger"),
+                    ("draft", "info"),
+                    ("superseded", "info"),
+                ])
+                .mobile(),
+        )
+        .column(Column::date("published_on", &t("kpi.published_on")).hidden())
+        .sort_by("-number")
+        .row_url("/accounting/kpi-packs/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("kpi.empty"), Some(&t("kpi.empty_text")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list needs.
@@ -95,35 +116,29 @@ pub struct PackRow {
 #[view(template = "accounting/kpi_packs.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    packs: Vec<PackRow>,
+    packs: GridPage<KpiPack>,
     can_import: bool,
 }
 
 /// `GET /accounting/kpi-packs`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
     require(&user, permissions::KPI_VIEW)?;
-    let mut found = KpiPack::query()
-        .order_by_desc(KpiPack::ID)
-        .get(&state.db)
-        .await?;
-    found.truncate(200);
-    let mut packs = Vec::new();
-    for pack in found {
-        packs.push(PackRow {
-            id: pack.id,
-            number: pack.number(),
-            client: party_name(&state, &lang, pack.client()).await,
-            period: pack.period_end.to_string(),
-            version: pack.version,
-            status: status_label(&lang, pack.status),
-            status_kind: status_kind(pack.status),
-        });
+    // Whoever imports and edits the packs may export them.
+    let can_export = user.has_permission(permissions::KPI_MANAGE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    let query = KpiPack::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
     }
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        packs,
+        packs: grid.page(query, &request).await?,
         can_import: user.has_permission(permissions::KPI_MANAGE),
-    }))
+    })
+    .into_response())
 }
 
 /// The form of an import.

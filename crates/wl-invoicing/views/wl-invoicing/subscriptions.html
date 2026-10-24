@@ -1,16 +1,10 @@
-{#- wl-invoicing: the subscriptions (§4 *Subscription*): plan, party,
-    agreement, state and next cycle; a row opens the subscription. Replace it
-    with resources/views/wl-invoicing/subscriptions.html in the app. -#}
+{#- wl-invoicing: the subscriptions (§4 *Subscription*), a renox::grid (search
+    on the plan, filters by state and cycle) that fills the screen;
+    a row opens the subscription. Replace it with
+    resources/views/wl-invoicing/subscriptions.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['subscription.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['subscription.title']" :subtitle="tx['subscription.subtitle']"/>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['subscription.title']" card>
-      <rx-column :label="tx['subscription.fields.plan']"><a href="{{ row.link }}">{{ row.plan }}</a></rx-column>
-      <rx-column :label="tx['subscription.fields.party']">{{ row.party }}</rx-column>
-      <rx-column :label="tx['subscription.fields.source']" hide-narrow>{{ row.source }}</rx-column>
-      <rx-column :label="tx['subscription.fields.status']">{{ row.status }}</rx-column>
-      <rx-column :label="tx['subscription.fields.next_cycle']" hide-narrow>{{ row.next_cycle }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['subscription.empty']" icon="refresh-cw"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['subscription.title']" :subtitle="tx['subscription.subtitle']"/>
+  <rx-grid :page="rows">
+    <template rx-if="column.key == 'party'">{{ row.party }}</template>
+  </rx-grid>
 </rx-page>

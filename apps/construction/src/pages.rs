@@ -666,6 +666,7 @@ async fn projects_index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
+    request: renox::grid::GridRequest,
 ) -> Result<Response> {
     let may = [permissions::PROJECTS_VIEW, permissions::PROJECTS_MANAGE]
         .iter()
@@ -673,7 +674,7 @@ async fn projects_index(
     if !may {
         return Err(Error::Forbidden);
     }
-    screens::projects::page(&state, &user, &lang).await
+    screens::projects::page(&state, &user, &lang, request).await
 }
 
 /// `POST /construction/projects/{id}/settle`.

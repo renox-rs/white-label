@@ -1,15 +1,7 @@
-{#- accounting: the AML cases, newest first: the MLRO's and deputy's alone
-    (ACC.ACL.05). Replace it with resources/views/accounting/aml_cases.html
-    in the app. -#}
+{#- accounting: the AML cases, a renox::grid that fills the screen: the MLRO's
+    and deputy's alone (ACC.ACL.05). Replace it with
+    resources/views/accounting/aml_cases.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['aml.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['aml.title']" :subtitle="tx['aml.subtitle']"/>
-    <rx-table :rows="cases" as="row" :key="row.id" :caption="tx['aml.title']" card>
-      <rx-column :label="tx['aml.number']"><a href="{{ route('accounting.aml_case', row.id) }}">{{ row.number }}</a></rx-column>
-      <rx-column :label="tx['aml.client']">{{ row.client }}</rx-column>
-      <rx-column :label="tx['aml.kind']" hide-narrow>{{ row.kind }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['aml.empty']" icon="shield"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['aml.title']" :subtitle="tx['aml.subtitle']"/>
+  <rx-grid :page="cases"/>
 </rx-page>

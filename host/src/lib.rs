@@ -101,9 +101,9 @@ pub const DEMO_COMMANDS: &[&str] = &[
     app::clinics_demo::COMMAND,
     app::fnb_demo::COMMAND,
     app::edtech_demo::COMMAND,
+    app::auto_demo::COMMAND,
     app::manufacturing_demo::COMMAND,
     app::accounting_demo::COMMAND,
-    app::auto_demo::COMMAND,
 ];
 
 /// The refusal for `command` when `app_env` is a production environment.

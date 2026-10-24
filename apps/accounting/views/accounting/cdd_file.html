@@ -10,7 +10,7 @@
       <template rx-if="can_prepare">
         <rx-action-sheet :id="'cdd-party-' ~ file.id" :label="tx['cdd.add_party']" :action="route('accounting.cdd_party_add', file.id)"
                          :title="tx['cdd.add_party']" :description="tx['cdd.add_party_description']" :submit-label="tx['cdd.add_party']" icon="user">
-          <rx-input name="party" :label="tx['cdd.party']" :id="'cdd-party-id-' ~ file.id" required/>
+          <rx-select name="party" :label="tx['cdd.party']" :options="[]" :placeholder="tx['pickers.search']" options-url="{{ route('accounting.party_options') }}" :id="'cdd-party-id-' ~ file.id" required/>
           <rx-select name="role" :label="tx['cdd.party_role']" :options="roles" :selected="'ubo'" :id="'cdd-party-role-' ~ file.id"/>
         </rx-action-sheet>
         <rx-action-sheet :id="'cdd-assess-' ~ file.id" :label="tx['cdd.assess']" :action="route('accounting.cdd_assess', file.id)"
@@ -22,12 +22,12 @@
         </rx-action-sheet>
       </template>
       <template rx-if="can_submit">
-        <rx-confirm :id="'cdd-submit-' ~ file.id" :label="tx['cdd.submit']" :action="route('accounting.cdd_submit', file.id)" method="POST"
-                    :title="tx['cdd.submit']" :message="tx['cdd.submit_message']" :confirm-label="tx['cdd.submit']" :cancel-label="tx['button_cancel']" icon="upload"/>
+        <rx-action-sheet :id="'cdd-submit-' ~ file.id" :label="tx['cdd.submit']" :action="route('accounting.cdd_submit', file.id)" variant="primary"
+                    :title="tx['cdd.submit']" :description="tx['cdd.submit_message']" :submit-label="tx['cdd.submit']" icon="upload"></rx-action-sheet>
       </template>
       <template rx-if="can_approve">
-        <rx-confirm :id="'cdd-approve-' ~ file.id" :label="tx['cdd.approve']" :action="route('accounting.cdd_approve', file.id)" method="POST"
-                    :title="tx['cdd.approve']" :message="tx['cdd.approve_message']" :confirm-label="tx['cdd.approve']" :cancel-label="tx['button_cancel']" icon="check"/>
+        <rx-action-sheet :id="'cdd-approve-' ~ file.id" :label="tx['cdd.approve']" :action="route('accounting.cdd_approve', file.id)" variant="primary"
+                    :title="tx['cdd.approve']" :description="tx['cdd.approve_message']" :submit-label="tx['cdd.approve']" icon="check"></rx-action-sheet>
         <rx-action-sheet :id="'cdd-reject-' ~ file.id" :label="tx['cdd.reject']" :action="route('accounting.cdd_reject', file.id)"
                          :title="tx['cdd.reject']" :description="tx['cdd.reason_description']" :submit-label="tx['cdd.reject']" icon="x">
           <rx-textarea name="reason" :label="tx['cdd.reason']" :id="'cdd-reject-reason-' ~ file.id" required/>

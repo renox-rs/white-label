@@ -37,6 +37,7 @@ use std::collections::BTreeMap;
 
 use renox::axum::http::HeaderMap;
 use renox::chrono::{Datelike, NaiveDate};
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
@@ -190,35 +191,7 @@ pub struct Filter {
     status: String,
 }
 
-impl Filter {
-    /// The list's address with this filter.
-    fn href(&self) -> String {
-        let mut query: Vec<String> = Vec::new();
-        for (name, value) in [
-            ("client", &self.client),
-            ("month", &self.month),
-            ("status", &self.status),
-        ] {
-            if !value.is_empty() {
-                query.push(format!("{name}={value}"));
-            }
-        }
-        if query.is_empty() {
-            "/timesheets".to_owned()
-        } else {
-            format!("/timesheets?{}", query.join("&"))
-        }
-    }
-
-    fn with_status(&self, status: &str) -> Filter {
-        Filter {
-            status: status.to_owned(),
-            ..self.clone()
-        }
-    }
-}
-
-/// The standings, in the order of the tabs.
+/// The standings, in the order of the filter.
 const STANDINGS: [&str; 8] = [
     "draft",
     "submitted",
@@ -230,7 +203,7 @@ const STANDINGS: [&str; 8] = [
     "rejected",
 ];
 
-/// A timesheet in the list.
+/// A timesheet in the list (the JSON of the route).
 #[derive(Serialize, Debug, Clone)]
 pub(crate) struct Row {
     id: i64,
@@ -243,7 +216,6 @@ pub(crate) struct Row {
     hours: String,
     status: String,
     status_key: &'static str,
-    status_kind: &'static str,
     adjustment: bool,
 }
 
@@ -252,13 +224,11 @@ pub(crate) struct Row {
 #[view(template = "wl-attendance/timesheets.html")]
 pub(crate) struct ListPage {
     tx: Texts,
-    rows: Vec<Row>,
-    status_tabs: Vec<(String, String)>,
-    status_current: String,
-    status: String,
+    rows: GridPage<Timesheet>,
     clients: Vec<(String, String)>,
     client: String,
     month: String,
+    status: String,
 }
 
 /// The context of `sheet` in words, from the app.
@@ -271,29 +241,103 @@ async fn describe(state: &AppState, sheet: &Timesheet) -> Option<ContextInfo> {
         .flatten()
 }
 
+/// The standing of a timesheet as SQL, the same words as [`standing`]: the
+/// state, `escalated_at`, the basis, `billed_by`, and whether the latest
+/// recorded change was a `reject`.
+fn standing_sql() -> String {
+    format!(
+        "(CASE {{T}}.\"status\" \
+         WHEN 'open' THEN CASE WHEN (SELECT \"transition\" FROM \"state_transitions\" \
+           WHERE \"model\" = '{table}' AND \"record_key\" = CAST({{T}}.\"id\" AS TEXT) \
+           ORDER BY \"id\" DESC LIMIT 1) = '{reject}' THEN 'rejected' ELSE 'draft' END \
+         WHEN 'submitted' THEN CASE WHEN {{T}}.\"escalated_at\" IS NOT NULL THEN 'escalated' ELSE 'submitted' END \
+         WHEN 'approved' THEN CASE WHEN {{T}}.\"approval_basis\" = 'deemed' THEN 'deemed_approved' ELSE 'approved' END \
+         ELSE CASE WHEN {{T}}.\"billed_by\" IS NOT NULL THEN 'billed' ELSE 'locked' END END)",
+        table = Timesheet::TABLE,
+        reject = approval::REJECT,
+    )
+}
+
+/// The timesheets grid: filters by standing and kind, the hours drawn by the
+/// template; the worker, client and work come from the directory and the
+/// app (`custom`). The client and the month are page filters that feed the
+/// query.
+pub(crate) fn sheets_grid(lang: &Lang) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let standings: Vec<(String, String)> = STANDINGS
+        .iter()
+        .map(|key| ((*key).to_owned(), t(&format!("status.{key}"))))
+        .collect();
+    let kinds = vec![
+        ("regular".to_owned(), t("fact.kind_regular")),
+        ("adjustment".to_owned(), t("adjustment_tag")),
+    ];
+    Grid::new("attendance-timesheets")
+        .title(&t("title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(Column::custom("worker", &t("worker")).frozen().mobile())
+        .column(Column::custom("client", &t("client")).mobile())
+        .column(Column::custom("work", &t("work")))
+        .column(Column::date("period_from", &t("period_from")).hidden())
+        .column(Column::date("period_to", &t("period_to")).hidden())
+        .column(Column::custom("period", &t("period")).mobile())
+        .column(Column::custom("hours", &t("hours")).mobile())
+        .column(
+            Column::number("minutes", &t("minutes"))
+                .computed(&format!(
+                    "(SELECT COALESCE(SUM(\"normal_minutes\" + \"overtime_minutes\" + \"night_minutes\" \
+                     + \"rest_day_minutes\" + \"public_holiday_minutes\"), 0) \
+                     FROM \"{}\" WHERE \"timesheet_id\" = {{T}}.\"id\")",
+                    TimesheetEntry::TABLE
+                ))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::select("standing", &t("status"), standings)
+                .computed(&standing_sql())
+                .badges(&[
+                    ("draft", "info"),
+                    ("submitted", "info"),
+                    ("escalated", "warning"),
+                    ("rejected", "warning"),
+                    ("approved", "success"),
+                    ("deemed_approved", "success"),
+                    ("locked", "success"),
+                    ("billed", "success"),
+                ])
+                .mobile(),
+        )
+        .column(Column::select("kind", &t("fact.kind"), kinds).hidden())
+        .column(Column::text("reason", &t("reason")).hidden().searchable())
+        .sort_by("-period_from")
+        .row_url("/timesheets/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("empty"), Some(&t("empty_text")))
+}
+
 /// `GET /timesheets`: the timesheets in the person's reach, as a page or JSON.
+/// The client, the month and (as before) the standing in the address narrow
+/// the query; the grid searches, sorts and pages what is left.
 async fn list(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     headers: HeaderMap,
     Query(filter): Query<Filter>,
+    request: GridRequest,
 ) -> Result<Response> {
     let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
     let sheets = Timesheet::query()
         .order_by_desc(Timesheet::PERIOD_FROM)
         .order_by_desc(Timesheet::ID)
-        .limit(500)
         .get(&state.db)
         .await?;
-    let ids: Vec<i64> = sheets.iter().map(|sheet| sheet.id).collect();
-    let entries = TimesheetEntry::query()
-        .where_in("timesheet_id", ids)
-        .get(&state.db)
-        .await?;
-    let mut rows = Vec::new();
-    let mut clients: Vec<(String, String)> = Vec::new();
     let wanted_month = filter.month.trim();
+    let mut kept: Vec<(&Timesheet, Option<ContextInfo>, &'static str)> = Vec::new();
+    let mut clients: Vec<(String, String)> = Vec::new();
     for sheet in &sheets {
         if !reach.is_all() {
             let Some(context) = sheet.context() else {
@@ -334,64 +378,98 @@ async fn list(
         if !filter.status.is_empty() && filter.status != now {
             continue;
         }
+        kept.push((sheet, info, now));
+    }
+    // A grid refresh (htmx) wants the page too.
+    let wants_page = wants_html(&headers) || headers.contains_key("hx-request");
+    if !wants_page {
+        let ids: Vec<i64> = kept.iter().map(|(sheet, _, _)| sheet.id).collect();
+        let entries = TimesheetEntry::query()
+            .where_in("timesheet_id", ids)
+            .get(&state.db)
+            .await?;
+        let mut rows = Vec::new();
+        for (sheet, info, now) in kept {
+            let own: Vec<&TimesheetEntry> = entries
+                .iter()
+                .filter(|entry| entry.timesheet_id == sheet.id)
+                .collect();
+            rows.push(Row {
+                id: sheet.id,
+                url: url(sheet.id),
+                worker: name_of(&state, &lang, sheet.owner()).await,
+                client: client_text(info.as_ref()),
+                work: info.map_or_else(|| "-".to_owned(), |info| info.label),
+                period: period_text(sheet),
+                month: sheet.period_to.format("%b %Y").to_string(),
+                hours: hours_text(minutes_of(&own)),
+                status: text(&lang, &format!("status.{now}")),
+                status_key: now,
+                adjustment: sheet.is_adjustment(),
+            });
+        }
+        return Ok(Json(renox::serde_json::to_value(&rows)?).into_response());
+    }
+    let ids: Vec<i64> = kept.iter().map(|(sheet, _, _)| sheet.id).collect();
+    let query =
+        Timesheet::query().where_(Timesheet::ID.is_in(if ids.is_empty() { vec![-1] } else { ids }));
+    let page = sheets_grid(&lang).page(query, &request).await?;
+    // The worker, client, work and hours of the page's rows.
+    let on_page: Vec<i64> = page.items().iter().map(|sheet| sheet.id).collect();
+    let entries = TimesheetEntry::query()
+        .where_in("timesheet_id", on_page)
+        .get(&state.db)
+        .await?;
+    let mut extra: BTreeMap<i64, renox::serde_json::Value> = BTreeMap::new();
+    for sheet in page.items() {
+        let info = kept
+            .iter()
+            .find(|(kept, _, _)| kept.id == sheet.id)
+            .and_then(|(_, info, _)| info.as_ref());
         let own: Vec<&TimesheetEntry> = entries
             .iter()
             .filter(|entry| entry.timesheet_id == sheet.id)
             .collect();
-        rows.push(Row {
-            id: sheet.id,
-            url: url(sheet.id),
-            worker: name_of(&state, &lang, sheet.owner()).await,
-            client: info
-                .as_ref()
-                .map(|info| info.client.clone())
-                .filter(|client| !client.is_empty())
-                .unwrap_or_else(|| "-".to_owned()),
-            work: info.map_or_else(|| "-".to_owned(), |info| info.label),
-            period: format!(
-                "{} - {}",
-                date_text(sheet.period_from),
-                date_text(sheet.period_to)
-            ),
-            month: sheet.period_to.format("%b %Y").to_string(),
-            hours: hours_text(minutes_of(&own)),
-            status: text(&lang, &format!("status.{now}")),
-            status_key: now,
-            status_kind: kind_of(now),
-            adjustment: sheet.is_adjustment(),
-        });
+        extra.insert(
+            sheet.id,
+            renox::serde_json::json!({
+                "worker": name_of(&state, &lang, sheet.owner()).await,
+                "client": client_text(info),
+                "work": info.map_or_else(|| "-".to_owned(), |info| info.label.clone()),
+                "period": period_text(sheet),
+                "hours": hours_text(minutes_of(&own)),
+                "url": url(sheet.id),
+            }),
+        );
     }
-    if !wants_html(&headers) {
-        let mut data = renox::serde_json::to_value(&rows)?;
-        if let Some(rows) = data.as_array_mut() {
-            for row in rows {
-                if let Some(map) = row.as_object_mut() {
-                    map.remove("status_kind");
-                }
-            }
-        }
-        return Ok(Json(data).into_response());
-    }
-    let mut status_tabs = vec![(filter.with_status("").href(), text(&lang, "all"))];
-    for key in STANDINGS {
-        status_tabs.push((
-            filter.with_status(key).href(),
-            text(&lang, &format!("status.{key}")),
-        ));
-    }
+    let rows = page.extend(|sheet| extra.get(&sheet.id).cloned().unwrap_or_default());
     let mut options = vec![(String::new(), text(&lang, "all_clients"))];
     options.extend(clients);
     Ok(View::typed(ListPage {
         tx: screen_texts(&lang),
         rows,
-        status_current: filter.href(),
-        status_tabs,
-        status: filter.status.clone(),
         clients: options,
         client: filter.client.clone(),
         month: filter.month.clone(),
+        status: filter.status.clone(),
     })
     .into_response())
+}
+
+/// The client of a context in words, `-` without one.
+fn client_text(info: Option<&ContextInfo>) -> String {
+    info.map(|info| info.client.clone())
+        .filter(|client| !client.is_empty())
+        .unwrap_or_else(|| "-".to_owned())
+}
+
+/// The period of a timesheet as `01 Nov 2026 - 30 Nov 2026`.
+fn period_text(sheet: &Timesheet) -> String {
+    format!(
+        "{} - {}",
+        date_text(sheet.period_from),
+        date_text(sheet.period_to)
+    )
 }
 
 /// One fact of the overview.
@@ -1117,19 +1195,5 @@ mod tests {
         assert_eq!(standing(&sheet, false), "locked");
         sheet.billed_by = Some("invoicing.invoice:1".into());
         assert_eq!(standing(&sheet, false), "billed");
-    }
-
-    #[test]
-    fn the_filter_keeps_what_was_chosen_in_the_address() {
-        let filter = Filter {
-            client: "7".into(),
-            month: "2026-11".into(),
-            status: String::new(),
-        };
-        assert_eq!(
-            filter.with_status("billed").href(),
-            "/timesheets?client=7&month=2026-11&status=billed"
-        );
-        assert_eq!(Filter::default().href(), "/timesheets");
     }
 }

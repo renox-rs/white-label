@@ -6,7 +6,7 @@
 //! | `GET /subscriptions/{id}` | `wl_invoicing.subscription` | `subscriptions.view` |
 //! | `POST /subscriptions/{id}/cancel` | `wl_invoicing.subscription_cancel` | `subscriptions.manage` |
 //!
-//! The list shows each subscription's plan, party, agreement, state and next
+//! The list is a `renox::grid` (`?export=` also `subscriptions.manage`) with each subscription's plan, party, agreement, state and next
 //! cycle; a subscription's page shows its terms, its open pause causes (a
 //! block shows only `on_hold`), its cycles with their invoices and, for a
 //! holder of `subscriptions.manage`, the cancel sheet. A user cancel ends at
@@ -19,11 +19,13 @@
 use std::collections::BTreeMap;
 
 use renox::chrono::NaiveDate;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::state_machine::TransitionError;
 use serde::Serialize;
 use wl_kernel::documents::today;
-use wl_kernel::subscriptions::SubscriptionStatus;
+use wl_kernel::subscriptions::{BillingCycle, SubscriptionStatus};
 
 use crate::allocate::amount_text;
 use crate::permissions;
@@ -84,56 +86,125 @@ async fn party_name(state: &AppState, party: wl_kernel::PartyId) -> Result<Strin
         .unwrap_or_else(|| format!("#{}", party.0)))
 }
 
-/// One row of the list.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct Row {
-    id: i64,
-    plan: String,
-    party: String,
-    source: String,
-    status: String,
-    next_cycle: String,
-    link: String,
-}
-
 /// What the list page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-invoicing/subscriptions.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    rows: Vec<Row>,
+    rows: GridPage<Subscription>,
 }
 
-/// `GET /subscriptions`: every subscription, newest first.
-async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
-    let all = Subscription::query()
-        .order_by_desc(Subscription::ID)
-        .limit(200)
-        .get(&state.db)
-        .await?;
-    let mut rows = Vec::with_capacity(all.len());
-    for subscription in all {
-        rows.push(Row {
-            id: subscription.id,
-            plan: subscription.plan.clone(),
-            party: party_name(&state, subscription.party()).await?,
-            source: subscription.source().words(),
-            status: text(
-                &lang,
-                &format!("subscription.status.{}", subscription.status.as_str()),
-            ),
-            next_cycle: if subscription.status == SubscriptionStatus::Cancelled {
-                String::new()
-            } else {
-                day(Some(subscription.next_cycle_date))
-            },
-            link: format!("/subscriptions/{}", subscription.id),
-        });
+/// The subscriptions grid: search on the plan, filters by
+/// state and cycle, the price in each subscription's currency.
+pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let statuses: Vec<(String, String)> = SubscriptionStatus::ALL
+        .iter()
+        .map(|s| {
+            (
+                s.as_str().to_owned(),
+                text(lang, &format!("subscription.status.{}", s.as_str())),
+            )
+        })
+        .collect();
+    let cycles: Vec<(String, String)> = BillingCycle::ALL
+        .iter()
+        .map(|c| {
+            (
+                c.as_str().to_owned(),
+                text(lang, &format!("subscription.cycle.{}", c.as_str())),
+            )
+        })
+        .collect();
+    let grid = Grid::new("wl-invoicing-subscriptions")
+        .title(&text(lang, "subscription.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("plan", &text(lang, "subscription.fields.plan"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/subscriptions/{id}"),
+        )
+        // The name comes from the party directory, not from a table.
+        .column(Column::custom("party", &text(lang, "subscription.fields.party")).mobile())
+        .column(
+            Column::text("source", &text(lang, "subscription.fields.source"))
+                .computed("{T}.\"source_type\" || ':' || {T}.\"source_id\"")
+                .searchable(),
+        )
+        .column(
+            Column::select(
+                "status",
+                &text(lang, "subscription.fields.status"),
+                statuses,
+            )
+            .badges(&[
+                ("active", "success"),
+                ("past_due", "warning"),
+                ("suspended", "danger"),
+                ("paused", "info"),
+                ("cancelled", "info"),
+            ])
+            .mobile(),
+        )
+        .column(
+            // A cancelled subscription has no next cycle.
+            Column::date(
+                "next_cycle_date",
+                &text(lang, "subscription.fields.next_cycle"),
+            )
+            .computed(
+                "CASE WHEN {T}.\"status\" = 'cancelled' THEN NULL ELSE {T}.\"next_cycle_date\" END",
+            )
+            .mobile(),
+        )
+        .column(
+            Column::money("unit_price", &text(lang, "subscription.fields.price"))
+                .currency_from("currency")
+                .hidden(),
+        )
+        .column(Column::select("cycle", &text(lang, "subscription.fields.cycle"), cycles).hidden())
+        .column(Column::date("start_date", &text(lang, "subscription.fields.start")).hidden())
+        .column(Column::date("end_date", &text(lang, "subscription.fields.end")).hidden())
+        .sort_by("-id")
+        .row_url("/subscriptions/{id}")
+        .cards_on_mobile()
+        .empty_state(&text(lang, "subscription.empty"), None);
+    if can_export { grid.exports() } else { grid }
+}
+
+/// `GET /subscriptions`: the grid, or its export (`?export=csv|xlsx|print`,
+/// with `subscriptions.manage`).
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
+    let can_export = crate::may_export(&user, permissions::SUBSCRIPTIONS_MANAGE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
     }
+    if let Some(file) = grid.export(Subscription::query(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(Subscription::query(), &request).await?;
+    let mut parties = BTreeMap::new();
+    for subscription in page.items() {
+        parties.insert(
+            subscription.id,
+            party_name(&state, subscription.party()).await?,
+        );
+    }
+    let rows = page.extend(|subscription| json!({ "party": parties.get(&subscription.id) }));
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         rows,
-    }))
+    })
+    .into_response())
 }
 
 /// One open pause cause.
@@ -235,7 +306,7 @@ async fn show(
         ),
         status_kind: status_kind(subscription.status),
         party: party_name(&state, subscription.party()).await?,
-        source: subscription.source().words(),
+        source: subscription.source().to_string(),
         price: amount_text(&subscription.currency, subscription.unit_price),
         cycle: text(
             &lang,

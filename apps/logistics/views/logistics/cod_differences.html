@@ -1,27 +1,13 @@
-{#- logistics: the COD differences by who absorbed them, with the shipments
-    behind each and the loss the business bears. Replace it with
-    resources/views/logistics/cod_differences.html in the app. -#}
+{#- logistics: the COD differences, a renox::grid of the shipments with one
+    (search, sums of the money) that fills the screen. The totals by who
+    absorbed them and the loss the business bears are badges in the header.
+    Replace it with resources/views/logistics/cod_differences.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['cod_title']">
-  <rx-stack>
-    <rx-page-header :title="tx['cod_title']" :subtitle="tx['cod_subtitle']"/>
-    <rx-table :rows="totals" as="total" :key="total.absorber" :caption="tx['cod_by_absorber']" card>
-      <rx-column :label="tx['cod_absorbed_by']">{{ total.absorber }}</rx-column>
-      <rx-column :label="tx['cod_count']" align="num">{{ total.count }}</rx-column>
-      <rx-column :label="tx['cod_difference']" align="num">{{ total.total | money(currency='AED') }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['cod_empty']" :message="tx['cod_empty_text']" icon="banknote"/></rx-slot>
-    </rx-table>
-    <rx-card :title="tx['cod_losses']">
-      <rx-entry :label="tx['cod_loss_total']" :value="losses" format="money"/>
-    </rx-card>
-    <rx-table :rows="rows" as="row" :key="row.number" :caption="tx['cod_shipments']" card>
-      <rx-column :label="tx['number']"><a href="/shipments/{{ row.shipment_id }}">{{ row.number }}</a></rx-column>
-      <rx-column :label="tx['client']" hide-narrow>{{ row.client_party_id }}</rx-column>
-      <rx-column :label="tx['cod']" align="num" hide-narrow>{{ row.cod_amount | money(currency='AED') }}</rx-column>
-      <rx-column :label="tx['cod_collected']" align="num" hide-narrow>{{ row.collected | money(currency='AED') }}</rx-column>
-      <rx-column :label="tx['cod_difference']" align="num">{{ row.difference | money(currency='AED') }}</rx-column>
-      <rx-column :label="tx['cod_absorbed_by']">{{ row.absorbed_by }}</rx-column>
-      <rx-column :label="tx['reason']" hide-narrow>{{ row.reason }}</rx-column>
-      <rx-column :label="tx['cod_instruction']" hide-narrow>{{ row.instruction }}</rx-column>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['cod_title']" :subtitle="tx['cod_subtitle']">
+    <template rx-for="total in totals">
+      <rx-badge kind="info" :text="total.absorber ~ ' · ' ~ total.count ~ ' · ' ~ (total.total | money(currency='AED'))"/>
+    </template>
+    <rx-badge :kind="'warning' if losses else 'neutral'" :text="(losses | money(currency='AED')) ~ ' · ' ~ tx['cod_loss_total']"/>
+  </rx-page-header>
+  <rx-grid :page="rows"/>
 </rx-page>

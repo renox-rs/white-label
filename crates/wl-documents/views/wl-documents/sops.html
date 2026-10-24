@@ -1,28 +1,15 @@
-{#- wl-documents: the SOP library. One row per SOP: code, title, category,
-    owner role, required readers, status, current version and review state.
-    The filter links keep to one status. Replace it with
+{#- wl-documents: the SOP library, a renox::grid (search, filters by category,
+    status and review date, export with sops.manage). One row per SOP: code,
+    title, category, owner role, required readers, status, current version
+    and review state. Replace it with
     resources/views/wl-documents/sops.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['sops.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['sops.title']" :subtitle="tx['sops.subtitle']">
-      <rx-link-button rx-if="can_manage" route="wl_documents.sops.new" :label="tx['sops.new']" icon="plus"/>
-    </rx-page-header>
-    <rx-row>
-      <rx-link-button :href="route('wl_documents.sops')" :label="tx['sops.filter.all']" :variant="'primary' if filter == 'all' else 'plain'"/>
-      <rx-link-button :href="route('wl_documents.sops') ~ '?status=draft'" :label="tx['sops.status.draft']" :variant="'primary' if filter == 'draft' else 'plain'"/>
-      <rx-link-button :href="route('wl_documents.sops') ~ '?status=active'" :label="tx['sops.status.active']" :variant="'primary' if filter == 'active' else 'plain'"/>
-      <rx-link-button :href="route('wl_documents.sops') ~ '?status=withdrawn'" :label="tx['sops.status.withdrawn']" :variant="'primary' if filter == 'withdrawn' else 'plain'"/>
-    </rx-row>
-    <rx-table :rows="sops" as="sop" :key="sop.code ~ sop.url" :caption="tx['sops.title']" card>
-      <rx-column :label="tx['sops.fields.code']"><a href="{{ sop.url }}">{{ sop.code }}</a></rx-column>
-      <rx-column :label="tx['sops.fields.title']">{{ sop.title }}</rx-column>
-      <rx-column :label="tx['sops.fields.category']" hide-narrow>{{ sop.category or tx['none'] }}</rx-column>
-      <rx-column :label="tx['sops.fields.owner_role']" hide-narrow>{{ sop.owner_role }}</rx-column>
-      <rx-column :label="tx['sops.fields.readers']" hide-narrow>{{ sop.readers }}</rx-column>
-      <rx-column :label="tx['sops.fields.status']"><rx-badge :text="sop.status_label" :kind="sop.status_kind"/></rx-column>
-      <rx-column :label="tx['sops.fields.version']" align="num">{{ sop.version or tx['none'] }}</rx-column>
-      <rx-column :label="tx['sops.fields.review']"><rx-badge :text="sop.review_label" :kind="sop.review_kind"/> {{ sop.review_date or "" }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['sops.empty']" :message="tx['sops.empty_hint']" icon="book-open"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['sops.title']" :subtitle="tx['sops.subtitle']">
+    <rx-link-button rx-if="can_manage" route="wl_documents.sops.new" :label="tx['sops.new']" icon="plus"/>
+  </rx-page-header>
+  <rx-grid :page="sops">
+    <template rx-if="column.key == 'readers'">{{ row.readers }}</template>
+    <template rx-elif="column.key == 'version'">{{ row.version }}</template>
+    <template rx-elif="column.key == 'review'"><rx-badge :text="row.review_label" :kind="row.review_kind"/></template>
+  </rx-grid>
 </rx-page>

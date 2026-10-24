@@ -1,20 +1,14 @@
-{#- fnb: the rider fault entries (order, category, amount, date) for the rider
-    of the delivery's last run: seen by the kitchen manager and HR, never by
-    other riders, and never a deduction from pay. Replace it with
-    resources/views/fnb/rider_faults.html in the app. -#}
+{#- fnb: the rider fault entries, a renox::grid (search on the rider and
+    order, filter by category and day, sum of the amounts) that fills the
+    screen, for the rider of the delivery's last run: seen by the kitchen
+    manager and HR, never by other riders, and never a deduction from pay.
+    Replace it with resources/views/fnb/rider_faults.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['report.faults_title']">
-  <rx-stack>
-    <rx-page-header :title="tx['report.faults_title']" :subtitle="tx['report.faults_subtitle']"/>
-    <rx-table :rows="faults" as="fault" :key="fault.id" :caption="tx['report.faults_title']">
-      <rx-column :label="tx['report.rider']">
-        <span rx-if="fault.employee_url"><a href="{{ fault.employee_url }}">{{ fault.rider }}</a></span>
-        <span rx-if="not fault.employee_url">{{ fault.rider }}</span>
-      </rx-column>
-      <rx-column :label="tx['number']"><a href="{{ fault.order_url }}">{{ fault.order }}</a></rx-column>
-      <rx-column :label="tx['report.category']">{{ fault.category }}</rx-column>
-      <rx-column :label="tx['amount']" align="num">{{ fault.amount | money(currency='AED') }}</rx-column>
-      <rx-column :label="tx['report.day']">{{ fault.day }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['report.faults_empty']" icon="bike"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['report.faults_title']" :subtitle="tx['report.faults_subtitle']"/>
+  <rx-grid :page="faults">
+    <template rx-if="column.key == 'rider'">
+      <a rx-if="row.employee_url" href="{{ row.employee_url }}">{{ row.rider }}</a>
+      <span rx-if="not row.employee_url">{{ row.rider }}</span>
+    </template>
+  </rx-grid>
 </rx-page>

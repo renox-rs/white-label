@@ -56,6 +56,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_documents.review.priority", "Blocking"),
     ("wl_documents.review.file", "Open file"),
+    ("wl_documents.review.flags", "Notes"),
     ("wl_documents.review.accept", "Accept"),
     ("wl_documents.review.accept_title", "Accept this document?"),
     (
@@ -118,6 +119,7 @@ const TEXTS: &[(&str, &str)] = &[
         "The kinds of documents records carry, and the transitions they guard.",
     ),
     ("wl_documents.kinds.empty", "No document kinds yet"),
+    ("wl_documents.kinds.enabled", "Available"),
     (
         "wl_documents.kinds.empty_hint",
         "Kinds show up here once the modules that use them are installed.",
@@ -430,6 +432,7 @@ const TEXTS: &[(&str, &str)] = &[
         "Nothing waits for your approval",
     ),
     ("wl_documents.overrides.mine", "Your requests"),
+    ("wl_documents.overrides.list", "List"),
     (
         "wl_documents.overrides.mine_empty",
         "You have not asked for an override",
@@ -696,6 +699,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_documents.acks.signature", "Reader's drawn signature"),
     ("wl_documents.acks.reader", "Reader"),
+    ("wl_documents.acks.list", "List"),
     ("wl_documents.acks.readers", "Readers"),
     ("wl_documents.acks.report", "Acknowledgements"),
     ("wl_documents.acks.acknowledged_count", "Acknowledged"),

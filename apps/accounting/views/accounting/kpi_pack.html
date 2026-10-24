@@ -30,7 +30,7 @@
       <template rx-if="can_copy">
         <rx-action-sheet :id="'kpi-copy-' ~ id" :label="tx['kpi.copy']" :action="route('accounting.kpi_copy', id)"
                          :title="tx['kpi.copy']" :description="tx['kpi.copy_description']" :submit-label="tx['kpi.copy']" icon="copy">
-          <rx-input name="client" :label="tx['kpi.client_party']" :id="'kpi-copy-client-' ~ id" required/>
+          <rx-select name="client" :label="tx['kpi.client_party']" :options="[]" :placeholder="tx['pickers.search']" options-url="{{ route('accounting.party_options') }}" :id="'kpi-copy-client-' ~ id" required/>
         </rx-action-sheet>
       </template>
     </rx-page-header>

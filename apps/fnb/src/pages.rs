@@ -41,7 +41,9 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Action, Column, Grid, GridRequest, Summary};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::state_machine::{StateMachine, TransitionError};
 use serde::Serialize;
 use wl_kernel::PartyId;
@@ -250,21 +252,114 @@ fn back_to(lang: &Lang, key: &str, id: i64) -> Result<Response> {
         .into_response())
 }
 
-/// One order of the list.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct Row {
-    id: i64,
-    number: String,
-    recipient: String,
-    area: String,
-    channel: String,
-    kind: String,
-    payment: String,
-    total: i64,
-    status: String,
-    status_kind: &'static str,
-    failure: String,
-    url: String,
+/// The channels an order comes through.
+const CHANNELS: [&str; 6] = [
+    "counter",
+    "phone",
+    "website",
+    "aggregator_a",
+    "aggregator_b",
+    "aggregator_c",
+];
+
+/// The ways an order is paid.
+const PAYMENT_MODES: [&str; 5] = ["cash_on_delivery", "online", "on_account", "cash", "card"];
+
+/// The statuses of an order, with the tone of their badge.
+const STATUS_TONES: [(&str, &str); 9] = [
+    ("placed", "info"),
+    ("accepted", "info"),
+    ("preparing", "info"),
+    ("ready", "success"),
+    ("dispatched", "info"),
+    ("delivery_failed", "warning"),
+    ("completed", "success"),
+    ("rejected", "info"),
+    ("cancelled", "danger"),
+];
+
+/// The orders grid: search on the number, customer and area, filters by
+/// status, channel and payment, sum of the totals. The reason a delivery
+/// failed or an order was cancelled is drawn by the template (`custom`).
+pub(crate) fn orders_grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = tx(lang);
+    let words = |prefix: &str, codes: &[&str]| -> Vec<(String, String)> {
+        codes
+            .iter()
+            .map(|code| {
+                (
+                    (*code).to_owned(),
+                    crate::texts::t(lang, &format!("{prefix}{code}")),
+                )
+            })
+            .collect()
+    };
+    let statuses: Vec<(String, String)> = STATUS_TONES
+        .iter()
+        .map(|(code, _)| {
+            (
+                (*code).to_owned(),
+                crate::texts::t(lang, &format!("fnb.screen.status.{code}")),
+            )
+        })
+        .collect();
+    let channels: Vec<(String, String)> = CHANNELS
+        .iter()
+        .map(|code| ((*code).to_owned(), channel_label(lang, code)))
+        .collect();
+    let grid = Grid::new("fnb-orders")
+        .title(&t["title"])
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &t["number"])
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable()
+                .link("/orders/{id}"),
+        )
+        .column(Column::datetime("placed_at", &t["placed"]).hidden())
+        .column(Column::select("channel", &t["channel"], channels).mobile())
+        .column(
+            Column::text("recipient_name", &t["customer"])
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::text("area", &t["area"]).searchable())
+        .column(
+            Column::select(
+                "kind",
+                &t["kind"],
+                words("fnb.screen.kind.", &[kind::DELIVERY, kind::PICKUP]),
+            )
+            .hidden(),
+        )
+        .column(
+            Column::select(
+                "payment_mode",
+                &t["payment"],
+                words("fnb.screen.payment.", &PAYMENT_MODES),
+            )
+            .hidden(),
+        )
+        .column(
+            Column::money("total", &wl_kernel::money_label(&t["total"]))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::select("status", &t["state"], statuses)
+                .badges(&STATUS_TONES)
+                .mobile(),
+        )
+        .column(Column::custom("failure", &t["reason"]))
+        .sort_by("-id")
+        .row_url("/orders/{id}")
+        .cards_on_mobile()
+        .empty_state(&t["empty"], Some(&t["empty_text"]));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list needs.
@@ -272,37 +367,36 @@ pub(crate) struct Row {
 #[view(template = "fnb/orders.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    orders: Vec<Row>,
+    orders: renox::grid::GridPage<FnbOrder>,
 }
 
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<Response> {
+async fn index(
+    State(_state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if !user.has_permission_anywhere(permissions::ORDERS_VIEW) {
         return Err(Error::Forbidden);
     }
-    let orders = FnbOrder::newest(&state.db, 200)
-        .await?
-        .iter()
-        .map(|o| Row {
-            id: o.id,
-            number: o.number.clone(),
-            recipient: o.recipient_name.clone(),
-            area: o.area.clone(),
-            channel: channel_label(&lang, &o.channel),
-            kind: t(&lang, &format!("fnb.screen.kind.{}", o.kind)),
-            payment: t(&lang, &format!("fnb.screen.payment.{}", o.payment_mode)),
-            total: o.total,
-            status: status_word(&lang, o.status),
-            status_kind: status_kind(o.status),
-            failure: match (&o.failure_reason, &o.cancel_reason_code) {
-                (Some(reason), _) => t(&lang, &format!("fnb.screen.reason.{reason}")),
-                (None, Some(code)) if o.status == FnbOrderStatus::Cancelled => {
-                    t(&lang, &format!("fnb.cancel.reason.{code}"))
-                }
-                _ => String::new(),
-            },
-            url: format!("/orders/{}", o.id),
-        })
-        .collect();
+    let can_export = user.has_permission_anywhere(permissions::ORDERS_MANAGE);
+    let grid = orders_grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(FnbOrder::query(), &request).await? {
+        return Ok(file);
+    }
+    let orders = grid.page(FnbOrder::query(), &request).await?.extend(|o| {
+        let failure = match (&o.failure_reason, &o.cancel_reason_code) {
+            (Some(reason), _) => t(&lang, &format!("fnb.screen.reason.{reason}")),
+            (None, Some(code)) if o.status == FnbOrderStatus::Cancelled => {
+                t(&lang, &format!("fnb.cancel.reason.{code}"))
+            }
+            _ => String::new(),
+        };
+        json!({ "failure": failure })
+    });
     Ok(View::typed(IndexPage {
         tx: tx(&lang),
         orders,
@@ -1117,17 +1211,62 @@ async fn my_order_cancel(
         .into_response())
 }
 
-/// A ticket of the kitchen board.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct BoardRow {
-    id: i64,
-    order: String,
-    order_url: String,
-    description: String,
-    quantity: String,
-    station: String,
-    status: String,
-    can_start: bool,
+/// The kitchen board: the tickets still on a screen, oldest first, with a
+/// filter by station and Start and Bump in each row. It reloads by itself.
+/// It shows no customer details (`FNB.ACL.01`); the order number links to
+/// the order only for who may view orders.
+pub(crate) fn kitchen_grid(lang: &Lang, stations: Vec<String>, can_view_orders: bool) -> Grid {
+    let t = tx(lang);
+    let number = Column::related("order", &t["number"], "fnb_orders", "order_id", "number")
+        .frozen()
+        .mobile()
+        .searchable();
+    let states: Vec<(String, String)> = [TicketStatus::Queued, TicketStatus::InPrep]
+        .iter()
+        .map(|status| {
+            (
+                status.as_str().to_owned(),
+                crate::texts::t(lang, &format!("fnb.screen.ticket.{}", status.as_str())),
+            )
+        })
+        .collect();
+    Grid::new("fnb-kitchen")
+        .title(&t["kitchen_title"])
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .poll(15)
+        .column(if can_view_orders {
+            number.link("/orders/{order_id}")
+        } else {
+            number
+        })
+        .column(
+            Column::text("description", &t["item"])
+                .mobile()
+                .searchable(),
+        )
+        .column(
+            Column::number("quantity", &t["quantity"])
+                .computed("({T}.\"quantity_milli\" / 1000)")
+                .mobile(),
+        )
+        .column(Column::select(
+            "station",
+            &t["station"],
+            stations.into_iter().map(|s| (s.clone(), s)),
+        ))
+        .column(
+            Column::select("status", &t["state"], states)
+                .badges(&[("queued", "neutral"), ("in_prep", "info")])
+                .mobile(),
+        )
+        .column(Column::datetime("created_at", &t["when"]).hidden())
+        .row_action(Action::new(&t["start"], "/tickets/{id}/start").confirm(&t["start_title"]))
+        .row_action(Action::new(&t["bump"], "/tickets/{id}/bump").confirm(&t["bump_title"]))
+        .sort_by("id")
+        .cards_on_mobile()
+        .empty_state(&t["kitchen_empty"], Some(&t["kitchen_empty_text"]))
 }
 
 /// What the kitchen board needs.
@@ -1135,38 +1274,35 @@ pub(crate) struct BoardRow {
 #[view(template = "fnb/kitchen.html")]
 pub(crate) struct KitchenPage {
     tx: Texts,
-    tickets: Vec<BoardRow>,
+    tickets: renox::grid::GridPage<KitchenTicket>,
 }
 
-async fn kitchen(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<Response> {
+async fn kitchen(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if !user.has_permission_anywhere(permissions::KDS_WORK) {
         return Err(Error::Forbidden);
     }
-    let mut tickets = Vec::new();
-    for ticket in KitchenTicket::open(&state.db).await? {
-        let order = FnbOrder::find(&state.db, ticket.order_id).await?;
-        tickets.push(BoardRow {
-            id: ticket.id,
-            order: order.as_ref().map(|o| o.number.clone()).unwrap_or_default(),
-            // The kitchen screen shows no customer details (`FNB.ACL.01`).
-            order_url: if user.has_permission_anywhere(permissions::ORDERS_VIEW) {
-                format!("/orders/{}", ticket.order_id)
-            } else {
-                String::new()
-            },
-            description: ticket.description.clone(),
-            quantity: format!("{}", ticket.quantity_milli / 1_000),
-            station: ticket.station.clone(),
-            status: t(
-                &lang,
-                &format!("fnb.screen.ticket.{}", ticket.status.as_str()),
-            ),
-            can_start: ticket.status == TicketStatus::Queued,
-        });
-    }
+    let mut stations: Vec<String> = KitchenTicket::open(&state.db)
+        .await?
+        .into_iter()
+        .map(|ticket| ticket.station)
+        .collect();
+    stations.sort();
+    stations.dedup();
+    let grid = kitchen_grid(
+        &lang,
+        stations,
+        user.has_permission_anywhere(permissions::ORDERS_VIEW),
+    );
+    let open = KitchenTicket::query()
+        .where_(KitchenTicket::STATUS.is_in([TicketStatus::Queued, TicketStatus::InPrep]));
     Ok(View::typed(KitchenPage {
         tx: tx(&lang),
-        tickets,
+        tickets: grid.page(open, &request).await?,
     })
     .into_response())
 }
@@ -1215,14 +1351,46 @@ async fn ticket_bump(
     ticket_step(&state, &user, &lang, id, BUMP, "fnb.ticket_bumped").await
 }
 
-/// A customer whose cash on delivery is off.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct CodRow {
-    party: i64,
-    customer: String,
-    off_at: String,
-    order: String,
-    order_url: String,
+/// The customers without cash on delivery: search on the customer, sorted
+/// by when it was turned off. The order that turned it off and the button
+/// that turns it back on are drawn by the template (`custom`).
+pub(crate) fn cod_grid(lang: &Lang) -> Grid {
+    let t = tx(lang);
+    Grid::new("fnb-cod-customers")
+        .title(&t["cod_title"])
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .exports()
+        .column(
+            Column::related(
+                "customer",
+                &t["customer"],
+                "wl_parties_parties",
+                "party_id",
+                "display_name",
+            )
+            .frozen()
+            .mobile()
+            .searchable(),
+        )
+        .column(Column::datetime("cod_off_at", &t["cod_off_at"]).mobile())
+        .column(
+            Column::related(
+                "order",
+                &t["cod_order"],
+                "fnb_orders",
+                "cod_off_order_id",
+                "number",
+            )
+            .searchable()
+            .hidden(),
+        )
+        .column(Column::custom("order_link", &t["cod_order"]).mobile())
+        .column(Column::custom("actions", &t["actions"]).mobile())
+        .sort_by("-cod_off_at")
+        .cards_on_mobile()
+        .empty_state(&t["cod_empty"], Some(&t["cod_empty_text"]))
 }
 
 /// What the list of customers without cash on delivery needs.
@@ -1230,42 +1398,53 @@ pub(crate) struct CodRow {
 #[view(template = "fnb/cod_customers.html")]
 pub(crate) struct CodPage {
     tx: Texts,
-    customers: Vec<CodRow>,
+    customers: renox::grid::GridPage<CustomerFlag>,
+    sheets: Vec<i64>,
 }
 
 async fn cod_customers(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
+    request: GridRequest,
 ) -> Result<Response> {
     if !user.has_permission(permissions::CUSTOMERS_COD) {
         return Err(Error::Forbidden);
     }
-    let directory = wl_kernel::parties::directory(&state);
-    let mut customers = Vec::new();
-    for flag in CustomerFlag::turned_off(&state.db).await? {
-        let name = directory
-            .find(&state.db, PartyId(flag.party_id))
-            .await?
-            .map(|summary| summary.display_name)
-            .unwrap_or_default();
-        let order = match flag.cod_off_order_id {
-            Some(id) => FnbOrder::find(&state.db, id).await?,
-            None => None,
-        };
-        customers.push(CodRow {
-            party: flag.party_id,
-            customer: name,
-            off_at: flag.cod_off_at.map(dubai_text).unwrap_or_default(),
-            order: order.as_ref().map(|o| o.number.clone()).unwrap_or_default(),
-            order_url: order
-                .map(|o| format!("/orders/{}", o.id))
-                .unwrap_or_default(),
-        });
+    let grid = cod_grid(&lang);
+    let off = CustomerFlag::query().where_(CustomerFlag::COD_ALLOWED.eq(false));
+    if let Some(file) = grid.export(off.clone(), &request).await? {
+        return Ok(file);
     }
+    let page = grid.page(off, &request).await?;
+    // The order numbers of the page, for the link of each row.
+    let ids: Vec<i64> = page
+        .items()
+        .iter()
+        .filter_map(|flag| flag.cod_off_order_id)
+        .collect();
+    let orders = if ids.is_empty() {
+        Vec::new()
+    } else {
+        FnbOrder::query()
+            .where_(FnbOrder::ID.is_in(ids))
+            .get(&state.db)
+            .await?
+    };
+    let sheets = page.items().iter().map(|flag| flag.party_id).collect();
+    let customers = page.extend(|flag| {
+        let order = orders
+            .iter()
+            .find(|order| Some(order.id) == flag.cod_off_order_id);
+        json!({
+            "order_number": order.map(|order| order.number.clone()),
+            "order_url": order.map(|order| format!("/orders/{}", order.id)),
+        })
+    });
     Ok(View::typed(CodPage {
         tx: tx(&lang),
         customers,
+        sheets,
     })
     .into_response())
 }

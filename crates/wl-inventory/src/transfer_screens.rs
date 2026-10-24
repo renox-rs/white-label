@@ -15,8 +15,9 @@
 //! Decision: the form makes a transfer of one item (one line); a transfer of
 //! several lines is made through the service.
 
-use crate::screens::dubai_text;
+use renox::grid::{Column, Grid, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 
 use crate::hold_service::warnings_for;
@@ -24,7 +25,9 @@ use crate::item::Item;
 use crate::location::{Location, LocationType};
 use crate::lot::{Lot, LotStatus};
 use crate::permissions;
-use crate::stock_screens::{Texts, amount, item_name, location_name, locations_with, tr, tx, word};
+use crate::stock_screens::{
+    Texts, amount, exported, item_name, location_name, locations_with, tr, tx,
+};
 use crate::transfer::{
     NewTransfer, NewTransferLine, Transfer, TransferStatus, create_draft, lines_of,
 };
@@ -39,17 +42,11 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
-/// One transfer.
+/// What a transfer's row needs beyond its columns, and the sheets of its
+/// buttons.
 #[derive(Serialize, Debug, Clone)]
-pub struct TransferRow {
+pub struct TransferSheet {
     id: i64,
-    number: String,
-    from: String,
-    to: String,
-    lines: String,
-    status: String,
-    status_kind: &'static str,
-    when: String,
     can_send: bool,
     can_receive: bool,
     warning: String,
@@ -60,39 +57,91 @@ pub struct TransferRow {
 #[view(template = "wl-inventory/transfers.html")]
 pub(crate) struct TransfersPage {
     tx: Texts,
-    rows: Vec<TransferRow>,
+    rows: renox::grid::GridPage<Transfer>,
     can_make: bool,
     from: Vec<(String, String)>,
     to: Vec<(String, String)>,
     items: Vec<(String, String)>,
     lots: Vec<(String, String)>,
+    /// The transfers the person may send or receive (a sheet each).
+    sheets: Vec<TransferSheet>,
 }
 
-fn status_kind(status: TransferStatus) -> &'static str {
-    match status {
-        TransferStatus::Draft => "info",
-        TransferStatus::InTransit => "warning",
-        TransferStatus::Received => "success",
-        TransferStatus::Cancelled => "error",
-    }
+/// The transfers grid: search on the number and the stores, filters by status.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let place = |key: &str, label: &str, foreign_key: &str| {
+        Column::related(key, label, "wl_inventory_locations", foreign_key, "name_en").searchable()
+    };
+    let grid = Grid::new("inventory-transfers")
+        .title(&tr(lang, "transfers.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &tr(lang, "transfers.number"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable(),
+        )
+        .column(place("from", &tr(lang, "transfers.from"), "from_location_id").mobile())
+        .column(place("to", &tr(lang, "transfers.to"), "to_location_id").mobile())
+        .column(Column::custom("lines", &tr(lang, "transfers.lines")))
+        .column(
+            Column::select(
+                "status",
+                &tr(lang, "fields.status"),
+                crate::stock_screens::options(
+                    lang,
+                    "transfer",
+                    &["draft", "in_transit", "received", "cancelled"],
+                ),
+            )
+            .badges(&[
+                ("draft", "info"),
+                ("in_transit", "warning"),
+                ("received", "success"),
+                ("cancelled", "error"),
+            ])
+            .mobile(),
+        )
+        .column(
+            Column::datetime("when", &tr(lang, "transfers.when"))
+                .computed("COALESCE({T}.\"received_at\", {T}.\"sent_at\", {T}.\"created_at\")")
+                .mobile(),
+        )
+        .column(Column::custom("actions", &tr(lang, "stock.actions")))
+        .sort_by("-id")
+        .cards_on_mobile()
+        .empty_state(
+            &tr(lang, "transfers.empty"),
+            Some(&tr(lang, "transfers.empty_hint")),
+        );
+    if can_export { grid.exports() } else { grid }
 }
 
 /// `GET /stock/transfers`.
-async fn transfers(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn transfers(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if !user.has_permission_anywhere(permissions::STOCK_TRANSFER)
         && !user.has_permission_anywhere(permissions::STOCK_VIEW)
     {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
-    for transfer in Transfer::query()
-        .order_by_desc(Transfer::ID)
-        .limit(100)
-        .get(&state.db)
-        .await?
-    {
-        let from = Location::find_or_404(&state.db, transfer.from_location_id).await?;
-        let to = Location::find_or_404(&state.db, transfer.to_location_id).await?;
+    let can_export = user.has_permission_anywhere(permissions::STOCK_TRANSFER);
+    let grid = grid(&lang, can_export);
+    let query = Transfer::query();
+    if let Some(file) = exported(&grid, &query, &request, can_export).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut extra = std::collections::HashMap::new();
+    let mut sheets = Vec::new();
+    for transfer in page.items() {
         let mut lines = Vec::new();
         let mut item_ids = Vec::new();
         for line in lines_of(&state.db, transfer.id).await? {
@@ -104,9 +153,10 @@ async fn transfers(State(state): State<AppState>, user: AuthUser, lang: Lang) ->
             ));
             item_ids.push(line.item_id);
         }
-        let in_transit = transfer.status == TransferStatus::InTransit;
-        let can_receive =
-            in_transit && user.has_permission_in(permissions::STOCK_TRANSFER, &transfer.to_scope());
+        let can_send = transfer.status == TransferStatus::Draft
+            && user.has_permission_in(permissions::STOCK_TRANSFER, &transfer.from_scope());
+        let can_receive = transfer.status == TransferStatus::InTransit
+            && user.has_permission_in(permissions::STOCK_TRANSFER, &transfer.to_scope());
         let warning = if can_receive {
             warnings_for(&state.db, transfer.to_location_id, &item_ids)
                 .await?
@@ -114,27 +164,29 @@ async fn transfers(State(state): State<AppState>, user: AuthUser, lang: Lang) ->
         } else {
             String::new()
         };
-        let when = transfer
-            .received_at
-            .or(transfer.sent_at)
-            .or(transfer.created_at)
-            .map(dubai_text)
-            .unwrap_or_default();
-        rows.push(TransferRow {
-            id: transfer.id,
-            number: transfer.number.clone().unwrap_or_default(),
-            from: location_name(&from),
-            to: location_name(&to),
-            lines: lines.join(", "),
-            status: word(&lang, "transfer", transfer.status.as_str()),
-            status_kind: status_kind(transfer.status),
-            when,
-            can_send: transfer.status == TransferStatus::Draft
-                && user.has_permission_in(permissions::STOCK_TRANSFER, &transfer.from_scope()),
-            can_receive,
-            warning,
-        });
+        extra.insert(
+            transfer.id,
+            json!({
+                "lines": lines.join(", "),
+                "can_send": can_send,
+                "can_receive": can_receive,
+            }),
+        );
+        if can_send || can_receive {
+            sheets.push(TransferSheet {
+                id: transfer.id,
+                can_send,
+                can_receive,
+                warning,
+            });
+        }
     }
+    let page = page.extend(|transfer| {
+        extra
+            .get(&transfer.id)
+            .cloned()
+            .unwrap_or_else(|| json!({}))
+    });
     let from: Vec<(String, String)> = locations_with(&state, &user, permissions::STOCK_TRANSFER)
         .await?
         .iter()
@@ -172,13 +224,15 @@ async fn transfers(State(state): State<AppState>, user: AuthUser, lang: Lang) ->
     }
     Ok(View::typed(TransfersPage {
         tx: tx(&lang),
-        rows,
+        rows: page,
         can_make: !from.is_empty(),
         from,
         to,
         items,
         lots,
-    }))
+        sheets,
+    })
+    .into_response())
 }
 
 /// What a user enters to prepare a transfer.

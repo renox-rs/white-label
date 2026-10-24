@@ -1,8 +1,10 @@
 {#- wl-invoicing: the invoices list, a renox::grid (search, filters by
-    status and issuing entity). Replace it with
+    status and issuing entity, sums of the totals) that fills the screen. The
+    e-invoice queue is a badge in the header. Replace it with
     resources/views/wl-invoicing/index.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['title']">
-  <rx-page-header :title="tx['title']"/>
-  <rx-alert rx-if="einvoice_banner" kind="warning" :message="einvoice_banner"/>
+  <rx-page-header :title="tx['title']">
+    <rx-badge rx-if="einvoice_banner" kind="warning" :text="einvoice_banner"/>
+  </rx-page-header>
   <rx-grid :page="invoices"/>
 </rx-page>

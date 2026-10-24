@@ -20,11 +20,13 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::documents::{dubai_text, today};
-use wl_kernel::scheduling::ResourceChoiceKind;
+use wl_kernel::scheduling::{ResourceChoice, ResourceChoiceKind};
 
 use super::sessions::{SessionRow, row_of};
 use super::{
@@ -110,25 +112,101 @@ pub(crate) fn seats_text(lang: &Lang, batch: &Batch) -> String {
     )
 }
 
-/// One batch of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct BatchRow {
-    /// The primary key.
-    pub id: i64,
-    /// `BAT-0007`.
-    pub number: String,
-    /// The course.
-    pub course: String,
-    /// The first and last day.
-    pub dates: String,
-    /// The weekly pattern.
-    pub pattern: String,
-    /// The seats taken of the capacity.
-    pub seats: String,
-    /// The status.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
+/// The batches grid: search on the number and the course, filters by course,
+/// tutor, room and status, sums of the seats, and the export for who manages
+/// batches. The weekly pattern and the seats in words are drawn by the
+/// template (`custom`).
+pub(crate) fn grid(
+    lang: &Lang,
+    courses: &[Course],
+    tutors: Vec<(String, String)>,
+    rooms: Vec<(String, String)>,
+    can_export: bool,
+) -> Grid {
+    let statuses: Vec<(String, String)> = [
+        BatchStatus::Planned,
+        BatchStatus::Open,
+        BatchStatus::Running,
+        BatchStatus::Completed,
+        BatchStatus::Cancelled,
+        BatchStatus::Terminated,
+    ]
+    .into_iter()
+    .map(|status| (status.as_str().to_owned(), status_text(lang, status)))
+    .collect();
+    let course_options: Vec<(String, String)> = courses
+        .iter()
+        .map(|c| (c.id.to_string(), c.title()))
+        .collect();
+    let grid = Grid::new("edtech-batches")
+        .title(&text(lang, "batches.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &text(lang, "batches.number"))
+                .computed(
+                    "'BAT-' || CASE WHEN {T}.\"id\" < 10 THEN '000' WHEN {T}.\"id\" < 100 THEN '00' \
+                     WHEN {T}.\"id\" < 1000 THEN '0' ELSE '' END || CAST({T}.\"id\" AS TEXT)",
+                )
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/edtech/batches/{id}"),
+        )
+        .column(
+            Column::select("course_id", &text(lang, "batches.course"), course_options).mobile(),
+        )
+        .column(
+            Column::text("course", &text(lang, "batches.course"))
+                .computed(
+                    "(SELECT c.\"code\" || ' ' || c.\"name_en\" FROM \"edtech_courses\" c \
+                     WHERE c.\"id\" = {T}.\"course_id\")",
+                )
+                .hidden()
+                .searchable(),
+        )
+        .column(Column::date("start_date", &text(lang, "batches.start_date")))
+        .column(Column::date("end_date", &text(lang, "batches.end_date")).hidden())
+        .column(Column::custom("pattern", &text(lang, "batches.pattern")))
+        .column(Column::select(
+            "tutor_resource_id",
+            &text(lang, "batches.tutor"),
+            tutors,
+        ))
+        .column(Column::select(
+            "room_resource_id",
+            &text(lang, "batches.room"),
+            rooms,
+        ))
+        .column(Column::custom("seats", &text(lang, "batches.seats")).mobile())
+        .column(
+            Column::number("capacity", &text(lang, "batches.capacity"))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::number("seats_taken", &text(lang, "batches.seats"))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::select("status", &text(lang, "fields.status"), statuses)
+                .badges(&[
+                    ("planned", "info"),
+                    ("open", "info"),
+                    ("running", "success"),
+                    ("completed", "success"),
+                    ("cancelled", "info"),
+                    ("terminated", "danger"),
+                ])
+                .mobile(),
+        )
+        .sort_by("-id")
+        .row_url("/edtech/batches/{id}")
+        .cards_on_mobile()
+        .empty_state(&text(lang, "batches.empty"), None);
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list page needs.
@@ -136,7 +214,7 @@ pub struct BatchRow {
 #[view(template = "edtech/batches.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    batches: Vec<BatchRow>,
+    batches: GridPage<Batch>,
     course_options: Vec<[String; 2]>,
     course_selected: String,
     tutor_options: Vec<[String; 2]>,
@@ -144,47 +222,64 @@ pub(crate) struct IndexPage {
     can_manage: bool,
 }
 
-/// The name of course `id` for the list.
-fn course_title(courses: &[Course], id: i64) -> String {
-    courses
-        .iter()
-        .find(|c| c.id == id)
-        .map_or_else(|| format!("#{id}"), Course::title)
+/// A resource as a grid option, `(id, name)`.
+fn grid_options(choices: Vec<ResourceChoice>) -> Vec<(String, String)> {
+    choices
+        .into_iter()
+        .map(|c| (c.id.to_string(), c.name))
+        .collect()
 }
 
-/// `GET /edtech/batches`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+/// `GET /edtech/batches`, or its export (`?export=`, with `batches.manage`).
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     require(&user, permissions::BATCHES_VIEW)?;
     let own = crate::sessions::assigned_scope(&state, &user).await?;
     let mine = match own {
         Some(employee) => Some(crate::sessions::assigned_batches(&state.db, employee).await?),
         None => None,
     };
-    let all: Vec<Batch> = Batch::query()
-        .order_by_desc(Batch::ID)
-        .get(&state.db)
-        .await?
-        .into_iter()
-        // A tutor sees the batches they are assigned to (`EDU.ACL.03`).
-        .filter(|b| mine.as_ref().is_none_or(|ids| ids.contains(&b.id)))
-        .collect();
     let courses = Course::query()
         .order_by(Course::CODE)
         .get(&state.db)
         .await?;
-    let rows = all
-        .iter()
-        .map(|b| BatchRow {
-            id: b.id,
-            number: b.number(),
-            course: course_title(&courses, b.course_id),
-            dates: format!("{} – {}", b.start_date, b.end_date),
-            pattern: pattern_text(&lang, b),
-            seats: seats_text(&lang, b),
-            status: status_text(&lang, b.status),
-            status_kind: status_kind(b.status),
+    let mut tutors = resource_choices(&state, ResourceChoiceKind::Person).await;
+    // A tutor's tutor filter names only themselves, never the other tutors.
+    if let Some(employee) = own {
+        tutors.retain(|c| c.employee_id == Some(employee));
+    }
+    let rooms = resource_choices(&state, ResourceChoiceKind::Room).await;
+    let can_export = user.has_permission(permissions::BATCHES_MANAGE);
+    let grid = grid(
+        &lang,
+        &courses,
+        grid_options(tutors),
+        grid_options(rooms),
+        can_export,
+    );
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    // A tutor sees the batches they are assigned to (`EDU.ACL.03`).
+    let query = match mine {
+        Some(ids) => {
+            Batch::query().where_(Batch::ID.is_in(if ids.is_empty() { vec![-1] } else { ids }))
+        }
+        None => Batch::query(),
+    };
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?.extend(|b| {
+        json!({
+            "pattern": pattern_text(&lang, b),
+            "seats": seats_text(&lang, b),
         })
-        .collect();
+    });
     let course_options: Vec<[String; 2]> = courses
         .iter()
         .filter(|c| c.active)
@@ -196,7 +291,7 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .unwrap_or_default();
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        batches: rows,
+        batches: page,
         course_options,
         course_selected,
         tutor_options: resource_options(
@@ -208,7 +303,8 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         room_options: resource_options(&state, ResourceChoiceKind::Room, Some(text(&lang, "none")))
             .await,
         can_manage: user.has_permission(permissions::BATCHES_MANAGE),
-    }))
+    })
+    .into_response())
 }
 
 /// The form that plans a batch.

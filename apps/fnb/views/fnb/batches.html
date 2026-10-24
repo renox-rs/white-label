@@ -1,27 +1,18 @@
-{#- fnb: the production batches of the central kitchen, newest first, with the
-    sheet that plans one. A batch on hold shows its warning badge: its lot is
+{#- fnb: the production batches of the central kitchen, a renox::grid (search on the
+    number and recipe, filters by status, sums of the yields) that fills the
+    screen, newest first, with the sheet that plans one in the header. A batch on hold shows its warning badge: its lot is
     held (a recall, a quality hold) and it cannot be used.
     Replace it with resources/views/fnb/batches.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['batch.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['batch.title']" :subtitle="tx['batch.subtitle']">
-      <template rx-if="can_manage">
-        <rx-action-sheet id="batch-plan" :label="tx['batch.plan']" :action="route('fnb.batch_plan')"
-                         :title="tx['batch.plan_title']" :description="tx['batch.plan_description']" :submit-label="tx['batch.plan']" icon="plus">
-          <rx-select name="recipe" :label="tx['batch.recipe']" id="batch-plan-recipe" :options="recipes" :selected="''" :placeholder="tx['batch.recipe']"/>
-          <rx-input name="yield" :label="tx['batch.planned']" :hint="tx['batch.planned_hint']" id="batch-plan-yield"/>
-          <rx-select name="outlet" :label="tx['batch.outlet']" id="batch-plan-outlet" :options="outlets" :selected="''" :placeholder="tx['batch.outlet']"/>
-        </rx-action-sheet>
-      </template>
-    </rx-page-header>
-    <rx-table :rows="batches" as="batch" :key="batch.id" :caption="tx['batch.title']">
-      <rx-column :label="tx['batch.number']"><a href="{{ batch.url }}">{{ batch.number }}</a></rx-column>
-      <rx-column :label="tx['batch.recipe']">{{ batch.recipe }}</rx-column>
-      <rx-column :label="tx['batch.planned']" align="num" hide-narrow>{{ batch.planned }}</rx-column>
-      <rx-column :label="tx['batch.actual']" align="num" hide-narrow>{{ batch.actual }}</rx-column>
-      <rx-column :label="tx['batch.expiry']" hide-narrow>{{ batch.expiry }}</rx-column>
-      <rx-column :label="tx['state']"><rx-badge :kind="batch.status_kind" :text="batch.status"/></rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['batch.empty']" :message="tx['batch.empty_text']" icon="chef-hat"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['batch.title']" :subtitle="tx['batch.subtitle']">
+    <template rx-if="can_manage">
+      <rx-action-sheet id="batch-plan" :label="tx['batch.plan']" :action="route('fnb.batch_plan')"
+                       :title="tx['batch.plan_title']" :description="tx['batch.plan_description']" :submit-label="tx['batch.plan']" icon="plus">
+        <rx-select name="recipe" :label="tx['batch.recipe']" id="batch-plan-recipe" :options="recipes" :selected="''" :placeholder="tx['batch.recipe']"/>
+        <rx-input name="yield" :label="tx['batch.planned']" :hint="tx['batch.planned_hint']" id="batch-plan-yield"/>
+        <rx-select name="outlet" :label="tx['batch.outlet']" id="batch-plan-outlet" :options="outlets" :selected="''" :placeholder="tx['batch.outlet']"/>
+      </rx-action-sheet>
+    </template>
+  </rx-page-header>
+  <rx-grid :page="batches"/>
 </rx-page>

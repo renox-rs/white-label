@@ -40,6 +40,7 @@ use renox::Download;
 use renox::chrono::NaiveDate;
 use renox::grid::{Action, Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::state_machine::TransitionError;
 use renox::validation::{Errors, ValidationError};
 use serde::{Deserialize, Serialize};
@@ -135,57 +136,80 @@ pub fn queue_order(a: &Document, b: &Document) -> Ordering {
         .then_with(|| a.id.cmp(&b.id))
 }
 
-/// The documents in `pending_review`, in review order ([`queue_order`]).
+/// The documents in `pending_review` (the query; [`queue_grid`] orders it).
 /// SOP versions and translations are not listed: they have their own pages
 /// and only the SOP's owner role may decide them (#52).
-pub async fn review_queue(db: &Db) -> Result<Vec<Document>> {
-    let mut documents = Document::query()
-        .where_(Document::STATUS.eq(DocumentStatus::PendingReview))
-        .get(db)
-        .await?;
-    let sop_kinds: Vec<i64> = DocumentKind::query()
+pub async fn review_query(db: &Db) -> Result<renox::db::Query<Document>> {
+    let kinds: Vec<i64> = DocumentKind::query()
         .get(db)
         .await?
         .into_iter()
-        .filter(|kind| crate::sops::is_sop_kind(&kind.key))
+        .filter(|kind| !crate::sops::is_sop_kind(&kind.key))
         .map(|kind| kind.id)
         .collect();
-    documents.retain(|document| !sop_kinds.contains(&document.kind_id));
-    documents.sort_by(queue_order);
-    Ok(documents)
+    Ok(Document::query()
+        .where_(Document::STATUS.eq(DocumentStatus::PendingReview))
+        .where_(Document::KIND_ID.is_in(if kinds.is_empty() { vec![-1] } else { kinds })))
 }
 
-/// One document as the review queue shows it.
-#[derive(Serialize, Debug, Clone)]
-pub struct QueueRow {
-    /// The document's id.
-    pub id: i64,
-    /// The kind's name in the page's language.
-    pub kind: String,
-    /// The record it is attached to, by name (`P-00012 · Tara Nasser`), else
-    /// `employee #12`.
-    pub subject: String,
-    /// The page of that record's documents.
-    pub subject_url: String,
-    /// The document's title.
-    pub title: String,
-    /// Its number, if any.
-    pub number: Option<String>,
-    /// Its expiry date, if any.
-    pub expiry_date: Option<NaiveDate>,
-    /// The version under review.
-    pub version: i64,
-    /// The file name of that version, if it is stored.
-    pub file_name: Option<String>,
-    /// Who uploaded it, or `—`.
-    pub uploaded_by: String,
-    /// When it was submitted.
-    pub submitted_at: Option<DateTime>,
-    /// Since when a refused transition waits for it, if one does.
-    pub priority_since: Option<DateTime>,
-    /// A correction: the kind blocks other work and an accepted document of
-    /// the kind and record is in force.
-    pub correction: bool,
+/// The review queue grid: search on title, number and uploader, filters by
+/// kind and expiry, documents a refused transition waits for first, then by
+/// submission, oldest first. Accept and reject are row actions that open the
+/// sheets `accept-document` and `reject-document`.
+pub fn queue_grid(lang: &Lang, kinds: Vec<(String, String)>, can_export: bool) -> Grid {
+    let grid = Grid::new("wl-documents-review")
+        .title(&text(lang, "review.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::select("kind", &text(lang, "fields.kind"), kinds)
+                .computed(
+                    "(SELECT \"key\" FROM \"wl_documents_kinds\" WHERE \"id\" = {T}.\"kind_id\")",
+                )
+                .frozen()
+                .mobile(),
+        )
+        .column(Column::custom("flags", &text(lang, "review.flags")).mobile())
+        .column(Column::custom("subject", &text(lang, "fields.subject")).mobile())
+        .column(Column::text("title", &text(lang, "fields.title")).searchable())
+        .column(Column::text("number", &text(lang, "fields.number")).searchable())
+        .column(Column::date("expiry_date", &text(lang, "fields.expiry_date")).mobile())
+        .column(Column::number("current_version", &text(lang, "fields.version")).hidden())
+        .column(
+            Column::text("uploader", &text(lang, "fields.uploaded_by"))
+                .computed("(SELECT \"name\" FROM \"users\" WHERE \"id\" = {T}.\"uploaded_by\")")
+                .searchable()
+                .hidden(),
+        )
+        .column(Column::datetime(
+            "submitted_at",
+            &text(lang, "fields.submitted_at"),
+        ))
+        .column(Column::custom("file", &text(lang, "review.file")))
+        .column(
+            Column::number("queue_rank", "")
+                .computed("CASE WHEN {T}.\"review_priority_at\" IS NULL THEN 1 ELSE 0 END")
+                .hidden()
+                .filterable(false),
+        )
+        // Priority renewals first (newest first), then oldest submission.
+        .sort_by("queue_rank,-review_priority_at,submitted_at,id")
+        .row_action(
+            Action::new(&text(lang, "review.accept"), "/documents/{id}/accept")
+                .sheet("accept-document"),
+        )
+        .row_action(
+            Action::new(&text(lang, "review.reject"), "/documents/{id}/reject")
+                .sheet("reject-document")
+                .danger(),
+        )
+        .cards_on_mobile()
+        .empty_state(
+            &text(lang, "review.empty"),
+            Some(&text(lang, "review.empty_hint")),
+        );
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the review queue needs.
@@ -193,23 +217,39 @@ pub struct QueueRow {
 #[view(template = "wl-documents/review_queue.html")]
 pub(crate) struct ReviewQueuePage {
     tx: Texts,
-    documents: Vec<QueueRow>,
+    documents: GridPage<Document>,
 }
 
-/// The queue rows of `documents`, in their order.
-async fn queue_rows(
-    state: &AppState,
-    lang: &Lang,
-    documents: Vec<Document>,
-) -> Result<Vec<QueueRow>> {
+/// `GET /documents/review`: the documents waiting for review, priority
+/// first, with the accept and reject actions (or the export, with
+/// `documents.manage`).
+async fn review_queue_page(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     let db = &state.db;
-    let kinds: HashMap<i64, DocumentKind> = DocumentKind::query()
+    let query = review_query(db).await?;
+    let kinds: Vec<(String, String)> = DocumentKind::query()
         .get(db)
         .await?
         .into_iter()
-        .map(|kind| (kind.id, kind))
+        .filter(|kind| !crate::sops::is_sop_kind(&kind.key))
+        .map(|kind| (kind.key.clone(), kind.name(&lang.locale).to_owned()))
         .collect();
-    let ids: Vec<i64> = documents.iter().map(|d| d.id).collect();
+    let can_export = user.has_permission(permissions::MANAGE);
+    let grid = queue_grid(&lang, kinds, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    // Per row: the record it belongs to, its file, and the badges.
+    let on_page = page.items();
+    let ids: Vec<i64> = on_page.iter().map(|document| document.id).collect();
     let files: HashMap<(i64, i64), String> = if ids.is_empty() {
         HashMap::new()
     } else {
@@ -221,14 +261,30 @@ async fn queue_rows(
             .map(|v| ((v.document_id, v.version_no), v.file_name))
             .collect()
     };
-    let mut names: HashMap<i64, String> = HashMap::new();
+    let mut subjects: HashMap<i64, (String, String)> = HashMap::new();
+    let mut corrections: HashMap<i64, bool> = HashMap::new();
     let mut blocking: HashMap<i64, bool> = HashMap::new();
-    let mut rows = Vec::with_capacity(documents.len());
-    for document in documents {
+    for document in on_page {
+        let label = crate::subject_pages::label_of(
+            &state,
+            &wl_kernel::Subject::new(&document.subject_type, document.subject_id),
+        )
+        .await
+        .0;
+        subjects.insert(
+            document.id,
+            (
+                label,
+                format!(
+                    "/documents/of/{}/{}",
+                    document.subject_type, document.subject_id
+                ),
+            ),
+        );
         let is_blocking = match blocking.get(&document.kind_id) {
             Some(known) => *known,
             None => {
-                let known = match kinds.get(&document.kind_id) {
+                let known = match DocumentKind::find(db, document.kind_id).await? {
                     Some(kind) => kind.is_blocking(db).await?,
                     None => false,
                 };
@@ -236,6 +292,8 @@ async fn queue_rows(
                 known
             }
         };
+        // A correction: the kind blocks other work and an accepted document
+        // of the kind and record is in force.
         let correction = is_blocking
             && Document::query()
                 .where_(Document::SUBJECT_TYPE.eq(document.subject_type.as_str()))
@@ -245,57 +303,24 @@ async fn queue_rows(
                 .first(db)
                 .await?
                 .is_some();
-        let uploaded_by = match document.uploaded_by {
-            Some(id) => match names.get(&id) {
-                Some(name) => name.clone(),
-                None => {
-                    let name = User::find(db, id)
-                        .await?
-                        .map_or_else(|| format!("#{id}"), |user| user.name);
-                    names.insert(id, name.clone());
-                    name
-                }
-            },
-            None => text(lang, "none"),
-        };
-        let kind = kinds
-            .get(&document.kind_id)
-            .map_or_else(String::new, |k| k.name(&lang.locale).to_owned());
-        rows.push(QueueRow {
-            id: document.id,
-            kind,
-            subject: crate::subject_pages::label_of(
-                state,
-                &wl_kernel::Subject::new(&document.subject_type, document.subject_id),
-            )
-            .await
-            .0,
-            subject_url: format!(
-                "/documents/of/{}/{}",
-                document.subject_type, document.subject_id
-            ),
-            file_name: files.get(&(document.id, document.current_version)).cloned(),
-            title: document.title,
-            number: document.number,
-            expiry_date: document.expiry_date,
-            version: document.current_version,
-            uploaded_by,
-            submitted_at: document.submitted_at,
-            priority_since: document.review_priority_at,
-            correction,
-        });
+        corrections.insert(document.id, correction);
     }
-    Ok(rows)
-}
-
-/// `GET /documents/review`: the documents waiting for review, priority
-/// first, with the accept and reject actions.
-async fn review_queue_page(State(state): State<AppState>, lang: Lang) -> Result<View> {
-    let documents = review_queue(&state.db).await?;
+    let page = page.extend(|document| {
+        let (subject, subject_url) = subjects.get(&document.id).cloned().unwrap_or_default();
+        json!({
+            "subject": subject,
+            "subject_url": subject_url,
+            "priority": document.review_priority_at.is_some(),
+            "correction": corrections.get(&document.id).copied().unwrap_or(false),
+            "file_name": files.get(&(document.id, document.current_version)),
+            "file_url": format!("/documents/{}/file", document.id),
+        })
+    });
     Ok(View::typed(ReviewQueuePage {
         tx: texts::all(&lang),
-        documents: queue_rows(&state, &lang, documents).await?,
-    }))
+        documents: page,
+    })
+    .into_response())
 }
 
 /// `GET /documents/{id}/file`: the current version's file, shown inline.
@@ -629,7 +654,12 @@ async fn reject(
 /// state and record type, unreviewed flags first, then the newest.
 /// `can_review` adds the "Mark reviewed" row action, which opens the sheet
 /// `review-flag`.
-pub fn flags_grid(lang: &Lang, record_types: Vec<String>, can_review: bool) -> Grid {
+pub fn flags_grid(
+    lang: &Lang,
+    record_types: Vec<String>,
+    can_review: bool,
+    can_export: bool,
+) -> Grid {
     let state_options = vec![
         ("open".to_owned(), text(lang, "flags.state.open")),
         ("reviewed".to_owned(), text(lang, "flags.state.reviewed")),
@@ -637,6 +667,9 @@ pub fn flags_grid(lang: &Lang, record_types: Vec<String>, can_review: bool) -> G
     let types: Vec<(String, String)> = record_types.into_iter().map(|t| (t.clone(), t)).collect();
     let grid = Grid::new("wl-documents-flags")
         .title(&text(lang, "flags.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::text("label", &text(lang, "flags.label"))
                 .frozen()
@@ -674,6 +707,7 @@ pub fn flags_grid(lang: &Lang, record_types: Vec<String>, can_review: bool) -> G
             &text(lang, "flags.empty"),
             Some(&text(lang, "flags.empty_hint")),
         );
+    let grid = if can_export { grid.exports() } else { grid };
     if can_review {
         grid.row_action(
             Action::new(&text(lang, "flags.review"), "/documents/flags/{id}/review")
@@ -700,7 +734,7 @@ async fn flags_index(
     user: AuthUser,
     lang: Lang,
     request: GridRequest,
-) -> Result<View> {
+) -> Result<Response> {
     // The flags on the records of the user's scope (the lease, the party's
     // document of a lease in their buildings).
     let reach = wl_kernel::scopes::reach(&db, &user, permissions::VIEW).await?;
@@ -729,7 +763,11 @@ async fn flags_index(
     record_types.sort();
     record_types.dedup();
     let can_review = user.has_permission(permissions::REVIEW);
-    let grid = flags_grid(&lang, record_types, can_review);
+    let can_export = user.has_permission(permissions::MANAGE);
+    let grid = flags_grid(&lang, record_types, can_review, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
     let query = if reach.is_all() {
         DocumentFlag::query()
     } else if in_reach.is_empty() {
@@ -737,12 +775,16 @@ async fn flags_index(
     } else {
         DocumentFlag::query().where_in("id", in_reach)
     };
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
     let flags = grid.page(query, &request).await?;
     Ok(View::typed(FlagsPage {
         tx: texts::all(&lang),
         flags,
         can_review,
-    }))
+    })
+    .into_response())
 }
 
 /// The form of the mark-reviewed action.
@@ -779,19 +821,49 @@ async fn review_flag(
         .into_response())
 }
 
-/// One kind as the kinds list shows it.
-#[derive(Serialize, Debug, Clone)]
-pub struct KindRow {
-    /// The kind's key.
-    pub key: String,
-    /// Its name in the page's language.
-    pub name: String,
-    /// The subject types, e.g. `employee, vehicle`.
-    pub subject_types: String,
-    /// Whether it is a legal block.
-    pub legal_block: bool,
-    /// Whether new documents of the kind may be attached.
-    pub enabled: bool,
+/// The kinds grid: search on the key and names, filters by legal block and
+/// availability, by key. The name (linking to the kind's page by its key)
+/// and the subject types are drawn by the template (`custom`).
+pub fn kinds_grid(lang: &Lang, can_export: bool) -> Grid {
+    let grid = Grid::new("wl-documents-kinds")
+        .title(&text(lang, "kinds.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::custom("name", &text(lang, "fields.name"))
+                .frozen()
+                .mobile(),
+        )
+        .column(
+            Column::text("key", &text(lang, "fields.key"))
+                .searchable()
+                .copyable()
+                .mobile(),
+        )
+        .column(
+            Column::text("name_en", &text(lang, "fields.name"))
+                .searchable()
+                .hidden(),
+        )
+        .column(
+            Column::text("name_ar", &text(lang, "fields.name"))
+                .searchable()
+                .hidden(),
+        )
+        .column(Column::custom("subject_types", &text(lang, "fields.subject_types")).mobile())
+        .column(Column::bool(
+            "legal_block",
+            &text(lang, "fields.legal_block"),
+        ))
+        .column(Column::bool("enabled", &text(lang, "kinds.enabled")).mobile())
+        .sort_by("key")
+        .cards_on_mobile()
+        .empty_state(
+            &text(lang, "kinds.empty"),
+            Some(&text(lang, "kinds.empty_hint")),
+        );
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the kinds list needs.
@@ -799,26 +871,33 @@ pub struct KindRow {
 #[view(template = "wl-documents/kinds.html")]
 pub(crate) struct KindsPage {
     tx: Texts,
-    kinds: Vec<KindRow>,
+    kinds: GridPage<DocumentKind>,
 }
 
-/// `GET /document-kinds`: every kind, linking to its page.
-async fn kinds_index(State(db): State<Db>, lang: Lang) -> Result<View> {
-    let kinds = DocumentKind::ordered(&db)
-        .await?
-        .iter()
-        .map(|kind| KindRow {
-            key: kind.key.clone(),
-            name: kind.name(&lang.locale).to_owned(),
-            subject_types: kind.subject_types.0.join(", "),
-            legal_block: kind.legal_block,
-            enabled: kind.enabled,
+/// `GET /document-kinds`: every kind, linking to its page (or the export).
+async fn kinds_index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
+    let can_export = user.has_permission(permissions::KINDS_MANAGE);
+    let grid = kinds_grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    let query = DocumentKind::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let page = page.extend(|kind| {
+        json!({
+            "title": kind.name(&lang.locale),
+            "url": format!("/document-kinds/{}", kind.key),
+            "subject_types": kind.subject_types.0.join(", "),
         })
-        .collect();
+    });
     Ok(View::typed(KindsPage {
         tx: texts::all(&lang),
-        kinds,
-    }))
+        kinds: page,
+    })
+    .into_response())
 }
 
 /// One entry of a kind's `blocks` as the kind page shows it.

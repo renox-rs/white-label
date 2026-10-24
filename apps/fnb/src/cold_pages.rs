@@ -16,7 +16,9 @@
 //! A refused action answers 422 with the reason; the decision of a line needs
 //! the reading and the minutes.
 
+use renox::grid::{Column, Grid, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::Serialize;
 use wl_kernel::inventory::stock_hold_service;
 
@@ -64,26 +66,51 @@ fn kind_options(lang: &Lang) -> Vec<[String; 2]> {
         .map(|k| {
             [
                 (*k).to_owned(),
-                t(lang, &format!("fnb.screen.cold.kind.{k}")),
+                crate::texts::t(lang, &format!("fnb.screen.cold.kind.{k}")),
             ]
         })
         .collect()
 }
 
-/// One unit of the list.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct UnitRow {
-    id: i64,
-    code: String,
-    name: String,
-    kind: String,
-    range: String,
-    reading: String,
-    reading_kind: &'static str,
-    read_at: String,
-    on_hold: bool,
-    ticket: String,
-    url: String,
+/// The cold units grid: search on the name and code, filter by kind. The
+/// range, the last reading, the hold and the record button are drawn by the
+/// template (`custom`).
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = tx(lang);
+    let kinds: Vec<(String, String)> = kind::ALL
+        .iter()
+        .map(|k| {
+            (
+                (*k).to_owned(),
+                crate::texts::t(lang, &format!("fnb.screen.cold.kind.{k}")),
+            )
+        })
+        .collect();
+    let grid = Grid::new("fnb-cold-units")
+        .title(&t["cold.title"])
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("name", &t["cold.name"])
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/cold-units/{id}"),
+        )
+        .column(Column::text("code", &t["cold.code"]).searchable())
+        .column(Column::select("kind", &t["cold.kind"], kinds).mobile())
+        .column(Column::custom("range", &t["cold.range"]))
+        .column(Column::custom("reading", &t["cold.reading"]).mobile())
+        .column(Column::custom("read_at", &t["cold.read_at"]))
+        .column(Column::datetime("out_since", &t["cold.out_since"]).hidden())
+        .column(Column::custom("state", &t["state"]).mobile())
+        .column(Column::custom("actions", &t["actions"]))
+        .sort_by("code")
+        .row_url("/cold-units/{id}")
+        .cards_on_mobile()
+        .empty_state(&t["cold.empty"], Some(&t["cold.empty_text"]));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list needs.
@@ -91,46 +118,63 @@ pub(crate) struct UnitRow {
 #[view(template = "fnb/cold_units.html")]
 pub(crate) struct ColdUnitsPage {
     tx: Texts,
-    units: Vec<UnitRow>,
+    units: renox::grid::GridPage<ColdUnit>,
+    sheets: Vec<i64>,
     kinds: Vec<[String; 2]>,
     locations: Vec<[String; 2]>,
     can_manage: bool,
     can_log: bool,
 }
 
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<Response> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if !user.has_permission_anywhere(permissions::TEMPERATURE_VIEW) {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
-    for unit in ColdUnit::active(&state.db).await? {
+    let can_manage = user.has_permission_anywhere(permissions::COLD_UNITS_MANAGE);
+    let grid = grid(&lang, can_manage);
+    if request.param("export").is_some() && !can_manage {
+        return Err(Error::Forbidden);
+    }
+    let active = ColdUnit::query().where_(ColdUnit::ACTIVE.eq(true));
+    if let Some(file) = grid.export(active.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(active, &request).await?;
+    // The last reading and the hold of each unit of the page.
+    let mut latest = std::collections::BTreeMap::new();
+    for unit in page.items() {
         let last = TemperatureReading::of_unit(&state.db, unit.id, 1)
             .await?
             .pop();
-        rows.push(UnitRow {
-            id: unit.id,
-            code: unit.code.clone(),
-            name: unit.name.clone(),
-            kind: t(&lang, &format!("fnb.screen.cold.kind.{}", unit.kind)),
-            range: unit.range_text(),
-            reading: last
-                .as_ref()
-                .map(|r| tenths_text(r.tenths))
-                .unwrap_or_default(),
-            reading_kind: match &last {
+        let held = cold::on_hold(&state, unit).await?;
+        latest.insert(unit.id, (last, held));
+    }
+    let sheets = page.items().iter().map(|unit| unit.id).collect();
+    let units = page.extend(|unit| {
+        let (last, held) = match latest.get(&unit.id) {
+            Some((last, held)) => (last.as_ref(), *held),
+            None => (None, false),
+        };
+        json!({
+            "range": unit.range_text(),
+            "reading": last.map(|r| tenths_text(r.tenths)).unwrap_or_default(),
+            "reading_kind": match last {
                 Some(r) if r.in_range => "success",
                 Some(_) => "error",
                 None => "info",
             },
-            read_at: last
-                .as_ref()
+            "read_at": last
                 .map(|r| wl_kernel::documents::dubai_text(r.recorded_at))
                 .unwrap_or_default(),
-            on_hold: cold::on_hold(&state, &unit).await?,
-            ticket: unit.ticket_number.clone().unwrap_or_default(),
-            url: format!("/cold-units/{}", unit.id),
-        });
-    }
+            "on_hold": held,
+            "ticket": unit.ticket_number.clone().unwrap_or_default(),
+        })
+    });
     let locations = stock_hold_service(&state)
         .locations(&state)
         .await?
@@ -144,10 +188,11 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .collect();
     Ok(View::typed(ColdUnitsPage {
         tx: tx(&lang),
-        units: rows,
+        units,
+        sheets,
         kinds: kind_options(&lang),
         locations,
-        can_manage: user.has_permission_anywhere(permissions::COLD_UNITS_MANAGE),
+        can_manage,
         can_log: user.has_permission_anywhere(permissions::TEMPERATURE_LOG),
     })
     .into_response())

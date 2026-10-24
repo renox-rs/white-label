@@ -9,13 +9,16 @@
 //! The menu lists the flat-rate and hourly operations an estimate is drafted
 //! from, with the standard hours and the price.
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::Value;
 use serde::{Deserialize, Serialize};
 
+use super::lists;
 use super::{Texts, parse_milli, parse_money, text};
-use crate::labour_line::{LabourPricing, hours_text};
+use crate::labour_line::LabourPricing;
 use crate::labour_menu::{self, NewOperation};
-use crate::money_text;
+use crate::labour_operation::LabourOperation;
 use crate::permissions;
 use crate::texts;
 
@@ -31,25 +34,51 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
-/// One operation of the menu.
-#[derive(Serialize, Debug, Clone)]
-pub struct OperationRow {
-    /// The primary key.
-    pub id: i64,
-    /// The code.
-    pub code: String,
-    /// The name.
-    pub name: String,
-    /// Hourly or flat-rate, in words.
-    pub pricing: String,
-    /// The standard hours of a flat-rate operation, or a dash.
-    pub hours: String,
-    /// The hourly rate or the flat price.
-    pub rate: String,
-    /// Whether it is on the menu, in words.
-    pub active: String,
-    /// Whether it is on the menu.
-    pub is_active: bool,
+/// The labour menu grid: the code first and frozen, the name, hourly or
+/// flat-rate, the standard hours, the rate or flat price in dirhams and
+/// whether it is on the menu; searched by code and name.
+pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
+    let pricing = lists::options(
+        t,
+        "jobs.pricing",
+        [LabourPricing::FlatRate, LabourPricing::Hourly]
+            .iter()
+            .map(|p| p.as_str()),
+    );
+    let standing = vec![
+        ("on".to_owned(), t("labour.on")),
+        ("off".to_owned(), t("labour.off")),
+    ];
+    Grid::new("auto-labour-menu")
+        .title(&t("labour.title"))
+        .column(
+            Column::text("code", &t("labour.code"))
+                .frozen()
+                .mobile()
+                .searchable(),
+        )
+        .column(
+            Column::text("name_en", &t("labour.name"))
+                .searchable()
+                .mobile(),
+        )
+        .column(Column::select("pricing", &t("labour.pricing"), pricing))
+        .column(
+            Column::number("hours", &t("labour.hours"))
+                .computed("{T}.\"hours_milli\" / 1000.0")
+                .decimals(1),
+        )
+        .column(lists::money("rate", &t("labour.rate")).mobile())
+        .column(
+            Column::select("standing", &t("fields.status"), standing)
+                .computed("CASE WHEN {T}.\"active\" THEN 'on' ELSE 'off' END")
+                .badges(&[("on", "success"), ("off", "neutral")])
+                .mobile(),
+        )
+        .column(Column::custom("actions", "").frozen_right())
+        .sort_by("code")
+        .cards_on_mobile()
+        .empty_state(&t("labour.empty"), None)
 }
 
 /// What the page needs.
@@ -57,43 +86,33 @@ pub struct OperationRow {
 #[view(template = "auto/labour_menu.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    rows: Vec<OperationRow>,
+    operations: GridPage<LabourOperation>,
+    /// The operations of the page, `[id, name, on the menu]`, for the sheets
+    /// that take one off the menu or put it back.
+    sheets: Vec<(i64, String, bool)>,
     pricing_options: Vec<[String; 2]>,
     can_manage: bool,
 }
 
 /// `GET /auto/labour-menu`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<View> {
     if !(user.has_permission(permissions::LABOUR_MENU_MANAGE)
         || user.has_permission(permissions::JOB_CARDS_VIEW))
     {
         return Err(Error::Forbidden);
     }
-    let rows = labour_menu::menu(&state.db)
-        .await?
-        .into_iter()
-        .map(|op| OperationRow {
-            id: op.id,
-            code: op.code.clone(),
-            name: op.name_en.clone(),
-            pricing: text(&lang, &format!("jobs.pricing.{}", op.pricing.as_str())),
-            hours: if op.pricing == LabourPricing::FlatRate {
-                format!("{} h", hours_text(op.hours_milli))
-            } else {
-                text(&lang, "none")
-            },
-            rate: money_text(op.rate),
-            active: if op.active {
-                text(&lang, "labour.on")
-            } else {
-                text(&lang, "labour.off")
-            },
-            is_active: op.active,
-        })
+    let operations = grid(&lists::texts_in(&lang))
+        .page(LabourOperation::query(), &request)
+        .await?;
+    let sheets = operations
+        .items()
+        .iter()
+        .map(|op| (op.id, op.name_en.clone(), op.active))
         .collect();
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        rows,
+        operations: lists::with_currency(operations, |_| Value::Null),
+        sheets,
         pricing_options: [LabourPricing::FlatRate, LabourPricing::Hourly]
             .into_iter()
             .map(|p| {

@@ -1,60 +1,90 @@
-//! The demo company of the Auto client (DEMO-DATA.md, 08: a parts trader
-//! with a workshop, *Al Noor Auto Parts & Garage LLC* of
-//! `clients/demo-auto/client.toml`, all fictional): `auto:demo` fills a local
-//! database so that every screen of F8 has data the moment someone logs in,
+//! The demo company of the Auto client (DEMO-DATA.md, 08; *Al Noor Auto Parts
+//! & Garage LLC*, all fictional): `auto:demo` fills a local database so that
+//! every screen of the app has something to show the moment someone logs in,
 //! and `db:seed` runs it in `local`, never in production.
 //!
-//! - **Routes where there is one, services and fixtures where there is none.**
-//!   Vehicles, the labour menu, insurers, job cards (intake, technician,
-//!   inspection, estimate, approval, work, parts, QC, delivery), insurance
-//!   claims, fleet contracts and export sales go through the app's own router
-//!   as the person who does them, so every rule and guard runs; the parties,
-//!   the opening stock, the workshop bay and the bookings (wl-scheduling's
-//!   service, as the service advisor) are the modules' own services and
-//!   records.
-//! - **Relative dates.** Every date is `day(n)`, today plus or minus days.
+//! It follows the EdTech and Clinics demos (`super::edtech_demo`):
+//!
+//! - **Through the real services.** What a person does at a screen (check a
+//!   vehicle in, inspect, draft the estimate, send it, approve it on the link,
+//!   issue and fit a part, finish the work, pass the QC, deliver, cancel,
+//!   decline, void, register a claim, ask the insurer, raise a supplier
+//!   warranty claim, open a recall) is a call of the app's own service as the
+//!   demo user who does it (the services take the signed-in user; the one
+//!   route of [`hooks`] hands the seed that user), so the permissions, the
+//!   guards and the state machines are the real ones and a refusal stops the
+//!   seed with its message. Pages that exist (purchase orders, goods receipts,
+//!   sales orders, counter sales, loyalty enrolment, recalls, cash handovers)
+//!   are requests to the app's own router ([`Driver`]). Money goes through
+//!   wl-invoicing (the invoice raised on delivery, the claim's payer bill, the
+//!   fleet's consolidated invoice) and wl-payments (the payment recorder).
+//!   A record in a state the machines only reach after days of real life is
+//!   inserted in that state with `insert_in_state`, and the place says why:
+//!   the draft purchase orders (no screen writes one yet).
+//! - **Relative dates, whatever the weekday and the hour.** Every date is
+//!   `day(n)`, today plus or minus days (Asia/Dubai); a step of the past runs
+//!   on the seed's [`Clock`] set to 10:00 of its day, so the numbers, the
+//!   invoices and the audit trail carry the right days, and no step runs
+//!   today: a step set to a moment in the future would run at the real time,
+//!   which can fall in the quiet hours of the notifier (21:00-08:00) or before
+//!   the opening of a send window. The workshop's bay is open all week, so a
+//!   booking does not depend on the weekday either.
+//! - **Money in fils**, VAT 5 % on top of the prices.
+//! - **Deterministic**: names, amounts and days are written out below.
 //! - **Idempotent.** The seed is done once its marker exists (an audit entry
-//!   of the subject `auto_demo`); logins are kept when they exist.
+//!   of the subject `auto_demo`); a login that exists is kept.
 //!
-//! # The workshop's day
+//! # The company
 //!
-//! | Vehicle | What it shows |
+//! One auto parts trader on Naif Road, Deira, with a workshop and a second
+//! parts counter in Sharjah, a service advisor, a workshop manager, two
+//! technicians, a storekeeper, a purchaser, an insurance coordinator, a fleet
+//! account manager, an accountant, the branch manager and the owner. The
+//! stories on the screens:
+//!
+//! | Screen | What it shows |
 //! |---|---|
-//! | Land Cruiser of Mona Hassan | periodic service delivered and invoiced, parts from the store |
-//! | Patrol of Rashid Al Nuaimi | ready for collection, not collected yet |
-//! | Hilux of Gulf Build Contracting | in quality check |
-//! | Accord of Priya Raman | in progress: labour started, parts issued |
-//! | Pajero of Omar Siddiqui | waiting for a special-order alternator |
-//! | Camry of Fatima Al Zaabi | estimate sent, waiting for the customer's answer |
-//! | Corolla of Joseph Fernandes | being inspected |
-//! | Altima of Ahmed Karim | just checked in |
-//! | Sunny of Ravi Kumar | estimate declined by the customer |
-//! | Fortuner of Sara Al Mansoori | insurance repair: claim approved by the insurer, work running |
-//! | Tiida of Khalid Obaid | insurance repair: estimate with the insurer |
-//! | Two vans of Emirates Fleet Rentals | a fleet contract with its service plans |
+//! | Vehicles | private cars with their plates, VIN and odometer, and the vans of the fleets |
+//! | Job cards | checked in (from a booking), awaiting approval (the customer's link), in progress, awaiting parts, quality check, ready, delivered, cancelled (the work done billed), declined, voided |
+//! | Not collected | a vehicle left after a cancel and one after a decline: reminders at 3 and 7 days, the storage fee, the branch manager's task at 30 days |
+//! | Insurers, claims | two insurers; claims registered, surveyed, estimate sent, approved, supplementary pending, rejected, withdrawn, total loss, invoiced, settled and voided |
+//! | Fleet contracts | active (a service booked, a job card with the fleet's PO, the monthly invoice), suspended, ended |
+//! | Supplier claims | raised, raised and accepted by the supplier, recovered, one refused with a write-off waiting for the branch manager |
+//! | Recalls | brake pads from one supplier traced to a car owner, a fleet, a workshop and the walk-in sales |
+//! | Back-orders | B2B sales orders with part reserved and part back-ordered, one served by a receipt, the reorder suggestion |
+//! | Export sales | an invoice without exit evidence told at 60 days, one flagged at 90, one with a bill of lading |
+//! | Incidents, police reports | a vehicle incident decided by the branch manager, accident job cards with the report waiting and accepted |
+//! | Loyalty, marketing | members who earn points on a paid invoice, a fleet that earns none, the marketing consent that is not implied |
+//! | Cash | cheques collected in the field, one missing at the count |
 //!
 //! Every login has the password of [`super::seed::PASSWORD`].
 
-use renox::Environment;
-use renox::chrono::{Days, NaiveDate};
-use renox::prelude::*;
-use wl_kernel::documents::today;
+mod cash;
+mod claims;
+mod fleet;
+mod hooks;
+mod jobs;
+mod money;
+mod people;
+mod shop;
+mod stories;
+mod supply;
+mod trade;
 
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use renox::Environment;
+use renox::prelude::*;
+use wl_kernel::PartyId;
+
+use super::demo_data::clock::Clock;
 use super::demo_data::driver::Driver;
 use super::roles::{
     ACCOUNTANT, ADMIN, BRANCH_MANAGER, COUNTER_SALES, FLEET_ACCOUNT_MANAGER, INSURANCE_COORDINATOR,
-    OWNER, PROCUREMENT, SERVICE_ADVISOR, STOREKEEPER, TECHNICIAN, WORKSHOP_MANAGER, define,
+    OWNER, PROCUREMENT, SERVICE_ADVISOR, STOREKEEPER, TECHNICIAN, WORKSHOP_MANAGER,
 };
 use super::seed::PASSWORD;
-
-mod claims;
-mod fleet;
-mod screens;
-mod setup;
-mod trade;
-mod workshop;
-
-pub use screens::{Screen, map as screen_map};
 
 /// The command that fills a local database with the demo company.
 pub const COMMAND: &str = "auto:demo";
@@ -76,129 +106,102 @@ pub struct Login {
     pub label: &'static str,
 }
 
-/// The e-mail of the owner.
-pub const OWNER_EMAIL: &str = "owner@alnoorauto.example";
-/// The e-mail of the company admin.
-pub const ADMIN_EMAIL: &str = "admin@alnoorauto.example";
-/// The e-mail of the branch manager.
-pub const BRANCH_EMAIL: &str = "branch@alnoorauto.example";
-/// The e-mail of the service advisor.
-pub const ADVISOR_EMAIL: &str = "advisor@alnoorauto.example";
-/// The e-mail of the workshop manager.
-pub const WORKSHOP_EMAIL: &str = "workshop@alnoorauto.example";
-/// The e-mail of the technician.
-pub const TECH_EMAIL: &str = "tech@alnoorauto.example";
-/// The e-mail of the second technician.
-pub const TECH2_EMAIL: &str = "tech2@alnoorauto.example";
-/// The e-mail of the counter sales person.
-pub const COUNTER_EMAIL: &str = "counter@alnoorauto.example";
-/// The e-mail of the storekeeper.
-pub const STORE_EMAIL: &str = "store@alnoorauto.example";
-/// The e-mail of the purchaser.
-pub const PURCHASER_EMAIL: &str = "purchaser@alnoorauto.example";
-/// The e-mail of the accountant.
-pub const ACCOUNTANT_EMAIL: &str = "accountant@alnoorauto.example";
-/// The e-mail of the insurance coordinator.
-pub const INSURANCE_EMAIL: &str = "insurance@alnoorauto.example";
-/// The e-mail of the fleet account manager.
-pub const FLEET_EMAIL: &str = "fleet@alnoorauto.example";
+/// The e-mails the steps below act as.
+pub(crate) const ADMIN_LOGIN: &str = "admin@alnoorauto.example";
+pub(crate) const OWNER_LOGIN: &str = "owner@alnoorauto.example";
+pub(crate) const BASMA: &str = "basma@alnoorauto.example";
+pub(crate) const SAMI: &str = "sami@alnoorauto.example";
+pub(crate) const WALEED: &str = "waleed@alnoorauto.example";
+pub(crate) const TAREQ: &str = "tareq@alnoorauto.example";
+pub(crate) const NABIL: &str = "nabil@alnoorauto.example";
+pub(crate) const HUSSEIN: &str = "hussein@alnoorauto.example";
+pub(crate) const KARIM: &str = "karim@alnoorauto.example";
+pub(crate) const PIA: &str = "pia@alnoorauto.example";
+pub(crate) const CARLA: &str = "carla@alnoorauto.example";
+pub(crate) const FATIMA: &str = "fatima@alnoorauto.example";
+pub(crate) const AISHA: &str = "aisha@alnoorauto.example";
 
-/// The demo people, one per role of the company.
+/// The demo people, one per role (two technicians).
 pub const LOGINS: &[Login] = &[
     Login {
-        name: "Hamdan Al Mazrouei",
-        email: OWNER_EMAIL,
-        role: OWNER,
-        label: "Owner / general manager",
-    },
-    Login {
-        name: "Nadia Rizvi",
-        email: ADMIN_EMAIL,
+        name: "Maryam Al Falasi",
+        email: ADMIN_LOGIN,
         role: ADMIN,
-        label: "Company admin",
+        label: "Company administrator",
     },
     Login {
-        name: "Tariq Mahmood",
-        email: BRANCH_EMAIL,
+        name: "Rashid Al Noor",
+        email: OWNER_LOGIN,
+        role: OWNER,
+        label: "Owner / GM",
+    },
+    Login {
+        name: "Basma Haddad",
+        email: BASMA,
         role: BRANCH_MANAGER,
-        label: "Branch manager, Al Quoz workshop",
+        label: "Branch manager (Deira)",
     },
     Login {
-        name: "Sami Haddad",
-        email: ADVISOR_EMAIL,
+        name: "Sami Khoury",
+        email: SAMI,
         role: SERVICE_ADVISOR,
         label: "Service advisor",
     },
     Login {
-        name: "Waleed Barakat",
-        email: WORKSHOP_EMAIL,
+        name: "Waleed Mansour",
+        email: WALEED,
         role: WORKSHOP_MANAGER,
         label: "Workshop manager",
     },
     Login {
-        name: "Tareq Anwar",
-        email: TECH_EMAIL,
+        name: "Tareq Aziz",
+        email: TAREQ,
         role: TECHNICIAN,
-        label: "Technician",
+        label: "Technician (mechanical)",
     },
     Login {
-        name: "Rommel Santos",
-        email: TECH2_EMAIL,
+        name: "Nabil Rahman",
+        email: NABIL,
         role: TECHNICIAN,
-        label: "Technician",
+        label: "Technician (body and electrical)",
     },
     Login {
-        name: "Vikram Shetty",
-        email: COUNTER_EMAIL,
+        name: "Hussein Karim",
+        email: HUSSEIN,
         role: COUNTER_SALES,
-        label: "Counter sales, Deira",
+        label: "Counter sales and field cheques",
     },
     Login {
-        name: "Imran Baig",
-        email: STORE_EMAIL,
+        name: "Karim Sadiq",
+        email: KARIM,
         role: STOREKEEPER,
         label: "Storekeeper",
     },
     Login {
-        name: "Elena Petrova",
-        email: PURCHASER_EMAIL,
+        name: "Pia Fernandes",
+        email: PIA,
         role: PROCUREMENT,
         label: "Purchaser",
     },
     Login {
-        name: "Wendy D'Costa",
-        email: ACCOUNTANT_EMAIL,
-        role: ACCOUNTANT,
-        label: "Accountant",
-    },
-    Login {
-        name: "Layla Nasser",
-        email: INSURANCE_EMAIL,
+        name: "Carla D'Souza",
+        email: CARLA,
         role: INSURANCE_COORDINATOR,
         label: "Insurance coordinator",
     },
     Login {
-        name: "Daniel Okafor",
-        email: FLEET_EMAIL,
+        name: "Fatima Yusuf",
+        email: FATIMA,
         role: FLEET_ACCOUNT_MANAGER,
         label: "Fleet account manager",
     },
+    Login {
+        name: "Aisha Bakr",
+        email: AISHA,
+        role: ACCOUNTANT,
+        label: "Accountant",
+    },
 ];
-
-/// The workshop in Al Quoz: the wl-scheduling location of the bookings, the
-/// scope of the workshop's store.
-pub(crate) fn workshop() -> wl_kernel::Subject {
-    wl_kernel::Subject::new("scheduling.location", 1)
-}
-
-/// `n` days from today (negative: before).
-fn day(n: i64) -> NaiveDate {
-    if n >= 0 {
-        today() + Days::new(n as u64)
-    } else {
-        today() - Days::new(n.unsigned_abs())
-    }
-}
 
 /// The module that adds the command and the seeder.
 pub struct AutoDemo {
@@ -221,7 +224,7 @@ impl Module for AutoDemo {
         let client = self.client.clone();
         app.command(
             COMMAND,
-            "Fill the database with the Al Noor Auto demo company (vehicles, job cards, insurance claims, fleet contracts, stock, sales); local and testing only",
+            "Fill the database with the Al Noor demo company (staff, customers, vehicles, job cards in every state, insurance claims, fleet contracts, supplier claims, a recall, back-orders, export sales); local and testing only",
             move |_args, state: AppState| {
                 let client = client.clone();
                 async move { run_command(client, state, true).await }
@@ -233,11 +236,15 @@ impl Module for AutoDemo {
             async move { run_command(client, state, false).await }
         });
     }
+
+    fn routes(&self) -> Routes {
+        hooks::routes()
+    }
 }
 
 /// `auto:demo` and the seeder: boots the app a second time on the same
-/// database to get its router (the people of the demo do their work through
-/// it), then seeds. The command works in `local` and `testing`; the seeder of
+/// database to get its router (the demo users do their work through it), then
+/// seeds. The command works in `local` and `testing`; the seeder of
 /// `db:seed` only in `local`.
 async fn run_command(client: wl_kernel::ClientConfig, state: AppState, said: bool) -> Result {
     let env = state.config.env;
@@ -268,20 +275,19 @@ async fn run_command(client: wl_kernel::ClientConfig, state: AppState, said: boo
     let kernel = app.config((*state.config).clone()).boot().await?;
     if !seed(&kernel).await? {
         println!("The demo company is there already.");
-        println!("{}", screens::print(kernel.state()).await?);
         return Ok(());
     }
     println!("The demo company is made. Log in with any of these (password {PASSWORD}):");
     for login in LOGINS {
-        println!("  {:<44} {}", login.email, login.label);
+        println!("  {:<42} {}", login.email, login.label);
     }
-    println!("{}", screens::print(kernel.state()).await?);
     Ok(())
 }
 
-/// Seeds the demo company into the database `kernel` is on; `false` when it is
-/// there already and nothing was made. (The app must have been installed:
-/// the legal entity of `client.toml` exists.)
+/// Seeds the demo company into the database `kernel` is on; `false` when it
+/// is there already and nothing was made. (The app must have been installed
+/// and seeded: the legal entity of `client.toml` and the service types
+/// exist.)
 ///
 /// # Errors
 ///
@@ -291,8 +297,20 @@ pub async fn seed(kernel: &renox::Kernel) -> Result<bool> {
     if is_seeded(&state.db).await? {
         return Ok(false);
     }
+    // The seeds of the client (the workshop's service types, the loyalty
+    // programme, ...) come first: `db:seed` runs them, then this.
+    let seeded = wl_sales::LoyaltyProgramme::first_active(&state.db)
+        .await?
+        .is_some();
+    if !seeded {
+        return Err(renox::anyhow::anyhow!(
+            "the seeds of the client are not there: run `db:seed` (it runs them and then this command in local), or `wl:install` and the seeds first"
+        )
+        .into());
+    }
     let driver = Driver::new(kernel.router());
-    Box::pin(Seed::new(state, driver).run()).await?;
+    let clock = Arc::new(Clock::new().await);
+    Box::pin(Seed::new(state, driver, clock).run()).await?;
     Ok(true)
 }
 
@@ -303,29 +321,49 @@ pub async fn is_seeded(db: &Db) -> Result<bool> {
         .is_empty())
 }
 
-/// What the steps share: the state, the driver and the ids they made.
+/// The state of a seed in progress: what the later steps need of the earlier.
 pub(crate) struct Seed {
     pub(crate) state: AppState,
     pub(crate) driver: Driver,
-    /// The parties by short key.
-    pub(crate) parties: std::collections::BTreeMap<&'static str, wl_kernel::PartyId>,
-    /// The vehicles by short key.
-    pub(crate) vehicles: std::collections::BTreeMap<&'static str, i64>,
-    /// The job cards by short key.
-    pub(crate) jobs: std::collections::BTreeMap<&'static str, i64>,
-    /// The workshop bay.
-    pub(crate) bay: i64,
+    pub(crate) clock: Arc<Clock>,
+    /// The legal entity of the company.
+    pub(crate) entity: i64,
+    /// The demo users by e-mail.
+    pub(crate) users: Vec<(&'static str, User)>,
+    /// The demo users as the services take them, by e-mail.
+    pub(crate) staff: BTreeMap<&'static str, AuthUser>,
+    /// The parties by their key in [`people`].
+    pub(crate) parties: BTreeMap<&'static str, PartyId>,
+    /// The vehicles by plate key (`dubai-a-12345`).
+    pub(crate) vehicles: BTreeMap<&'static str, auto::Vehicle>,
+    /// The job cards by the key of the story.
+    pub(crate) cards: BTreeMap<&'static str, i64>,
+    /// The claims by the key of the story.
+    pub(crate) claims: BTreeMap<&'static str, i64>,
+    /// The insurers by key.
+    pub(crate) insurers: BTreeMap<&'static str, auto::Insurer>,
+    /// The stores: the Deira parts counter and the workshop's.
+    pub(crate) stores: BTreeMap<&'static str, wl_inventory::Location>,
+    /// The items by code.
+    pub(crate) items: BTreeMap<&'static str, wl_inventory::Item>,
 }
 
 impl Seed {
-    fn new(state: AppState, driver: Driver) -> Self {
+    fn new(state: AppState, driver: Driver, clock: Arc<Clock>) -> Self {
         Self {
             state,
             driver,
-            parties: Default::default(),
-            vehicles: Default::default(),
-            jobs: Default::default(),
-            bay: 0,
+            clock,
+            entity: 0,
+            users: Vec::new(),
+            staff: BTreeMap::new(),
+            parties: BTreeMap::new(),
+            vehicles: BTreeMap::new(),
+            cards: BTreeMap::new(),
+            claims: BTreeMap::new(),
+            insurers: BTreeMap::new(),
+            stores: BTreeMap::new(),
+            items: BTreeMap::new(),
         }
     }
 
@@ -333,48 +371,72 @@ impl Seed {
         &self.state.db
     }
 
-    pub(crate) async fn user(&self, email: &str) -> Result<User> {
-        Ok(User::find_by_email(self.db(), email)
-            .await?
-            .ok_or_else(|| renox::anyhow::anyhow!("the demo login {email}"))?)
+    /// The demo user with this e-mail.
+    pub(crate) fn user(&self, email: &str) -> &User {
+        self.users
+            .iter()
+            .find(|(known, _)| *known == email)
+            .map(|(_, user)| user)
+            .unwrap_or_else(|| panic!("the demo login {email}"))
+    }
+
+    /// The demo user with this e-mail, as the services take them.
+    pub(crate) fn who(&self, email: &str) -> &AuthUser {
+        self.staff
+            .get(email)
+            .unwrap_or_else(|| panic!("the demo login {email}"))
+    }
+
+    /// The party of the story `key`.
+    pub(crate) fn party(&self, key: &str) -> PartyId {
+        *self
+            .parties
+            .get(key)
+            .unwrap_or_else(|| panic!("the demo party {key}"))
+    }
+
+    /// The vehicle with this key.
+    pub(crate) fn vehicle(&self, key: &str) -> &auto::Vehicle {
+        self.vehicles
+            .get(key)
+            .unwrap_or_else(|| panic!("the demo vehicle {key}"))
     }
 
     async fn run(&mut self) -> Result {
-        define(self.db()).await?;
-        // The workshop's service types and ticket categories (`auto:install`,
-        // also run by `db:seed`): kept when they are there.
-        super::auto_seed::install(&self.state).await?;
+        // The seed's dates are relative to today, also inside a step that
+        // runs on the clock of a day in the past.
+        *super::demo_data::REAL_TODAY
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some(wl_kernel::documents::today());
+        // Not cleared afterwards: seeds that run at the same time in one
+        // process (the tests) share it, and the first to end would send the
+        // others back to the clock of their step. The next seed sets it again.
+        self.story().await
+    }
+
+    async fn story(&mut self) -> Result {
+        super::roles::define(self.db()).await?;
+        self.entity = wl_kernel::LegalEntity::default_entity(self.db()).await?.id;
         self.logins().await?;
-        self.setup().await?;
+        self.people().await?;
+        self.shop().await?;
+        self.insurers().await?;
+        self.labour_menu().await?;
         self.workshop().await?;
         self.claims().await?;
-        self.fleet().await?;
+        self.fleets().await?;
+        self.supplier_claims().await?;
         self.trade().await?;
+        self.stories().await?;
+        self.money().await?;
+        self.cash().await?;
+        self.reminders().await?;
         renox::audit::record(
             self.db(),
             renox::audit::Entry::new(DONE_ACTION).subject(MARKER_SUBJECT, 1),
         )
         .await?;
-        Ok(())
-    }
-
-    /// The people with a login, one per role.
-    async fn logins(&mut self) -> Result {
-        for login in LOGINS {
-            let user = match User::find_by_email(self.db(), login.email).await? {
-                Some(user) => user,
-                None => {
-                    let mut user =
-                        User::register(self.db(), login.name, login.email, PASSWORD).await?;
-                    user.email_verified_at = Some(renox::db::now());
-                    user.save(self.db()).await?;
-                    user.assign_role(self.db(), login.role).await?;
-                    user
-                }
-            };
-            let db = self.state.db.clone();
-            self.driver.sign_in(&db, login.email, &user).await?;
-        }
         Ok(())
     }
 }

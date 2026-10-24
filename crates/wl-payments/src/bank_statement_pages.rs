@@ -21,6 +21,7 @@
 use std::collections::BTreeMap;
 
 use renox::chrono::NaiveDate;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use serde::{Deserialize, Serialize};
@@ -69,12 +70,98 @@ struct Row {
     status: String,
 }
 
+/// The statements grid: search on the file and the account, filters by
+/// entity, format and status. Their balances are not summed (each is the
+/// balance of another account).
+pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = texts_in(lang);
+    let formats: Vec<(String, String)> = FORMATS
+        .iter()
+        .map(|code| {
+            (
+                (*code).to_owned(),
+                t(&format!("bank_statements.format.{code}")),
+            )
+        })
+        .collect();
+    let statuses: Vec<(String, String)> =
+        ["uploaded", "in_review", "completed", "failed", "reverted"]
+            .iter()
+            .map(|code| {
+                (
+                    (*code).to_owned(),
+                    t(&format!("bank_statements.status.{code}")),
+                )
+            })
+            .collect();
+    let grid = Grid::new("wl-payments-bank-statements")
+        .title(&t("bank_statements.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("file_name", &t("bank_statements.file_name"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/bank-statements/{id}"),
+        )
+        .column(
+            Column::text("bank_account", &t("bank_statements.bank_account"))
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::related(
+            "entity",
+            &t("fields.entity"),
+            "wl_legal_entities",
+            "legal_entity_id",
+            "code",
+        ))
+        .column(Column::select(
+            "format",
+            &t("bank_statements.format"),
+            formats,
+        ))
+        .column(Column::date(
+            "period_start",
+            &t("bank_statements.period_start"),
+        ))
+        .column(Column::date("period_end", &t("bank_statements.period_end")).mobile())
+        .column(
+            Column::money("closing_balance", &t("bank_statements.closing_balance"))
+                .currency_from("currency")
+                .mobile(),
+        )
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("uploaded", "info"),
+                    ("in_review", "warning"),
+                    ("completed", "success"),
+                    ("failed", "danger"),
+                    ("reverted", "neutral"),
+                ])
+                .mobile(),
+        )
+        .column(Column::number("line_count", &t("bank_statements.lines")).hidden())
+        .column(Column::datetime("created_at", &t("fields.created_at")).hidden())
+        .sort_by("-period_end")
+        .row_url("/bank-statements/{id}")
+        .cards_on_mobile()
+        .empty_state(
+            &t("bank_statements.empty"),
+            Some(&t("bank_statements.empty_hint")),
+        );
+    if can_export { grid.exports() } else { grid }
+}
+
 /// What the page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-payments/bank_statements.html")]
 pub(crate) struct IndexPage {
     tx: BTreeMap<&'static str, String>,
-    rows: Vec<Row>,
+    rows: GridPage<BankStatementImport>,
     entities: Vec<(i64, String)>,
     formats: Vec<(String, String)>,
 }
@@ -92,42 +179,19 @@ async fn entities(state: &AppState) -> Result<Vec<(i64, String)>> {
 }
 
 /// `GET /bank-statements`: the imports, newest period first, and the upload
-/// form.
-async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
+/// sheet; or their export (`?export=`).
+async fn index(
+    State(state): State<AppState>,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     let t = texts_in(&lang);
-    let entities = entities(&state).await?;
-    let imports = BankStatementImport::query()
-        .order_by_desc(BankStatementImport::PERIOD_END)
-        .order_by_desc(BankStatementImport::ID)
-        .get(&state.db)
-        .await?;
-    let rows = imports
-        .iter()
-        .map(|import| Row {
-            id: import.id,
-            entity: entities
-                .iter()
-                .find(|(id, _)| *id == import.legal_entity_id)
-                .map(|(_, label)| label.clone())
-                .unwrap_or_default(),
-            bank_account: import.bank_account.clone(),
-            file_name: import.file_name.clone(),
-            format: t(&format!("bank_statements.format.{}", import.format)),
-            period: format!(
-                "{} - {}",
-                import.period_start.format("%Y-%m-%d"),
-                import.period_end.format("%Y-%m-%d")
-            ),
-            closing_balance: import
-                .closing_balance
-                .map(|fils| money_text(&import.currency, fils))
-                .unwrap_or_else(|| t("bank_statements.no_balance")),
-            status: t(&format!(
-                "bank_statements.status.{}",
-                status_code(import.status)
-            )),
-        })
-        .collect();
+    // The route needs `bank.reconcile`, which is also the right to export.
+    let grid = grid(&lang, true);
+    if let Some(file) = grid.export(BankStatementImport::query(), &request).await? {
+        return Ok(file);
+    }
+    let rows = grid.page(BankStatementImport::query(), &request).await?;
     let formats = FORMATS
         .iter()
         .map(|code| {
@@ -140,9 +204,10 @@ async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         rows,
-        entities,
+        entities: entities(&state).await?,
         formats,
-    }))
+    })
+    .into_response())
 }
 
 /// The code of a status, for its text.

@@ -20,7 +20,7 @@
 //! (`2250.00`); a count may be `0`. A refused guard answers 422 under its
 //! field.
 
-use renox::grid::{Column, Grid, GridPage, GridRequest};
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::{self, TransitionError};
@@ -116,13 +116,17 @@ fn status_codes() -> Vec<&'static str> {
 
 /// The handovers grid: holder, period, amounts, status; filters by status and
 /// kind.
-pub fn grid(lang: &Lang) -> Grid {
-    grid_with(&texts_in(lang))
+pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let grid = grid_with(&texts_in(lang));
+    if can_export { grid.exports() } else { grid }
 }
 
 fn grid_with(t: Text<'_>) -> Grid {
     Grid::new("wl-payments-cash")
         .title(&t("cash.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::number("id", "#")
                 .frozen()
@@ -148,9 +152,18 @@ fn grid_with(t: Text<'_>) -> Grid {
             options(&t, "cash.period", &["run", "shift", "day", "till_session"]),
         ))
         .column(Column::date("period_date", &t("fields.date")).mobile())
-        .column(Column::money("expected", &t("cash.expected")).currency_from("currency"))
-        .column(Column::money("counted", &t("cash.counted")).currency_from("currency"))
-        .column(Column::money("difference", &t("cash.difference")).currency_from("currency"))
+        .column(Column::money("expected", &t("cash.expected"))
+                .currency_from("currency")
+                .summary(Summary::Sum),
+        )
+        .column(Column::money("counted", &t("cash.counted"))
+                .currency_from("currency")
+                .summary(Summary::Sum),
+        )
+        .column(Column::money("difference", &t("cash.difference"))
+                .currency_from("currency")
+                .summary(Summary::Sum),
+        )
         .column(
             Column::select(
                 "status",
@@ -182,13 +195,23 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /cash`: the grid.
-async fn index(lang: Lang, user: AuthUser, request: GridRequest) -> Result<View> {
-    let handovers = grid(&lang).page(CashHandover::query(), &request).await?;
+async fn index(lang: Lang, user: AuthUser, request: GridRequest) -> Result<Response> {
+    // The export is for those who count the cash.
+    let can_raise = user.has_permission(permissions::CASH_COUNT);
+    let grid = grid(&lang, can_raise);
+    if request.param("export").is_some() && !can_raise {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(CashHandover::query(), &request).await? {
+        return Ok(file);
+    }
+    let handovers = grid.page(CashHandover::query(), &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         handovers,
-        can_raise: user.has_permission(permissions::CASH_COUNT),
-    }))
+        can_raise,
+    })
+    .into_response())
 }
 
 #[derive(Serialize, Debug, Clone)]

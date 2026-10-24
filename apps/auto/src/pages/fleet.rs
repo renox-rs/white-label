@@ -26,10 +26,13 @@
 //! the register, never typed as ids.
 
 use renox::chrono::NaiveDate;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 use wl_kernel::approvals::{self, ApprovalCard};
 
+use super::lists;
 use super::{
     Texts, invalid, parse_money, parse_number, parse_optional_date, parse_optional_id, party_name,
     party_of, require, text,
@@ -118,65 +121,6 @@ fn done(lang: &Lang, key: &str) -> Result<Response> {
     Ok((Toast::success(text(lang, key)), renox::HxRefresh).into_response())
 }
 
-/// What the list can be narrowed by.
-#[derive(Deserialize, Default, Debug, Clone)]
-pub struct Filter {
-    /// Text in the number or the title.
-    #[serde(default)]
-    q: String,
-    /// `draft`, `active` or `ended`; blank for every contract.
-    #[serde(default)]
-    tab: String,
-}
-
-impl Filter {
-    fn href(&self) -> String {
-        if self.tab.is_empty() {
-            "/auto/fleet".to_owned()
-        } else {
-            format!("/auto/fleet?tab={}", self.tab)
-        }
-    }
-
-    fn with_tab(&self, tab: &str) -> Filter {
-        Filter {
-            tab: tab.to_owned(),
-            ..self.clone()
-        }
-    }
-
-    /// Whether a contract in `status` belongs to the tab.
-    fn takes(&self, status: FleetStatus) -> bool {
-        match self.tab.as_str() {
-            "draft" => status == FleetStatus::Draft,
-            "active" => status.is_in_force(),
-            "ended" => status == FleetStatus::Ended,
-            _ => true,
-        }
-    }
-}
-
-/// One contract of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct ContractRow {
-    /// The primary key.
-    pub id: i64,
-    /// `FC-0007`.
-    pub number: String,
-    /// What the contract is called.
-    pub title: String,
-    /// The fleet's name.
-    pub fleet: String,
-    /// The term.
-    pub term: String,
-    /// How many vehicles are under it.
-    pub vehicles: String,
-    /// The status in words.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
-}
-
 /// The term as people read it: `2026-01-01 to 2026-12-31`.
 fn term_text(lang: &Lang, contract: &FleetContract) -> String {
     texts::t_with(
@@ -186,16 +130,72 @@ fn term_text(lang: &Lang, contract: &FleetContract) -> String {
     )
 }
 
+/// The badge tone of a contract's status in the grid.
+fn grid_tone(status: FleetStatus) -> &'static str {
+    match status {
+        FleetStatus::Active => "success",
+        FleetStatus::Suspended | FleetStatus::RenewalDue => "warning",
+        FleetStatus::Draft | FleetStatus::Ended => "neutral",
+    }
+}
+
+/// The fleet contracts grid: the number first and frozen, what the contract
+/// is called, the fleet, the term (two dates), the vehicles under contract,
+/// the labour rate in dirhams and the status in words; searched by number or
+/// name.
+pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
+    let statuses = lists::options(
+        t,
+        "fleet.status",
+        FleetStatus::ALL.iter().map(|status| status.as_str()),
+    );
+    let tones: Vec<(&str, &str)> = FleetStatus::ALL
+        .iter()
+        .map(|status| (status.as_str(), grid_tone(*status)))
+        .collect();
+    Grid::new("auto-fleet-contracts")
+        .title(&t("fleet.title"))
+        .column(
+            Column::text("number", &t("fleet.number"))
+                .computed(&lists::numbered_sql("FC-", 4))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/auto/fleet/{id}"),
+        )
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&tones)
+                .width("11rem")
+                .mobile(),
+        )
+        .column(
+            Column::text("title", &t("fleet.name"))
+                .searchable()
+                .mobile(),
+        )
+        .column(Column::custom("fleet", &t("fleet.fleet")).mobile())
+        .column(Column::date("start_date", &t("fleet.start")))
+        .column(Column::date("end_date", &t("fleet.end")))
+        .column(Column::count_of(
+            "vehicles",
+            &t("fleet.vehicles"),
+            "auto_vehicles",
+            "fleet_contract_id",
+        ))
+        .column(lists::money("labour_rate", &t("fleet.labour_rate")))
+        .sort_by("-id")
+        .row_url("/auto/fleet/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("fleet.empty"), None)
+}
+
 /// What the list page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "auto/fleet_contracts.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    rows: Vec<ContractRow>,
-    status_tabs: Vec<(String, String)>,
-    tab_current: String,
-    tab: String,
-    q: String,
+    contracts: GridPage<FleetContract>,
     can_create: bool,
 }
 
@@ -204,50 +204,27 @@ async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
-    Query(filter): Query<Filter>,
+    request: GridRequest,
 ) -> Result<View> {
     if !may_view(&user) {
         return Err(Error::Forbidden);
     }
-    let found = fleet_contracts::search(&state.db, &filter.q, None).await?;
-    let mut rows = Vec::new();
-    for contract in found.into_iter().filter(|c| filter.takes(c.status)) {
-        let count = fleet_contracts::vehicles_of(&state.db, contract.id)
-            .await?
-            .len();
-        rows.push(ContractRow {
-            id: contract.id,
-            number: contract.number(),
-            title: contract.title.clone(),
-            fleet: party_name(&state, &lang.locale, contract.fleet_party_id).await,
-            term: term_text(&lang, &contract),
-            vehicles: count.to_string(),
-            status: status_text(&lang, contract.status),
-            status_kind: status_kind(contract.status),
-        });
-    }
-    let status_tabs = vec![
-        (filter.with_tab("").href(), text(&lang, "fleet.tab.all")),
-        (
-            filter.with_tab("active").href(),
-            text(&lang, "fleet.tab.active"),
-        ),
-        (
-            filter.with_tab("draft").href(),
-            text(&lang, "fleet.tab.draft"),
-        ),
-        (
-            filter.with_tab("ended").href(),
-            text(&lang, "fleet.tab.ended"),
-        ),
-    ];
+    let page = grid(&lists::texts_in(&lang))
+        .page(FleetContract::query(), &request)
+        .await?;
+    let ids: Vec<i64> = page
+        .items()
+        .iter()
+        .map(|contract| contract.fleet_party_id)
+        .collect();
+    let names = lists::party_names(&state, &lang, ids).await;
+    let contracts = lists::with_currency(
+        page,
+        |contract| json!({ "fleet": names.get(&contract.fleet_party_id).cloned().unwrap_or_default() }),
+    );
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        rows,
-        status_tabs,
-        tab_current: filter.href(),
-        tab: filter.tab.clone(),
-        q: filter.q.clone(),
+        contracts,
         can_create: user.has_permission(permissions::FLEET_CONTRACTS_MANAGE),
     }))
 }
@@ -428,6 +405,8 @@ pub struct JobRow {
     pub status: String,
     /// The invoice that billed it, or a dash.
     pub invoice: String,
+    /// The address of the invoice's page, or empty.
+    pub invoice_url: String,
     /// Whether the PO can still be set.
     pub open: bool,
 }
@@ -445,6 +424,8 @@ pub struct InvoiceRow {
     pub net: String,
     /// The invoice, or a dash when there was nothing to bill.
     pub invoice: String,
+    /// The address of the invoice's page, or empty.
+    pub invoice_url: String,
 }
 
 /// What the page of one contract needs.
@@ -477,8 +458,6 @@ pub(crate) struct ShowPage {
     jobs: Vec<JobRow>,
     invoices: Vec<InvoiceRow>,
     vehicle_options: Vec<[String; 2]>,
-    /// The service types a plan books, by code with their names.
-    service_options: Vec<[String; 2]>,
     can_edit: bool,
     can_activate: bool,
     can_suspend: bool,
@@ -564,11 +543,6 @@ async fn plan_rows(
     lang: &Lang,
     plans: &[crate::fleet_service::FleetService],
 ) -> Result<Vec<PlanRow>> {
-    // The service's name where the scheduling module knows it
-    // (`periodic_service` is *Periodic service*), else its code.
-    let names = wl_kernel::scheduling::service_names(state)
-        .names(state, &lang.locale)
-        .await?;
     let mut rows = Vec::new();
     for plan in plans {
         let plate = Vehicle::find(&state.db, plan.vehicle_id)
@@ -577,19 +551,16 @@ async fn plan_rows(
         rows.push(PlanRow {
             id: plan.id,
             plate,
-            service: names
-                .get(&plan.service_code)
-                .cloned()
-                .unwrap_or_else(|| plan.service_code.clone()),
+            service: super::words(&plan.service_code),
             interval: interval_text(lang, plan),
             next_due: due_text(lang, plan),
-            booking: plan.booking_id.map_or_else(
-                || text(lang, "none"),
-                |booking| match plan.requested_for_date {
-                    Some(day) => format!("#{booking} · {day}"),
-                    None => format!("#{booking}"),
-                },
-            ),
+            booking: match (plan.booking_id, plan.requested_for_date) {
+                (None, _) => text(lang, "none"),
+                (Some(_), Some(day)) => {
+                    texts::t_with(lang, "auto.fleet.booked_for", &[("day", &day)])
+                }
+                (Some(_), None) => text(lang, "fleet.booked"),
+            },
             confirmed: text(
                 lang,
                 if plan.booking_confirmed_at.is_some() {
@@ -646,6 +617,10 @@ async fn show(
         let plate = Vehicle::find(&state.db, job.vehicle_id)
             .await?
             .map_or_else(String::new, |v| v.plate());
+        let invoice = match job.invoice_id {
+            Some(i) => super::invoice_ref(&state, &user, &lang, i).await,
+            None => super::RecordRef::default(),
+        };
         job_rows.push(JobRow {
             job_card_id: job.job_card_id,
             number: card
@@ -658,16 +633,22 @@ async fn show(
                 || none.clone(),
                 |card| super::job_cards::status_text(&lang, card.status),
             ),
-            invoice: job
-                .invoice_id
-                .map_or_else(|| none.clone(), |i| format!("#{i}")),
+            invoice: if invoice.label.is_empty() {
+                none.clone()
+            } else {
+                invoice.label
+            },
+            invoice_url: invoice.url,
             open: job.invoice_id.is_none(),
         });
     }
-    let invoice_rows: Vec<InvoiceRow> = FleetInvoice::of_contract(&state.db, id)
-        .await?
-        .iter()
-        .map(|invoice| InvoiceRow {
+    let mut invoice_rows: Vec<InvoiceRow> = Vec::new();
+    for invoice in FleetInvoice::of_contract(&state.db, id).await? {
+        let billed = match invoice.invoice_id {
+            Some(i) => super::invoice_ref(&state, &user, &lang, i).await,
+            None => super::RecordRef::default(),
+        };
+        invoice_rows.push(InvoiceRow {
             period: texts::t_with(
                 &lang,
                 "auto.fleet.term_text",
@@ -679,11 +660,14 @@ async fn show(
             kind: text(&lang, &format!("fleet.invoice_kind.{}", invoice.kind)),
             jobs: invoice.jobs.to_string(),
             net: money_text(invoice.net_total),
-            invoice: invoice
-                .invoice_id
-                .map_or_else(|| none.clone(), |i| format!("#{i}")),
-        })
-        .collect();
+            invoice: if billed.label.is_empty() {
+                none.clone()
+            } else {
+                billed.label
+            },
+            invoice_url: billed.url,
+        });
+    }
     let (from, to) = fleet_billing::previous_month(wl_kernel::documents::today());
     let fleet_name = party_name(&state, &lang.locale, contract.fleet_party_id).await;
     let contact_name = match contract.contact_party_id {
@@ -724,17 +708,6 @@ async fn show(
             ]
         })
         .collect();
-    // The services a plan can book, named; the code alone when the
-    // scheduling module knows no names.
-    let mut service_options: Vec<[String; 2]> = wl_kernel::scheduling::service_names(&state)
-        .names(&state, &lang.locale)
-        .await?
-        .into_iter()
-        .map(|(code, name)| [code, name])
-        .collect();
-    if service_options.is_empty() {
-        service_options.push(["periodic_service".to_owned(), "periodic_service".to_owned()]);
-    }
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         id: contract.id,
@@ -767,7 +740,6 @@ async fn show(
         jobs: job_rows,
         invoices: invoice_rows,
         vehicle_options,
-        service_options,
         can_edit: manage && status != FleetStatus::Ended,
         can_activate: manage && status == FleetStatus::Draft,
         can_suspend: manage && matches!(status, FleetStatus::Active | FleetStatus::RenewalDue),
@@ -1137,18 +1109,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_tabs_split_the_contracts_by_where_they_stand() {
-        let active = Filter {
-            tab: "active".to_owned(),
-            ..Filter::default()
-        };
-        assert!(active.takes(FleetStatus::Active));
-        assert!(active.takes(FleetStatus::Suspended));
-        assert!(active.takes(FleetStatus::RenewalDue));
-        assert!(!active.takes(FleetStatus::Draft));
-        assert!(!active.takes(FleetStatus::Ended));
-        assert!(active.with_tab("ended").takes(FleetStatus::Ended));
-        assert!(Filter::default().takes(FleetStatus::Draft));
+    fn the_grid_has_the_contract_columns_and_every_status_in_words() {
+        let grid = grid(&lists::english_text);
+        let keys: Vec<&str> = grid.columns().iter().map(|c| c.key()).collect();
+        assert_eq!(keys[..2], ["number", "status"]);
+        assert!(keys.contains(&"vehicles") && keys.contains(&"labour_rate"));
+        let status = grid.columns().iter().find(|c| c.key() == "status").unwrap();
+        assert_eq!(status.options().len(), FleetStatus::ALL.len());
+        assert!(
+            status
+                .options()
+                .iter()
+                .any(|(value, label)| value == "renewal_due" && !label.starts_with("auto."))
+        );
     }
 
     #[test]

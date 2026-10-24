@@ -1,23 +1,15 @@
-{#- clinics: the claims to the payers, newest first, with what each claims,
-    what the payer paid and denied, and the last day to send it. Replace it
-    with resources/views/clinics/claims.html in the app. -#}
+{#- clinics: the claims to the payers, a renox::grid (filters by status and
+    visit day, sums of what is claimed, paid and denied) that fills the screen.
+    The amount closed after the payer's window is in the subtitle.
+    Replace it with resources/views/clinics/claims.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['claim.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['claim.title']" :subtitle="tx['claim.subtitle']"/>
-    <rx-include template="wl-kernel/integration_banner.html"/>
-    <rx-alert kind="info" :message="kpi"/>
-    <rx-table :rows="claims" as="row" :key="row.id" :caption="tx['claim.title']" card>
-      <rx-column :label="tx['claim.number']"><a href="{{ route('clinics.claim', row.id) }}">{{ row.number }}</a></rx-column>
-      <rx-column :label="tx['policies.patient']">{{ row.patient }}</rx-column>
-      <rx-column :label="tx['policies.payer']" hide-narrow>{{ row.payer }}</rx-column>
-      <rx-column :label="tx['claim.visit_date']" hide-narrow>{{ row.visit_date }}</rx-column>
-      <rx-column :label="tx['claim.claimed']" hide-narrow>{{ row.claimed }}</rx-column>
-      <rx-column :label="tx['claim.paid']" hide-narrow>{{ row.paid }}</rx-column>
-      <rx-column :label="tx['claim.denied']" hide-narrow>{{ row.denied }}</rx-column>
-      <rx-column :label="tx['claim.deadline']" hide-narrow>{{ row.deadline }}</rx-column>
-      <rx-column :label="tx['claim.closed']" hide-narrow>{{ row.closed }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['claim.empty']" icon="receipt"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['claim.title']" :subtitle="tx['claim.subtitle'] ~ ' ' ~ kpi"/>
+  <rx-include template="wl-kernel/integration_banner.html"/>
+  <rx-grid :page="claims">
+    <template rx-if="column.key == 'number'"><a href="{{ row.url }}">{{ row.number }}</a></template>
+    <template rx-elif="column.key == 'patient'">{{ row.patient }}</template>
+    <template rx-elif="column.key == 'payer'">{{ row.payer }}</template>
+    <template rx-elif="column.key == 'deadline'">{{ row.deadline }}</template>
+    <template rx-elif="column.key == 'closed'">{{ row.closed }}</template>
+  </rx-grid>
 </rx-page>

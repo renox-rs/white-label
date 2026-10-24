@@ -20,13 +20,16 @@
 //! the warranty, and the link the customer approves on. The customer's page
 //! needs no sign-in: the token in the link is the secret.
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::{Value, json};
 use serde::{Deserialize, Serialize};
 use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::documents::dubai_text;
 
 use super::accident::{self, AccidentView};
 use super::incidents::{self as incident_pages, IncidentView};
+use super::lists;
 use super::stops::{self, StopView, SubstituteView};
 use super::vehicles::{HistoryRow, km_text, vehicle_text};
 use super::{
@@ -35,11 +38,9 @@ use super::{
 };
 use crate::approval::{ApprovalStatus, EstimateApproval, MIN_WARRANTY_DAYS};
 use crate::billing;
-use crate::estimate::Estimate;
+use crate::estimate::{self, Estimate};
 use crate::job_card::{FUEL_LEVELS, JobCard, JobCardStatus, QC_KEYS};
-use crate::job_cards::{
-    self, Delivery, Intake, NewJobCard, NewLabour, NewPart, Promise, may_work, visible_to,
-};
+use crate::job_cards::{self, Delivery, Intake, NewJobCard, NewLabour, NewPart, Promise, may_work};
 use crate::job_stops;
 use crate::labour_line::{LabourPricing, LineStatus, WorkStatus, hours_text};
 use crate::labour_operation::LabourOperation;
@@ -192,75 +193,6 @@ fn done(lang: &Lang, key: &str) -> Result<Response> {
     Ok((Toast::success(text(lang, key)), renox::HxRefresh).into_response())
 }
 
-/// One job card of a list.
-#[derive(Serialize, Debug, Clone)]
-pub struct JobRow {
-    /// The primary key.
-    pub id: i64,
-    /// `JOB-00007`.
-    pub number: String,
-    /// The day it was checked in.
-    pub date: String,
-    /// `Dubai A 12345`.
-    pub plate: String,
-    /// `Toyota Hilux 2022`.
-    pub vehicle: String,
-    /// The customer's name, or a dash for a technician.
-    pub customer: String,
-    /// The technician's name, or a dash.
-    pub technician: String,
-    /// The complaint.
-    pub complaint: String,
-    /// The estimate with VAT, `AED 1,250.00`.
-    pub total: String,
-    /// The status in words.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
-}
-
-/// The rows of `cards`, newest first.
-async fn rows_of(
-    state: &AppState,
-    lang: &Lang,
-    user: &AuthUser,
-    cards: &[JobCard],
-) -> Result<Vec<JobRow>> {
-    let see_customer = user.has_permission(permissions::JOB_CARDS_VIEW);
-    let mut ids: Vec<i64> = cards.iter().map(|c| c.vehicle_id).collect();
-    ids.sort_unstable();
-    ids.dedup();
-    let found = Vehicle::query().where_in("id", ids).get(&state.db).await?;
-    let mut rows = Vec::new();
-    for card in cards {
-        let vehicle = found.iter().find(|v| v.id == card.vehicle_id);
-        let estimate = Estimate::load(&state.db, card.id).await?;
-        rows.push(JobRow {
-            id: card.id,
-            number: card.number(),
-            date: card.created_at.map_or_else(String::new, |at| {
-                wl_kernel::documents::dubai_date(at).to_string()
-            }),
-            plate: vehicle.map_or_else(String::new, Vehicle::plate),
-            vehicle: vehicle.map_or_else(String::new, vehicle_text),
-            customer: if see_customer {
-                party_name(state, &lang.locale, card.customer_party_id).await
-            } else {
-                text(lang, "none")
-            },
-            technician: match card.technician_user_id {
-                Some(id) => user_name(&state.db, id).await,
-                None => text(lang, "none"),
-            },
-            complaint: card.complaint.clone(),
-            total: money_text(estimate.live_totals().gross()),
-            status: status_text(lang, card.status),
-            status_kind: status_kind(card.status),
-        });
-    }
-    Ok(rows)
-}
-
 /// The job cards on a vehicle's page.
 ///
 /// # Errors
@@ -288,55 +220,6 @@ pub async fn history_rows(
         .collect())
 }
 
-/// What the list can be narrowed by.
-#[derive(Deserialize, Default, Debug, Clone)]
-pub struct Filter {
-    /// `open`, `closed` or a status; blank for every job card.
-    #[serde(default)]
-    status: String,
-    /// Text in the plate or the job card number.
-    #[serde(default)]
-    q: String,
-}
-
-/// The standings of the tabs, in order.
-const STANDINGS: [&str; 6] = [
-    "open",
-    "awaiting_approval",
-    "in_progress",
-    "awaiting_parts",
-    "ready",
-    "closed",
-];
-
-impl Filter {
-    /// The list's address with this filter.
-    fn href(&self) -> String {
-        if self.status.is_empty() {
-            "/auto/job-cards".to_owned()
-        } else {
-            format!("/auto/job-cards?status={}", self.status)
-        }
-    }
-
-    fn with_status(&self, status: &str) -> Filter {
-        Filter {
-            status: status.to_owned(),
-            ..self.clone()
-        }
-    }
-
-    /// Whether `card` passes the standing filter.
-    fn accepts(&self, card: &JobCard) -> bool {
-        match self.status.as_str() {
-            "" => true,
-            "open" => card.status.is_open(),
-            "closed" => card.status.is_closed(),
-            other => card.status.as_str() == other,
-        }
-    }
-}
-
 /// The options of the fuel list, `[value, label]`.
 fn fuel_options(lang: &Lang) -> Vec<[String; 2]> {
     FUEL_LEVELS
@@ -350,73 +233,132 @@ fn fuel_options(lang: &Lang) -> Vec<[String; 2]> {
         .collect()
 }
 
+/// The badge tone of a status in the grid.
+fn grid_tone(status: JobCardStatus) -> &'static str {
+    match status {
+        JobCardStatus::AwaitingApproval | JobCardStatus::AwaitingParts => "warning",
+        JobCardStatus::Ready | JobCardStatus::Delivered => "success",
+        JobCardStatus::Declined | JobCardStatus::Cancelled | JobCardStatus::Voided => "neutral",
+        JobCardStatus::CheckedIn
+        | JobCardStatus::Inspecting
+        | JobCardStatus::InProgress
+        | JobCardStatus::QualityCheck => "info",
+    }
+}
+
+/// The job cards grid (`id` tells the workshop's from the technician's, so
+/// each keeps its own column choices): the number first and frozen, the plate,
+/// the vehicle, the customer (not for a technician: no contact details,
+/// `AUT.ACL.08`), the technician, the estimate with VAT in dirhams and the
+/// status in words; searched by number, plate, vehicle and customer, newest
+/// first.
+pub(crate) fn grid(t: lists::Text<'_>, id: &str, see_customer: bool) -> Grid {
+    let statuses = lists::options(
+        t,
+        "jobs.status",
+        JobCardStatus::ALL.iter().map(|status| status.as_str()),
+    );
+    let tones: Vec<(&str, &str)> = JobCardStatus::ALL
+        .iter()
+        .map(|status| (status.as_str(), grid_tone(*status)))
+        .collect();
+    let mut grid = Grid::new(id)
+        .title(&t("jobs.title"))
+        .column(
+            Column::text("number", &t("jobs.number"))
+                .computed(&lists::numbered_sql("JOB-", 5))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/auto/job-cards/{id}"),
+        )
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&tones)
+                .width("11rem")
+                .mobile(),
+        )
+        .column(
+            Column::text("plate", &t("vehicles.plate"))
+                .computed(&lists::plate_sql("vehicle_id"))
+                .mobile()
+                .searchable(),
+        )
+        .column(
+            Column::text("vehicle", &t("vehicles.make"))
+                .computed(&lists::vehicle_sql("vehicle_id"))
+                .searchable(),
+        );
+    if see_customer {
+        grid = grid.column(Column::custom("customer", &t("jobs.customer")).mobile());
+    }
+    grid.column(
+        Column::text("technician", &t("jobs.technician"))
+            .computed(&lists::user_sql("technician_user_id"))
+            .searchable(),
+    )
+    .column(
+        lists::money("estimate", &t("jobs.estimate"))
+            .computed(&estimate::gross_sql("{T}.\"id\""))
+            .mobile(),
+    )
+    .column(Column::date("created_at", &t("jobs.date")))
+    .sort_by("-id")
+    .row_url("/auto/job-cards/{id}")
+    .cards_on_mobile()
+    .empty_state(&t("jobs.empty"), None)
+}
+
+/// The page of cards with the customers' names and the currency.
+async fn with_customers(
+    state: &AppState,
+    lang: &Lang,
+    cards: GridPage<JobCard>,
+) -> GridPage<JobCard> {
+    let ids: Vec<i64> = cards.items().iter().map(|c| c.customer_party_id).collect();
+    let names = lists::party_names(state, lang, ids).await;
+    lists::with_currency(
+        cards,
+        |card| json!({ "customer": names.get(&card.customer_party_id).cloned().unwrap_or_default() }),
+    )
+}
+
 /// What the list page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "auto/job_cards.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    rows: Vec<JobRow>,
-    status_tabs: Vec<(String, String)>,
-    status_current: String,
-    status: String,
-    q: String,
+    cards: GridPage<JobCard>,
     fuel_options: Vec<[String; 2]>,
     technician_options: Vec<[String; 2]>,
     can_check_in: bool,
-    title_key: &'static str,
 }
 
-/// `GET /auto/job-cards`.
+/// `GET /auto/job-cards`: a technician sees only the job cards assigned to
+/// them.
 async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
-    Query(filter): Query<Filter>,
+    request: GridRequest,
 ) -> Result<View> {
     if !(user.has_permission(permissions::JOB_CARDS_VIEW)
         || user.has_permission(permissions::JOB_CARDS_WORK))
     {
         return Err(Error::Forbidden);
     }
-    let mut cards = visible_to(&state, &user).await?;
-    cards.retain(|card| filter.accepts(card));
-    let wanted = filter.q.trim().to_lowercase();
-    if !wanted.is_empty() {
-        let mut kept = Vec::new();
-        for card in cards {
-            let plate = Vehicle::find(&state.db, card.vehicle_id)
-                .await?
-                .map(|v| v.plate())
-                .unwrap_or_default();
-            let haystack = format!("{} {plate}", card.number()).to_lowercase();
-            if wanted
-                .split_whitespace()
-                .all(|word| haystack.contains(word))
-            {
-                kept.push(card);
-            }
-        }
-        cards = kept;
+    let sees_all = user.has_permission(permissions::JOB_CARDS_VIEW);
+    let mut query = JobCard::query();
+    if !sees_all {
+        query = query.where_(JobCard::TECHNICIAN_USER_ID.eq(Some(user.id)));
     }
-    cards.truncate(300);
-    let rows = rows_of(&state, &lang, &user, &cards).await?;
-    let mut status_tabs = vec![(
-        filter.with_status("").href(),
-        text(&lang, "jobs.filter.all"),
-    )];
-    for key in STANDINGS {
-        status_tabs.push((
-            filter.with_status(key).href(),
-            text(&lang, &format!("jobs.filter.{key}")),
-        ));
-    }
+    let cards = grid(&lists::texts_in(&lang), "auto-job-cards", sees_all)
+        .page(query, &request)
+        .await?;
+    let cards = with_customers(&state, &lang, cards).await;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        rows,
-        status_tabs,
-        status_current: filter.href(),
-        status: filter.status.clone(),
-        q: filter.q.clone(),
+        cards,
         fuel_options: fuel_options(&lang),
         technician_options: role_options(
             &state.db,
@@ -425,23 +367,26 @@ async fn index(
         )
         .await,
         can_check_in: user.has_permission(permissions::JOB_CARDS_ADVISE),
-        title_key: "jobs.title",
     }))
 }
 
 /// `GET /auto/technician`: the technician's own open job cards.
-async fn technician(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn technician(user: AuthUser, lang: Lang, request: GridRequest) -> Result<View> {
     require(&user, permissions::JOB_CARDS_WORK)?;
-    let mut cards = JobCard::query()
+    let open: Vec<String> = JobCardStatus::ALL
+        .iter()
+        .filter(|status| status.is_open())
+        .map(|status| status.as_str().to_owned())
+        .collect();
+    let query = JobCard::query()
         .where_(JobCard::TECHNICIAN_USER_ID.eq(Some(user.id)))
-        .order_by_desc(JobCard::ID)
-        .get(&state.db)
+        .where_in("status", open);
+    let cards = grid(&lists::texts_in(&lang), "auto-technician", false)
+        .page(query, &request)
         .await?;
-    cards.retain(|card| card.status.is_open());
-    let rows = rows_of(&state, &lang, &user, &cards).await?;
     Ok(View::typed(TechnicianPage {
         tx: texts::all(&lang),
-        rows,
+        cards: lists::with_currency(cards, |_| Value::Null),
     }))
 }
 
@@ -450,7 +395,7 @@ async fn technician(State(state): State<AppState>, user: AuthUser, lang: Lang) -
 #[view(template = "auto/technician.html")]
 pub(crate) struct TechnicianPage {
     tx: Texts,
-    rows: Vec<JobRow>,
+    cards: GridPage<JobCard>,
 }
 
 /// `GET /auto/vehicles/options`: the vehicles the picker offers as the person
@@ -693,6 +638,7 @@ pub(crate) struct ShowPage {
     closed_reason: String,
     delivered: String,
     invoice: String,
+    invoice_url: String,
     labour: Vec<LabourRow>,
     parts: Vec<PartRow>,
     net: String,
@@ -866,7 +812,12 @@ async fn steps_of(state: &AppState, lang: &Lang, card: &JobCard) -> Result<Vec<S
             at: dubai_text(row.at),
             action: text(lang, &format!("jobs.transition.{transition}")),
             by,
-            reason: row.reason.clone().unwrap_or_default(),
+            // The first row only names the check-in the machine started from.
+            reason: if row.transition == "insert" {
+                String::new()
+            } else {
+                row.reason.clone().unwrap_or_default()
+            },
         });
     }
     Ok(steps)
@@ -925,6 +876,9 @@ async fn show(
         .find(|r| r.status == ApprovalStatus::Approved || r.status == ApprovalStatus::Pending);
     let advises = user.has_permission(permissions::JOB_CARDS_ADVISE);
     let works = may_work(&user, &card);
+    // The machine's own permission: an advisor may work the card's lines, but
+    // starting, parking and finishing the work are the technician's.
+    let moves = works && user.has_permission(permissions::JOB_CARDS_WORK);
     let open = card.status.is_open();
     let status = card.status;
     let qc: Vec<QcRow> = card
@@ -972,14 +926,9 @@ async fn show(
             line_description(&lang, &line.description, line.safety_work),
         ]);
     }
-    // The invoice by its number (`INV-2026-0004`), not its row id.
     let invoice = match card.invoice_id {
-        Some(invoice) => wl_kernel::invoicing::invoicer(&state)
-            .find(&state.db, wl_kernel::invoicing::InvoiceId(invoice))
-            .await?
-            .and_then(|found| found.number)
-            .unwrap_or_else(|| format!("#{invoice}")),
-        None => String::new(),
+        Some(id) => super::invoice_ref(&state, &user, &lang, id).await,
+        None => super::RecordRef::default(),
     };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
@@ -1035,7 +984,8 @@ async fn show(
             (Some(to), Some(at)) => format!("{to} · {}", dubai_text(at)),
             _ => String::new(),
         },
-        invoice,
+        invoice: invoice.label,
+        invoice_url: invoice.url,
         labour,
         parts: parts_rows,
         net: money_text(totals.net()),
@@ -1062,7 +1012,7 @@ async fn show(
         can_intake: advises
             && matches!(status, JobCardStatus::CheckedIn | JobCardStatus::Inspecting),
         can_assign: advises && open,
-        can_inspect: works && status == JobCardStatus::CheckedIn,
+        can_inspect: moves && status == JobCardStatus::CheckedIn,
         can_findings: works && open,
         can_add: works && status.takes_lines(),
         can_send: advises
@@ -1090,8 +1040,8 @@ async fn show(
                     | JobCardStatus::QualityCheck
             ),
         can_void: advises && status == JobCardStatus::CheckedIn,
-        can_wait: works && status == JobCardStatus::InProgress,
-        can_finish: works && status == JobCardStatus::InProgress,
+        can_wait: moves && status == JobCardStatus::InProgress,
+        can_finish: moves && status == JobCardStatus::InProgress,
         can_qc: user.has_permission(permissions::JOB_CARDS_QC)
             && status == JobCardStatus::QualityCheck,
         can_deliver: advises && status == JobCardStatus::Ready,
@@ -1698,9 +1648,7 @@ async fn finish(
     done(&lang, "jobs.work_finished")
 }
 
-/// The form of the QC checklist. It is read with `Valid`, which takes the
-/// ticked boxes of the checklist (`done=fluids&done=wheels`) as a list; the
-/// prelude's `Form` refuses them.
+/// The form of the QC checklist.
 #[derive(Deserialize, Serialize, Validate, Debug, Default)]
 pub struct QcForm {
     /// The checks that were done.
@@ -2017,22 +1965,26 @@ mod tests {
     }
 
     #[test]
-    fn a_filter_keeps_open_closed_or_one_status() {
-        let ready = JobCard {
-            status: JobCardStatus::Ready,
-            ..JobCard::default()
-        };
-        let delivered = JobCard {
-            status: JobCardStatus::Delivered,
-            ..JobCard::default()
-        };
-        let by = |status: &str| Filter {
-            status: status.to_owned(),
-            ..Filter::default()
-        };
-        assert!(by("").accepts(&ready) && by("").accepts(&delivered));
-        assert!(by("open").accepts(&ready) && !by("open").accepts(&delivered));
-        assert!(!by("closed").accepts(&ready) && by("closed").accepts(&delivered));
-        assert!(by("ready").accepts(&ready) && !by("ready").accepts(&delivered));
+    fn the_grid_has_the_job_card_columns_and_every_status_in_words() {
+        let grid = grid(&lists::english_text, "auto-job-cards", true);
+        let keys: Vec<&str> = grid.columns().iter().map(|c| c.key()).collect();
+        assert_eq!(keys[..2], ["number", "status"]);
+        for key in ["plate", "vehicle", "customer", "technician", "estimate"] {
+            assert!(keys.contains(&key), "{key}");
+        }
+        let status = grid.columns().iter().find(|c| c.key() == "status").unwrap();
+        assert_eq!(status.options().len(), JobCardStatus::ALL.len());
+        assert!(
+            status
+                .options()
+                .iter()
+                .any(|(value, label)| value == "awaiting_parts" && label == "Awaiting parts")
+        );
+    }
+
+    #[test]
+    fn a_technician_has_no_customer_column() {
+        let grid = grid(&lists::english_text, "auto-technician", false);
+        assert!(grid.columns().iter().all(|c| c.key() != "customer"));
     }
 }

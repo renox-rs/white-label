@@ -23,7 +23,9 @@ use std::collections::BTreeMap;
 
 use crate::screens::dubai_text;
 use renox::axum::http::HeaderMap;
+use renox::grid::{Column, Grid, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::Serialize;
 use wl_kernel::Subject;
 use wl_kernel::inventory::DISPATCH_SUBJECT_TYPE;
@@ -36,7 +38,7 @@ use crate::item::Item;
 use crate::location::Location;
 use crate::lot::{Lot, LotStatus};
 use crate::permissions;
-use crate::stock_screens::{amount as quantity_with_unit, item_name, label};
+use crate::stock_screens::{amount as quantity_with_unit, exported, item_name, label};
 use crate::texts::{said, t};
 
 /// The templates, compiled in. An app replaces one with a file of the same
@@ -125,7 +127,97 @@ pub struct DispatchRow {
 #[view(template = "wl-inventory/dispatches.html")]
 pub(crate) struct DispatchesPage {
     tx: Texts,
-    rows: Vec<DispatchRow>,
+    rows: renox::grid::GridPage<Dispatch>,
+    /// The dispatches the person may pick or cancel (a sheet each).
+    sheets: Vec<DispatchSheet>,
+}
+
+/// The sheets of the buttons of one dispatch.
+#[derive(Serialize, Debug, Clone)]
+pub struct DispatchSheet {
+    id: i64,
+    can_pick: bool,
+    can_cancel: bool,
+}
+
+/// The dispatches grid: search on the number, the recipient, the store and the
+/// note, filters by status. The source, the lines and the buttons are drawn by
+/// the template (`custom`).
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let statuses: Vec<(String, String)> = DispatchStatus::ALL
+        .iter()
+        .map(|status| {
+            (
+                status.as_str().to_owned(),
+                word(lang, "status", status.as_str()),
+            )
+        })
+        .collect();
+    let grid = Grid::new("inventory-dispatches")
+        .title(&tr(lang, "title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &tr(lang, "number"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/dispatches/{id}"),
+        )
+        .column(
+            Column::text("recipient_name", &tr(lang, "recipient"))
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::custom("source", &tr(lang, "source")))
+        .column(
+            Column::text("source_type", &tr(lang, "source_type"))
+                .hidden()
+                .searchable(),
+        )
+        .column(
+            Column::related(
+                "store",
+                &tr(lang, "store"),
+                "wl_inventory_locations",
+                "location_id",
+                "name_en",
+            )
+            .searchable(),
+        )
+        .column(Column::custom("lines", &tr(lang, "lines")).hidden())
+        .column(
+            Column::select("status", &tr(lang, "status"), statuses)
+                .badges(&[
+                    ("draft", "info"),
+                    ("picked", "warning"),
+                    ("dispatched", "warning"),
+                    ("delivered", "success"),
+                    ("returned", "error"),
+                    ("discarded", "error"),
+                    ("lost", "error"),
+                    ("cancelled", "info"),
+                ])
+                .mobile(),
+        )
+        .column(
+            Column::text("cancel_reason", &tr(lang, "note"))
+                .hidden()
+                .searchable(),
+        )
+        .column(Column::datetime("updated_at", &tr(lang, "when")).hidden())
+        .column(Column::custom("actions", &tr(lang, "actions")))
+        .sort_by("-id")
+        .row_url("/dispatches/{id}")
+        .cards_on_mobile()
+        .empty_state(&tr(lang, "empty"), Some(&tr(lang, "empty_hint")));
+    if can_export { grid.exports() } else { grid }
+}
+
+/// The text `key` of the dispatch screens.
+fn tr(lang: &Lang, key: &str) -> String {
+    t(lang, &format!("{PREFIX}{key}"))
 }
 
 /// Whether `user` may see the dispatch: the right to manage or to see stock
@@ -135,59 +227,103 @@ fn may_see(user: &AuthUser, dispatch: &Dispatch) -> bool {
         || user.has_permission_in(permissions::STOCK_VIEW, &dispatch.scope())
 }
 
-/// `GET /dispatches`.
+/// `GET /dispatches`: a grid for a browser, the rows as JSON for the rest.
 async fn list(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     headers: HeaderMap,
+    request: GridRequest,
 ) -> Result<Response> {
     if !user.has_permission_anywhere(permissions::DISPATCH_MANAGE)
         && !user.has_permission_anywhere(permissions::STOCK_VIEW)
     {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
-    for dispatch in Dispatch::query()
+    let visible: Vec<Dispatch> = Dispatch::query()
         .order_by_desc(Dispatch::ID)
-        .limit(200)
         .get(&state.db)
         .await?
-    {
-        if !may_see(&user, &dispatch) {
-            continue;
+        .into_iter()
+        .filter(|dispatch| may_see(&user, dispatch))
+        .collect();
+    if !wl_kernel::negotiate::wants_html(&headers) {
+        let mut rows = Vec::new();
+        for dispatch in &visible {
+            let location = Location::find_or_404(&state.db, dispatch.location_id).await?;
+            rows.push(DispatchRow {
+                id: dispatch.id,
+                number: dispatch.number.clone().unwrap_or_default(),
+                recipient: dispatch.recipient_name.clone(),
+                source: source_text(&state, dispatch).await,
+                store: location.name_en,
+                lines: lines_text(&state, &lang, dispatch).await?,
+                status: word(&lang, "status", dispatch.status.as_str()),
+                status_code: dispatch.status.as_str().to_owned(),
+                status_kind: status_kind(dispatch.status),
+                when: dispatch.updated_at.map(dubai_text).unwrap_or_default(),
+            });
         }
-        let location = Location::find_or_404(&state.db, dispatch.location_id).await?;
-        let mut lines = Vec::new();
-        for line in lines_of(&state.db, dispatch.id).await? {
-            let item = Item::find_or_404(&state.db, line.item_id).await?;
-            lines.push(format!(
-                "{} · {}",
-                item_name(&item, &lang),
-                quantity_with_unit(line.quantity_milli, &item.base_unit)
-            ));
+        return json(&rows);
+    }
+    let can_export = user.has_permission_anywhere(permissions::DISPATCH_MANAGE);
+    let grid = grid(&lang, can_export);
+    let ids = crate::stock_screens::ids_or_none(visible.iter().map(|d| d.id).collect());
+    let query = Dispatch::query().where_(Dispatch::ID.is_in(ids));
+    if let Some(file) = exported(&grid, &query, &request, can_export).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut extra = std::collections::HashMap::new();
+    let mut sheets = Vec::new();
+    for dispatch in page.items() {
+        let allowed = user.has_permission_in(permissions::DISPATCH_MANAGE, &dispatch.scope());
+        let can_pick = allowed && dispatch.status == DispatchStatus::Draft;
+        let can_cancel = allowed && dispatch.status.in_store();
+        if can_pick || can_cancel {
+            sheets.push(DispatchSheet {
+                id: dispatch.id,
+                can_pick,
+                can_cancel,
+            });
         }
-        rows.push(DispatchRow {
-            id: dispatch.id,
-            number: dispatch.number.clone().unwrap_or_default(),
-            recipient: dispatch.recipient_name.clone(),
-            source: source_text(&state, &dispatch).await,
-            store: location.name_en,
-            lines: lines.join(", "),
-            status: word(&lang, "status", dispatch.status.as_str()),
-            status_code: dispatch.status.as_str().to_owned(),
-            status_kind: status_kind(dispatch.status),
-            when: dispatch.updated_at.map(dubai_text).unwrap_or_default(),
-        });
+        extra.insert(
+            dispatch.id,
+            json!({
+                "number": dispatch.number.clone().unwrap_or_default(),
+                "source": source_text(&state, dispatch).await,
+                "lines": lines_text(&state, &lang, dispatch).await?,
+                "can_pick": can_pick,
+                "can_cancel": can_cancel,
+            }),
+        );
     }
-    if wl_kernel::negotiate::wants_html(&headers) {
-        return Ok(View::typed(DispatchesPage {
-            tx: tx(&lang),
-            rows,
-        })
-        .into_response());
+    let page = page.extend(|dispatch| {
+        extra
+            .get(&dispatch.id)
+            .cloned()
+            .unwrap_or_else(|| json!({}))
+    });
+    Ok(View::typed(DispatchesPage {
+        tx: tx(&lang),
+        rows: page,
+        sheets,
+    })
+    .into_response())
+}
+
+/// The lines of a dispatch in one sentence: item and quantity each.
+async fn lines_text(state: &AppState, lang: &Lang, dispatch: &Dispatch) -> Result<String> {
+    let mut lines = Vec::new();
+    for line in lines_of(&state.db, dispatch.id).await? {
+        let item = Item::find_or_404(&state.db, line.item_id).await?;
+        lines.push(format!(
+            "{} · {}",
+            item_name(&item, lang),
+            quantity_with_unit(line.quantity_milli, &item.base_unit)
+        ));
     }
-    json(&rows)
+    Ok(lines.join(", "))
 }
 
 /// `value` as a JSON answer.

@@ -261,7 +261,12 @@ pub fn visible(html: &str) -> String {
 /// Asserts that the text of `html` says none of the raw words a screen must
 /// not show.
 pub fn no_raw_words(html: &str) {
-    let html = visible(html);
+    // The grid's freeze menu of each column offers None / Left / Right.
+    let html = visible(html)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace("None Left Right", "");
     let html = html.as_str();
     for forbidden in [
         "security_guard",
@@ -306,10 +311,12 @@ pub async fn deployment_of(app: &TestApp, name: &str) -> i64 {
     .await
 }
 
-/// The visible text of each cell of the table row of `html` that holds `name`.
+/// The visible text of each cell of the table row of `html` that holds `name`
+/// (a plain `<tr>` or a grid's `<tr data-id=..>`).
 pub fn cells_of_row(html: &str, name: &str) -> Vec<String> {
     let row = html
-        .split("<tr>")
+        .split("<tr")
+        .filter(|row| row.starts_with('>') || row.starts_with(' '))
         .find(|row| row.contains(name) && row.contains("<td"))
         .unwrap_or_else(|| panic!("no table row for {name}"));
     let row = row.split("</tr>").next().unwrap_or_default();
@@ -334,11 +341,12 @@ pub fn cells_of_row(html: &str, name: &str) -> Vec<String> {
 }
 
 /// Asserts the phone structure of `html`: every table scrolls inside its own
-/// box (the kit's table wrapper), so nothing widens the page.
+/// box (the kit's table wrapper or the grid's scroll region), so nothing
+/// widens the page.
 pub fn fits_a_phone(html: &str) {
     assert_eq!(
         html.matches("<table").count(),
-        html.matches("rx-table-wrap").count(),
+        html.matches("rx-table-wrap").count() + html.matches("class=\"rx-grid__scroll\"").count(),
         "every table scrolls inside its own box"
     );
 }

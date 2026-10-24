@@ -21,7 +21,9 @@ use std::collections::BTreeMap;
 use renox::Download;
 use renox::axum::http::HeaderMap;
 use renox::chrono::NaiveDate;
+use renox::grid::{Action, Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::{Value, json};
 use serde::{Deserialize, Serialize};
 use wl_kernel::workforce::workforce;
 
@@ -83,29 +85,98 @@ pub struct FileLink {
     pub opened: bool,
 }
 
-/// One acknowledgement of the inbox.
-#[derive(Serialize, Debug, Clone)]
-pub struct AckRow {
-    /// The primary key.
-    pub id: i64,
-    /// The SOP's page.
-    pub sop_url: String,
-    /// The SOP's code.
-    pub code: String,
-    /// The SOP's title in the page's language.
-    pub title: String,
-    /// `v2`.
-    pub version: String,
-    /// The reader's name (for the in-person list).
-    pub reader: String,
-    /// The due date.
-    pub due: String,
-    /// Pending and past its due date.
-    pub overdue: bool,
-    /// The files to open: the version and its accepted translations.
-    pub files: Vec<FileLink>,
-    /// The reader opened one, so they can confirm.
-    pub opened: bool,
+/// The inbox grid: the signed-in reader's own acknowledgements (`mine`) and
+/// the in-person ones they witness (`in_person`), told apart by the "list"
+/// filter. Search on SOP code and title, filters by list and due date. The
+/// row menu confirms an own acknowledgement or records one in person (the
+/// sheet `in-person`); the service refuses the one that does not apply.
+pub fn grid(lang: &Lang, mine: &[i64], has_in_person: bool) -> Grid {
+    let lists = vec![
+        ("mine".to_owned(), text(lang, "acks.mine")),
+        ("in_person".to_owned(), text(lang, "acks.in_person_list")),
+    ];
+    let title_sql = if lang.locale == "ar" {
+        "(SELECT COALESCE(NULLIF(\"title_ar\", ''), \"title_en\") FROM \"wl_documents_sops\" WHERE \"id\" = {T}.\"sop_id\")"
+    } else {
+        "(SELECT \"title_en\" FROM \"wl_documents_sops\" WHERE \"id\" = {T}.\"sop_id\")"
+    };
+    // The ids are the signed-in reader's own rows, numbers from the database.
+    let list_sql = if mine.is_empty() {
+        "'in_person'".to_owned()
+    } else {
+        let ids: Vec<String> = mine.iter().map(i64::to_string).collect();
+        format!(
+            "CASE WHEN {{T}}.\"id\" IN ({}) THEN 'mine' ELSE 'in_person' END",
+            ids.join(",")
+        )
+    };
+    let mut grid = Grid::new("wl-documents-acknowledgements")
+        .title(&text(lang, "acks.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::custom("sop", &text(lang, "sops.fields.code"))
+                .frozen()
+                .mobile(),
+        )
+        .column(
+            Column::text("code", &text(lang, "sops.fields.code"))
+                .computed(
+                    "(SELECT \"code\" FROM \"wl_documents_sops\" WHERE \"id\" = {T}.\"sop_id\")",
+                )
+                .searchable()
+                .hidden(),
+        )
+        .column(
+            Column::text("title", &text(lang, "sops.fields.title"))
+                .computed(title_sql)
+                .searchable()
+                .mobile(),
+        )
+        .column(
+            Column::text("version", &text(lang, "sops.fields.version"))
+                .computed("'v' || CAST({T}.\"version_no\" AS TEXT)"),
+        )
+        .column(Column::custom("reader", &text(lang, "acks.reader")).mobile())
+        .column(Column::date("due_date", &text(lang, "acks.due")).mobile())
+        .column(Column::custom("overdue", &text(lang, "acks.overdue")))
+        .column(Column::custom("files", &text(lang, "acks.open")))
+        .column(
+            Column::bool("opened", &text(lang, "acks.opened"))
+                .computed("{T}.\"opened_document_id\" IS NOT NULL")
+                .hidden(),
+        )
+        .column(
+            Column::select("list", &text(lang, "acks.list"), lists)
+                .computed(&list_sql)
+                .hidden(),
+        )
+        .sort_by("due_date,id")
+        .cards_on_mobile()
+        .empty_state(
+            &text(lang, "acks.empty"),
+            Some(&text(lang, "acks.empty_hint")),
+        );
+    if !mine.is_empty() {
+        grid = grid.row_action(
+            Action::new(
+                &text(lang, "acks.acknowledge"),
+                "/documents/acknowledgements/{id}/acknowledge",
+            )
+            .confirm(&text(lang, "acks.acknowledge_title")),
+        );
+    }
+    if has_in_person {
+        grid = grid.row_action(
+            Action::new(
+                &text(lang, "acks.in_person"),
+                "/documents/acknowledgements/{id}/in-person",
+            )
+            .sheet("in-person"),
+        );
+    }
+    grid
 }
 
 /// What the staff inbox needs.
@@ -113,85 +184,38 @@ pub struct AckRow {
 #[view(template = "wl-documents/acknowledgements.html")]
 pub struct AcknowledgementsPage {
     tx: Texts,
-    mine: Vec<AckRow>,
-    in_person: Vec<AckRow>,
-}
-
-/// The row of `ack` for the page.
-async fn row(
-    state: &AppState,
-    lang: &Lang,
-    ack: &SopAcknowledgement,
-    sop: &Sop,
-    reader: String,
-    with_files: bool,
-    day: NaiveDate,
-) -> Result<AckRow> {
-    let mut files = Vec::new();
-    if with_files {
-        files.push(FileLink {
-            label: text(lang, "acks.version_file"),
-            url: format!(
-                "/documents/acknowledgements/{}/files/{}",
-                ack.id, ack.document_id
-            ),
-            opened: ack.opened_document_id == Some(ack.document_id),
-        });
-        for link in Sops::translations(&state.db, ack.document_id).await? {
-            let accepted = Document::find(&state.db, link.document_id)
-                .await?
-                .is_some_and(|d| d.status == crate::DocumentStatus::Accepted);
-            if accepted {
-                files.push(FileLink {
-                    label: link.language.clone(),
-                    url: format!(
-                        "/documents/acknowledgements/{}/files/{}",
-                        ack.id, link.document_id
-                    ),
-                    opened: ack.opened_document_id == Some(link.document_id),
-                });
-            }
-        }
-    }
-    Ok(AckRow {
-        id: ack.id,
-        sop_url: format!("/documents/sops/{}", sop.id),
-        code: sop.code.clone(),
-        title: if lang.locale == "ar" && !sop.title_ar.is_empty() {
-            sop.title_ar.clone()
-        } else {
-            sop.title_en.clone()
-        },
-        version: format!("v{}", ack.version_no),
-        reader,
-        due: ack.due_date.to_string(),
-        overdue: ack.overdue_on(day),
-        files,
-        opened: ack.opened_document_id.is_some(),
-    })
+    acks: GridPage<SopAcknowledgement>,
+    in_person: bool,
 }
 
 /// `GET /documents/acknowledgements`: the signed-in reader's pending
-/// acknowledgements, and the readers without an account they manage.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+/// acknowledgements, and the readers without an account they manage, as one
+/// grid.
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
     let day = wl_kernel::documents::today();
     let staff = workforce(&state);
     let own = staff
         .employee_of_user(&state.db, user.id)
         .await?
         .map(|e| e.0);
-    let mut mine = Vec::new();
+    let mut mine: Vec<i64> = Vec::new();
+    let mut readers: BTreeMap<i64, String> = BTreeMap::new();
     if let Some(employee) = own {
         for ack in Acknowledgements::pending_of(&state.db, employee).await? {
             let sop = Sop::find_or_404(&state.db, ack.sop_id).await?;
             if sop.current_document_id != Some(ack.document_id) {
                 continue;
             }
-            mine.push(row(&state, &lang, &ack, &sop, String::new(), true, day).await?);
+            mine.push(ack.id);
         }
     }
     let may_all = user.has_permission(permissions::SOPS_MANAGE);
-    let mut in_person = Vec::new();
+    let mut in_person: Vec<i64> = Vec::new();
     for ack in SopAcknowledgement::query()
         .where_(SopAcknowledgement::STATUS.eq(AckStatus::Pending))
         .order_by(SopAcknowledgement::DUE_DATE)
@@ -212,13 +236,63 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         if sop.current_document_id != Some(ack.document_id) {
             continue;
         }
-        let reader = name_of(&state, &lang, profile.party, ack.employee_id).await;
-        in_person.push(row(&state, &lang, &ack, &sop, reader, false, day).await?);
+        readers.insert(
+            ack.id,
+            name_of(&state, &lang, profile.party, ack.employee_id).await,
+        );
+        in_person.push(ack.id);
     }
+    let grid = grid(&lang, &mine, !in_person.is_empty());
+    let ids: Vec<i64> = mine.iter().chain(&in_person).copied().collect();
+    let visible = SopAcknowledgement::query()
+        .where_(SopAcknowledgement::ID.is_in(if ids.is_empty() { vec![-1] } else { ids }));
+    let page = grid.page(visible, &request).await?;
+    // Per row: the SOP's page, the reader, the overdue mark and the files.
+    let mut extra: BTreeMap<i64, Value> = BTreeMap::new();
+    for ack in page.items() {
+        let sop = Sop::find_or_404(&state.db, ack.sop_id).await?;
+        let mut files = Vec::new();
+        if mine.contains(&ack.id) {
+            files.push(FileLink {
+                label: text(&lang, "acks.version_file"),
+                url: format!(
+                    "/documents/acknowledgements/{}/files/{}",
+                    ack.id, ack.document_id
+                ),
+                opened: ack.opened_document_id == Some(ack.document_id),
+            });
+            for link in Sops::translations(&state.db, ack.document_id).await? {
+                let accepted = Document::find(&state.db, link.document_id)
+                    .await?
+                    .is_some_and(|d| d.status == crate::DocumentStatus::Accepted);
+                if accepted {
+                    files.push(FileLink {
+                        label: link.language.clone(),
+                        url: format!(
+                            "/documents/acknowledgements/{}/files/{}",
+                            ack.id, link.document_id
+                        ),
+                        opened: ack.opened_document_id == Some(link.document_id),
+                    });
+                }
+            }
+        }
+        extra.insert(
+            ack.id,
+            json!({
+                "sop_url": format!("/documents/sops/{}", sop.id),
+                "sop_code": sop.code,
+                "reader": readers.get(&ack.id).cloned().unwrap_or_default(),
+                "overdue": ack.overdue_on(day),
+                "files": files,
+            }),
+        );
+    }
+    let page = page.extend(|ack| extra.get(&ack.id).cloned().unwrap_or(Value::Null));
     Ok(View::typed(AcknowledgementsPage {
         tx: texts::all(&lang),
-        mine,
-        in_person,
+        acks: page,
+        in_person: !in_person.is_empty(),
     }))
 }
 

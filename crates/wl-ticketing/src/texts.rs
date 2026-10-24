@@ -374,6 +374,7 @@ const TEXTS: &[(&str, &str)] = &[
         "A category with tickets cannot be deleted.",
     ),
     ("wl_ticketing.categories.empty", "No categories yet"),
+    ("wl_ticketing.categories.actions", "Actions"),
     ("wl_ticketing.categories.renamed", "Category renamed."),
     ("wl_ticketing.categories.updated", "Category updated."),
     ("wl_ticketing.categories.deleted", "Category deleted."),

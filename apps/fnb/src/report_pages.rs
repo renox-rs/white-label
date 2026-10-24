@@ -9,14 +9,19 @@
 
 use std::collections::BTreeMap;
 
-use renox::chrono::NaiveDate;
+use renox::chrono::{NaiveDate, TimeDelta};
+use renox::db::{DateTime, Query as ModelQuery};
+use renox::grid::{Column, Grid, GridRequest, Summary};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::Serialize;
+use wl_kernel::documents::DUBAI_OFFSET_SECONDS;
 
-use crate::catalogue::{Brand, Outlet};
+use crate::order::{FnbOrder, reason};
 use crate::pages::{Texts, tx};
+use crate::payouts;
 use crate::permissions;
-use crate::reports::{self, ReportFilter, RiderFault};
+use crate::reports::{RefundFact, ReportFilter, RiderFault};
 use crate::texts::t;
 
 /// The templates, compiled in.
@@ -67,69 +72,155 @@ fn filter_of(query: &BTreeMap<String, String>) -> ReportFilter {
     }
 }
 
-/// What the filter form shows back.
-#[derive(Serialize, Debug, Clone, Default)]
-pub(crate) struct FilterView {
-    from: String,
-    to: String,
-    brand: String,
-    outlet: String,
-    channel: String,
+/// The first instant of the Dubai day `day`, in UTC.
+fn day_start(day: NaiveDate) -> DateTime {
+    day.and_hms_opt(0, 0, 0).unwrap_or_default().and_utc()
+        - TimeDelta::seconds(i64::from(DUBAI_OFFSET_SECONDS))
 }
 
-fn filter_view(query: &BTreeMap<String, String>) -> FilterView {
-    let get = |name: &str| query.get(name).cloned().unwrap_or_default();
-    FilterView {
-        from: get("from"),
-        to: get("to"),
-        brand: get("brand"),
-        outlet: get("outlet"),
-        channel: get("channel"),
+/// The party words of the refund and fault lists, as select options.
+fn party_options(lang: &Lang) -> Vec<(String, String)> {
+    [
+        "business",
+        "aggregator",
+        "rider",
+        "driver_or_rider",
+        "supplier",
+        "customer",
+    ]
+    .iter()
+    .map(|code| {
+        (
+            (*code).to_owned(),
+            t(lang, &format!("fnb.screen.payout.party.{code}")),
+        )
+    })
+    .collect()
+}
+
+/// The complaint category words, as select options.
+fn category_options(lang: &Lang) -> Vec<(String, String)> {
+    payouts::CATEGORIES
+        .iter()
+        .map(|code| {
+            (
+                (*code).to_owned(),
+                t(lang, &format!("fnb.screen.payout.category.{code}")),
+            )
+        })
+        .collect()
+}
+
+/// The failure reasons of an order, as select options.
+fn reason_options(lang: &Lang) -> Vec<(String, String)> {
+    [
+        reason::CUSTOMER_UNREACHABLE,
+        reason::WRONG_ADDRESS,
+        reason::REFUSED,
+        reason::REFUSED_LATE,
+        reason::REFUSED_WRONG_ITEM,
+        reason::NO_CASH,
+        reason::RIDER_ISSUE,
+        reason::RUN_ABORTED,
+    ]
+    .iter()
+    .map(|code| {
+        (
+            (*code).to_owned(),
+            t(lang, &format!("fnb.screen.reason.{code}")),
+        )
+    })
+    .collect()
+}
+
+/// The refunds report grid: the refunds after completion, grouped by
+/// category and party, with sums of the net and gross. The period, brand,
+/// outlet and channel of the URL narrow it as before; the same filters are
+/// in the grid's own.
+pub(crate) fn refunds_grid(lang: &Lang) -> Grid {
+    let t = tx(lang);
+    let resolutions: Vec<(String, String)> = ["refund", "credit_note", "refunded_by_channel"]
+        .iter()
+        .map(|code| {
+            (
+                (*code).to_owned(),
+                crate::texts::t(lang, &format!("fnb.screen.report.resolution.{code}")),
+            )
+        })
+        .collect();
+    Grid::new("fnb-report-refunds")
+        .title(&t["report.refunds_title"])
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .exports()
+        .column(
+            Column::text("order_number", &t["number"])
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/orders/{order_id}"),
+        )
+        .column(Column::text("channel", &t["channel"]).searchable())
+        .column(Column::select("category", &t["report.category"], category_options(lang)).mobile())
+        .column(Column::select("party", &t["party"], party_options(lang)))
+        .column(Column::select("resolution", &t["report.how"], resolutions).hidden())
+        .column(Column::date("occurred_on", &t["report.day"]))
+        .column(
+            Column::related(
+                "brand",
+                &t["report.brand"],
+                "fnb_brands",
+                "brand_id",
+                "name",
+            )
+            .hidden(),
+        )
+        .column(
+            Column::related(
+                "outlet",
+                &t["report.outlet"],
+                "fnb_outlets",
+                "outlet_id",
+                "name",
+            )
+            .hidden(),
+        )
+        .column(
+            Column::money("net", &wl_kernel::money_label(&t["report.net"]))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("gross", &wl_kernel::money_label(&t["report.gross"]))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .groups(&["category", "party"])
+        .sort_by("-id")
+        .cards_on_mobile()
+        .empty_state(&t["report.refunds_empty"], None)
+}
+
+/// The refunds that count (not taken back), narrowed by the URL's filter.
+fn refunds_query(filter: &ReportFilter) -> ModelQuery<RefundFact> {
+    let mut query = RefundFact::query().where_(RefundFact::REVERSED_AT.is_null());
+    if let Some(from) = filter.from {
+        query = query.where_(RefundFact::OCCURRED_ON.gte(from));
     }
-}
-
-async fn brand_options(db: &Db) -> Result<Vec<[String; 2]>> {
-    Ok(Brand::query()
-        .order_by(Brand::NAME)
-        .get(db)
-        .await?
-        .into_iter()
-        .map(|b| [b.id.to_string(), b.name])
-        .collect())
-}
-
-async fn outlet_options(db: &Db) -> Result<Vec<[String; 2]>> {
-    Ok(Outlet::query()
-        .order_by(Outlet::NAME)
-        .get(db)
-        .await?
-        .into_iter()
-        .map(|o| [o.id.to_string(), o.name])
-        .collect())
-}
-
-/// A group of the refunds report.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct GroupRow {
-    category: String,
-    party: String,
-    count: i64,
-    gross: i64,
-    net: i64,
-}
-
-/// A refund of the refunds report.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct RefundRow {
-    order: String,
-    order_url: String,
-    channel: String,
-    category: String,
-    party: String,
-    resolution: String,
-    day: String,
-    gross: i64,
-    net: i64,
+    if let Some(to) = filter.to {
+        query = query.where_(RefundFact::OCCURRED_ON.lte(to));
+    }
+    if let Some(brand) = filter.brand {
+        query = query.where_(RefundFact::BRAND_ID.eq(brand));
+    }
+    if let Some(outlet) = filter.outlet {
+        query = query.where_(RefundFact::OUTLET_ID.eq(outlet));
+    }
+    if let Some(channel) = filter.channel.as_deref() {
+        query = query.where_(RefundFact::CHANNEL.eq(channel.trim().to_lowercase()));
+    }
+    query
 }
 
 /// What the refunds report needs.
@@ -137,90 +228,109 @@ pub(crate) struct RefundRow {
 #[view(template = "fnb/report_refunds.html")]
 pub(crate) struct RefundsPage {
     tx: Texts,
-    filter: FilterView,
-    brands: Vec<[String; 2]>,
-    outlets: Vec<[String; 2]>,
-    groups: Vec<GroupRow>,
-    refunds: Vec<RefundRow>,
-    gross: i64,
-    net: i64,
+    refunds: renox::grid::GridPage<RefundFact>,
 }
 
 async fn refunds(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Query(query): Query<BTreeMap<String, String>>,
+    request: GridRequest,
 ) -> Result<Response> {
     if !user.has_permission(permissions::REPORTS_VIEW) {
         return Err(Error::Forbidden);
     }
-    let report = reports::refunds(&state.db, &filter_of(&query)).await?;
-    let category = |c: &str| t(&lang, &format!("fnb.screen.payout.category.{c}"));
-    let party = |p: &str| t(&lang, &format!("fnb.screen.payout.party.{p}"));
-    let groups = report
-        .groups
-        .iter()
-        .map(|g| GroupRow {
-            category: category(&g.category),
-            party: party(&g.party),
-            count: g.count,
-            gross: g.gross,
-            net: g.net,
-        })
-        .collect();
-    let rows = report
-        .facts
-        .iter()
-        .map(|f| RefundRow {
-            order: f.order_number.clone(),
-            order_url: f
-                .order_id
-                .map(|id| format!("/orders/{id}"))
-                .unwrap_or_default(),
-            channel: f.channel.clone(),
-            category: category(&f.category),
-            party: party(&f.party),
-            resolution: t(
-                &lang,
-                &format!("fnb.screen.report.resolution.{}", f.resolution),
-            ),
-            day: f.occurred_on.to_string(),
-            gross: f.gross,
-            net: f.net,
-        })
-        .collect();
+    let grid = refunds_grid(&lang);
+    let base = refunds_query(&filter_of(&query));
+    if let Some(file) = grid.export(base.clone(), &request).await? {
+        return Ok(file);
+    }
     Ok(View::typed(RefundsPage {
         tx: tx(&lang),
-        filter: filter_view(&query),
-        brands: brand_options(&state.db).await?,
-        outlets: outlet_options(&state.db).await?,
-        groups,
-        refunds: rows,
-        gross: report.gross,
-        net: report.net,
+        refunds: grid.page(base, &request).await?,
     })
     .into_response())
 }
 
-/// A failed order of the failed deliveries report.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct FailedRow {
-    number: String,
-    url: String,
-    channel: String,
-    day: String,
-    party: String,
-    total: i64,
+/// The failed deliveries grid: the orders whose delivery failed, grouped by
+/// reason, with the sum of what they were worth.
+pub(crate) fn failed_grid(lang: &Lang) -> Grid {
+    let t = tx(lang);
+    Grid::new("fnb-report-failed")
+        .title(&t["report.failed_title"])
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .exports()
+        .column(
+            Column::text("number", &t["number"])
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/orders/{id}"),
+        )
+        .column(Column::select("failure_reason", &t["reason"], reason_options(lang)).mobile())
+        .column(Column::text("channel", &t["channel"]).searchable())
+        .column(Column::datetime("failed_at", &t["report.day"]))
+        .column(Column::select(
+            "responsible_party",
+            &t["party"],
+            party_options(lang),
+        ))
+        .column(
+            Column::related(
+                "brand",
+                &t["report.brand"],
+                "fnb_brands",
+                "brand_id",
+                "name",
+            )
+            .hidden(),
+        )
+        .column(
+            Column::related(
+                "outlet",
+                &t["report.outlet"],
+                "fnb_outlets",
+                "outlet_id",
+                "name",
+            )
+            .hidden(),
+        )
+        .column(
+            Column::money("total", &wl_kernel::money_label(&t["total"]))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .groups(&["failure_reason", "responsible_party", "channel"])
+        .group_by("failure_reason")
+        .sort_by("-id")
+        .row_url("/orders/{id}")
+        .cards_on_mobile()
+        .empty_state(&t["report.failed_empty"], None)
 }
 
-/// A reason of the failed deliveries report.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct ReasonGroup {
-    reason: String,
-    count: usize,
-    gross: i64,
-    orders: Vec<FailedRow>,
+/// The orders with a failed delivery, narrowed by the URL's filter.
+fn failed_query(filter: &ReportFilter) -> ModelQuery<FnbOrder> {
+    let mut query = FnbOrder::query().where_(FnbOrder::FAILURE_REASON.is_not_null());
+    if let Some(from) = filter.from {
+        query = query.where_(FnbOrder::FAILED_AT.gte(day_start(from)));
+    }
+    if let Some(to) = filter.to {
+        let next = to.succ_opt().unwrap_or(to);
+        query = query.where_(FnbOrder::FAILED_AT.lt(day_start(next)));
+    }
+    if let Some(brand) = filter.brand {
+        query = query.where_(FnbOrder::BRAND_ID.eq(brand));
+    }
+    if let Some(outlet) = filter.outlet {
+        query = query.where_(FnbOrder::OUTLET_ID.eq(outlet));
+    }
+    if let Some(channel) = filter.channel.as_deref() {
+        query = query.where_(FnbOrder::CHANNEL.eq(channel.trim().to_lowercase()));
+    }
+    query
 }
 
 /// What the failed deliveries report needs.
@@ -228,73 +338,76 @@ pub(crate) struct ReasonGroup {
 #[view(template = "fnb/report_failed.html")]
 pub(crate) struct FailedPage {
     tx: Texts,
-    filter: FilterView,
-    brands: Vec<[String; 2]>,
-    outlets: Vec<[String; 2]>,
-    groups: Vec<ReasonGroup>,
-    total: usize,
+    orders: renox::grid::GridPage<FnbOrder>,
 }
 
 async fn failed(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Query(query): Query<BTreeMap<String, String>>,
+    request: GridRequest,
 ) -> Result<Response> {
     if !user.has_permission(permissions::REPORTS_VIEW) {
         return Err(Error::Forbidden);
     }
-    let found = reports::failed_deliveries(&state.db, &filter_of(&query)).await?;
-    let groups: Vec<ReasonGroup> = found
-        .iter()
-        .map(|g| ReasonGroup {
-            reason: t(&lang, &format!("fnb.screen.reason.{}", g.reason)),
-            count: g.orders.len(),
-            gross: g.gross,
-            orders: g
-                .orders
-                .iter()
-                .map(|o| FailedRow {
-                    number: o.number.clone(),
-                    url: format!("/orders/{}", o.id),
-                    channel: o.channel.clone(),
-                    day: o
-                        .failed_at
-                        .map(|at| wl_kernel::documents::dubai_date(at).to_string())
-                        .unwrap_or_default(),
-                    party: o
-                        .responsible_party
-                        .as_deref()
-                        .map(|p| t(&lang, &format!("fnb.screen.payout.party.{p}")))
-                        .unwrap_or_default(),
-                    total: o.total,
-                })
-                .collect(),
-        })
-        .collect();
-    let total = groups.iter().map(|g| g.count).sum();
+    let grid = failed_grid(&lang);
+    let base = failed_query(&filter_of(&query));
+    if let Some(file) = grid.export(base.clone(), &request).await? {
+        return Ok(file);
+    }
     Ok(View::typed(FailedPage {
         tx: tx(&lang),
-        filter: filter_view(&query),
-        brands: brand_options(&state.db).await?,
-        outlets: outlet_options(&state.db).await?,
-        groups,
-        total,
+        orders: grid.page(base, &request).await?,
     })
     .into_response())
 }
 
-/// A fault of the rider faults list.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct FaultRow {
-    id: i64,
-    rider: String,
-    employee_url: String,
-    order: String,
-    order_url: String,
-    category: String,
-    amount: i64,
-    day: String,
+/// The rider faults grid: search on the rider and order, filter by category
+/// and day, sum of the amounts. The rider links to the employee when there is
+/// one (`custom`).
+pub(crate) fn faults_grid(lang: &Lang) -> Grid {
+    let t = tx(lang);
+    let mut categories = category_options(lang);
+    categories.extend(reason_options(lang));
+    Grid::new("fnb-rider-faults")
+        .title(&t["report.faults_title"])
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .exports()
+        .column(
+            Column::custom("rider", &t["report.rider"])
+                .frozen()
+                .mobile(),
+        )
+        .column(
+            Column::related(
+                "rider_name",
+                &t["report.rider"],
+                "users",
+                "rider_user_id",
+                "name",
+            )
+            .searchable()
+            .hidden(),
+        )
+        .column(
+            Column::text("order_number", &t["number"])
+                .mobile()
+                .searchable()
+                .link("/orders/{order_id}"),
+        )
+        .column(Column::select("category", &t["report.category"], categories).mobile())
+        .column(
+            Column::money("amount", &wl_kernel::money_label(&t["amount"]))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(Column::date("occurred_on", &t["report.day"]))
+        .sort_by("-id")
+        .cards_on_mobile()
+        .empty_state(&t["report.faults_empty"], None)
 }
 
 /// What the rider faults list needs.
@@ -302,7 +415,7 @@ pub(crate) struct FaultRow {
 #[view(template = "fnb/rider_faults.html")]
 pub(crate) struct RiderFaultsPage {
     tx: Texts,
-    faults: Vec<FaultRow>,
+    faults: renox::grid::GridPage<RiderFault>,
 }
 
 async fn rider_faults(
@@ -310,50 +423,44 @@ async fn rider_faults(
     user: AuthUser,
     lang: Lang,
     Query(query): Query<BTreeMap<String, String>>,
+    request: GridRequest,
 ) -> Result<Response> {
     if !user.has_permission(permissions::RIDER_FAULTS_VIEW) {
         return Err(Error::Forbidden);
     }
-    let employee = query
+    let grid = faults_grid(&lang);
+    let mut base = RiderFault::query();
+    if let Some(employee) = query
         .get("employee")
-        .and_then(|v| v.trim().parse::<i64>().ok());
-    let mut rows = Vec::new();
-    for fault in RiderFault::newest(&state.db, employee, 200).await? {
-        let rider = match fault.rider_user_id {
-            Some(id) => User::find(&state.db, id)
-                .await?
-                .map(|u| u.name)
-                .unwrap_or_default(),
-            None => String::new(),
-        };
-        let category = if fault.category.is_empty() {
-            String::new()
-        } else {
-            let returns = format!("fnb.screen.payout.category.{}", fault.category);
-            let found = t(&lang, &returns);
-            if found == returns {
-                t(&lang, &format!("fnb.screen.reason.{}", fault.category))
-            } else {
-                found
-            }
-        };
-        rows.push(FaultRow {
-            id: fault.id,
-            rider,
-            employee_url: fault
-                .employee_id
-                .map(|id| format!("/hr/employees/{id}"))
-                .unwrap_or_default(),
-            order: fault.order_number.clone(),
-            order_url: format!("/orders/{}", fault.order_id),
-            category,
-            amount: fault.amount,
-            day: fault.occurred_on.to_string(),
-        });
+        .and_then(|v| v.trim().parse::<i64>().ok())
+    {
+        base = base.where_(RiderFault::EMPLOYEE_ID.eq(employee));
     }
+    if let Some(file) = grid.export(base.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(base, &request).await?;
+    let mut names = BTreeMap::new();
+    for fault in page.items() {
+        if let Some(id) = fault.rider_user_id
+            && let Some(found) = User::find(&state.db, id).await?
+        {
+            names.insert(id, found.name);
+        }
+    }
+    let faults = page.extend(|fault| {
+        json!({
+            "rider": fault
+                .rider_user_id
+                .and_then(|id| names.get(&id))
+                .cloned()
+                .unwrap_or_default(),
+            "employee_url": fault.employee_id.map(|id| format!("/hr/employees/{id}")),
+        })
+    });
     Ok(View::typed(RiderFaultsPage {
         tx: tx(&lang),
-        faults: rows,
+        faults,
     })
     .into_response())
 }

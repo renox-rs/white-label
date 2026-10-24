@@ -13,7 +13,9 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::validation::{Errors, ValidationError};
 use serde::Serialize;
 use wl_kernel::approvals::{self, ApprovalCard};
@@ -59,37 +61,60 @@ fn invalid<F: Serialize>(field: &str, message: String, form: &F) -> Error {
     Error::Validation(ValidationError::new(errors).with_input(form))
 }
 
-/// The badge colour of a status.
-fn status_kind(status: AdjustmentStatus) -> &'static str {
-    match status {
-        AdjustmentStatus::Draft => "warning",
-        AdjustmentStatus::PendingApproval => "info",
-        AdjustmentStatus::Applied => "success",
-        AdjustmentStatus::Rejected => "error",
-    }
-}
-
-/// One adjustment as the list shows it.
-#[derive(Serialize, Debug, Clone)]
-pub struct AdjustmentRow {
-    /// The primary key.
-    pub id: i64,
-    /// The member's code.
-    pub code: String,
-    /// The points, signed.
-    pub points: i64,
-    /// The reason.
-    pub reason: String,
-    /// Why it was rejected or returned.
-    pub outcome: String,
-    /// The status in words.
-    pub status_label: String,
-    /// The badge colour.
-    pub status_kind: &'static str,
-    /// The requester may change it and submit it again.
-    pub can_resubmit: bool,
-    /// Closing an account is not changed, only submitted again.
-    pub closes_account: bool,
+/// The adjustments grid: search on the member's code and the reason, filter
+/// by status, sum of the points. "Submit again" is drawn by the template
+/// (`custom`), for the requester of a returned adjustment.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let statuses: Vec<(String, String)> = AdjustmentStatus::ALL
+        .iter()
+        .map(|status| {
+            (
+                status.as_str().to_owned(),
+                text(lang, &format!("adjust.status.{}", status.as_str())),
+            )
+        })
+        .collect();
+    let grid = Grid::new("sales-points-adjustments")
+        .title(&t("adjust.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::related(
+                "code",
+                &t("adjust.account"),
+                "wl_sales_loyalty_accounts",
+                "account_id",
+                "code",
+            )
+            .frozen()
+            .mobile()
+            .searchable(),
+        )
+        .column(
+            Column::number("points", &t("adjust.points"))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(Column::text("reason", &t("adjust.reason")).searchable())
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("draft", "warning"),
+                    ("pending_approval", "info"),
+                    ("applied", "success"),
+                    ("rejected", "danger"),
+                ])
+                .mobile(),
+        )
+        .column(Column::text("outcome_reason", &t("adjust.outcome")))
+        .column(Column::datetime("created_at", &t("adjust.created_at")).hidden())
+        .column(Column::custom("actions", ""))
+        .sort_by("-created_at")
+        .cards_on_mobile()
+        .empty_state(&t("adjust.empty"), Some(&t("adjust.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list needs.
@@ -97,49 +122,59 @@ pub struct AdjustmentRow {
 #[view(template = "wl-sales/adjustments.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    adjustments: Vec<AdjustmentRow>,
+    adjustments: GridPage<PointsAdjustment>,
+    /// The adjustments of the page the viewer may change and submit again.
+    sheets: Vec<i64>,
     /// The cards of the adjustments that wait for a manager: where the manager
     /// who is not the requester approves, rejects or returns them.
     approvals: Vec<ApprovalCard>,
 }
 
-/// `GET /loyalty/adjustments`: the latest adjustments, newest first.
-async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View> {
-    let mut rows = Vec::new();
+/// `GET /loyalty/adjustments`: the adjustments, newest first (`?export=` with
+/// `loyalty.adjust`).
+async fn index(
+    State(db): State<Db>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
+    let can_adjust = user.has_permission(permissions::LOYALTY_ADJUST);
+    let grid = grid(&lang, can_adjust);
+    if request.param("export").is_some() && !can_adjust {
+        return Err(Error::Forbidden);
+    }
+    let query = PointsAdjustment::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
     let mut cards = Vec::new();
-    for a in PointsAdjustment::query()
-        .order_by_desc(PointsAdjustment::ID)
-        .get(&db)
-        .await?
-        .into_iter()
-        .take(100)
-    {
-        let code = LoyaltyAccount::find(&db, a.account_id)
-            .await?
-            .map(|account| account.code)
-            .unwrap_or_default();
+    let mut sheets = Vec::new();
+    let mut extra = Vec::new();
+    for a in page.items() {
         if a.status == AdjustmentStatus::PendingApproval {
             cards.extend(approvals::cards_for(&db, &a.subject(), &user, &lang).await?);
         }
-        rows.push(AdjustmentRow {
-            id: a.id,
-            code,
-            points: a.points,
-            reason: a.reason.clone(),
-            outcome: a.outcome_reason.clone().unwrap_or_default(),
-            status_label: text(&lang, &format!("adjust.status.{}", a.status.as_str())),
-            status_kind: status_kind(a.status),
-            can_resubmit: a.status == AdjustmentStatus::Draft
-                && a.requested_by == user.id
-                && user.has_permission(permissions::LOYALTY_ADJUST),
-            closes_account: a.closes_account,
-        });
+        // Closing an account is not changed, only submitted again.
+        let can_resubmit =
+            a.status == AdjustmentStatus::Draft && a.requested_by == user.id && can_adjust;
+        if can_resubmit {
+            sheets.push(a.id);
+        }
+        extra.push(json!({
+            "can_resubmit": can_resubmit,
+            "closes_account": a.closes_account,
+        }));
     }
+    let mut extra = extra.into_iter();
+    let adjustments = page.extend(|_| extra.next().unwrap_or_default());
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        adjustments: rows,
+        adjustments,
+        sheets,
         approvals: cards,
-    }))
+    })
+    .into_response())
 }
 
 /// The points of the form, signed.

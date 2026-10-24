@@ -199,6 +199,13 @@ pub(crate) const DISPATCH_TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.dispatch.ui.open", "Open"),
     ("wl_inventory.dispatch.ui.empty", "No dispatch yet"),
     ("wl_inventory.dispatch.ui.none", "-"),
+    (
+        "wl_inventory.dispatch.ui.empty_hint",
+        "A dispatch appears when goods are picked for a sales order.",
+    ),
+    ("wl_inventory.dispatch.ui.source_type", "Source type"),
+    ("wl_inventory.dispatch.ui.note", "Note"),
+    ("wl_inventory.dispatch.ui.actions", "Actions"),
     // The record page.
     ("wl_inventory.dispatch.ui.details", "Dispatch"),
     ("wl_inventory.dispatch.ui.handover", "Hand-over"),

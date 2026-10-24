@@ -114,12 +114,12 @@ pub(crate) fn month_label(month: NaiveDate) -> String {
 }
 
 /// The budgets grid: filters by entity and status.
-pub fn grid(lang: &Lang) -> Grid {
-    grid_with(&texts_in(lang))
+pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+    grid_with(&texts_in(lang), can_export)
 }
 
 /// [`grid`] with the texts of `t`.
-fn grid_with(t: Text<'_>) -> Grid {
+fn grid_with(t: Text<'_>, can_export: bool) -> Grid {
     let statuses: Vec<(String, String)> = BudgetStatus::ALL
         .iter()
         .map(|s| {
@@ -129,8 +129,11 @@ fn grid_with(t: Text<'_>) -> Grid {
             )
         })
         .collect();
-    Grid::new("wl-invoicing-budgets")
+    let grid = Grid::new("wl-invoicing-budgets")
         .title(&t("budget.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::related(
                 "entity",
@@ -148,7 +151,7 @@ fn grid_with(t: Text<'_>) -> Grid {
                 .link("/budgets/{id}"),
         )
         .column(Column::number("version", &t("budget.fields.version")).mobile())
-        .column(Column::text("name", &t("budget.fields.name")))
+        .column(Column::text("name", &t("budget.fields.name")).searchable())
         .column(
             Column::select("status", &t("budget.fields.status"), statuses)
                 .badges(&[
@@ -164,7 +167,8 @@ fn grid_with(t: Text<'_>) -> Grid {
         .sort_by("-fiscal_year")
         .row_url("/budgets/{id}")
         .cards_on_mobile()
-        .empty_state(&t("budget.empty"), Some(&t("budget.empty_hint")))
+        .empty_state(&t("budget.empty"), Some(&t("budget.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list page needs.
@@ -177,15 +181,24 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /budgets`: the grid.
-async fn index(lang: Lang, user: AuthUser, request: GridRequest) -> Result<View> {
+async fn index(lang: Lang, user: AuthUser, request: GridRequest) -> Result<Response> {
     let scope = user.scopes_with::<LegalEntity>(permissions::BUDGETS_VIEW);
     let query = scope.apply(CompanyBudget::query(), &["legal_entity_id"]);
-    let budgets = grid(&lang).page(query, &request).await?;
+    let can_export = crate::may_export(&user, permissions::BUDGETS_MANAGE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let budgets = grid.page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         budgets,
         can_manage: user.has_permission(permissions::BUDGETS_MANAGE),
-    }))
+    })
+    .into_response())
 }
 
 /// One row of the figures: a category and its amount in each month.
@@ -648,7 +661,7 @@ mod tests {
 
     #[test]
     fn the_grid_lists_the_budget_columns_and_statuses() {
-        let grid = grid_with(&english_text);
+        let grid = grid_with(&english_text, false);
         let keys: Vec<&str> = grid.columns().iter().map(Column::key).collect();
         assert_eq!(
             keys,

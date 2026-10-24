@@ -18,7 +18,7 @@
 
 use renox::auth::permissions::users_with_permission;
 use renox::chrono::NaiveDate;
-use renox::grid::{Column, Grid, GridPage, GridRequest};
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::{self, TransitionError};
@@ -99,8 +99,9 @@ fn status_kind(status: DepositStatus) -> &'static str {
 
 /// The deposits grid: party, source, amounts, status and whether the
 /// refund failed.
-pub fn grid(lang: &Lang) -> Grid {
-    grid_with(&texts_in(lang))
+pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let grid = grid_with(&texts_in(lang));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// [`grid`] with the texts of `t`.
@@ -108,6 +109,9 @@ fn grid_with(t: Text<'_>) -> Grid {
     let codes: Vec<&str> = STATUSES.iter().map(|s| s.as_str()).collect();
     Grid::new("wl-payment-deposits")
         .title(&t("deposits.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::number("id", "#")
                 .frozen()
@@ -123,8 +127,16 @@ fn grid_with(t: Text<'_>) -> Grid {
                 .mobile()
                 .searchable(),
         )
-        .column(Column::money("amount", &t("fields.amount")).currency_from("currency"))
-        .column(Column::money("held_amount", &t("deposits.held")).currency_from("currency"))
+        .column(
+            Column::money("amount", &t("fields.amount"))
+                .currency_from("currency")
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("held_amount", &t("deposits.held"))
+                .currency_from("currency")
+                .summary(Summary::Sum),
+        )
         .column(
             Column::select(
                 "status",
@@ -175,17 +187,27 @@ async fn index(
     user: AuthUser,
     lang: Lang,
     request: GridRequest,
-) -> Result<View> {
+) -> Result<Response> {
     // The deposits held for the agreements of the user's scope.
     let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::DEPOSITS_VIEW).await?;
     let query = reach
         .apply(&state.db, Deposit::query(), "source_type", "source_id")
         .await?;
-    let deposits = grid(&lang).page(query, &request).await?;
+    // The export is for those who manage them.
+    let can_export = user.has_permission(permissions::DEPOSITS_MANAGE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let deposits = grid.page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         deposits,
-    }))
+    })
+    .into_response())
 }
 
 /// What the deposit page needs.
