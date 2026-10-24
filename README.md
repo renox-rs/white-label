@@ -77,6 +77,7 @@ Never run `migrate:fresh` or `db:seed` against a production database.
 
 ## Where to start
 
+- [docs/LIVE-DEMOS.md](docs/LIVE-DEMOS.md): the ten live demos, one address per vertical
 - [docs/README.md](docs/README.md): reading guide and conventions
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the platform is layered and deployed
 - [docs/CAPABILITY-MAP.md](docs/CAPABILITY-MAP.md): what is shared and what is specific

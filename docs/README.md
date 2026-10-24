@@ -17,6 +17,7 @@ the build started with F1 (Property) ([decision 0004](decisions/0004-start-f1-bu
 | Know how it looks | [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) |
 | Know how each role's screens work | [UX.md](UX.md) |
 | Prepare a sales demo | [DEMO-DATA.md](DEMO-DATA.md) |
+| Open the live demos, one address per vertical | [LIVE-DEMOS.md](LIVE-DEMOS.md) |
 | Know how we package and price it | [PRICING.md](PRICING.md) |
 | Run it: environments, releases, backups, support, onboarding | [OPERATIONS.md](OPERATIONS.md) |
 | Know the threats and security controls | [SECURITY.md](SECURITY.md) |
