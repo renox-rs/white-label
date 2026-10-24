@@ -1,27 +1,9 @@
-{#- fnb: the kitchen board: the tickets still on a screen, oldest first, with
-    Start and Bump. It shows no customer details (`FNB.ACL.01`). Replace it with
-    resources/views/fnb/kitchen.html in the app. -#}
+{#- fnb: the kitchen board, a renox::grid of the tickets still on a screen,
+    oldest first, that reloads by itself and fills the screen. Filter by
+    station; Start and Bump are in each row's menu. It shows no customer
+    details (`FNB.ACL.01`). Replace it with resources/views/fnb/kitchen.html
+    in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['kitchen_title']">
-  <rx-stack>
-    <rx-page-header :title="tx['kitchen_title']" :subtitle="tx['kitchen_subtitle']"/>
-    <rx-table :rows="tickets" as="ticket" :key="ticket.id" :caption="tx['kitchen_title']">
-      <rx-column :label="tx['number']">
-        <span rx-if="ticket.order_url"><a href="{{ ticket.order_url }}">{{ ticket.order }}</a></span>
-        <span rx-if="not ticket.order_url">{{ ticket.order }}</span>
-      </rx-column>
-      <rx-column :label="tx['item']">{{ ticket.description }}</rx-column>
-      <rx-column :label="tx['quantity']" align="num">{{ ticket.quantity }}</rx-column>
-      <rx-column :label="tx['station']" hide-narrow>{{ ticket.station }}</rx-column>
-      <rx-column :label="tx['state']">{{ ticket.status }}</rx-column>
-      <rx-row-actions>
-        <template rx-if="ticket.can_start">
-          <rx-confirm :id="'start-' ~ ticket.id" :label="tx['start']" :action="route('fnb.ticket_start', ticket.id)" method="POST"
-                      :title="tx['start_title']" :message="ticket.description" :confirm-label="tx['start']"/>
-        </template>
-        <rx-confirm :id="'bump-' ~ ticket.id" :label="tx['bump']" :action="route('fnb.ticket_bump', ticket.id)" method="POST"
-                    :title="tx['bump_title']" :message="ticket.description" :confirm-label="tx['bump']"/>
-      </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['kitchen_empty']" :message="tx['kitchen_empty_text']" icon="chef-hat"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['kitchen_title']" :subtitle="tx['kitchen_subtitle']"/>
+  <rx-grid :page="tickets"/>
 </rx-page>

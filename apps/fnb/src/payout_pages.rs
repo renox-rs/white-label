@@ -19,6 +19,7 @@
 //! from the statement's page.
 
 use renox::chrono::NaiveDate;
+use renox::grid::{Column, Grid, GridRequest, Summary};
 use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::StateMachine;
@@ -95,20 +96,66 @@ fn date_of(form: &std::collections::BTreeMap<String, String>, name: &str) -> Opt
     NaiveDate::parse_from_str(field(form, name).trim(), "%Y-%m-%d").ok()
 }
 
-/// One statement of the list.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct StatementRow {
-    id: i64,
-    number: String,
-    aggregator: String,
-    reference: String,
-    period: String,
-    lines: i64,
-    net: i64,
-    status: String,
-    status_kind: &'static str,
-    voided: bool,
-    url: String,
+/// The payout statements grid: search on the number and reference, filters
+/// by aggregator, status and period, sum of the net payouts.
+pub(crate) fn grid(lang: &Lang, aggregators: &[[String; 2]], can_export: bool) -> Grid {
+    let t = tx(lang);
+    let aggregators: Vec<(String, String)> = aggregators
+        .iter()
+        .map(|[code, _]| (code.clone(), channel_label(lang, code)))
+        .collect();
+    let statuses: Vec<(String, String)> = ["imported", "matched", "disputed", "settled", "voided"]
+        .iter()
+        .map(|code| {
+            (
+                (*code).to_owned(),
+                crate::texts::t(lang, &format!("fnb.screen.payout.status.{code}")),
+            )
+        })
+        .collect();
+    let grid = Grid::new("fnb-payouts")
+        .title(&t["payout.title"])
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &t["payout.number"])
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable()
+                .link("/payouts/{id}"),
+        )
+        .column(
+            Column::text("reference", &t["payout.reference"])
+                .searchable()
+                .mobile(),
+        )
+        .column(Column::select("aggregator", &t["payout.aggregator"], aggregators).mobile())
+        .column(Column::date("period_from", &t["payout.period_from"]))
+        .column(Column::date("period_to", &t["payout.period_to"]).hidden())
+        .column(Column::number("line_count", &t["payout.lines"]).hidden())
+        .column(
+            Column::money("net_total", &t["payout.net"])
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::select("status", &t["state"], statuses)
+                .badges(&[
+                    ("imported", "info"),
+                    ("matched", "success"),
+                    ("disputed", "warning"),
+                    ("settled", "success"),
+                    ("voided", "info"),
+                ])
+                .mobile(),
+        )
+        .sort_by("-id")
+        .row_url("/payouts/{id}")
+        .cards_on_mobile()
+        .empty_state(&t["payout.empty"], Some(&t["payout.empty_text"]));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list needs.
@@ -116,7 +163,7 @@ pub(crate) struct StatementRow {
 #[view(template = "fnb/payouts.html")]
 pub(crate) struct PayoutsPage {
     tx: Texts,
-    statements: Vec<StatementRow>,
+    statements: renox::grid::GridPage<PayoutStatement>,
     aggregators: Vec<[String; 2]>,
     can_import: bool,
 }
@@ -142,32 +189,29 @@ async fn aggregator_options(state: &AppState) -> Result<Vec<[String; 2]>> {
         .collect())
 }
 
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<Response> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if !user.has_permission(permissions::RECONCILIATION_VIEW) {
         return Err(Error::Forbidden);
     }
-    let statements = PayoutStatement::newest(&state.db, 200)
-        .await?
-        .iter()
-        .map(|s| StatementRow {
-            id: s.id,
-            number: s.number.clone(),
-            aggregator: channel_label(&lang, &s.aggregator),
-            reference: s.reference.clone(),
-            period: period_text(s),
-            lines: s.line_count,
-            net: s.net_total,
-            status: status_word(&lang, s.status),
-            status_kind: status_kind(s.status),
-            voided: s.status == PayoutStatus::Voided,
-            url: format!("/payouts/{}", s.id),
-        })
-        .collect();
+    let can_import = user.has_permission(permissions::RECONCILIATION_MANAGE);
+    let aggregators = aggregator_options(&state).await?;
+    let grid = grid(&lang, &aggregators, can_import);
+    if request.param("export").is_some() && !can_import {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(PayoutStatement::query(), &request).await? {
+        return Ok(file);
+    }
     Ok(View::typed(PayoutsPage {
         tx: tx(&lang),
-        statements,
-        aggregators: aggregator_options(&state).await?,
-        can_import: user.has_permission(permissions::RECONCILIATION_MANAGE),
+        statements: grid.page(PayoutStatement::query(), &request).await?,
+        aggregators,
+        can_import,
     })
     .into_response())
 }

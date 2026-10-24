@@ -1,28 +1,8 @@
-{#- fnb: the failed own-rider deliveries by reason, with the orders behind each
-    reason, filtered by period, brand, outlet and channel. Replace it with
+{#- fnb: the failed own-rider deliveries, a renox::grid grouped by reason
+    (filters by period, brand, outlet and channel, in the grid and in the URL,
+    sum of the totals) that fills the screen. Replace it with
     resources/views/fnb/report_failed.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['report.failed_title']">
-  <rx-stack>
-    <rx-page-header :title="tx['report.failed_title']" :subtitle="tx['report.failed_subtitle']"/>
-    <form method="get" action="{{ route('fnb.report_failed') }}">
-      <rx-toolbar>
-        <rx-input name="from" type="date" :label="tx['report.from']" :value="filter.from" id="filter-from"/>
-        <rx-input name="to" type="date" :label="tx['report.to']" :value="filter.to" id="filter-to"/>
-        <rx-select name="brand" :label="tx['report.brand']" :options="brands" :selected="filter.brand" :placeholder="tx['report.all']" id="filter-brand"/>
-        <rx-select name="outlet" :label="tx['report.outlet']" :options="outlets" :selected="filter.outlet" :placeholder="tx['report.all']" id="filter-outlet"/>
-        <rx-input name="channel" :label="tx['channel']" :value="filter.channel" id="filter-channel"/>
-        <rx-button type="submit" :label="tx['report.show']" icon="search"/>
-      </rx-toolbar>
-    </form>
-    <rx-empty rx-if="not groups" :title="tx['report.failed_empty']" icon="truck"/>
-    <rx-card rx-for="group in groups" :title="group.reason ~ ' (' ~ group.count ~ ')'">
-      <rx-table :rows="group.orders" as="order" :key="order.number" :caption="group.reason">
-        <rx-column :label="tx['number']"><a href="{{ order.url }}">{{ order.number }}</a></rx-column>
-        <rx-column :label="tx['channel']" hide-narrow>{{ order.channel }}</rx-column>
-        <rx-column :label="tx['report.day']" hide-narrow>{{ order.day }}</rx-column>
-        <rx-column :label="tx['party']" hide-narrow>{{ order.party }}</rx-column>
-        <rx-column :label="tx['total']" align="num">{{ order.total | money(currency='AED') }}</rx-column>
-      </rx-table>
-    </rx-card>
-  </rx-stack>
+  <rx-page-header :title="tx['report.failed_title']" :subtitle="tx['report.failed_subtitle']"/>
+  <rx-grid :page="orders"/>
 </rx-page>

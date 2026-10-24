@@ -17,7 +17,9 @@
 //! the time the closing opens); a button that cannot be used is not shown and
 //! the reason is in the notes.
 
+use renox::grid::{Column, Grid, GridRequest, Summary};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::Serialize;
 
 use crate::business_day::clock_text;
@@ -84,19 +86,69 @@ fn ticked(form: &std::collections::BTreeMap<String, String>, name: &str) -> bool
         .is_some_and(|v| !v.trim().is_empty() && v != "0" && v != "false")
 }
 
-/// One closing of the list.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct ClosingRow {
-    id: i64,
-    outlet: String,
-    date: String,
-    status: String,
-    status_kind: &'static str,
-    orders: i64,
-    sales: String,
-    counted: String,
-    variance: String,
-    url: String,
+/// The closings grid: search on the outlet, filters by status and day, sums
+/// of the cash counted and the difference. The orders and sales of the day
+/// are worked out live, so the template draws them (`custom`).
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = tx(lang);
+    let statuses: Vec<(String, String)> = ["open", "submitted", "reopened", "approved"]
+        .iter()
+        .map(|code| {
+            (
+                (*code).to_owned(),
+                crate::texts::t(lang, &format!("fnb.screen.closing.status.{code}")),
+            )
+        })
+        .collect();
+    let grid = Grid::new("fnb-closings")
+        .title(&t["closing.title"])
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::date("business_date", &t["closing.date"])
+                .frozen()
+                .mobile()
+                .link("/closings/{id}"),
+        )
+        .column(
+            Column::related(
+                "outlet",
+                &t["closing.outlet"],
+                "fnb_outlets",
+                "outlet_id",
+                "name",
+            )
+            .mobile()
+            .searchable(),
+        )
+        .column(Column::custom("orders", &t["closing.orders"]))
+        .column(Column::custom("sales", &t["closing.sales"]).mobile())
+        .column(
+            Column::money("counted_cash", &t["closing.counted"])
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("variance", &t["closing.variance"])
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::select("status", &t["state"], statuses)
+                .badges(&[
+                    ("open", "info"),
+                    ("submitted", "success"),
+                    ("reopened", "warning"),
+                    ("approved", "success"),
+                ])
+                .mobile(),
+        )
+        .sort_by("-business_date")
+        .row_url("/closings/{id}")
+        .cards_on_mobile()
+        .empty_state(&t["closing.empty"], Some(&t["closing.empty_text"]));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list needs.
@@ -104,7 +156,7 @@ pub(crate) struct ClosingRow {
 #[view(template = "fnb/closings.html")]
 pub(crate) struct ClosingsPage {
     tx: Texts,
-    rows: Vec<ClosingRow>,
+    rows: renox::grid::GridPage<DailyClosing>,
     outlets: Vec<[String; 2]>,
     can_open: bool,
 }
@@ -120,30 +172,36 @@ async fn outlet_options(db: &Db) -> Result<Vec<[String; 2]>> {
         .collect())
 }
 
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<Response> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if !user.has_permission(permissions::CLOSING_VIEW) {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
-    for closing in closings::latest(&state.db, 60).await? {
-        let outlet = Outlet::find(&state.db, closing.outlet_id).await?;
-        let sums = closings::totals(&state.db, &closing).await?;
-        rows.push(ClosingRow {
-            id: closing.id,
-            outlet: outlet.map(|o| o.name).unwrap_or_default(),
-            date: closing
-                .business_date
-                .map(|d| d.to_string())
-                .unwrap_or_default(),
-            status: status_word(&lang, closing.status),
-            status_kind: status_kind(closing.status),
-            orders: sums.orders,
-            sales: aed(sums.gross),
-            counted: closing.counted_cash.map(aed).unwrap_or_default(),
-            variance: closing.variance.map(aed).unwrap_or_default(),
-            url: format!("/closings/{}", closing.id),
-        });
+    // Whoever sees the closings sees their counts: the approvers export.
+    let can_export = user.has_permission(permissions::CLOSING_APPROVE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
     }
+    if let Some(file) = grid.export(DailyClosing::query(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(DailyClosing::query(), &request).await?;
+    let mut sums = std::collections::BTreeMap::new();
+    for closing in page.items() {
+        sums.insert(closing.id, closings::totals(&state.db, closing).await?);
+    }
+    let rows = page.extend(|closing| {
+        let sums = sums.get(&closing.id);
+        json!({
+            "orders": sums.map(|s| s.orders),
+            "sales": sums.map(|s| s.gross),
+        })
+    });
     Ok(View::typed(ClosingsPage {
         tx: tx(&lang),
         rows,

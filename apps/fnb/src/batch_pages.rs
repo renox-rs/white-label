@@ -19,6 +19,7 @@
 use std::collections::BTreeMap;
 
 use renox::chrono::NaiveDate;
+use renox::grid::{Column, Grid, GridRequest, Summary};
 use renox::prelude::*;
 use serde::Serialize;
 use wl_kernel::inventory::batch_stock;
@@ -77,18 +78,89 @@ fn status_word(lang: &Lang, status: BatchStatus) -> String {
     t(lang, &format!("fnb.screen.batch.status.{}", status.key()))
 }
 
-/// One batch of the list.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct BatchRow {
-    id: i64,
-    number: String,
-    recipe: String,
-    planned: String,
-    actual: String,
-    expiry: String,
-    status: String,
-    status_kind: &'static str,
-    url: String,
+/// The production batches grid: search on the number and recipe, filters by
+/// status and expiry, sums of the planned and actual yields.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = tx(lang);
+    let statuses: Vec<(String, String)> = [
+        "planned",
+        "in_production",
+        "produced",
+        "on_hold",
+        "consumed",
+        "discarded",
+    ]
+    .iter()
+    .map(|code| {
+        (
+            (*code).to_owned(),
+            crate::texts::t(lang, &format!("fnb.screen.batch.status.{code}")),
+        )
+    })
+    .collect();
+    let grid = Grid::new("fnb-batches")
+        .title(&t["batch.title"])
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &t["batch.number"])
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable()
+                .link("/batches/{id}"),
+        )
+        .column(
+            Column::related(
+                "recipe",
+                &t["batch.recipe"],
+                "fnb_batch_recipes",
+                "recipe_id",
+                "name",
+            )
+            .mobile()
+            .searchable(),
+        )
+        .column(
+            Column::related(
+                "outlet",
+                &t["batch.outlet"],
+                "fnb_outlets",
+                "outlet_id",
+                "name",
+            )
+            .hidden(),
+        )
+        .column(
+            Column::quantity("planned_yield_milli", &t["batch.planned"])
+                .scale(3)
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::quantity("actual_yield_milli", &t["batch.actual"])
+                .scale(3)
+                .summary(Summary::Sum),
+        )
+        .column(Column::date("expiry_date", &t["batch.expiry"]))
+        .column(
+            Column::select("status", &t["state"], statuses)
+                .badges(&[
+                    ("planned", "info"),
+                    ("in_production", "info"),
+                    ("produced", "success"),
+                    ("on_hold", "warning"),
+                    ("consumed", "success"),
+                    ("discarded", "danger"),
+                ])
+                .mobile(),
+        )
+        .sort_by("-id")
+        .row_url("/batches/{id}")
+        .cards_on_mobile()
+        .empty_state(&t["batch.empty"], Some(&t["batch.empty_text"]));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list needs.
@@ -96,39 +168,33 @@ pub(crate) struct BatchRow {
 #[view(template = "fnb/batches.html")]
 pub(crate) struct BatchesPage {
     tx: Texts,
-    batches: Vec<BatchRow>,
+    batches: renox::grid::GridPage<ProductionBatch>,
     recipes: Vec<[String; 2]>,
     outlets: Vec<[String; 2]>,
     can_manage: bool,
 }
 
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<Response> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if !user.has_permission_anywhere(permissions::PRODUCTION_VIEW) {
         return Err(Error::Forbidden);
+    }
+    let can_manage = user.has_permission_anywhere(permissions::PRODUCTION_MANAGE);
+    let grid = grid(&lang, can_manage);
+    if request.param("export").is_some() && !can_manage {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(ProductionBatch::query(), &request).await? {
+        return Ok(file);
     }
     let recipes = BatchRecipe::query()
         .order_by(BatchRecipe::NAME)
         .get(&state.db)
         .await?;
-    let mut rows = Vec::new();
-    for batch in ProductionBatch::newest(&state.db, 200).await? {
-        let recipe = recipes
-            .iter()
-            .find(|r| r.id == batch.recipe_id)
-            .map(|r| r.name.clone())
-            .unwrap_or_default();
-        rows.push(BatchRow {
-            id: batch.id,
-            number: batch.number.clone(),
-            recipe,
-            planned: milli_text(batch.planned_yield_milli),
-            actual: batch.actual_yield_milli.map(milli_text).unwrap_or_default(),
-            expiry: batch.expiry_date.map(|d| d.to_string()).unwrap_or_default(),
-            status: status_word(&lang, batch.status),
-            status_kind: status_kind(batch.status),
-            url: format!("/batches/{}", batch.id),
-        });
-    }
     let outlets = Outlet::query()
         .where_(Outlet::ACTIVE.eq(true))
         .order_by(Outlet::NAME)
@@ -140,13 +206,13 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .collect();
     Ok(View::typed(BatchesPage {
         tx: tx(&lang),
-        batches: rows,
+        batches: grid.page(ProductionBatch::query(), &request).await?,
         recipes: recipes
             .into_iter()
             .map(|r| [r.id.to_string(), r.name])
             .collect(),
         outlets,
-        can_manage: user.has_permission_anywhere(permissions::PRODUCTION_MANAGE),
+        can_manage,
     })
     .into_response())
 }
