@@ -172,30 +172,10 @@ async fn unlink_needs_a_reason_a_link_and_the_permission() {
         .assert_status(422);
 }
 
-/// AC5: lot F9 of WO-201 is reserved for SO-51 line 2; line 2 is cancelled
-/// and WO-201 is unlinked: F9 is released to free stock. A line that is still
-/// open keeps its reservation.
-#[renox::test]
-async fn the_output_reserved_for_a_cancelled_line_is_released() {
-    let t = boot().await;
-    let plant = t.plant("Plant 1").await;
-    let line = t.line(&plant, "L1").await;
-    let planner = t.planner("Amal", &plant).await;
-    let order = linked(&t, &plant, &line, WorkOrderStatus::InProgress, 51, 2, true).await;
-    t.lines.open(51, 2, 500_000, None);
-    t.lines.cancel(51, 2);
-
-    t.act(&planner, &order, "unlink", &[("reason", "line cancelled")])
-        .await
-        .assert_status(303);
-
-    let released = t.stock.released.lock().unwrap().clone();
-    assert_eq!(released.len(), 1);
-    assert_eq!(
-        (released[0].0.subject_id, released[0].1, released[0].2),
-        (77, 51, 2)
-    );
-}
+// AC5 (the output lot reserved for a cancelled line is free stock after the
+// unlink) is proved with the real stock of wl-inventory, the real sales
+// pages and the real events in
+// `host/tests/manufacturing_reservation.rs::the_output_lot_reserved_for_a_cancelled_line_is_free_stock_after_the_unlink`.
 
 /// The system's `unlink` (`MFG.RUL.09`) does the same, and a call on a work
 /// order that is already unlinked does nothing: no history row, no notice.

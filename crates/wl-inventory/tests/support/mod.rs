@@ -803,9 +803,76 @@ impl wl_kernel::inventory::SaleLineStockSource for SaleLineDesk {
     }
 }
 
+/// The sales orders of the test, as the order desk of wl-sales shows them
+/// (`SalesOrderDesk::find`): the lines the test sets, with their item code and
+/// quantities.
+#[derive(Clone, Default)]
+pub struct OrderBook {
+    orders: Arc<Mutex<std::collections::BTreeMap<i64, Vec<wl_kernel::sales::OrderLineView>>>>,
+}
+
+impl OrderBook {
+    /// Order `order` has a line `line` of `quantity_milli` of the item `code`.
+    pub fn line(&self, order: i64, line: i64, code: &str, quantity_milli: i64) {
+        self.orders.lock().unwrap().entry(order).or_default().push(
+            wl_kernel::sales::OrderLineView {
+                id: line,
+                line_no: line,
+                item_code: code.to_owned(),
+                description: code.to_owned(),
+                is_item: true,
+                quantity_milli,
+                fulfilled_milli: 0,
+                cancelled_milli: 0,
+                unit_price: 1_000,
+                gross: 0,
+            },
+        );
+    }
+
+    /// `cancelled_milli` of the line `line` of `order` are cancelled.
+    pub fn cancel(&self, order: i64, line: i64, cancelled_milli: i64) {
+        for view in self.orders.lock().unwrap().entry(order).or_default() {
+            if view.id == line {
+                view.cancelled_milli += cancelled_milli;
+            }
+        }
+    }
+}
+
+impl wl_kernel::sales::SalesOrderDesk for OrderBook {
+    fn find<'a>(
+        &'a self,
+        _state: &'a AppState,
+        order: SalesOrderId,
+    ) -> SalesFuture<'a, Option<wl_kernel::sales::OrderView>> {
+        let lines = self.orders.lock().unwrap().get(&order.0).cloned();
+        Box::pin(async move {
+            Ok(lines.map(|lines| wl_kernel::sales::OrderView {
+                id: order,
+                number: format!("SO-{}", order.0),
+                party: PartyId(1),
+                channel: "phone".to_owned(),
+                external_number: None,
+                payment_mode: "on_account".to_owned(),
+                prepaid: false,
+                currency: "AED".to_owned(),
+                gross_total: 0,
+                legal_entity: None,
+                status: "confirmed".to_owned(),
+                revision: 1,
+                refunded_amount: 0,
+                aggregator: false,
+                lines,
+            }))
+        })
+    }
+}
+
 /// Records the events and stands in for ticketing and cost entries.
 struct Fakes {
     sale_lines: SaleLineDesk,
+    orders: OrderBook,
     revised: Arc<Mutex<Vec<PurchaseOrderRevised>>>,
     allocated: Arc<Mutex<Vec<LandedCostAllocated>>>,
     adjusted: Arc<Mutex<Vec<LandedCostAdjusted>>>,
@@ -897,6 +964,7 @@ impl Module for Fakes {
         wl_kernel::tickets::provide_task_creator(app, self.tickets.clone());
         wl_kernel::invoicing::provide_cost_poster(app, self.costs.clone());
         wl_kernel::inventory::provide_sale_line_stock(app, self.sale_lines.clone());
+        wl_kernel::sales::provide_order_desk(app, self.orders.clone());
         wl_kernel::notify::provide_notifier(app, self.notices.clone());
     }
 }
@@ -939,6 +1007,8 @@ pub struct Booted {
     pub costs: CostDesk,
     /// What the sale lines are made of (the vertical's recipe).
     pub sale_lines: SaleLineDesk,
+    /// The sales orders (the order desk of wl-sales).
+    pub orders: OrderBook,
     /// The notifications asked for.
     pub notices: Recording,
     /// Every `StockHoldPlaced`.
@@ -2007,6 +2077,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     let tickets = TicketDesk::default();
     let costs = CostDesk::default();
     let sale_lines = SaleLineDesk::default();
+    let orders = OrderBook::default();
     let notices = Recording::default();
     let holds = Arc::new(Mutex::new(Vec::new()));
     let lots_held = Arc::new(Mutex::new(Vec::new()));
@@ -2074,6 +2145,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         tickets: tickets.clone(),
         costs: costs.clone(),
         sale_lines: sale_lines.clone(),
+        orders: orders.clone(),
         notices: notices.clone(),
         holds: holds.clone(),
         lots_held: lots_held.clone(),
@@ -2230,6 +2302,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         tickets,
         costs,
         sale_lines,
+        orders,
         notices,
         holds: Recorded(holds),
         lots_held: Recorded(lots_held),
