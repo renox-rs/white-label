@@ -269,6 +269,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             wl_kernel::permissions::LATE_ENTRIES_APPROVE,
             wl_kernel::permissions::INTEGRATIONS_VIEW,
             wl_kernel::permissions::INTEGRATIONS_MANAGE,
+            // The portal settings: the audiences' portal roles and their
+            // permissions, and the grants (wl-portal §6, BL-POR-02).
+            wl_portal::permissions::USERS_MANAGE,
             parties::VIEW,
             parties::CREATE,
             parties::UPDATE,

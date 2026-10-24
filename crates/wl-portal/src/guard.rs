@@ -16,6 +16,7 @@
 //! never at hand to leak. Each refusal is logged once for staff with
 //! `parties.block_reason.view` ([`crate::refusals`]).
 
+use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_kernel::block_guard::{self, ActionKind, GuardOutcome};
@@ -57,11 +58,16 @@ pub enum PortalAction {
     ProfileChange,
     /// Cancelling where the cancellation produces no refund.
     CancelWithoutRefund,
+    /// Disputing an invoice or a charge.
+    Dispute,
+    /// Disputing the deductions from a deposit (BL-PAY-27): the one write
+    /// action a `read_only` grant keeps during its window (BL-POR-03).
+    DepositDeductionDispute,
 }
 
 impl PortalAction {
     /// Every action.
-    pub const ALL: [PortalAction; 13] = [
+    pub const ALL: [PortalAction; 15] = [
         PortalAction::NewBooking,
         PortalAction::NewOrder,
         PortalAction::SignAgreement,
@@ -75,6 +81,8 @@ impl PortalAction {
         PortalAction::DocumentUpload,
         PortalAction::ProfileChange,
         PortalAction::CancelWithoutRefund,
+        PortalAction::Dispute,
+        PortalAction::DepositDeductionDispute,
     ];
 
     /// The stored key, e.g. `deposit_release_request`.
@@ -93,6 +101,8 @@ impl PortalAction {
             PortalAction::DocumentUpload => "document_upload",
             PortalAction::ProfileChange => "profile_change",
             PortalAction::CancelWithoutRefund => "cancel_without_refund",
+            PortalAction::Dispute => "dispute",
+            PortalAction::DepositDeductionDispute => "deposit_deduction_dispute",
         }
     }
 
@@ -119,8 +129,18 @@ impl PortalAction {
             | PortalAction::Message
             | PortalAction::DocumentUpload
             | PortalAction::ProfileChange
-            | PortalAction::CancelWithoutRefund => None,
+            | PortalAction::CancelWithoutRefund
+            | PortalAction::Dispute
+            | PortalAction::DepositDeductionDispute => None,
         }
+    }
+
+    /// Whether a user whose grant for the party is `read_only` may still do
+    /// this action: only the deposit deductions dispute, during the window
+    /// before the grant closes (BL-POR-03, BL-PAY-27). Paying, disputing an
+    /// invoice, a new request, users: all refused.
+    pub fn allowed_while_read_only(self) -> bool {
+        self == PortalAction::DepositDeductionDispute
     }
 
     /// Whether a blocked party's user is refused this action.
@@ -140,6 +160,10 @@ pub enum Refused {
     /// The party is blocked and the action starts new business or moves money
     /// out: the neutral text, whatever the reason.
     Blocked,
+    /// The user's grant for the party is `read_only` since this day (the
+    /// contract ended, `POR.ACL.01`): pages read, write actions are refused
+    /// with the read-only notice.
+    GrantReadOnly(NaiveDate),
 }
 
 /// The portal's block guard.
@@ -148,8 +172,9 @@ pub struct PortalGuard;
 impl PortalGuard {
     /// Checks that `user` may do `action` for the party `acting_for`: they
     /// hold an `active` grant for it (the acting-for party of the current
-    /// grant, not the user's own party), their account is not read-only after
-    /// an exit, and the party is not blocked for an
+    /// grant, not the user's own party) — or only a `read_only` one and the
+    /// action is the one a read-only grant keeps (BL-POR-03) —, their account
+    /// is not read-only after an exit, and the party is not blocked for an
     /// action that starts new business or moves money out. A refusal because
     /// of the block is logged.
     pub async fn check(
@@ -158,12 +183,17 @@ impl PortalGuard {
         acting_for: PartyId,
         action: PortalAction,
     ) -> Result<std::result::Result<(), Refused>> {
-        if PortalAccess::disabled(state, user).await?
-            || PortalAccess::active_grant(&state.db, user, acting_for, today())
-                .await?
-                .is_none()
-        {
+        if PortalAccess::disabled(state, user).await? {
             return Ok(Err(Refused::NoAccess));
+        }
+        let day = today();
+        let grants = PortalAccess::readable_grants(&state.db, user, acting_for, day).await?;
+        if grants.is_empty() {
+            return Ok(Err(Refused::NoAccess));
+        }
+        if !grants.iter().any(|g| g.is_active_on(day)) && !action.allowed_while_read_only() {
+            let since = grants.iter().filter_map(|g| g.ended_on).max().unwrap_or(day);
+            return Ok(Err(Refused::GrantReadOnly(since)));
         }
         // Every portal action writes; reading a page is not guarded here.
         if PortalAccess::read_only(state, user).await? {
@@ -220,7 +250,9 @@ impl PortalGuard {
 
     /// [`check`](PortalGuard::check) as an HTTP result: `Forbidden` without a
     /// grant, and for a blocked party a 422 with the neutral text in `lang`
-    /// (the same for every reason, and for English and Arabic alike).
+    /// (the same for every reason, and for English and Arabic alike). A
+    /// `read_only` grant is a 403 with the notice *Your access is read-only
+    /// since (date)*.
     pub async fn require(
         state: &AppState,
         lang: &Lang,
@@ -231,6 +263,10 @@ impl PortalGuard {
         match Self::check(state, user.id, acting_for, action).await? {
             Ok(()) => Ok(()),
             Err(Refused::NoAccess | Refused::ReadOnly) => Err(Error::Forbidden),
+            Err(Refused::GrantReadOnly(since)) => Err(Error::Status(
+                StatusCode::FORBIDDEN,
+                crate::texts::read_only_notice(lang, since),
+            )),
             Err(Refused::Blocked) => Err(Error::Status(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 crate::texts::neutral(lang),
@@ -281,6 +317,8 @@ mod tests {
             PortalAction::DocumentUpload,
             PortalAction::ProfileChange,
             PortalAction::CancelWithoutRefund,
+            PortalAction::Dispute,
+            PortalAction::DepositDeductionDispute,
         ] {
             assert_eq!(action.guarded_kind(), None, "{}", action.key());
             assert!(!action.refused_while_blocked());
@@ -293,6 +331,16 @@ mod tests {
             PortalAction::CancelWithRefund.guarded_kind(),
             Some(ActionKind::MoneyOut)
         );
+    }
+
+    #[test]
+    fn a_read_only_grant_keeps_only_the_deposit_deductions_dispute() {
+        let kept: Vec<&str> = PortalAction::ALL
+            .into_iter()
+            .filter(|a| a.allowed_while_read_only())
+            .map(PortalAction::key)
+            .collect();
+        assert_eq!(kept, ["deposit_deduction_dispute"]);
     }
 
     #[test]

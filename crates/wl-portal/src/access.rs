@@ -10,6 +10,12 @@
 //! - [`PortalAccess::expire`], [`revoke`](PortalAccess::revoke),
 //!   [`suspend`](PortalAccess::suspend), [`reinstate`](PortalAccess::reinstate),
 //!   [`end`](PortalAccess::end), [`close`](PortalAccess::close).
+//! - [`PortalAccess::readable_grants`]: the `active` and `read_only` grants
+//!   of a user for a party, which may read its pages (BL-POR-02, BL-POR-03).
+//! - [`PortalAccess::contract_ended`]: the vertical's contract-end event
+//!   runs `end` on the party's grants of an audience (BL-POR-03); and
+//!   [`PortalAccess::close_due`], the daily close-after timer
+//!   (`POR.ACL.01`).
 //!
 //! `PartyBlocked` changes nothing here: the grants of a blocked party's users
 //! stay as they are, with no suspension and no message (`PTY.ACL.02`, no
@@ -115,6 +121,38 @@ impl PortalAccess {
             .await?
             .into_iter()
             .find(|grant| grant.is_active_on(day)))
+    }
+
+    /// The grants of `user` for the party `acting_for` that may read its
+    /// pages on `day`: `active` inside their dates, or `read_only`.
+    pub async fn readable_grants(
+        db: &Db,
+        user: i64,
+        acting_for: PartyId,
+        day: NaiveDate,
+    ) -> Result<Vec<AccessGrant>> {
+        Ok(AccessGrant::query()
+            .where_(AccessGrant::USER_ID.eq(user))
+            .where_(AccessGrant::PARTY_ID.eq(acting_for.0))
+            .where_(AccessGrant::STATUS.is_in([GrantStatus::Active, GrantStatus::ReadOnly]))
+            .order_by(AccessGrant::ID)
+            .get(db)
+            .await?
+            .into_iter()
+            .filter(|grant| grant.is_readable_on(day))
+            .collect())
+    }
+
+    /// The parties `user` may open the portal for on `day` (a readable
+    /// grant), in the order the grants were made, each once.
+    pub async fn parties_for(db: &Db, user: i64, day: NaiveDate) -> Result<Vec<PartyId>> {
+        let mut parties: Vec<PartyId> = Vec::new();
+        for grant in Self::grants_for(db, user).await? {
+            if grant.is_readable_on(day) && !parties.contains(&grant.party()) {
+                parties.push(grant.party());
+            }
+        }
+        Ok(parties)
     }
 
     /// Self-registration: a grant for `user`, directly `active`, with the
@@ -260,7 +298,24 @@ impl PortalAccess {
         if let Some(by) = by {
             require(by, permissions::USERS_MANAGE)?;
         }
-        let done = Self::run(state, grant, END, reason).await?;
+        Self::end_on(state, grant, reason, today()).await
+    }
+
+    /// `end` as the system, stamping `on` as the day the grant became
+    /// `read_only` (the close-after period counts from the day after).
+    /// Emits `PortalAccessReadOnly`.
+    pub async fn end_on(
+        state: &AppState,
+        grant: i64,
+        reason: Option<&str>,
+        on: NaiveDate,
+    ) -> Result<AccessGrant> {
+        let _ended = Self::run(state, grant, END, reason).await?;
+        AccessGrant::query()
+            .where_(AccessGrant::ID.eq(grant))
+            .update(&state.db, &[("ended_on", &on)])
+            .await?;
+        let done = AccessGrant::find_or_404(&state.db, grant).await?;
         state
             .emit(PortalAccessReadOnly {
                 grant,
@@ -291,4 +346,89 @@ impl PortalAccess {
             .await?;
         Ok(done)
     }
+
+    /// The vertical's contract-end event for `party` (01: lease
+    /// `terminated` or `force_terminated`, `POR.ACL.01`): every `active`
+    /// grant of the party in `audience` runs `end` on `on`; a `suspended`
+    /// one stays suspended and will be reinstated to `read_only`. The caller
+    /// decides that the relationship really ended (01: the party has no
+    /// running lease left). A grant already `read_only` or closed is not
+    /// touched, and nothing is ever reopened. Returns the grants ended.
+    pub async fn contract_ended(
+        state: &AppState,
+        party: PartyId,
+        audience: &str,
+        on: NaiveDate,
+        reason: &str,
+    ) -> Result<Vec<AccessGrant>> {
+        let grants = AccessGrant::query()
+            .where_(AccessGrant::PARTY_ID.eq(party.0))
+            .where_(AccessGrant::AUDIENCE.eq(audience))
+            .order_by(AccessGrant::ID)
+            .get(&state.db)
+            .await?;
+        let mut ended = Vec::new();
+        for grant in grants {
+            match grant.status {
+                GrantStatus::Active => {
+                    ended.push(Self::end_on(state, grant.id, Some(reason), on).await?);
+                }
+                GrantStatus::Suspended if grant.suspended_from.as_deref() == Some("active") => {
+                    let from = Some("read_only".to_owned());
+                    let why = Some(reason.to_owned());
+                    AccessGrant::query()
+                        .where_(AccessGrant::ID.eq(grant.id))
+                        .update(
+                            &state.db,
+                            &[
+                                ("suspended_from", &from),
+                                ("ended_on", &on),
+                                ("ended_reason", &why),
+                            ],
+                        )
+                        .await?;
+                }
+                _ => {}
+            }
+        }
+        Ok(ended)
+    }
+
+    /// The close-after timer (`POR.ACL.01`), run daily for `on`: every
+    /// `read_only` grant whose audience's period has passed is closed (day 1
+    /// is the day after `end`; a 90-day period closes on day 91), and the
+    /// portal user's sessions end. Returns the grants closed.
+    pub async fn close_due(state: &AppState, on: NaiveDate) -> Result<Vec<AccessGrant>> {
+        let grants = AccessGrant::query()
+            .where_(AccessGrant::STATUS.eq(GrantStatus::ReadOnly))
+            .order_by(AccessGrant::ID)
+            .get(&state.db)
+            .await?;
+        let mut closed = Vec::new();
+        for grant in grants {
+            let period = crate::audiences::close_after_days(&state.db, &grant.audience).await?;
+            // A grant ended before the day was stamped counts from its last
+            // change.
+            let stamped = AccessGrant {
+                ended_on: grant
+                    .ended_on
+                    .or(grant.updated_at.map(wl_kernel::documents::dubai_date)),
+                ..grant.clone()
+            };
+            if stamped.closes_on(period).is_none_or(|day| on < day) {
+                continue;
+            }
+            let done = Self::close(state, None, grant.id, Some(CLOSE_AFTER_REASON)).await?;
+            if let Some(user) = done.user_id
+                && let Some(user) = User::find(&state.db, user).await?
+            {
+                user.revoke_sessions(&state.db).await?;
+            }
+            closed.push(done);
+        }
+        Ok(closed)
+    }
 }
+
+/// The reason a grant closed by the close-after timer carries.
+pub const CLOSE_AFTER_REASON: &str = "close-after period passed";

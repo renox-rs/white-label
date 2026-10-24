@@ -2,12 +2,14 @@
 #![warn(missing_docs)]
 
 pub mod access;
+pub mod audiences;
 pub mod events;
 pub mod grants;
 pub mod guard;
 pub mod links;
 pub mod refusals;
 pub mod sections;
+pub mod settings;
 mod texts;
 pub mod users;
 
@@ -15,7 +17,8 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
-pub use access::{NewGrant, PortalAccess};
+pub use access::{CLOSE_AFTER_REASON, NewGrant, PortalAccess};
+pub use audiences::{Audience, AudienceDef, PortalRole, RoleDef};
 pub use events::{
     PortalAccessActivated, PortalAccessClosed, PortalAccessReadOnly, PortalAccessSuspended,
 };
@@ -23,8 +26,10 @@ pub use grants::{AccessGrant, GrantStatus};
 pub use guard::{LINK_USER, PortalAction, PortalGuard, Refused};
 pub use links::{SignedLinkUsed, SignedLinks};
 pub use refusals::RefusalLog;
-pub use sections::{PortalSection, SectionFuture, SectionRow, register_section};
-pub use texts::neutral;
+pub use sections::{
+    MenuEntry, PortalMenu, PortalSection, SectionFuture, SectionRow, register_section,
+};
+pub use texts::{neutral, read_only_notice};
 
 /// The module's permissions (wl-portal §6).
 pub mod permissions {
@@ -54,7 +59,21 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-portal/link.html",
         include_str!("../views/wl-portal/link.html"),
     ),
+    (
+        "wl-portal/home.html",
+        include_str!("../views/wl-portal/home.html"),
+    ),
+    (
+        "wl-portal/roles.html",
+        include_str!("../views/wl-portal/roles.html"),
+    ),
 ];
+
+/// The daily close-after timer (`POR.ACL.01`, BL-POR-03).
+pub const CLOSE_TASK: &str = "portal:close-read-only";
+/// When it runs, Asia/Dubai: just after midnight, so a grant closes on its
+/// day 91 at 00:00.
+pub const CLOSE_TASK_AT: &str = "00:05";
 
 /// The portal module. The host adds it with `.module(wl_portal::WlPortal)`
 /// when `client.toml` enables `portal`.
@@ -69,6 +88,7 @@ impl Module for WlPortal {
         refusals::routes()
             .merge(sections::routes())
             .merge(links::routes())
+            .merge(settings::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -78,10 +98,21 @@ impl Module for WlPortal {
     fn register(&self, app: &mut Registry) {
         app.model::<AccessGrant>();
         app.model::<RefusalLog>();
+        app.model::<Audience>();
+        app.model::<PortalRole>();
         renox::state_machine::register::<AccessGrant>();
         app.view_data::<refusals::RefusalLogPage>();
         app.view_data::<sections::SectionPage>();
         app.view_data::<links::LinkPage>();
+        app.view_data::<sections::HomePage>();
+        app.view_data::<settings::RolesPage>();
+        app.schedule()
+            .daily_at(CLOSE_TASK_AT, CLOSE_TASK, |state: AppState| async move {
+                PortalAccess::close_due(&state, wl_kernel::documents::today())
+                    .await
+                    .map(|_| ())
+            })
+            .timezone("Asia/Dubai");
         // Who acts for a party, for the verticals' notices (kernel `portal`).
         wl_kernel::portal::provide_portal_users(app, users::GrantUsers);
         app.templates(|env| {
@@ -106,6 +137,16 @@ impl Module for WlPortal {
                 .group("nav.admin")
                 .order(46)
                 .permission(permissions::BLOCK_REASON_VIEW),
+        );
+        // The portal roles and their permissions (BL-POR-02); the label is
+        // the app's `nav.portal_roles` text.
+        app.nav(
+            "app",
+            NavLink::route("wl_portal.roles", "nav.portal_roles")
+                .icon("users")
+                .group("nav.admin")
+                .order(47)
+                .permission(permissions::USERS_MANAGE),
         );
     }
 }

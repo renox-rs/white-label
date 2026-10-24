@@ -1,0 +1,22 @@
+{#- wl-portal: the portal roles of each audience and their portal permissions
+    (BL-POR-02), seeded by the vertical; the company admin changes a role's
+    permissions here. Replace it with resources/views/wl-portal/roles.html in
+    the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['roles.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['roles.title']" :subtitle="tx['roles.subtitle']"/>
+    <rx-table :rows="role_rows" as="role" :key="role.id" :caption="tx['roles.title']" card>
+      <rx-column :label="tx['roles.audience']">{{ role.audience }}</rx-column>
+      <rx-column :label="tx['roles.role']">{{ role.label }} ({{ role.key }})</rx-column>
+      <rx-column :label="tx['roles.permissions']">{{ role.permissions }}</rx-column>
+      <rx-column :label="tx['roles.close_after']">{{ role.close_after_days }}</rx-column>
+      <rx-row-actions>
+        <rx-action-sheet :id="'portal-role-' ~ role.id" :label="tx['roles.edit']" :action="route('wl_portal.roles.update', role.id)"
+                         :title="tx['roles.edit'] ~ ': ' ~ role.label" :submit-label="tx['roles.edit']" icon="pencil">
+          <rx-textarea name="permissions" :label="tx['roles.permissions']" :value="role.permissions" :hint="tx['roles.edit_hint']" :id="'portal-role-permissions-' ~ role.id"/>
+        </rx-action-sheet>
+      </rx-row-actions>
+      <rx-slot name="empty"><rx-empty :title="tx['roles.empty']" icon="shield"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

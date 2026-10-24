@@ -17,9 +17,10 @@
 //! `reinstate_read_only` to `read_only`); each guard checks the state the
 //! suspension came from.
 //!
-//! The base is the lifecycle only. The invitation (token, expiry mail), the
-//! portal roles' permissions, login methods and the close-after timer are
-//! other issues; a grant keeps its roles as keys.
+//! The invitation (token, expiry mail) and login methods are other issues. A
+//! grant keeps its roles as keys; their permissions are the audience's
+//! [`crate::audiences::PortalRole`] rows (BL-POR-02). `end` stamps the day
+//! (`ended_on`) the close-after timer counts from (BL-POR-03).
 
 use renox::chrono::NaiveDate;
 use renox::db::{DateTime, now};
@@ -109,6 +110,9 @@ pub struct AccessGrant {
     pub suspend_reason: Option<String>,
     /// Why it ended or closed.
     pub ended_reason: Option<String>,
+    /// The Asia/Dubai day it became `read_only` (`end`); the close-after
+    /// period counts from the day after (BL-POR-03, `POR.ACL.01`).
+    pub ended_on: Option<NaiveDate>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -136,6 +140,28 @@ impl AccessGrant {
         self.status == GrantStatus::Active
             && self.valid_from <= day
             && self.valid_until.is_none_or(|until| day <= until)
+    }
+
+    /// Whether the user may read the party's pages on `day` with this grant:
+    /// it is active inside its dates, or `read_only` (the relationship ended;
+    /// history and documents stay readable until it closes, BL-POR-03).
+    pub fn is_readable_on(&self, day: NaiveDate) -> bool {
+        self.is_active_on(day) || (self.status == GrantStatus::ReadOnly && self.valid_from <= day)
+    }
+
+    /// The first day a `read_only` grant is closed, given the audience's
+    /// close-after period: day 1 is the day after `end`, so a period of 90
+    /// days closes it on day 91 (`POR.ACL.01`); a period of 0 closes it at
+    /// once (§4: a guardian at the dependant's majority). `None` before
+    /// `end`.
+    pub fn closes_on(&self, close_after_days: i64) -> Option<NaiveDate> {
+        self.ended_on.map(|ended| {
+            if close_after_days <= 0 {
+                ended
+            } else {
+                ended + renox::chrono::Duration::days(close_after_days + 1)
+            }
+        })
     }
 }
 
@@ -389,6 +415,28 @@ mod tests {
             ..grant
         };
         assert!(open_ended.is_active_on(day(12, 31)));
+    }
+
+    #[test]
+    fn a_read_only_grant_reads_and_closes_on_day_91() {
+        let grant = AccessGrant {
+            status: GrantStatus::ReadOnly,
+            valid_from: day(1, 1),
+            ended_on: Some(day(12, 31)),
+            ..AccessGrant::default()
+        };
+        assert!(grant.is_readable_on(day(12, 31)));
+        assert!(!grant.is_active_on(day(12, 31)));
+        assert_eq!(
+            grant.closes_on(90),
+            NaiveDate::from_ymd_opt(2027, 4, 1)
+        );
+        assert_eq!(grant.closes_on(0), Some(day(12, 31)));
+        let closed = AccessGrant {
+            status: GrantStatus::Closed,
+            ..grant
+        };
+        assert!(!closed.is_readable_on(day(12, 31)));
     }
 
     #[test]

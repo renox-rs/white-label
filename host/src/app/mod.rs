@@ -37,6 +37,7 @@ pub mod manufacturing_seed;
 pub mod manufacturing_settings;
 pub mod menu;
 pub mod negative_flow;
+pub mod property_portal;
 pub mod property_seed;
 mod property_work;
 pub mod roles;

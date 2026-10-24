@@ -230,6 +230,7 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     app::manpower_portal::register(&client_app);
     // The kernel goes first: its seeder creates the legal entities the other
     // modules' demo data needs, and seeders run in the order modules mount.
+    let portal_on = manifest.enabled().contains(&"portal");
     let name = config.client.name.clone();
     let demo_client = config.clone();
     let mut app = wl_kernel::apply(base(), config)?;
@@ -248,6 +249,11 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // modules' own seeds (BL-PRP-27).
     if client_app == "property" {
         app = app.module(app::property_seed::PropertySeed);
+        // The tenant portal: its audience and roles, and the lease
+        // terminations that turn a grant read-only (BL-POR-02, BL-POR-03).
+        if portal_on {
+            app = app.module(app::property_portal::PropertyPortal);
+        }
         // The demo company, after the installs: `property:demo`, and `db:seed`
         // in local (never in production).
         app = app.module(app::demo_data::DemoSeed::new(demo_client.clone()));

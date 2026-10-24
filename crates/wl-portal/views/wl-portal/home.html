@@ -1,0 +1,30 @@
+{#- wl-portal: the portal home of one party (BL-POR-02): the menu of the
+    sections the user's grants allow, in order, the parties to switch to,
+    and the notice of a read-only grant (BL-POR-03). Nothing here reads the
+    party's block (PTY.ACL.02). Replace it with
+    resources/views/wl-portal/home.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['home.title']">
+  <rx-stack>
+    <rx-page-header :title="party_name" :subtitle="tx['home.title']"/>
+    <rx-alert rx-if="read_only_notice" kind="warning" :message="read_only_notice"/>
+    <rx-card rx-if="party_links | length > 1">
+      <rx-stack>
+        <strong>{{ tx['home.parties'] }}</strong>
+        <rx-row>
+          <rx-link-button rx-for="link in party_links" :href="link.url" :label="link.name" variant="secondary"/>
+        </rx-row>
+      </rx-stack>
+    </rx-card>
+    <rx-card>
+      <rx-stack>
+        <strong>{{ tx['home.menu'] }}</strong>
+        <nav aria-label="{{ tx['home.menu'] }}">
+          <rx-stack>
+            <a rx-for="entry in menu_entries" href="{{ entry.url }}" data-section="{{ entry.key }}">{{ entry.label }}</a>
+          </rx-stack>
+        </nav>
+        <rx-empty rx-if="not menu_entries" :title="tx['home.empty']" icon="inbox"/>
+      </rx-stack>
+    </rx-card>
+  </rx-stack>
+</rx-page>

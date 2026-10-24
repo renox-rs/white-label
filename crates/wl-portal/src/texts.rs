@@ -12,6 +12,9 @@ use renox::prelude::*;
 /// (wl-portal §7, the setting *Neutral text*).
 pub const NEUTRAL_KEY: &str = "wl_portal.blocked.neutral";
 
+/// The key of the notice of a `read_only` grant (BL-POR-03).
+pub const READ_ONLY_KEY: &str = "wl_portal.read_only.notice";
+
 /// Every key the package uses, with its English text.
 const TEXTS: &[(&str, &str)] = &[
     (
@@ -59,6 +62,36 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_portal.action.cancel_without_refund",
         "Cancellation without a refund",
     ),
+    ("wl_portal.action.dispute", "Dispute"),
+    (
+        "wl_portal.action.deposit_deduction_dispute",
+        "Dispute of deposit deductions",
+    ),
+    (
+        READ_ONLY_KEY,
+        "Your access is read-only since :date.",
+    ),
+    ("wl_portal.home.title", "Your portal"),
+    ("wl_portal.home.menu", "Menu"),
+    ("wl_portal.home.empty", "Nothing to show yet"),
+    ("wl_portal.home.parties", "Acting for"),
+    ("wl_portal.home.switch", "Switch"),
+    ("wl_portal.roles.title", "Portal roles"),
+    (
+        "wl_portal.roles.subtitle",
+        "What each portal role of an audience may see and do. Changes apply at the next page a portal user opens.",
+    ),
+    ("wl_portal.roles.audience", "Audience"),
+    ("wl_portal.roles.role", "Role"),
+    ("wl_portal.roles.permissions", "Portal permissions"),
+    ("wl_portal.roles.close_after", "Closes after (days)"),
+    ("wl_portal.roles.edit", "Change permissions"),
+    (
+        "wl_portal.roles.edit_hint",
+        "Portal permissions separated by commas, e.g. portal.invoices.view, portal.documents.view.",
+    ),
+    ("wl_portal.roles.saved", "Permissions saved"),
+    ("wl_portal.roles.empty", "No portal role yet"),
     (
         "wl_portal.grants.refused.suspended_from",
         "The grant was not suspended from :from.",
@@ -96,6 +129,13 @@ pub(crate) fn t_with(lang: &Lang, key: &str, params: &[(&str, &dyn Display)]) ->
 /// in the user's language: the same whatever the reason.
 pub fn neutral(lang: &Lang) -> String {
     t(lang, NEUTRAL_KEY)
+}
+
+/// The notice of a `read_only` grant: "Your access is read-only since
+/// 31 Dec 2026." (BL-POR-03).
+pub fn read_only_notice(lang: &Lang, since: renox::chrono::NaiveDate) -> String {
+    let date = since.format("%-d %b %Y").to_string();
+    t_with(lang, READ_ONLY_KEY, &[("date", &date)])
 }
 
 /// Every text of the package in `lang`, keyed without the `wl_portal.`

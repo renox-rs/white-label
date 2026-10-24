@@ -491,3 +491,131 @@ pub async fn boot_real() -> Booted {
         _views: views,
     }
 }
+
+/// The tenant audience of 01 as the vertical seeds it (01 §3.1, BL-POR-02).
+pub const TENANT: wl_portal::AudienceDef = wl_portal::AudienceDef {
+    key: "tenant",
+    label: "Tenants",
+    close_after_days: 90,
+    roles: &[
+        wl_portal::RoleDef {
+            key: "primary_contact",
+            label: "Primary contact",
+            permissions: &[
+                "portal.leases.view",
+                "portal.invoices.view",
+                "portal.invoices.pay",
+                "portal.documents.view",
+                "portal.requests.create",
+                "portal.users.manage",
+            ],
+        },
+        wl_portal::RoleDef {
+            key: "finance_contact",
+            label: "Finance contact",
+            permissions: &["portal.invoices.view", "portal.invoices.pay"],
+        },
+    ],
+};
+
+/// A tenant section as a module registers it: its rows name the party, so
+/// a test sees whose rows a page lists.
+pub struct Stub {
+    /// The English title.
+    pub title: &'static str,
+    /// The audience.
+    pub audience: &'static str,
+    /// The portal permission it needs.
+    pub permission: &'static str,
+    /// Its place in the menu.
+    pub order: i32,
+}
+
+impl wl_portal::PortalSection for Stub {
+    fn title(&self) -> String {
+        self.title.to_owned()
+    }
+
+    fn rows<'a>(
+        &'a self,
+        _state: &'a AppState,
+        party: PartyId,
+    ) -> wl_portal::SectionFuture<'a, Vec<wl_portal::SectionRow>> {
+        let label = format!("{} of party {}", self.title, party.0);
+        Box::pin(async move {
+            Ok::<Vec<wl_portal::SectionRow>, Error>(vec![wl_portal::SectionRow::new(
+                &label, "Open",
+            )])
+        })
+    }
+
+    fn audience(&self) -> Option<&str> {
+        Some(self.audience)
+    }
+
+    fn permission(&self) -> Option<&str> {
+        Some(self.permission)
+    }
+
+    fn order(&self) -> i32 {
+        self.order
+    }
+}
+
+/// Registers the six tenant sections of 01 (lease, invoices, cheques,
+/// deposit, documents, requests) and an owner section, in the process-wide
+/// registry; registering again changes nothing.
+pub fn register_sections() {
+    for (key, title, audience, permission, order) in [
+        ("requests", "Requests", "tenant", "portal.requests.create", 60),
+        ("lease", "Lease", "tenant", "portal.leases.view", 10),
+        ("documents", "Documents", "tenant", "portal.documents.view", 50),
+        ("invoices", "Invoices", "tenant", "portal.invoices.view", 20),
+        ("deposit", "Deposit", "tenant", "portal.leases.view", 40),
+        ("cheques", "Cheques", "tenant", "portal.leases.view", 30),
+        ("statements", "Owner statements", "owner", "portal.statements.view", 5),
+    ] {
+        wl_portal::register_section(
+            key,
+            Stub {
+                title,
+                audience,
+                permission,
+                order,
+            },
+        );
+    }
+}
+
+impl Booted {
+    /// Seeds the tenant audience and registers the sections.
+    pub async fn with_tenant_portal(&self) {
+        wl_portal::audiences::seed(self.db(), &TENANT).await.unwrap();
+        register_sections();
+    }
+
+    /// A portal user `name` with an `active` tenant grant for `party` with
+    /// `roles`.
+    pub async fn tenant_user(&self, name: &str, party: i64, roles: &[&str]) -> (User, AccessGrant) {
+        let user = self.user(name, &[]).await;
+        let grant = self.grant(&user, party, roles).await;
+        (user, grant)
+    }
+
+    /// Another `active` tenant grant of `user` for `party` with `roles`.
+    pub async fn grant(&self, user: &User, party: i64, roles: &[&str]) -> AccessGrant {
+        PortalAccess::register(
+            self.state(),
+            user.id,
+            NewGrant::new(PartyId(party), PartyId(party), "tenant", roles),
+        )
+        .await
+        .unwrap()
+    }
+
+    /// `user` opens `path`.
+    pub async fn get_as(&self, user: &User, path: &str) -> renox::testing::TestResponse {
+        self.app.acting_as(user);
+        self.app.get(path).await
+    }
+}

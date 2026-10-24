@@ -2,11 +2,16 @@
 //! engagement of its company with its status only, *On hold* or *Ended*
 //! included, and nothing about a block. The rows are the app's
 //! (`accounting::portal`); the host turns them into a wl-portal section,
-//! because the app does not depend on the portal crate.
+//! because the app does not depend on the portal crate. Each section is for
+//! the audience `client` (BL-POR-02), so it never shows in another
+//! audience's menu.
 
 use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_portal::{PortalSection, SectionFuture, SectionRow, register_section};
+
+/// The audience of the accounting firm's client users.
+const CLIENT_AUDIENCE: &str = "client";
 
 /// The engagements section.
 pub struct Engagements;
@@ -14,6 +19,10 @@ pub struct Engagements;
 impl PortalSection for Engagements {
     fn title(&self) -> String {
         accounting::portal::title()
+    }
+
+    fn audience(&self) -> Option<&str> {
+        Some(CLIENT_AUDIENCE)
     }
 
     fn rows<'a>(
@@ -42,6 +51,10 @@ impl PortalSection for Returns {
         accounting::portal::returns_title()
     }
 
+    fn audience(&self) -> Option<&str> {
+        Some(CLIENT_AUDIENCE)
+    }
+
     fn rows<'a>(
         &'a self,
         state: &'a AppState,
@@ -66,6 +79,10 @@ pub struct KpiPacks;
 impl PortalSection for KpiPacks {
     fn title(&self) -> String {
         accounting::portal::kpi_title()
+    }
+
+    fn audience(&self) -> Option<&str> {
+        Some(CLIENT_AUDIENCE)
     }
 
     fn rows<'a>(

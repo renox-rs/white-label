@@ -4,7 +4,8 @@
     resources/views/wl-portal/section.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="title">
   <rx-stack>
-    <rx-page-header :title="title"/>
+    <rx-page-header :title="title" :back="home_url" :back-label="tx['home.title']"/>
+    <rx-alert rx-if="read_only_notice" kind="warning" :message="read_only_notice"/>
     <rx-table :rows="rows" as="row" :key="row.label" :caption="title" card>
       <rx-column :label="tx['section.item']">{{ row.label }}</rx-column>
       <rx-column :label="tx['section.status']">{{ row.status }}</rx-column>
