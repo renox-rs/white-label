@@ -132,17 +132,20 @@ pub(crate) fn options<'a>(
 }
 
 /// The tickets grid: search on the number and title, filters by status,
-/// priority, category and assignee.
-pub fn grid(lang: &Lang) -> Grid {
-    grid_with(&texts_in(lang))
+/// priority, category and assignee; the export menu for `can_export`.
+pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+    grid_with(&texts_in(lang), can_export)
 }
 
 /// [`grid`] with the texts of `t`.
-fn grid_with(t: Text<'_>) -> Grid {
+fn grid_with(t: Text<'_>, can_export: bool) -> Grid {
     let statuses = options(t, "status", TicketStatus::ALL.iter().map(|s| s.as_str()));
     let priorities = options(t, "priority", Priority::ALL.iter().map(|p| p.as_str()));
-    Grid::new("wl-ticketing")
+    let grid = Grid::new("wl-ticketing")
         .title(&t("title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::text("number", &t("fields.number"))
                 .frozen()
@@ -211,7 +214,8 @@ fn grid_with(t: Text<'_>) -> Grid {
         .sort_by("-created_at")
         .row_url("/tickets/{id}")
         .cards_on_mobile()
-        .empty_state(&t("empty"), Some(&t("empty_hint")))
+        .empty_state(&t("empty"), Some(&t("empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list page needs.
@@ -223,13 +227,13 @@ pub(crate) struct IndexPage {
     tickets: GridPage<Ticket>,
 }
 
-/// `GET /tickets`: the grid.
+/// `GET /tickets`: the grid, or its export (`?export=csv|xlsx|print`, with `tickets.manage`).
 async fn index(
     State(state): State<AppState>,
     lang: Lang,
     user: AuthUser,
     request: GridRequest,
-) -> Result<View> {
+) -> Result<Response> {
     // The tickets about the buildings (their units, leases) of the user's scope.
     let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
     let query = reach
@@ -240,12 +244,21 @@ async fn index(
             "subject_id",
         )
         .await?;
-    let tickets = grid(&lang).page(query, &request).await?;
+    let can_export = user.has_permission(permissions::MANAGE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let tickets = grid.page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         can_create: user.has_permission(permissions::CREATE),
         tickets,
-    }))
+    })
+    .into_response())
 }
 
 /// What the new-ticket page needs.
@@ -1287,7 +1300,7 @@ mod tests {
 
     #[test]
     fn the_grid_lists_the_ticket_columns_and_statuses() {
-        let grid = grid_with(&english_text);
+        let grid = grid_with(&english_text, false);
         let keys: Vec<&str> = grid.columns().iter().map(Column::key).collect();
         assert_eq!(
             keys,

@@ -12,11 +12,12 @@
 use std::collections::BTreeMap;
 
 use renox::axum::extract::Query;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 
-use crate::config::Category;
 use crate::flags::ComplianceFlag;
 use crate::permissions;
 use crate::texts;
@@ -47,29 +48,55 @@ pub struct FlagQuery {
     pub subject_id: Option<i64>,
 }
 
-/// One open flag as the report shows it.
-#[derive(Serialize, Debug, Clone)]
-pub struct FlagRow {
-    /// The subject, `property.building_system #4`.
-    pub subject: String,
-    /// The category's name.
-    pub category: String,
-    /// The reason's label.
-    pub reason: String,
-    /// The reason's key.
-    pub reason_key: String,
-    /// When it was raised, Asia/Dubai.
-    pub raised: String,
-    /// Whole days open, e.g. `3 days`.
-    pub age: String,
-    /// The number of the visit ticket of a `visit_missed` flag.
-    pub visit: String,
-    /// The page of that visit, when there is one.
-    pub visit_id: Option<i64>,
-    /// The service contract, when the flag is about one.
-    pub contract: String,
-    /// The page of that contract, when there is one.
-    pub contract_id: Option<i64>,
+/// The compliance flags grid: search on the subject, filters by category,
+/// reason and raised date, the oldest first. The visit and contract links
+/// and the age are drawn by the template (`custom`).
+pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| texts::t(lang, &format!("wl_ticketing.{key}"));
+    let reasons: Vec<(String, String)> = ["no_contract", "visit_missed", "vendor_document_expired"]
+        .into_iter()
+        .map(|key| (key.to_owned(), t(&format!("flags.reason_{key}"))))
+        .collect();
+    let category_sql = if lang.locale == "ar" {
+        "(SELECT COALESCE(NULLIF(\"name_ar\", ''), \"name_en\") FROM \"wl_ticketing_categories\" WHERE \"id\" = {T}.\"category_id\")"
+    } else {
+        "(SELECT \"name_en\" FROM \"wl_ticketing_categories\" WHERE \"id\" = {T}.\"category_id\")"
+    };
+    let grid = Grid::new("wl-ticketing-compliance-flags")
+        .title(&t("flags.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("subject", &t("flags.subject"))
+                .computed("{T}.\"subject_type\" || ' #' || CAST({T}.\"subject_id\" AS TEXT)")
+                .frozen()
+                .mobile()
+                .searchable(),
+        )
+        .column(
+            Column::text("category", &t("flags.category"))
+                .computed(category_sql)
+                .searchable()
+                .mobile(),
+        )
+        .column(
+            Column::select("reason", &t("flags.reason"), reasons)
+                .badges(&[
+                    ("no_contract", "danger"),
+                    ("visit_missed", "danger"),
+                    ("vendor_document_expired", "danger"),
+                ])
+                .mobile(),
+        )
+        .column(Column::datetime("raised_at", &t("flags.raised")))
+        .column(Column::custom("age", &t("flags.age")).mobile())
+        .column(Column::custom("visit", &t("flags.visit")))
+        .column(Column::custom("contract", &t("flags.contract")))
+        .sort_by("raised_at,id")
+        .cards_on_mobile()
+        .empty_state(&t("flags.empty"), Some(&t("flags.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the report needs.
@@ -77,16 +104,18 @@ pub struct FlagRow {
 #[view(template = "wl-ticketing/compliance_flags.html")]
 pub(crate) struct FlagsPage {
     tx: Texts,
-    flags: Vec<FlagRow>,
+    flags: GridPage<ComplianceFlag>,
 }
 
-/// `GET /compliance-flags`: the open flags, oldest first.
+/// `GET /compliance-flags`: the open flags, oldest first (or the export,
+/// with `tickets.manage`).
 async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Query(query): Query<FlagQuery>,
-) -> Result<View> {
+    request: GridRequest,
+) -> Result<Response> {
     let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
     let subject = match (query.subject_type, query.subject_id) {
         (Some(kind), Some(id)) if !kind.trim().is_empty() => Some(Subject::new(kind.trim(), id)),
@@ -96,60 +125,56 @@ async fn index(
         Some(subject) => ComplianceFlag::open_for(&state.db, subject).await?,
         None => ComplianceFlag::open(&state.db).await?,
     };
-    let today = wl_kernel::documents::dubai_date(renox::db::now());
-    let mut categories: BTreeMap<i64, String> = BTreeMap::new();
-    let mut rows = Vec::new();
+    // Only the flags on the subjects of the user's scope.
+    let mut ids = Vec::new();
     for flag in flags {
-        // Only the flags on the subjects of the user's scope.
-        if !reach
+        if reach
             .contains(
                 &state.db,
                 &Subject::new(&flag.subject_type, flag.subject_id),
             )
             .await?
         {
-            continue;
+            ids.push(flag.id);
         }
-        if let std::collections::btree_map::Entry::Vacant(slot) = categories.entry(flag.category_id)
-        {
-            let name = Category::find(&state.db, flag.category_id)
-                .await?
-                .map(|c| c.name(&lang.locale).to_owned())
-                .unwrap_or_default();
-            slot.insert(name);
-        }
-        let visit = match flag.ticket_id {
-            Some(id) => Ticket::find(&state.db, id).await?.map(|t| t.number),
-            None => None,
-        };
-        let age = (today - wl_kernel::documents::dubai_date(flag.raised_at)).num_days();
-        rows.push(FlagRow {
-            subject: format!("{} #{}", flag.subject_type, flag.subject_id),
-            category: categories
-                .get(&flag.category_id)
-                .cloned()
-                .unwrap_or_default(),
-            reason: texts::t(
-                &lang,
-                &format!("wl_ticketing.flags.reason_{}", flag.reason.as_str()),
-            ),
-            reason_key: flag.reason.as_str().to_owned(),
-            raised: wl_kernel::calendar::calendar(&state)
-                .local(flag.raised_at)
-                .format("%d %b %Y")
-                .to_string(),
-            age: texts::t(&lang, "wl_ticketing.flags.days").replace(":count", &age.to_string()),
-            visit: visit.unwrap_or_default(),
-            visit_id: flag.ticket_id,
-            contract: flag
-                .contract_id
-                .map(|c| format!("#{c}"))
-                .unwrap_or_default(),
-            contract_id: flag.contract_id,
-        });
     }
+    let can_export = user.has_permission(permissions::MANAGE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    let visible =
+        ComplianceFlag::query().where_(ComplianceFlag::ID.is_in(if ids.is_empty() {
+            vec![-1]
+        } else {
+            ids
+        }));
+    if let Some(file) = grid.export(visible.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(visible, &request).await?;
+    let today = wl_kernel::documents::dubai_date(renox::db::now());
+    let mut visits: BTreeMap<i64, String> = BTreeMap::new();
+    for flag in page.items() {
+        if let Some(id) = flag.ticket_id
+            && let Some(ticket) = Ticket::find(&state.db, id).await?
+        {
+            visits.insert(flag.id, ticket.number);
+        }
+    }
+    let page = page.extend(|flag| {
+        let age = (today - wl_kernel::documents::dubai_date(flag.raised_at)).num_days();
+        json!({
+            "age": texts::t(&lang, "wl_ticketing.flags.days").replace(":count", &age.to_string()),
+            "visit": visits.get(&flag.id),
+            "visit_id": flag.ticket_id,
+            "contract": flag.contract_id.map(|c| format!("#{c}")),
+            "contract_id": flag.contract_id,
+        })
+    });
     Ok(View::typed(FlagsPage {
         tx: texts::all(&lang),
-        flags: rows,
-    }))
+        flags: page,
+    })
+    .into_response())
 }

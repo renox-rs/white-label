@@ -1,50 +1,53 @@
-{#- wl-ticketing: the ticket categories, with rename, turn off and delete.
-    A platform category (the ones other modules open tickets in) can be
-    renamed only. Replace it with resources/views/wl-ticketing/categories.html
-    in the app. -#}
+{#- wl-ticketing: the ticket categories, a renox::grid (search, filters on
+    charging, compliance, contract end and availability, export). The buttons
+    of the Actions column open the rename, charging, compliance, contract-end,
+    availability and delete sheets of the category; they sit after the grid
+    and draw nothing until opened. A platform category (the ones other
+    modules open tickets in) can be renamed only. Replace it with
+    resources/views/wl-ticketing/categories.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['categories.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['categories.title']" :subtitle="tx['categories.subtitle']"/>
-    <rx-table :rows="categories" as="category" :key="category.key" :caption="tx['categories.title']" card>
-      <rx-column :label="tx['categories.name']">{{ category.name_en }} <rx-badge rx-if="category.platform" kind="warning" :text="tx['categories.platform']"/> <rx-badge rx-if="category.confidential" kind="error" :text="tx['fields.confidential']"/> <rx-badge rx-if="not category.active" kind="info" :text="tx['categories.off']"/></rx-column>
-      <rx-column :label="tx['categories.name_ar']" hide-narrow>{{ category.name_ar or "—" }}</rx-column>
-      <rx-column :label="tx['categories.key']" hide-narrow>{{ category.key }}</rx-column>
-      <rx-column :label="tx['categories.assignee_role']" hide-narrow>{{ category.assignee_role or "—" }}</rx-column>
-      <rx-column :label="tx['categories.charging']" hide-narrow>{{ category.charging_label }}</rx-column>
-      <rx-column :label="tx['categories.compliance']" hide-narrow><rx-badge rx-if="category.compliance_critical" kind="warning" :text="tx['categories.critical']"/></rx-column>
-      <rx-column :label="tx['categories.contract_end']" hide-narrow>{{ category.contract_end_label }}</rx-column>
-      <rx-row-actions>
-        <rx-action-sheet :id="'rename-' ~ category.key" :label="tx['categories.rename']" :action="route('wl_ticketing.category_rename', category.key)"
-                         :title="tx['categories.rename_title']" :submit-label="tx['categories.rename']" icon="pencil">
-          <rx-input name="name_en" :label="tx['categories.name']" :value="category.name_en" :id="'rename-en-' ~ category.key" required/>
-          <rx-input name="name_ar" :label="tx['categories.name_ar']" :value="category.name_ar" dir="rtl" :id="'rename-ar-' ~ category.key"/>
-        </rx-action-sheet>
-        <rx-action-sheet :id="'charging-' ~ category.key" :label="tx['categories.charging_change']" :action="route('wl_ticketing.category_charging', category.key)"
-                         :title="tx['categories.charging_title']" :description="tx['categories.charging_description']" :submit-label="tx['categories.charging_change']" icon="receipt">
-          <rx-select name="chargeable" :label="tx['categories.charging']" :options="chargeable_options" :selected="'1' if category.chargeable else '0'" :id="'charging-select-' ~ category.key"/>
-          <rx-select name="invoice_on" :label="tx['categories.invoice_on']" :options="invoice_on_options" :selected="category.invoice_on" :id="'invoice-on-select-' ~ category.key"/>
-        </rx-action-sheet>
-        <rx-action-sheet :id="'compliance-' ~ category.key" :label="tx['categories.compliance_change']" :action="route('wl_ticketing.category_compliance', category.key)"
-                         :title="tx['categories.compliance_title']" :description="tx['categories.compliance_description']" :submit-label="tx['categories.compliance_change']" icon="shield">
-          <rx-select name="compliance_critical" :label="tx['categories.compliance']" :options="critical_options" :selected="'1' if category.compliance_critical else '0'" :id="'compliance-select-' ~ category.key"/>
-        </rx-action-sheet>
-        <rx-action-sheet :id="'contract-end-' ~ category.key" :label="tx['categories.contract_end_change']" :action="route('wl_ticketing.category_contract_end', category.key)"
-                         :title="tx['categories.contract_end_title']" :description="tx['categories.contract_end_description']" :submit-label="tx['categories.contract_end_change']" icon="calendar">
-          <rx-select name="reassign_only" :label="tx['categories.contract_end']" :options="contract_end_options" :selected="'1' if category.reassign_only else '0'" :id="'contract-end-select-' ~ category.key"/>
-        </rx-action-sheet>
-        <template rx-if="category.platform">
-          <span>{{ tx['categories.platform_hint'] }}</span>
-        </template>
-        <template rx-else>
-          <rx-action-sheet :id="'active-' ~ category.key" :label="tx['categories.status_change']" :action="route('wl_ticketing.category_active', category.key)"
-                           :title="tx['categories.status_title']" :submit-label="tx['categories.status_change']" icon="refresh">
-            <rx-select name="active" :label="tx['categories.status']" :options="status_options" :selected="'1' if category.active else '0'" :id="'active-select-' ~ category.key"/>
-          </rx-action-sheet>
-          <rx-confirm :id="'delete-' ~ category.key" :label="tx['categories.delete']" :action="route('wl_ticketing.category_destroy', category.key)"
-                      :title="tx['categories.delete_title']" :message="tx['categories.delete_message']" :confirm-label="tx['categories.delete']" :cancel-label="tx['cancel']" icon="trash"/>
-        </template>
-      </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['categories.empty']" icon="tag"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['categories.title']" :subtitle="tx['categories.subtitle']"/>
+  <rx-grid :page="categories">
+    <template rx-if="column.key == 'actions'">
+      <rx-open-button :id="'rename-' ~ row.key" :label="tx['categories.rename']" size="sm" icon="pencil"/>
+      <rx-open-button :id="'charging-' ~ row.key" :label="tx['categories.charging_change']" size="sm" icon="receipt"/>
+      <rx-open-button :id="'compliance-' ~ row.key" :label="tx['categories.compliance_change']" size="sm" icon="shield"/>
+      <rx-open-button :id="'contract-end-' ~ row.key" :label="tx['categories.contract_end_change']" size="sm" icon="calendar"/>
+      <template rx-if="row.platform">
+        <span class="rx-subtitle">{{ tx['categories.platform_hint'] }}</span>
+      </template>
+      <template rx-else>
+        <rx-open-button :id="'active-' ~ row.key" :label="tx['categories.status_change']" size="sm" icon="refresh"/>
+        <rx-open-button :id="'delete-' ~ row.key" :label="tx['categories.delete']" size="sm" icon="trash"/>
+      </template>
+    </template>
+  </rx-grid>
+  <template rx-for="category in sheets">
+    <rx-action-sheet :id="'rename-' ~ category.key" :label="tx['categories.rename']" :action="route('wl_ticketing.category_rename', category.key)"
+                     :title="tx['categories.rename_title']" :submit-label="tx['categories.rename']" icon="pencil" :button="false">
+      <rx-input name="name_en" :label="tx['categories.name']" :value="category.name_en" :id="'rename-en-' ~ category.key" required/>
+      <rx-input name="name_ar" :label="tx['categories.name_ar']" :value="category.name_ar" dir="rtl" :id="'rename-ar-' ~ category.key"/>
+    </rx-action-sheet>
+    <rx-action-sheet :id="'charging-' ~ category.key" :label="tx['categories.charging_change']" :action="route('wl_ticketing.category_charging', category.key)"
+                     :title="tx['categories.charging_title']" :description="tx['categories.charging_description']" :submit-label="tx['categories.charging_change']" icon="receipt" :button="false">
+      <rx-select name="chargeable" :label="tx['categories.charging']" :options="chargeable_options" :selected="'1' if category.chargeable else '0'" :id="'charging-select-' ~ category.key"/>
+      <rx-select name="invoice_on" :label="tx['categories.invoice_on']" :options="invoice_on_options" :selected="category.invoice_on" :id="'invoice-on-select-' ~ category.key"/>
+    </rx-action-sheet>
+    <rx-action-sheet :id="'compliance-' ~ category.key" :label="tx['categories.compliance_change']" :action="route('wl_ticketing.category_compliance', category.key)"
+                     :title="tx['categories.compliance_title']" :description="tx['categories.compliance_description']" :submit-label="tx['categories.compliance_change']" icon="shield" :button="false">
+      <rx-select name="compliance_critical" :label="tx['categories.compliance']" :options="critical_options" :selected="'1' if category.compliance_critical else '0'" :id="'compliance-select-' ~ category.key"/>
+    </rx-action-sheet>
+    <rx-action-sheet :id="'contract-end-' ~ category.key" :label="tx['categories.contract_end_change']" :action="route('wl_ticketing.category_contract_end', category.key)"
+                     :title="tx['categories.contract_end_title']" :description="tx['categories.contract_end_description']" :submit-label="tx['categories.contract_end_change']" icon="calendar" :button="false">
+      <rx-select name="reassign_only" :label="tx['categories.contract_end']" :options="contract_end_options" :selected="'1' if category.reassign_only else '0'" :id="'contract-end-select-' ~ category.key"/>
+    </rx-action-sheet>
+    <template rx-if="not category.platform">
+      <rx-action-sheet :id="'active-' ~ category.key" :label="tx['categories.status_change']" :action="route('wl_ticketing.category_active', category.key)"
+                       :title="tx['categories.status_title']" :submit-label="tx['categories.status_change']" icon="refresh" :button="false">
+        <rx-select name="active" :label="tx['categories.status']" :options="status_options" :selected="'1' if category.active else '0'" :id="'active-select-' ~ category.key"/>
+      </rx-action-sheet>
+      <rx-confirm :id="'delete-' ~ category.key" :label="tx['categories.delete']" :action="route('wl_ticketing.category_destroy', category.key)"
+                  :title="tx['categories.delete_title']" :message="tx['categories.delete_message']" :confirm-label="tx['categories.delete']" :cancel-label="tx['cancel']" icon="trash" :button="false"/>
+    </template>
+  </template>
 </rx-page>

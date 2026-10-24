@@ -25,7 +25,8 @@ use std::collections::BTreeMap;
 use renox::Download;
 use renox::axum::extract::Query;
 use renox::prelude::*;
-use renox::serde_json::Value;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
+use renox::serde_json::{Value, json};
 use renox::state_machine::{self, TransitionError};
 use renox::validation::{Errors, ValidationError};
 use serde::{Deserialize, Serialize};
@@ -206,33 +207,74 @@ pub fn parse_readers(text: &str) -> Vec<SopReaderRef> {
         .collect()
 }
 
-/// One SOP in the library.
-#[derive(Serialize, Debug, Clone)]
-pub struct SopRow {
-    /// Its page.
-    pub url: String,
-    /// The code.
-    pub code: String,
-    /// The title in the page's language.
-    pub title: String,
-    /// The category.
-    pub category: String,
-    /// The owner role.
-    pub owner_role: String,
-    /// The required readers, in words.
-    pub readers: String,
-    /// The status, in words.
-    pub status_label: String,
-    /// The status badge's colour.
-    pub status_kind: &'static str,
-    /// The current version, e.g. `v2`.
-    pub version: Option<String>,
-    /// The review state, in words.
-    pub review_label: String,
-    /// The review badge's colour.
-    pub review_kind: &'static str,
-    /// The review date, while accepted.
-    pub review_date: Option<String>,
+/// The SOP's status as SQL (never stored: it follows the current version).
+const STATUS_SQL: &str = "CASE (SELECT \"status\" FROM \"wl_documents_documents\" WHERE \"id\" = {T}.\"current_document_id\") WHEN 'accepted' THEN 'active' WHEN 'archived' THEN 'withdrawn' ELSE 'draft' END";
+
+/// The SOP library grid: search on code, title, category and owner role,
+/// filters by category, status and review date. The
+/// readers, version and review badge are drawn by the template (`custom`);
+/// `can_export` adds the export menu.
+pub fn grid(lang: &Lang, categories: Vec<String>, can_export: bool) -> Grid {
+    let statuses: Vec<(String, String)> = ["draft", "active", "withdrawn"]
+        .into_iter()
+        .map(|key| (key.to_owned(), text(lang, &format!("sops.status.{key}"))))
+        .collect();
+    let categories: Vec<(String, String)> = categories
+        .into_iter()
+        .map(|category| (category.clone(), category))
+        .collect();
+    let title_sql = if lang.locale == "ar" {
+        "COALESCE(NULLIF({T}.\"title_ar\", ''), {T}.\"title_en\")"
+    } else {
+        "{T}.\"title_en\""
+    };
+    let grid = Grid::new("wl-documents-sops")
+        .title(&text(lang, "sops.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("code", &text(lang, "sops.fields.code"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable()
+                .link("/documents/sops/{id}"),
+        )
+        .column(
+            Column::text("title", &text(lang, "sops.fields.title"))
+                .computed(title_sql)
+                .mobile()
+                .searchable(),
+        )
+        .column(
+            Column::select("category", &text(lang, "sops.fields.category"), categories)
+                .searchable(),
+        )
+        .column(Column::text("owner_role", &text(lang, "sops.fields.owner_role")).searchable())
+        .column(Column::custom("readers", &text(lang, "sops.fields.readers")))
+        .column(
+            Column::select("status", &text(lang, "sops.fields.status"), statuses)
+                .computed(STATUS_SQL)
+                .badges(&[("draft", "neutral"), ("active", "success"), ("withdrawn", "warning")])
+                .mobile(),
+        )
+        .column(Column::custom("version", &text(lang, "sops.fields.version")).mobile())
+        .column(Column::custom("review", &text(lang, "sops.fields.review")))
+        .column(
+            Column::date("review_date", &text(lang, "sops.fields.review_date"))
+                .computed("(SELECT CASE WHEN \"status\" = 'accepted' THEN \"expiry_date\" END FROM \"wl_documents_documents\" WHERE \"id\" = {T}.\"current_document_id\")")
+                .hidden(),
+        )
+        .column(Column::number("review_interval_months", &text(lang, "sops.fields.interval")).hidden())
+        .sort_by("code")
+        .row_url("/documents/sops/{id}")
+        .cards_on_mobile()
+        .empty_state(
+            &text(lang, "sops.empty"),
+            Some(&text(lang, "sops.empty_hint")),
+        );
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the library needs.
@@ -240,9 +282,7 @@ pub struct SopRow {
 #[view(template = "wl-documents/sops.html")]
 pub struct SopsPage {
     tx: Texts,
-    sops: Vec<SopRow>,
-    /// The status filter now applied (`all` for none).
-    filter: String,
+    sops: GridPage<Sop>,
     can_manage: bool,
 }
 
@@ -262,13 +302,15 @@ async fn current_of(db: &Db, sop: &Sop) -> Result<Option<Document>> {
     }
 }
 
-/// `GET /documents/sops?status=`: the library, by code.
+/// `GET /documents/sops`: the library as a grid (`?status=` still narrows
+/// it, as the grid's own status filter does), or its export.
 async fn index(
     State(db): State<Db>,
     user: AuthUser,
     lang: Lang,
     Query(query): Query<IndexQuery>,
-) -> Result<View> {
+    request: GridRequest,
+) -> Result<Response> {
     require_view(&user)?;
     let wanted = match query.status.as_str() {
         "draft" => Some(SopStatus::Draft),
@@ -276,53 +318,62 @@ async fn index(
         "withdrawn" => Some(SopStatus::Withdrawn),
         _ => None,
     };
-    let today = wl_kernel::documents::dubai_date(renox::db::now());
-    let mut rows = Vec::new();
+    // The SOPs this person may see: a holder in some buildings only reads
+    // the active and withdrawn ones.
+    let mut ids = Vec::new();
+    let mut categories = Vec::new();
     for sop in Sops::list(&db, wanted).await? {
-        let status = Sops::status(&db, &sop).await?;
-        if status == SopStatus::Draft && !full_access(&user) {
+        if Sops::status(&db, &sop).await? == SopStatus::Draft && !full_access(&user) {
             continue;
         }
-        let review = Sops::review_state(&db, &sop, today).await?;
-        let current = current_of(&db, &sop).await?;
-        let version = match &current {
-            Some(document) => Some(format!("v{}", Sops::version_number(&db, document).await?)),
+        ids.push(sop.id);
+        categories.push(sop.category);
+    }
+    categories.retain(|category| !category.is_empty());
+    categories.sort();
+    categories.dedup();
+    let can_export = user.has_permission(permissions::SOPS_MANAGE);
+    let grid = grid(&lang, categories, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    let visible = Sop::query().where_(Sop::ID.is_in(if ids.is_empty() { vec![-1] } else { ids }));
+    if let Some(file) = grid.export(visible.clone(), &request).await? {
+        return Ok(file);
+    }
+    let today = wl_kernel::documents::dubai_date(renox::db::now());
+    let page = grid.page(visible, &request).await?;
+    // Per row: the readers, the current version and the review state.
+    let mut extra: BTreeMap<i64, Value> = BTreeMap::new();
+    for sop in page.items() {
+        let review = Sops::review_state(&db, sop, today).await?;
+        let version = match current_of(&db, sop).await? {
+            Some(document) => Some(format!("v{}", Sops::version_number(&db, &document).await?)),
             None => None,
         };
-        let readers = Sops::readers(&db, sop.id).await?;
-        let summary = readers
+        let summary = Sops::readers(&db, sop.id)
+            .await?
             .iter()
-            .map(|r| reader_label(&lang, r))
+            .map(|reader| reader_label(&lang, reader))
             .collect::<Vec<_>>()
             .join(", ");
-        rows.push(SopRow {
-            url: format!("/documents/sops/{}", sop.id),
-            code: sop.code.clone(),
-            title: title_of(&sop, &lang),
-            category: sop.category.clone(),
-            owner_role: sop.owner_role.clone(),
-            readers: if summary.is_empty() {
-                text(&lang, "none")
-            } else {
-                summary
-            },
-            status_label: text(&lang, &format!("sops.status.{}", status.key())),
-            status_kind: status_kind(status),
-            version,
-            review_label: text(&lang, &format!("sops.review.{}", review.key())),
-            review_kind: review.tone(),
-            review_date: current
-                .filter(|d| d.status == DocumentStatus::Accepted)
-                .and_then(|d| d.expiry_date)
-                .map(|date| date.format("%Y-%m-%d").to_string()),
-        });
+        extra.insert(
+            sop.id,
+            json!({
+                "readers": if summary.is_empty() { text(&lang, "none") } else { summary },
+                "version": version.unwrap_or_else(|| text(&lang, "none")),
+                "review_label": text(&lang, &format!("sops.review.{}", review.key())),
+                "review_kind": review.tone(),
+            }),
+        );
     }
+    let page = page.extend(|sop| extra.get(&sop.id).cloned().unwrap_or(Value::Null));
     Ok(View::typed(SopsPage {
         tx: texts::all(&lang),
-        sops: rows,
-        filter: wanted.map_or_else(|| "all".to_owned(), |s| s.key().to_owned()),
+        sops: page,
         can_manage: user.has_permission(permissions::SOPS_MANAGE),
-    }))
+    })
+    .into_response())
 }
 
 /// What the create form needs.

@@ -41,6 +41,7 @@ use renox::axum::extract::Query;
 use renox::chrono::{NaiveDate, NaiveDateTime};
 use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::state_machine::{self, TransitionError};
 use renox::validation::{Errors, ValidationError};
 use serde::{Deserialize, Serialize};
@@ -230,6 +231,9 @@ pub fn grid(lang: &Lang, reasons: &BlockReasons, can_export: bool) -> Grid {
 fn grid_with(t: Text<'_>, holds: Vec<(String, String)>, can_export: bool) -> Grid {
     let grid = Grid::new("wl-parties")
         .title(&t("title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::text("code", &t("fields.code"))
                 .frozen()
@@ -1264,16 +1268,56 @@ async fn block_effects_page(lang: Lang) -> Result<View> {
     }))
 }
 
-/// One open task in the list.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct TaskRow {
-    id: i64,
-    header: String,
-    party: String,
-    agreement: String,
-    scope: String,
-    pending: usize,
-    opened: Option<DateTime>,
+/// The review tasks grid: search on the party, filters by agreement and
+/// scope, oldest first. The task header (the hold reason as the decider may
+/// see it) is drawn by the template (`custom`), so no reason code is a column
+/// or an export. `can_export` adds the export menu.
+pub fn review_tasks_grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = texts_in(lang);
+    let agreements: Vec<(String, String)> = kernel_effects::kinds()
+        .into_iter()
+        .map(|info| (info.key.clone(), kind_label(lang, &info.key)))
+        .collect();
+    let everywhere = t("review.global_scope").replace('\'', "''");
+    let scope_sql = format!(
+        "CASE WHEN {{T}}.\"scope_kind\" IS NULL THEN '{everywhere}' ELSE {{T}}.\"scope_kind\" || ' #' || CAST({{T}}.\"scope_id\" AS TEXT) END"
+    );
+    let grid = Grid::new("wl-parties-review-tasks")
+        .title(&t("review.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(Column::custom("task", &t("review.task")).frozen().mobile())
+        .column(
+            Column::related(
+                "party",
+                &t("review.fields.party"),
+                "wl_parties_parties",
+                "party_id",
+                "display_name",
+            )
+            .searchable()
+            .mobile(),
+        )
+        .column(
+            Column::select("agreement_kind", &t("review.fields.agreement"), agreements).mobile(),
+        )
+        .column(
+            Column::text("scope", &t("review.fields.scope"))
+                .computed(&scope_sql)
+                .searchable()
+                .hidden(),
+        )
+        .column(
+            Column::number("pending", &t("review.fields.pending"))
+                .computed("(SELECT COUNT(*) FROM \"wl_parties_review_task_items\" WHERE \"task_id\" = {T}.\"id\" AND \"decision\" = 'pending')")
+                .mobile(),
+        )
+        .column(Column::datetime("created_at", &t("review.fields.opened")))
+        .sort_by("id")
+        .cards_on_mobile()
+        .empty_state(&t("review.empty"), Some(&t("review.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the task list needs.
@@ -1281,7 +1325,48 @@ pub(crate) struct TaskRow {
 #[view(template = "wl-parties/review_tasks.html")]
 pub(crate) struct ReviewTasksPage {
     tx: Texts,
-    tasks: Vec<TaskRow>,
+    tasks: GridPage<ReviewTask>,
+}
+
+/// `GET /parties/review-tasks`: the open tasks whose decider role the user
+/// holds, oldest first (or the export, with `parties.export`).
+async fn review_tasks_page(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
+    let reasons = BlockReasons::of(&state);
+    let ids: Vec<i64> = ReviewTask::open_for_user(&state.db, &user)
+        .await?
+        .into_iter()
+        .map(|task| task.id)
+        .collect();
+    let query = ReviewTask::query().where_(ReviewTask::ID.is_in(if ids.is_empty() {
+        vec![-1]
+    } else {
+        ids
+    }));
+    let can_export = user.has_permission(permissions::EXPORT);
+    let grid = review_tasks_grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let page = page.extend(|task| {
+        json!({
+            "header": crate::block_effects::header(&lang, &reasons, &task.display_reason),
+            "url": format!("/parties/review-tasks/{}", task.id),
+        })
+    });
+    Ok(View::typed(ReviewTasksPage {
+        tx: texts::all(&lang),
+        tasks: page,
+    })
+    .into_response())
 }
 
 /// The scope as the pages show it.
@@ -1297,38 +1382,6 @@ async fn party_name(db: &Db, id: i64) -> Result<String> {
     Ok(Party::find(db, id)
         .await?
         .map_or_else(|| format!("#{id}"), |party| party.display_name))
-}
-
-/// `GET /parties/review-tasks`: the open tasks whose decider role the user
-/// holds, oldest first.
-async fn review_tasks_page(
-    State(state): State<AppState>,
-    user: AuthUser,
-    lang: Lang,
-) -> Result<View> {
-    let reasons = BlockReasons::of(&state);
-    let mut tasks = Vec::new();
-    for task in ReviewTask::open_for_user(&state.db, &user).await? {
-        let pending = task
-            .items(&state.db)
-            .await?
-            .iter()
-            .filter(|item| item.is_pending())
-            .count();
-        tasks.push(TaskRow {
-            id: task.id,
-            header: crate::block_effects::header(&lang, &reasons, &task.display_reason),
-            party: party_name(&state.db, task.party_id).await?,
-            agreement: kind_label(&lang, &task.agreement_kind),
-            scope: scope_label(&lang, &task),
-            pending,
-            opened: task.created_at,
-        });
-    }
-    Ok(View::typed(ReviewTasksPage {
-        tx: texts::all(&lang),
-        tasks,
-    }))
 }
 
 /// One agreement on the task page.
@@ -1467,24 +1520,6 @@ async fn review_task_page(
     }))
 }
 
-/// One open screening task in the list.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct ScreeningTaskRow {
-    id: i64,
-    party: String,
-    code: String,
-    due: String,
-    candidates: usize,
-}
-
-/// What the screening task list needs.
-#[derive(Serialize, ViewData)]
-#[view(template = "wl-parties/screening_tasks.html")]
-pub(crate) struct ScreeningTasksPage {
-    tx: Texts,
-    tasks: Vec<ScreeningTaskRow>,
-}
-
 /// The party's code and display name, or `#id` when it is gone.
 async fn party_code_and_name(db: &Db, id: i64) -> Result<(String, String)> {
     Ok(Party::find(db, id).await?.map_or_else(
@@ -1493,32 +1528,91 @@ async fn party_code_and_name(db: &Db, id: i64) -> Result<(String, String)> {
     ))
 }
 
+/// The screening tasks grid: search on the party and its code, earliest
+/// due first. The due time is shown in Asia/Dubai (`custom`).
+pub fn screening_tasks_grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = texts_in(lang);
+    let grid = Grid::new("wl-parties-screening-tasks")
+        .title(&t("screening.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::related(
+                "party",
+                &t("screening.fields.party"),
+                "wl_parties_parties",
+                "party_id",
+                "display_name",
+            )
+            .frozen()
+            .mobile()
+            .searchable()
+            .link("/parties/screening-tasks/{id}"),
+        )
+        .column(
+            Column::related(
+                "code",
+                &t("screening.fields.code"),
+                "wl_parties_parties",
+                "party_id",
+                "code",
+            )
+            .searchable()
+            .mobile(),
+        )
+        .column(Column::custom("due", &t("screening.fields.due")).mobile())
+        .column(Column::datetime("due_at", &t("screening.fields.due")).hidden())
+        .column(Column::datetime("flagged_at", &t("screening.fields.flagged")).hidden())
+        .column(
+            Column::number("candidates", &t("screening.fields.candidates"))
+                .computed("(SELECT COUNT(*) FROM \"wl_parties_screening_candidates\" WHERE \"screening_id\" IN (SELECT \"id\" FROM \"wl_parties_screenings\" WHERE \"task_id\" = {T}.\"id\"))")
+                .mobile(),
+        )
+        .sort_by("due_at,id")
+        .row_url("/parties/screening-tasks/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("screening.empty"), Some(&t("screening.empty_hint")));
+    if can_export { grid.exports() } else { grid }
+}
+
+/// What the screening task list needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-parties/screening_tasks.html")]
+pub(crate) struct ScreeningTasksPage {
+    tx: Texts,
+    tasks: GridPage<ScreeningTask>,
+}
+
 /// `GET /parties/screening-tasks`: the open possible-match tasks, earliest
 /// due first. Compliance only (`parties.block_reason.view`): 404 for anyone
 /// else, so the page is not even known to exist (`PTY.ACL.02`).
 async fn screening_tasks_page(
-    State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
-) -> Result<View> {
+    request: GridRequest,
+) -> Result<Response> {
     if !user.has_permission(permissions::BLOCK_REASON_VIEW) {
         return Err(Error::NotFound);
     }
-    let mut tasks = Vec::new();
-    for task in ScreeningTask::open_tasks(&state.db).await? {
-        let (code, party) = party_code_and_name(&state.db, task.party_id).await?;
-        tasks.push(ScreeningTaskRow {
-            id: task.id,
-            party,
-            code,
-            due: dubai_label(task.due_at),
-            candidates: task.candidates(&state.db).await?.len(),
-        });
+    let query = ScreeningTask::query().where_(ScreeningTask::STATUS.eq(ScreeningTaskStatus::Open));
+    let can_export = user.has_permission(permissions::EXPORT);
+    let grid = screening_tasks_grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
     }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid
+        .page(query, &request)
+        .await?
+        .extend(|task| json!({ "due": dubai_label(task.due_at) }));
     Ok(View::typed(ScreeningTasksPage {
         tx: texts::all(&lang),
-        tasks,
-    }))
+        tasks: page,
+    })
+    .into_response())
 }
 
 /// One screening run on the task page.
@@ -1870,16 +1964,50 @@ async fn confirm_screening(
     }
 }
 
-/// One task in the compliance task list.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct ComplianceTaskRow {
-    id: i64,
-    kind: String,
-    parties: usize,
-    due: String,
-    overdue: bool,
-    status: String,
-    status_tone: &'static str,
+/// The compliance tasks grid: the open freeze and report tasks (earliest
+/// due first) and the done ones, filterable by task and status. The due time
+/// is shown in Asia/Dubai and the overdue mark by the template (`custom`).
+pub fn compliance_tasks_grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = texts_in(lang);
+    let kinds = vec![
+        ("freeze".to_owned(), t("tasks.kind.freeze")),
+        ("report".to_owned(), t("tasks.kind.report")),
+    ];
+    let statuses = vec![
+        ("open".to_owned(), t("tasks.status.open")),
+        ("done".to_owned(), t("tasks.status.done")),
+    ];
+    let grid = Grid::new("wl-parties-compliance-tasks")
+        .title(&t("tasks.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(Column::custom("task", &t("tasks.fields.kind")).frozen().mobile())
+        .column(Column::select("kind", &t("tasks.fields.kind"), kinds).hidden())
+        .column(Column::custom("due", &t("tasks.fields.due")).mobile())
+        .column(Column::datetime("due_at", &t("tasks.fields.due")).hidden())
+        .column(
+            Column::count_of(
+                "parties",
+                &t("tasks.fields.parties"),
+                "wl_parties_compliance_task_parties",
+                "task_id",
+            )
+            .mobile(),
+        )
+        .column(
+            Column::select("status", &t("tasks.fields.status"), statuses)
+                .badges(&[("open", "warning"), ("done", "success")])
+                .mobile(),
+        )
+        .column(Column::custom("overdue", &t("tasks.overdue")))
+        .column(Column::datetime("completed_at", &t("tasks.fields.completed")).hidden())
+        // Open tasks first ("open" sorts after "done"), the earliest due first.
+        .sort_by("-status,due_at,id")
+        .row_url("/parties/compliance-tasks/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("tasks.empty"), Some(&t("tasks.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the compliance task list needs.
@@ -1887,49 +2015,40 @@ pub(crate) struct ComplianceTaskRow {
 #[view(template = "wl-parties/compliance_tasks.html")]
 pub(crate) struct ComplianceTasksPage {
     tx: Texts,
-    tasks: Vec<ComplianceTaskRow>,
+    tasks: GridPage<ComplianceTask>,
 }
 
 /// `GET /parties/compliance-tasks`: the open freeze and report tasks,
-/// earliest due first, then the latest done ones. Holders only (404).
+/// earliest due first, then the done ones. Holders only (404).
 async fn compliance_tasks_page(
-    State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
-) -> Result<View> {
+    request: GridRequest,
+) -> Result<Response> {
     holders_only(&user)?;
-    let db = &state.db;
-    let t = texts_in(&lang);
-    let mut all = ComplianceTask::open_tasks(db).await?;
-    all.extend(
-        ComplianceTask::query()
-            .where_(ComplianceTask::STATUS.eq(ComplianceTaskStatus::Done))
-            .order_by_desc(ComplianceTask::COMPLETED_AT)
-            .limit(50)
-            .get(db)
-            .await?,
-    );
-    let now = renox::db::now();
-    let mut tasks = Vec::new();
-    for task in all {
-        tasks.push(ComplianceTaskRow {
-            id: task.id,
-            kind: t(&format!("tasks.kind.{}", kind_key(task.kind))),
-            parties: task.parties(db).await?.len(),
-            due: dubai_label(task.due_at),
-            overdue: task.is_overdue(now),
-            status: t(&format!("tasks.status.{}", status_key(task.status))),
-            status_tone: if task.status == ComplianceTaskStatus::Open {
-                "warning"
-            } else {
-                "success"
-            },
-        });
+    let can_export = user.has_permission(permissions::EXPORT);
+    let grid = compliance_tasks_grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
     }
+    let query = ComplianceTask::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let now = renox::db::now();
+    let page = grid.page(query, &request).await?.extend(|task| {
+        json!({
+            "kind": texts_in(&lang)(&format!("tasks.kind.{}", kind_key(task.kind))),
+            "url": format!("/parties/compliance-tasks/{}", task.id),
+            "due": dubai_label(task.due_at),
+            "overdue": task.is_overdue(now),
+        })
+    });
     Ok(View::typed(ComplianceTasksPage {
         tx: texts::all(&lang),
-        tasks,
-    }))
+        tasks: page,
+    })
+    .into_response())
 }
 
 /// One named party on a freeze or report task.
