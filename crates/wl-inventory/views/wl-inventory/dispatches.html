@@ -1,18 +1,8 @@
 {#- wl-inventory: the dispatches: goods picked, packed and sent to a
-    customer, each with its status and a link to its page. Replace it with
-    resources/views/wl-inventory/dispatches.html in the app. -#}
+    customer, a renox::grid (number, recipient, store, lines, status; search,
+    sort, filter by status, pages) with a link to the page of each. Replace it
+    with resources/views/wl-inventory/dispatches.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['title']">
-  <rx-stack>
-    <rx-page-header :title="tx['title']" :subtitle="tx['subtitle']" :back="route('wl_inventory.stock')" :back-label="tx['stock']"/>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['title']" card>
-      <rx-column :label="tx['number']"><a href="{{ route('wl_inventory.dispatch_page', row.id) }}">{{ row.number }}</a></rx-column>
-      <rx-column :label="tx['recipient']">{{ row.recipient }}</rx-column>
-      <rx-column :label="tx['source']" hide-narrow>{{ row.source }}</rx-column>
-      <rx-column :label="tx['store']" hide-narrow>{{ row.store }}</rx-column>
-      <rx-column :label="tx['lines']" hide-narrow>{{ row.lines }}</rx-column>
-      <rx-column :label="tx['status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
-      <rx-column :label="tx['when']" hide-narrow>{{ row.when }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['empty']" icon="truck"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['title']" :subtitle="tx['subtitle']" :back="route('wl_inventory.stock')" :back-label="tx['stock']"/>
+  <rx-grid :page="dispatches"/>
 </rx-page>

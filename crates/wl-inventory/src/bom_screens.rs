@@ -25,6 +25,7 @@ use std::collections::BTreeMap;
 use crate::screens::dubai_text;
 use renox::axum::http::HeaderMap;
 use renox::axum::response::Redirect;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -174,15 +175,15 @@ pub struct BomRow {
 #[view(template = "wl-inventory/boms.html")]
 pub(crate) struct BomsPage {
     tx: Texts,
-    rows: Vec<BomRow>,
+    boms: GridPage<Bom>,
     can_manage: bool,
-    show_cost: bool,
     items: Vec<(String, String)>,
     status_tabs: Vec<(String, String)>,
     status_current: String,
 }
 
-/// The list's filter.
+/// The list's legacy filter, `?status=draft`: the grid's own is
+/// `?in.status=draft`.
 #[derive(Deserialize, Default)]
 pub(crate) struct ListFilter {
     /// A status key.
@@ -213,70 +214,157 @@ async fn item_options(
     Ok(options)
 }
 
-/// `GET /boms`.
+/// The bills of materials grid: the item made and the version, the number,
+/// status, what it makes, its components and, for a viewer of costs, the
+/// materials per unit.
+fn grid(lang: &Lang, show_cost: bool) -> Grid {
+    let t = tx(lang);
+    let mut grid = Grid::new("wl-inventory-boms")
+        .title(&t["title"])
+        .column(
+            Column::text("item", &t["item"])
+                .computed(
+                    "(SELECT \"wl_inventory_items\".\"code\" || ' · ' || \"wl_inventory_items\".\"name_en\" \
+                     FROM \"wl_inventory_items\" WHERE \"wl_inventory_items\".\"id\" = {T}.\"item_id\")",
+                )
+                .link("/boms/{id}")
+                .searchable()
+                .frozen()
+                .mobile(),
+        )
+        .column(
+            Column::text("version", &tr(lang, "version"))
+                .computed("{T}.\"version\"")
+                .filterable(false)
+                .mobile(),
+        )
+        .column(
+            Column::select(
+                "status",
+                &t["status"],
+                ["draft", "released", "obsolete"]
+                    .map(|status| (status, tr(lang, &format!("status.{status}")))),
+            )
+            .badges(&[
+                ("draft", "info"),
+                ("released", "success"),
+                ("obsolete", "neutral"),
+            ])
+            .mobile(),
+        )
+        .column(Column::text("makes", &t["output"]).sortable(false).filterable(false))
+        .column(Column::count_of(
+            "lines",
+            &t["lines"],
+            "wl_inventory_bom_lines",
+            "bom_id",
+        ));
+    if show_cost {
+        grid = grid.column(
+            Column::text("cost", &t["cost"])
+                .sortable(false)
+                .filterable(false),
+        );
+    }
+    grid.sort_by("-id")
+        .row_url("/boms/{id}")
+        .cards_on_mobile()
+        .empty_state(&t["empty"], Some(&t["empty_text"]))
+}
+
+/// The version `found` as the list shows it.
+async fn row_of(state: &AppState, lang: &Lang, found: &Bom, show_cost: bool) -> Result<BomRow> {
+    let item = Item::find_or_404(&state.db, found.item_id).await?;
+    let lines = bom::lines_of(&state.db, found.id).await?.len();
+    Ok(BomRow {
+        id: found.id,
+        url: url(found.id),
+        item: format!("{} · {}", item.code, item_name(&item, lang)),
+        version: format!("v{}", found.version),
+        lines: i64::try_from(lines).unwrap_or(0),
+        status: status_word(lang, found.status),
+        status_code: found.status.as_str().to_owned(),
+        status_kind: status_kind(found.status),
+        cost: if !show_cost {
+            String::new()
+        } else if found.status == BomStatus::Draft {
+            tr(lang, "cost_pending")
+        } else {
+            money(found.material_cost_per_unit)
+        },
+        makes: amount(found.output_milli, &item.base_unit),
+    })
+}
+
+/// `GET /boms`: the versions, newest first, as a grid (sort, filter, search,
+/// pages); JSON for the rest, every version the filters match. `?status=` is
+/// the filter by status the tabs and the dashboards link with.
 async fn list(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     headers: HeaderMap,
     Query(filter): Query<ListFilter>,
+    Query(params): Query<BTreeMap<String, String>>,
+    request: GridRequest,
 ) -> Result<Response> {
     if !bom::can_view(&user) {
         return Err(Error::Forbidden);
     }
     let show_cost = sees_cost(&user);
-    let mut rows = Vec::new();
-    for found in Bom::query()
-        .order_by_desc(Bom::ID)
-        .limit(500)
-        .get(&state.db)
-        .await?
-    {
-        if !filter.status.is_empty() && found.status.as_str() != filter.status {
-            continue;
-        }
-        let item = Item::find_or_404(&state.db, found.item_id).await?;
-        let lines = bom::lines_of(&state.db, found.id).await?.len();
-        rows.push(BomRow {
-            id: found.id,
-            url: url(found.id),
-            item: format!("{} · {}", item.code, item_name(&item, &lang)),
-            version: format!("v{}", found.version),
-            lines: i64::try_from(lines).unwrap_or(0),
-            status: status_word(&lang, found.status),
-            status_code: found.status.as_str().to_owned(),
-            status_kind: status_kind(found.status),
-            cost: if !show_cost {
-                String::new()
-            } else if found.status == BomStatus::Draft {
-                tr(&lang, "cost_pending")
-            } else {
-                money(found.material_cost_per_unit)
-            },
-            makes: amount(found.output_milli, &item.base_unit),
-        });
+    let mut query = Bom::query();
+    if !filter.status.is_empty() {
+        query = query.where_eq("status", filter.status.clone());
     }
     if !wl_kernel::negotiate::wants_html(&headers) {
+        let mut rows = Vec::new();
+        for found in grid(&lang, show_cost)
+            .filter(query, &request)
+            .get(&state.db)
+            .await?
+        {
+            rows.push(row_of(&state, &lang, &found, show_cost).await?);
+        }
         return json(&rows);
     }
+    let page = grid(&lang, show_cost).page(query, &request).await?;
+    let mut shown = BTreeMap::new();
+    for found in page.items() {
+        shown.insert(found.id, row_of(&state, &lang, found, show_cost).await?);
+    }
+    let boms = page.extend(|found| match shown.get(&found.id) {
+        Some(row) => renox::serde_json::json!({
+            "item": row.item,
+            "version": row.version,
+            "makes": row.makes,
+            "cost": row.cost,
+            // The cost is not for a viewer who may not see costs.
+            "material_cost_per_unit": if show_cost { Some(found.material_cost_per_unit) } else { None },
+        }),
+        None => renox::serde_json::json!({}),
+    });
     let mut tabs = vec![(URL.to_owned(), tr(&lang, "all"))];
     for status in ["draft", "released", "obsolete"] {
         tabs.push((
-            format!("{URL}?status={status}"),
+            format!("{URL}?in.status={status}"),
             tr(&lang, &format!("status.{status}")),
         ));
     }
+    let chosen = if filter.status.is_empty() {
+        params.get("in.status").cloned().unwrap_or_default()
+    } else {
+        filter.status
+    };
     Ok(View::typed(BomsPage {
         tx: tx(&lang),
-        rows,
+        boms,
         can_manage: bom::can_manage(&user),
-        show_cost,
         items: item_options(&state, &lang, None).await?,
         status_tabs: tabs,
-        status_current: if filter.status.is_empty() {
+        status_current: if chosen.is_empty() {
             URL.to_owned()
         } else {
-            format!("{URL}?status={}", filter.status)
+            format!("{URL}?in.status={chosen}")
         },
     })
     .into_response())

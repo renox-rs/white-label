@@ -18,6 +18,10 @@ pub(crate) const STOCK_TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.stock.stock.reorder", "Reorder at"),
     ("wl_inventory.stock.stock.level", "Level"),
     ("wl_inventory.stock.stock.low", "Low"),
+    ("wl_inventory.stock.stock.level_ok", "OK"),
+    ("wl_inventory.stock.stock.code", "Code"),
+    ("wl_inventory.stock.stock.expiry_soon", "Expires soon"),
+    ("wl_inventory.stock.stock.expired", "Expired"),
     ("wl_inventory.stock.stock.empty", "Nothing is stocked here"),
     ("wl_inventory.stock.stock.lots", "Lots"),
     ("wl_inventory.stock.stock.lot", "Lot"),
@@ -101,6 +105,9 @@ pub(crate) const STOCK_TEXTS: &[(&str, &str)] = &[
         "All the stock at the store is blocked until each line is decided.",
     ),
     ("wl_inventory.stock.holds.empty", "No stock is on hold"),
+    ("wl_inventory.stock.holds.reference", "Caused by"),
+    ("wl_inventory.stock.holds.placed", "Placed"),
+    ("wl_inventory.stock.holds.lines", "Lines"),
     ("wl_inventory.stock.holds.cancel", "Cancel the hold"),
     (
         "wl_inventory.stock.holds.cancel_description",
@@ -184,6 +191,10 @@ pub(crate) const STOCK_TEXTS: &[(&str, &str)] = &[
         "The stock arrives at the store.",
     ),
     ("wl_inventory.stock.transfers.empty", "No transfers yet"),
+    (
+        "wl_inventory.stock.transfers.empty_hint",
+        "Move stock between stores with New transfer.",
+    ),
     ("wl_inventory.stock.transfer.draft", "Draft"),
     ("wl_inventory.stock.transfer.in_transit", "On the road"),
     ("wl_inventory.stock.transfer.received", "Received"),
@@ -248,6 +259,10 @@ pub(crate) const STOCK_TEXTS: &[(&str, &str)] = &[
         "wl_inventory.stock.orders.empty",
         "No order is waiting for goods",
     ),
+    (
+        "wl_inventory.stock.orders.empty_hint",
+        "Orders appear here once they are issued to a supplier.",
+    ),
     ("wl_inventory.stock.order.issued", "Issued"),
     (
         "wl_inventory.stock.order.partially_received",
@@ -267,6 +282,10 @@ pub(crate) const STOCK_TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.stock.receipts.receipt", "Receipt"),
     ("wl_inventory.stock.receipts.delivery_note", "Delivery note"),
     ("wl_inventory.stock.receipts.empty", "No goods receipts yet"),
+    (
+        "wl_inventory.stock.receipts.empty_hint",
+        "A receipt starts from a purchase order waiting for goods.",
+    ),
     ("wl_inventory.stock.receipt.draft", "Draft"),
     ("wl_inventory.stock.receipt.posted", "Posted"),
     ("wl_inventory.stock.receipt.reversed", "Reversed"),

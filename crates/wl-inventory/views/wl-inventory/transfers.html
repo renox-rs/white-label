@@ -1,41 +1,33 @@
-{#- wl-inventory: the transfers between stores, a form for a new one, and the
-    buttons that send and receive. A transfer into a store on hold shows the
-    warning in its Receive sheet. Replace it with
+{#- wl-inventory: the transfers between stores, a renox::grid (search, sort,
+    filter by status and store, pages), a form for a new one, and the buttons
+    that send and receive. A transfer into a store on hold shows the warning
+    in its Receive sheet. Replace it with
     resources/views/wl-inventory/transfers.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['transfers.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['transfers.title']" :subtitle="tx['transfers.subtitle']" :back="route('wl_inventory.stock')" :back-label="tx['stock.title']">
-      <template rx-if="can_make">
-        <rx-action-sheet id="new-transfer" :label="tx['transfers.new']" :action="route('wl_inventory.transfer_make')"
-                         :title="tx['transfers.new']" :description="tx['transfers.new_description']" :submit-label="tx['transfers.new']" icon="plus">
-          <rx-select name="from" :label="tx['transfers.from']" :options="from" :selected="''" id="new-transfer-from" required/>
-          <rx-select name="to" :label="tx['transfers.to']" :options="to" :selected="''" id="new-transfer-to" required/>
-          <rx-select name="item" :label="tx['stock.item']" :options="items" :selected="''" id="new-transfer-item" required/>
-          <rx-select name="lot" :label="tx['stock.lot']" :options="lots" :selected="''" id="new-transfer-lot"/>
-          <rx-input name="quantity" :label="tx['transfers.quantity']" id="new-transfer-quantity" required/>
+  <rx-page-header :title="tx['transfers.title']" :subtitle="tx['transfers.subtitle']" :back="route('wl_inventory.stock')" :back-label="tx['stock.title']">
+    <template rx-if="can_make">
+      <rx-action-sheet id="new-transfer" :label="tx['transfers.new']" :action="route('wl_inventory.transfer_make')"
+                       :title="tx['transfers.new']" :description="tx['transfers.new_description']" :submit-label="tx['transfers.new']" icon="plus">
+        <rx-select name="from" :label="tx['transfers.from']" :options="from" :selected="''" id="new-transfer-from" required/>
+        <rx-select name="to" :label="tx['transfers.to']" :options="to" :selected="''" id="new-transfer-to" required/>
+        <rx-select name="item" :label="tx['stock.item']" :options="items" :selected="''" id="new-transfer-item" required/>
+        <rx-select name="lot" :label="tx['stock.lot']" :options="lots" :selected="''" id="new-transfer-lot"/>
+        <rx-input name="quantity" :label="tx['transfers.quantity']" id="new-transfer-quantity" required/>
+      </rx-action-sheet>
+    </template>
+  </rx-page-header>
+  <rx-grid :page="transfers">
+    {% if column.key == "actions" %}
+      {% if row.can_send %}
+        <rx-action-sheet :id="'send-' ~ row.id" :label="tx['transfers.send']" :action="route('wl_inventory.transfer_send', row.id)"
+                         :title="tx['transfers.send']" :description="tx['transfers.send_description']" :submit-label="tx['transfers.send']" icon="truck"/>
+      {% endif %}
+      {% if row.can_receive %}
+        <rx-action-sheet :id="'receive-' ~ row.id" :label="tx['transfers.receive']" :action="route('wl_inventory.transfer_receive', row.id)"
+                         :title="tx['transfers.receive']" :description="row.warning or tx['transfers.receive_description']" :submit-label="tx['transfers.receive']" icon="check">
+          <input type="hidden" name="held_ok" value="1"/>
         </rx-action-sheet>
-      </template>
-    </rx-page-header>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['transfers.title']" card>
-      <rx-column :label="tx['transfers.number']">{{ row.number }}</rx-column>
-      <rx-column :label="tx['transfers.from']">{{ row.from }}</rx-column>
-      <rx-column :label="tx['transfers.to']">{{ row.to }}</rx-column>
-      <rx-column :label="tx['transfers.lines']" hide-narrow>{{ row.lines }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
-      <rx-column :label="tx['transfers.when']" hide-narrow>{{ row.when }}</rx-column>
-      <rx-row-actions>
-        <template rx-if="row.can_send">
-          <rx-action-sheet :id="'send-' ~ row.id" :label="tx['transfers.send']" :action="route('wl_inventory.transfer_send', row.id)"
-                           :title="tx['transfers.send']" :description="tx['transfers.send_description']" :submit-label="tx['transfers.send']" icon="truck"/>
-        </template>
-        <template rx-if="row.can_receive">
-          <rx-action-sheet :id="'receive-' ~ row.id" :label="tx['transfers.receive']" :action="route('wl_inventory.transfer_receive', row.id)"
-                           :title="tx['transfers.receive']" :description="row.warning or tx['transfers.receive_description']" :submit-label="tx['transfers.receive']" icon="check">
-            <input type="hidden" name="held_ok" value="1"/>
-          </rx-action-sheet>
-        </template>
-      </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['transfers.empty']" icon="truck"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+      {% endif %}
+    {% endif %}
+  </rx-grid>
 </rx-page>

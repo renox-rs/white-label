@@ -16,8 +16,10 @@
 //! above the over-receipt tolerance waits for a second person and shows its
 //! approval card.
 
-use crate::screens::dubai_text;
+use std::collections::BTreeMap;
+
 use renox::chrono::NaiveDate;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
@@ -69,45 +71,94 @@ async fn supplier_name(state: &AppState, lang: &Lang, id: i64) -> String {
         .unwrap_or_default()
 }
 
-/// One purchase order waiting for goods.
-#[derive(Serialize, Debug, Clone)]
-pub struct OrderRow {
-    id: i64,
-    number: String,
-    supplier: String,
-    location: String,
-    expected: String,
-    status: String,
-    status_kind: &'static str,
-    outstanding: String,
-    can_receive: bool,
-    draft: String,
-}
-
 /// What the orders page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-inventory/orders.html")]
 pub(crate) struct OrdersPage {
     tx: Texts,
-    rows: Vec<OrderRow>,
+    orders: GridPage<PurchaseOrder>,
+}
+
+/// The purchase orders grid: the orders open for receiving, with the store,
+/// the day they are expected, what is still to come and the buttons that
+/// start (or open) a receipt.
+fn orders_grid(lang: &Lang) -> Grid {
+    let t = tx(lang);
+    Grid::new("wl-inventory-orders")
+        .title(&t["orders.title"])
+        .column(
+            Column::text("number", &t["orders.number"])
+                .searchable()
+                .frozen()
+                .mobile(),
+        )
+        .column(
+            Column::text("supplier", &t["orders.supplier"])
+                .sortable(false)
+                .filterable(false)
+                .mobile(),
+        )
+        .column(
+            Column::related(
+                "store",
+                &t["stock.store"],
+                "wl_inventory_locations",
+                "location_id",
+                "name_en",
+            )
+            .searchable(),
+        )
+        .column(Column::date("expected_date", &t["orders.expected"]))
+        .column(
+            Column::text("outstanding", &t["orders.outstanding"])
+                .sortable(false)
+                .filterable(false)
+                .wrap()
+                .mobile(),
+        )
+        .column(
+            Column::select(
+                "status",
+                &t["fields.status"],
+                ["issued", "partially_received"]
+                    .map(|status| (status, word(lang, "order", status))),
+            )
+            .badges(&[("issued", "info"), ("partially_received", "warning")])
+            .mobile(),
+        )
+        .column(Column::custom("actions", "").frozen_right().mobile())
+        .sort_by("-id")
+        .cards_on_mobile()
+        .empty_state(&t["orders.empty"], Some(&t["orders.empty_hint"]))
+}
+
+/// What the grid adds to a purchase order: what is still to come, and the
+/// buttons.
+struct OrderExtra {
+    supplier: String,
+    outstanding: String,
+    can_receive: bool,
+    draft: String,
 }
 
 /// `GET /purchase-orders`: the orders open for receiving, with what is still
 /// to come on each.
-async fn orders(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn orders(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
     if !may_see(&user) {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
-    for order in PurchaseOrder::query()
-        .order_by_desc(PurchaseOrder::ID)
-        .limit(100)
-        .get(&state.db)
-        .await?
-    {
-        if !order.is_open_for_receiving() {
-            continue;
-        }
+    let query = PurchaseOrder::query().where_(PurchaseOrder::STATUS.is_in([
+        PurchaseOrderStatus::Issued,
+        PurchaseOrderStatus::PartiallyReceived,
+    ]));
+    let page = orders_grid(&lang).page(query, &request).await?;
+    let mut extras = BTreeMap::new();
+    for order in page.items() {
         let location = Location::find_or_404(&state.db, order.location_id).await?;
         let mut outstanding = Vec::new();
         for line in lines_of(&state.db, order.id).await? {
@@ -129,30 +180,29 @@ async fn orders(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Re
             .await?
             .map(|receipt| format!("/goods-receipts/{}", receipt.id))
             .unwrap_or_default();
-        let draft_is_none = draft.is_empty();
-        rows.push(OrderRow {
-            id: order.id,
-            draft,
-            number: order.number.clone().unwrap_or_default(),
-            supplier: supplier_name(&state, &lang, order.supplier_party_id).await,
-            location: location_name(&location),
-            expected: order
-                .expected_date
-                .map(|day| day.to_string())
-                .unwrap_or_default(),
-            status: word(&lang, "order", order.status.as_str()),
-            status_kind: match order.status {
-                PurchaseOrderStatus::PartiallyReceived => "warning",
-                _ => "info",
+        extras.insert(
+            order.id,
+            OrderExtra {
+                supplier: supplier_name(&state, &lang, order.supplier_party_id).await,
+                outstanding: outstanding.join(", "),
+                can_receive: draft.is_empty()
+                    && user.has_permission_in(permissions::GOODS_RECEIPTS_POST, &location.scope()),
+                draft,
             },
-            outstanding: outstanding.join(", "),
-            can_receive: draft_is_none
-                && user.has_permission_in(permissions::GOODS_RECEIPTS_POST, &location.scope()),
-        });
+        );
     }
+    let orders = page.extend(|order| match extras.get(&order.id) {
+        Some(extra) => renox::serde_json::json!({
+            "supplier": extra.supplier,
+            "outstanding": extra.outstanding,
+            "can_receive": extra.can_receive,
+            "draft": extra.draft,
+        }),
+        None => renox::serde_json::json!({}),
+    });
     Ok(View::typed(OrdersPage {
         tx: tx(&lang),
-        rows,
+        orders,
     }))
 }
 
@@ -214,26 +264,12 @@ async fn start_receipt(
         .into_response())
 }
 
-/// One goods receipt in the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct ReceiptRow {
-    id: i64,
-    title: String,
-    order: String,
-    supplier: String,
-    location: String,
-    delivery_note: String,
-    status: String,
-    status_kind: &'static str,
-    when: String,
-}
-
 /// What the receipts page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-inventory/receipts.html")]
 pub(crate) struct ReceiptsPage {
     tx: Texts,
-    rows: Vec<ReceiptRow>,
+    receipts: GridPage<GoodsReceipt>,
 }
 
 fn receipt_status(status: GoodsReceiptStatus) -> &'static str {
@@ -252,52 +288,107 @@ fn receipt_title(lang: &Lang, receipt: &GoodsReceipt) -> String {
     }
 }
 
+/// The goods receipts grid, drafts first: receipt, purchase order, supplier,
+/// store, delivery note, status and when it was posted (or started).
+fn receipts_grid(lang: &Lang) -> Grid {
+    let t = tx(lang);
+    Grid::new("wl-inventory-receipts")
+        .title(&t["receipts.title"])
+        .column(
+            Column::text("number", &t["receipts.receipt"])
+                .link("/goods-receipts/{id}")
+                .searchable()
+                .frozen()
+                .mobile(),
+        )
+        .column(
+            Column::related(
+                "order_number",
+                &t["orders.number"],
+                "wl_inventory_purchase_orders",
+                "purchase_order_id",
+                "number",
+            )
+            .searchable(),
+        )
+        .column(
+            Column::text("supplier", &t["orders.supplier"])
+                .sortable(false)
+                .filterable(false)
+                .mobile(),
+        )
+        .column(
+            Column::related(
+                "store",
+                &t["stock.store"],
+                "wl_inventory_locations",
+                "location_id",
+                "name_en",
+            )
+            .searchable(),
+        )
+        .column(Column::text("delivery_note", &t["receipts.delivery_note"]).searchable())
+        .column(
+            Column::select(
+                "status",
+                &t["fields.status"],
+                ["draft", "posted", "reversed"]
+                    .map(|status| (status, word(lang, "receipt", status))),
+            )
+            .badges(&[
+                ("draft", "warning"),
+                ("posted", "success"),
+                ("reversed", "danger"),
+            ])
+            .mobile(),
+        )
+        .column(
+            Column::datetime("happened_at", &t["transfers.when"])
+                .computed("COALESCE({T}.\"posted_at\", {T}.\"created_at\")"),
+        )
+        .sort_by("status,-id")
+        .row_url("/goods-receipts/{id}")
+        .cards_on_mobile()
+        .empty_state(&t["receipts.empty"], Some(&t["receipts.empty_hint"]))
+}
+
 /// `GET /goods-receipts`: the receipts, drafts first, at the stores the user
 /// may receive at.
-async fn receipts(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn receipts(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
     if !may_see(&user) {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
-    for receipt in GoodsReceipt::query()
-        .order_by_desc(GoodsReceipt::ID)
-        .limit(100)
-        .get(&state.db)
-        .await?
-    {
-        let seen = user.has_permission_in(permissions::GOODS_RECEIPTS_POST, &receipt.scope())
-            || user.has_permission_in(permissions::STOCK_VIEW, &receipt.scope());
-        if !seen {
-            continue;
-        }
-        let location = Location::find_or_404(&state.db, receipt.location_id).await?;
-        let order = match receipt.purchase_order_id {
-            Some(id) => PurchaseOrder::find(&state.db, id)
-                .await?
-                .and_then(|order| order.number)
-                .unwrap_or_default(),
-            None => String::new(),
-        };
-        rows.push(ReceiptRow {
-            id: receipt.id,
-            title: receipt_title(&lang, &receipt),
-            order,
-            supplier: supplier_name(&state, &lang, receipt.supplier_party_id).await,
-            location: location_name(&location),
-            delivery_note: receipt.delivery_note.clone().unwrap_or_default(),
-            status: word(&lang, "receipt", receipt.status.as_str()),
-            status_kind: receipt_status(receipt.status),
-            when: receipt
-                .posted_at
-                .or(receipt.created_at)
-                .map(dubai_text)
-                .unwrap_or_default(),
-        });
+    let query = crate::grids::within_reach(
+        &state.db,
+        &user,
+        &[permissions::GOODS_RECEIPTS_POST, permissions::STOCK_VIEW],
+        GoodsReceipt::query(),
+        "scope_type",
+        "scope_id",
+    )
+    .await?;
+    let page = receipts_grid(&lang).page(query, &request).await?;
+    let mut suppliers = BTreeMap::new();
+    for receipt in page.items() {
+        suppliers.insert(
+            receipt.id,
+            supplier_name(&state, &lang, receipt.supplier_party_id).await,
+        );
     }
-    rows.sort_by_key(|row| row.status_kind != "warning");
+    let receipts = page.extend(|receipt| {
+        renox::serde_json::json!({
+            "number": receipt_title(&lang, receipt),
+            "supplier": suppliers.get(&receipt.id),
+        })
+    });
     Ok(View::typed(ReceiptsPage {
         tx: tx(&lang),
-        rows,
+        receipts,
     }))
 }
 

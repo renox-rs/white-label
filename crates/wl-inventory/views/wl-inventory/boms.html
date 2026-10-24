@@ -1,4 +1,5 @@
-{#- wl-inventory: the bills of materials by item and version, with a form to
+{#- wl-inventory: the bills of materials by item and version, a renox::grid
+    (search, sort, filter by status, pages), with a form to
     start one. A version is opened for its components and the actions that
     release and retire it. Replace it with resources/views/wl-inventory/boms.html
     in the app. -#}
@@ -15,18 +16,6 @@
       </rx-action-sheet>
     </rx-row>
     <rx-link-tabs :items="status_tabs" :current="status_current" :label="tx['filter']"/>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['title']" card>
-      <rx-column :label="tx['item']">
-        <rx-stack>
-          <span><a href="{{ row.url }}">{{ row.item }}</a> - {{ row.version }}</span>
-          <span><rx-badge :kind="row.status_kind" :text="row.status"/></span>
-        </rx-stack>
-      </rx-column>
-      <rx-column :label="tx['number']" hide-narrow>#{{ row.id }}</rx-column>
-      <rx-column :label="tx['output']" hide-narrow>{{ row.makes }}</rx-column>
-      <rx-column :label="tx['lines']" align="num">{{ row.lines }}</rx-column>
-      <rx-column :label="tx['cost']" hide-narrow>{{ row.cost }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['empty']" :message="tx['empty_text']" icon="clipboard-list"/></rx-slot>
-    </rx-table>
+    <rx-grid :page="boms"/>
   </rx-stack>
 </rx-page>

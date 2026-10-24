@@ -23,6 +23,7 @@ use std::collections::BTreeMap;
 
 use crate::screens::dubai_text;
 use renox::axum::http::HeaderMap;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use serde::Serialize;
 use wl_kernel::Subject;
@@ -125,7 +126,7 @@ pub struct DispatchRow {
 #[view(template = "wl-inventory/dispatches.html")]
 pub(crate) struct DispatchesPage {
     tx: Texts,
-    rows: Vec<DispatchRow>,
+    dispatches: GridPage<Dispatch>,
 }
 
 /// Whether `user` may see the dispatch: the right to manage or to see stock
@@ -135,66 +136,164 @@ fn may_see(user: &AuthUser, dispatch: &Dispatch) -> bool {
         || user.has_permission_in(permissions::STOCK_VIEW, &dispatch.scope())
 }
 
-/// `GET /dispatches`.
+/// The statuses of a dispatch, in life-cycle order.
+const STATUSES: [&str; 8] = [
+    "draft",
+    "picked",
+    "dispatched",
+    "delivered",
+    "returned",
+    "discarded",
+    "lost",
+    "cancelled",
+];
+
+/// The dispatches grid: number, recipient, what it is for, where it leaves
+/// from, its lines, status and when it changed. Sorted, filtered, searched
+/// and paged by the server.
+fn grid(lang: &Lang) -> Grid {
+    let t = tx(lang);
+    Grid::new("wl-inventory-dispatches")
+        .title(&t["title"])
+        .column(
+            Column::text("number", &t["number"])
+                .link("/dispatches/{id}")
+                .searchable()
+                .frozen()
+                .mobile(),
+        )
+        .column(
+            Column::text("recipient_name", &t["recipient"])
+                .searchable()
+                .mobile(),
+        )
+        .column(
+            Column::text("source", &t["source"])
+                .sortable(false)
+                .filterable(false),
+        )
+        .column(
+            Column::related(
+                "store",
+                &t["store"],
+                "wl_inventory_locations",
+                "location_id",
+                "name_en",
+            )
+            .searchable(),
+        )
+        .column(
+            Column::text("lines", &t["lines"])
+                .sortable(false)
+                .filterable(false),
+        )
+        .column(
+            Column::select(
+                "status",
+                &t["status"],
+                STATUSES.map(|status| (status, word(lang, "status", status))),
+            )
+            .badges(&[
+                ("draft", "info"),
+                ("picked", "warning"),
+                ("dispatched", "warning"),
+                ("delivered", "success"),
+                ("returned", "danger"),
+                ("discarded", "danger"),
+                ("lost", "danger"),
+                ("cancelled", "neutral"),
+            ])
+            .mobile(),
+        )
+        .column(Column::datetime("updated_at", &t["when"]))
+        .sort_by("-id")
+        .row_url("/dispatches/{id}")
+        .cards_on_mobile()
+        .empty_state(&t["empty"], Some(&t["empty_hint"]))
+}
+
+/// The dispatches the user may see: those whose location's scope the user
+/// manages dispatches in or sees stock in.
+async fn visible(state: &AppState, user: &AuthUser) -> Result<renox::db::Query<Dispatch>> {
+    crate::grids::within_reach(
+        &state.db,
+        user,
+        &[permissions::DISPATCH_MANAGE, permissions::STOCK_VIEW],
+        Dispatch::query(),
+        "scope_type",
+        "scope_id",
+    )
+    .await
+}
+
+/// One dispatch as the list shows it.
+async fn row_of(state: &AppState, lang: &Lang, dispatch: &Dispatch) -> Result<DispatchRow> {
+    let location = Location::find_or_404(&state.db, dispatch.location_id).await?;
+    let mut lines = Vec::new();
+    for line in lines_of(&state.db, dispatch.id).await? {
+        let item = Item::find_or_404(&state.db, line.item_id).await?;
+        lines.push(format!(
+            "{} · {}",
+            item_name(&item, lang),
+            quantity_with_unit(line.quantity_milli, &item.base_unit)
+        ));
+    }
+    Ok(DispatchRow {
+        id: dispatch.id,
+        number: dispatch.number.clone().unwrap_or_default(),
+        recipient: dispatch.recipient_name.clone(),
+        source: source_text(state, dispatch).await,
+        store: location.name_en,
+        lines: lines.join(", "),
+        status: word(lang, "status", dispatch.status.as_str()),
+        status_code: dispatch.status.as_str().to_owned(),
+        status_kind: status_kind(dispatch.status),
+        when: dispatch.updated_at.map(dubai_text).unwrap_or_default(),
+    })
+}
+
+/// `GET /dispatches`: the dispatches the user may see, newest first, as a
+/// grid (sort, filter, search, pages); JSON for the rest, every dispatch the
+/// filters match.
 async fn list(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     headers: HeaderMap,
+    request: GridRequest,
 ) -> Result<Response> {
     if !user.has_permission_anywhere(permissions::DISPATCH_MANAGE)
         && !user.has_permission_anywhere(permissions::STOCK_VIEW)
     {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
-    for dispatch in Dispatch::query()
-        .order_by_desc(Dispatch::ID)
-        .limit(200)
-        .get(&state.db)
-        .await?
-    {
-        if !may_see(&user, &dispatch) {
-            continue;
+    let query = visible(&state, &user).await?;
+    if !wl_kernel::negotiate::wants_html(&headers) {
+        let mut rows = Vec::new();
+        for dispatch in grid(&lang).filter(query, &request).get(&state.db).await? {
+            rows.push(row_of(&state, &lang, &dispatch).await?);
         }
-        let location = Location::find_or_404(&state.db, dispatch.location_id).await?;
-        let mut lines = Vec::new();
-        for line in lines_of(&state.db, dispatch.id).await? {
-            let item = Item::find_or_404(&state.db, line.item_id).await?;
-            lines.push(format!(
-                "{} · {}",
-                item_name(&item, &lang),
-                quantity_with_unit(line.quantity_milli, &item.base_unit)
-            ));
-        }
-        rows.push(DispatchRow {
-            id: dispatch.id,
-            number: dispatch.number.clone().unwrap_or_default(),
-            recipient: dispatch.recipient_name.clone(),
-            source: source_text(&state, &dispatch).await,
-            store: location.name_en,
-            lines: lines.join(", "),
-            status: word(&lang, "status", dispatch.status.as_str()),
-            status_code: dispatch.status.as_str().to_owned(),
-            status_kind: status_kind(dispatch.status),
-            when: dispatch.updated_at.map(dubai_text).unwrap_or_default(),
-        });
+        return json(&rows);
     }
-    if wl_kernel::negotiate::wants_html(&headers) {
-        return Ok(View::typed(DispatchesPage {
-            tx: tx(&lang),
-            rows,
-        })
-        .into_response());
+    let page = grid(&lang).page(query, &request).await?;
+    let mut shown = BTreeMap::new();
+    for dispatch in page.items() {
+        shown.insert(dispatch.id, row_of(&state, &lang, dispatch).await?);
     }
-    json(&rows)
+    let dispatches = page.extend(|dispatch| match shown.get(&dispatch.id) {
+        Some(row) => renox::serde_json::json!({ "source": row.source, "lines": row.lines }),
+        None => renox::serde_json::json!({}),
+    });
+    Ok(View::typed(DispatchesPage {
+        tx: tx(&lang),
+        dispatches,
+    })
+    .into_response())
 }
 
 /// `value` as a JSON answer.
 fn json<T: Serialize>(value: &T) -> Result<Response> {
-    let body = renox::serde_json::to_string(value)
-        .map_err(|error| Error::Internal(renox::anyhow::Error::new(error)))?;
-    Ok(([("content-type", "application/json")], body).into_response())
+    crate::grids::json(value)
 }
 
 /// The record the dispatch fulfils, in words: its label, else its number.

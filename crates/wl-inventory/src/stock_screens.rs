@@ -22,6 +22,7 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use serde::Serialize;
 use wl_kernel::Subject;
@@ -191,35 +192,6 @@ fn expiry_of(lot: &Lot, lang: &Lang) -> (String, &'static str) {
     }
 }
 
-/// One item of a store.
-#[derive(Serialize, Debug, Clone)]
-pub struct ItemRow {
-    name: String,
-    code: String,
-    on_hand: String,
-    held: String,
-    reserved: String,
-    available: String,
-    reorder: String,
-    low: bool,
-}
-
-/// One lot of a store.
-#[derive(Serialize, Debug, Clone)]
-pub struct LotRow {
-    id: i64,
-    item: String,
-    number: String,
-    supplier_lot: String,
-    expiry: String,
-    expiry_kind: &'static str,
-    status: String,
-    status_kind: &'static str,
-    here: String,
-    held: String,
-    reserved: String,
-}
-
 /// What the stock page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-inventory/stock.html")]
@@ -228,8 +200,8 @@ pub(crate) struct StockPage {
     locations: Vec<(String, String)>,
     location: String,
     location_name: String,
-    items: Vec<ItemRow>,
-    lots: Vec<LotRow>,
+    items: GridPage<Item>,
+    lots: GridPage<Lot>,
     nothing: bool,
 }
 
@@ -239,13 +211,165 @@ struct StockQuery {
     location: String,
 }
 
+/// The quantity of the item (or lot) in a store, in thousandths, as SQL: what
+/// arrived there less what left. `owner` is the column of the movements that
+/// names the row (`item_id` or `lot_id`).
+fn on_hand_sql(owner: &str, location: i64) -> String {
+    format!(
+        "(COALESCE((SELECT SUM(m.\"quantity_milli\") FROM \"wl_inventory_stock_movements\" m \
+         WHERE m.\"{owner}\" = {{T}}.\"id\" AND m.\"to_location_id\" = {location}), 0) \
+         - COALESCE((SELECT SUM(m.\"quantity_milli\") FROM \"wl_inventory_stock_movements\" m \
+         WHERE m.\"{owner}\" = {{T}}.\"id\" AND m.\"from_location_id\" = {location}), 0))"
+    )
+}
+
+/// The items grid of a store: the items on hand there or with a reorder
+/// point, with what is held, reserved and available, and the level.
+fn items_grid(lang: &Lang, location: i64) -> Grid {
+    let t = tx(lang);
+    Grid::new("wl-inventory-stock-items")
+        .prefix("items")
+        .title(&t["stock.items"])
+        .column(
+            Column::text("name_en", &t["stock.item"])
+                .description("code")
+                .searchable()
+                .frozen()
+                .mobile(),
+        )
+        .column(Column::text("code", &t["stock.code"]).searchable().hidden())
+        .column(
+            Column::text("on_hand", &t["stock.on_hand"])
+                .computed(&on_hand_sql("item_id", location))
+                .filterable(false)
+                .mobile(),
+        )
+        .column(
+            Column::text("held", &t["stock.held"])
+                .sortable(false)
+                .filterable(false),
+        )
+        .column(
+            Column::text("reserved", &t["stock.reserved"])
+                .sortable(false)
+                .filterable(false),
+        )
+        .column(
+            Column::text("available", &t["stock.available"])
+                .sortable(false)
+                .filterable(false)
+                .mobile(),
+        )
+        .column(
+            Column::text("reorder", &t["stock.reorder"])
+                .computed("{T}.\"reorder_point_milli\"")
+                .filterable(false),
+        )
+        .column(
+            Column::select(
+                "level",
+                &t["stock.level"],
+                [
+                    ("low", t["stock.low"].clone()),
+                    ("ok", t["stock.level_ok"].clone()),
+                ],
+            )
+            .computed(&format!(
+                "(CASE WHEN {{T}}.\"reorder_point_milli\" > 0 AND {} <= {{T}}.\"reorder_point_milli\" \
+                 THEN 'low' ELSE 'ok' END)",
+                on_hand_sql("item_id", location)
+            ))
+            .badges(&[("low", "warning"), ("ok", "neutral")])
+            .mobile(),
+        )
+        .sort_by("name_en")
+        .cards_on_mobile()
+        .empty_state(&t["stock.empty"], None)
+}
+
+/// The lots grid of a store: the lots with something on hand there.
+fn lots_grid(lang: &Lang, location: i64) -> Grid {
+    let t = tx(lang);
+    Grid::new("wl-inventory-stock-lots")
+        .prefix("lots")
+        .title(&t["stock.lots"])
+        .column(
+            Column::text("number", &t["stock.lot"])
+                .link("/stock/lots/{id}")
+                .searchable()
+                .frozen()
+                .mobile(),
+        )
+        .column(
+            Column::related(
+                "item",
+                &t["stock.item"],
+                "wl_inventory_items",
+                "item_id",
+                "name_en",
+            )
+            .searchable()
+            .mobile(),
+        )
+        .column(Column::text("supplier_lot", &t["stock.supplier_lot"]).searchable())
+        .column(Column::date("expiry_date", &t["stock.expiry"]).mobile())
+        .column(Column::custom("expiry_flag", "").mobile())
+        .column(
+            Column::text("here", &t["stock.here"])
+                .computed(&on_hand_sql("lot_id", location))
+                .filterable(false)
+                .mobile(),
+        )
+        .column(
+            Column::text("held", &t["stock.held"])
+                .sortable(false)
+                .filterable(false),
+        )
+        .column(
+            Column::text("reserved", &t["stock.reserved"])
+                .sortable(false)
+                .filterable(false),
+        )
+        .column(
+            Column::select(
+                "status",
+                &t["fields.status"],
+                [
+                    "quarantine",
+                    "released",
+                    "on_hold",
+                    "expired",
+                    "rejected",
+                    "depleted",
+                ]
+                .map(|status| (status, word(lang, "lot", status))),
+            )
+            .badges(&[
+                ("released", "success"),
+                ("quarantine", "warning"),
+                ("on_hold", "danger"),
+                ("expired", "danger"),
+                ("rejected", "danger"),
+                ("depleted", "neutral"),
+            ])
+            .mobile(),
+        )
+        .sort_by("expiry_date")
+        .row_url("/stock/lots/{id}")
+        .cards_on_mobile()
+        .empty_state(&t["stock.no_lots"], None)
+}
+
 /// `GET /stock`: the items and the lots of one store, the first the user may
-/// see unless `?location=` names another.
+/// see unless `?location=` names another. Each is a grid (sort, filter,
+/// search, pages) that reads its own names of the query string:
+/// `?items.page=2`, `?lots.sort=-here`.
 async fn stock(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Query(query): Query<StockQuery>,
+    request: GridRequest,
 ) -> Result<View> {
     if !user.has_permission_anywhere(permissions::STOCK_VIEW) {
         return Err(Error::Forbidden);
@@ -256,85 +380,77 @@ async fn stock(
         .and_then(|id| visible.iter().find(|location| location.id == id))
         .or_else(|| visible.first())
         .cloned();
-    let mut items = Vec::new();
-    let mut lots = Vec::new();
-    let all_items = Item::query()
-        .order_by(Item::NAME_EN)
-        .limit(500)
-        .get(&state.db)
-        .await?;
     let Some(chosen) = chosen else {
         return Ok(View::typed(StockPage {
             tx: tx(&lang),
             locations: Vec::new(),
             location: String::new(),
             location_name: String::new(),
-            items,
-            lots,
+            items: items_grid(&lang, 0)
+                .page(Item::query().none(), &request)
+                .await?,
+            lots: lots_grid(&lang, 0)
+                .page(Lot::query().none(), &request)
+                .await?,
             nothing: true,
         }));
     };
-    for item in &all_items {
-        let figures = balance::balance(&state.db, item.id, chosen.id, None).await?;
-        if figures.on_hand_milli == 0 && item.reorder_point_milli == 0 {
-            continue;
-        }
-        items.push(ItemRow {
-            name: item_name(item, &lang),
-            code: item.code.clone(),
-            on_hand: amount(figures.on_hand_milli, &item.base_unit),
-            held: amount(figures.held_milli, &item.base_unit),
-            reserved: amount(
-                crate::reservation::reserved_in(&state.db, item.id, chosen.id, None, None).await?,
-                &item.base_unit,
-            ),
-            available: amount(figures.available_milli(), &item.base_unit),
-            reorder: if item.reorder_point_milli > 0 {
-                amount(item.reorder_point_milli, &item.base_unit)
-            } else {
-                tr(&lang, "none")
-            },
-            low: item.reorder_point_milli > 0 && figures.on_hand_milli <= item.reorder_point_milli,
-        });
-        if !item.lot_tracked {
-            continue;
-        }
-        for lot in Lot::query()
-            .where_(Lot::ITEM_ID.eq(item.id))
-            .order_by(Lot::EXPIRY_DATE)
-            .get(&state.db)
-            .await?
-        {
-            let here = balance::balance(&state.db, item.id, chosen.id, Some(lot.id)).await?;
-            if here.on_hand_milli <= 0 {
-                continue;
-            }
-            let (expiry, expiry_kind) = expiry_of(&lot, &lang);
-            lots.push(LotRow {
-                id: lot.id,
-                item: item_name(item, &lang),
-                number: lot.number.clone(),
-                supplier_lot: lot.supplier_lot.clone().unwrap_or_default(),
-                expiry,
-                expiry_kind,
-                status: word(&lang, "lot", lot.status.as_str()),
-                status_kind: lot_kind(lot.status),
-                here: amount(here.on_hand_milli, &item.base_unit),
-                held: amount(here.held_milli, &item.base_unit),
-                reserved: amount(
-                    crate::reservation::reserved_in(
-                        &state.db,
-                        item.id,
-                        chosen.id,
-                        Some(lot.id),
-                        None,
-                    )
-                    .await?,
-                    &item.base_unit,
-                ),
-            });
-        }
+    let on_hand = on_hand_sql("item_id", chosen.id).replace("{T}", "\"wl_inventory_items\"");
+    let items_query = Item::query().where_raw(
+        &format!("\"wl_inventory_items\".\"reorder_point_milli\" > 0 OR {on_hand} <> 0"),
+        Vec::<i64>::new(),
+    );
+    let lot_here = on_hand_sql("lot_id", chosen.id).replace("{T}", "\"wl_inventory_lots\"");
+    let lots_query = Lot::query().where_raw(&format!("{lot_here} > 0"), Vec::<i64>::new());
+    let items_page = items_grid(&lang, chosen.id)
+        .page(items_query, &request)
+        .await?;
+    let mut figures = BTreeMap::new();
+    for item in items_page.items() {
+        let found = balance::balance(&state.db, item.id, chosen.id, None).await?;
+        let reserved =
+            crate::reservation::reserved_in(&state.db, item.id, chosen.id, None, None).await?;
+        figures.insert(
+            item.id,
+            renox::serde_json::json!({
+                "name_en": item_name(item, &lang),
+                "on_hand": amount(found.on_hand_milli, &item.base_unit),
+                "held": amount(found.held_milli, &item.base_unit),
+                "reserved": amount(reserved, &item.base_unit),
+                "available": amount(found.available_milli(), &item.base_unit),
+                "reorder": if item.reorder_point_milli > 0 {
+                    amount(item.reorder_point_milli, &item.base_unit)
+                } else {
+                    tr(&lang, "none")
+                },
+            }),
+        );
     }
+    let items = items_page.extend(|item| figures.get(&item.id).cloned().unwrap_or_default());
+    let lots_page = lots_grid(&lang, chosen.id)
+        .page(lots_query, &request)
+        .await?;
+    let mut lot_figures = BTreeMap::new();
+    for lot in lots_page.items() {
+        let item = Item::find_or_404(&state.db, lot.item_id).await?;
+        let here = balance::balance(&state.db, item.id, chosen.id, Some(lot.id)).await?;
+        let reserved =
+            crate::reservation::reserved_in(&state.db, item.id, chosen.id, Some(lot.id), None)
+                .await?;
+        let (expiry, expiry_kind) = expiry_of(lot, &lang);
+        lot_figures.insert(
+            lot.id,
+            renox::serde_json::json!({
+                "item": item_name(&item, &lang),
+                "here": amount(here.on_hand_milli, &item.base_unit),
+                "held": amount(here.held_milli, &item.base_unit),
+                "reserved": amount(reserved, &item.base_unit),
+                "expiry": expiry,
+                "expiry_kind": expiry_kind,
+            }),
+        );
+    }
+    let lots = lots_page.extend(|lot| lot_figures.get(&lot.id).cloned().unwrap_or_default());
     Ok(View::typed(StockPage {
         tx: tx(&lang),
         locations: visible
@@ -343,7 +459,7 @@ async fn stock(
             .collect(),
         location: chosen.id.to_string(),
         location_name: location_name(&chosen),
-        nothing: items.is_empty(),
+        nothing: items.total() == 0,
         items,
         lots,
     }))
@@ -574,16 +690,10 @@ pub struct LineRow {
     can_decide: bool,
 }
 
-/// One hold with its lines.
-#[derive(Serialize, Debug, Clone)]
-pub struct HoldRow {
-    id: i64,
-    number: String,
-    reason: String,
+/// What the page adds to a hold: its lines with the buttons of the decision,
+/// the reference in words and whether it can be cancelled.
+struct HoldExtra {
     reference: String,
-    placed: String,
-    status: String,
-    status_kind: &'static str,
     lines: Vec<LineRow>,
     can_cancel: bool,
 }
@@ -593,30 +703,89 @@ pub struct HoldRow {
 #[view(template = "wl-inventory/holds.html")]
 pub(crate) struct HoldsPage {
     tx: Texts,
-    holds: Vec<HoldRow>,
+    holds: GridPage<StockHold>,
     approvals: Vec<ApprovalCard>,
     can_hold: bool,
     locations: Vec<(String, String)>,
     reasons: Vec<(String, String)>,
 }
 
+/// The holds grid, the open ones first: number, reason, what caused it, when
+/// it was placed, status and lines. A click opens the lines with the
+/// decision of each; the last column has the cancel button.
+fn holds_grid(lang: &Lang) -> Grid {
+    let t = tx(lang);
+    Grid::new("wl-inventory-holds")
+        .title(&t["holds.title"])
+        .column(
+            Column::text("number", &t["hold.number"])
+                .searchable()
+                .frozen()
+                .mobile(),
+        )
+        .column(
+            Column::select(
+                "reason",
+                &t["hold.reason"],
+                REASONS.map(|reason| (reason, word(lang, "reason", reason))),
+            )
+            .mobile(),
+        )
+        .column(
+            Column::text("reference", &t["holds.reference"])
+                .sortable(false)
+                .filterable(false),
+        )
+        .column(Column::datetime("placed_at", &t["holds.placed"]))
+        .column(
+            Column::select(
+                "status",
+                &t["fields.status"],
+                ["open", "closed", "cancelled"].map(|status| (status, word(lang, "hold", status))),
+            )
+            .badges(&[
+                ("open", "warning"),
+                ("closed", "success"),
+                ("cancelled", "neutral"),
+            ])
+            .mobile(),
+        )
+        .column(Column::count_of(
+            "line_count",
+            &t["holds.lines"],
+            "wl_inventory_stock_hold_lines",
+            "stock_hold_id",
+        ))
+        .column(
+            Column::number("open_first", "")
+                .computed("(CASE WHEN {T}.\"status\" = 'open' THEN 0 ELSE 1 END)")
+                .hidden(),
+        )
+        .column(Column::custom("actions", "").frozen_right().mobile())
+        .sort_by("open_first,-id")
+        .details()
+        .cards_on_mobile()
+        .empty_state(&t["holds.empty"], None)
+}
+
 /// `GET /stock/holds`: the open holds first, each with its lines and the
 /// buttons of the decision the user may take; a decision that waits for a
 /// second person shows its approval card.
-async fn holds(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn holds(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
     let decider = user.has_permission_anywhere(permissions::LOTS_RELEASE);
     let placer = user.has_permission_anywhere(permissions::STOCK_HOLD);
     if !decider && !placer {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
+    let page = holds_grid(&lang).page(StockHold::query(), &request).await?;
+    let mut extras = BTreeMap::new();
     let mut cards = Vec::new();
-    for hold in StockHold::query()
-        .order_by_desc(StockHold::ID)
-        .limit(100)
-        .get(&state.db)
-        .await?
-    {
+    for hold in page.items() {
         let mut lines = Vec::new();
         let raw = lines_of(&state.db, hold.id).await?;
         let all_undecided = raw
@@ -660,7 +829,6 @@ async fn holds(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
                     && user.has_permission_in(permissions::LOTS_RELEASE, &line.scope()),
             });
         }
-        let (status, status_kind) = hold_status(&lang, hold.status);
         let reference = match hold.reference() {
             Some(subject) => label(&state, &subject).await,
             None => String::new(),
@@ -669,20 +837,23 @@ async fn holds(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             && hold.reason != "recall"
             && all_undecided
             && user.has_permission_in(permissions::LOTS_RELEASE, &hold.scope());
-        rows.push(HoldRow {
-            id: hold.id,
-            number: hold.number.clone().unwrap_or_default(),
-            reason: word(&lang, "reason", &hold.reason),
-            reference,
-            placed: hold.placed_at.map(dubai_text).unwrap_or_default(),
-            status,
-            status_kind,
-            lines,
-            can_cancel,
-        });
+        extras.insert(
+            hold.id,
+            HoldExtra {
+                reference,
+                lines,
+                can_cancel,
+            },
+        );
     }
-    // The open holds lead.
-    rows.sort_by_key(|row| row.status_kind != "warning");
+    let holds = page.extend(|hold| match extras.get(&hold.id) {
+        Some(extra) => renox::serde_json::json!({
+            "reference": extra.reference,
+            "lines": extra.lines,
+            "can_cancel": extra.can_cancel,
+        }),
+        None => renox::serde_json::json!({}),
+    });
     let locations = locations_with(&state, &user, permissions::STOCK_HOLD)
         .await?
         .iter()
@@ -690,7 +861,7 @@ async fn holds(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .collect::<Vec<_>>();
     Ok(View::typed(HoldsPage {
         tx: tx(&lang),
-        holds: rows,
+        holds,
         approvals: cards,
         can_hold: !locations.is_empty(),
         locations,

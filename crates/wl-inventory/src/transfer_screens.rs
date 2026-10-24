@@ -15,7 +15,9 @@
 //! Decision: the form makes a transfer of one item (one line); a transfer of
 //! several lines is made through the service.
 
-use crate::screens::dubai_text;
+use std::collections::BTreeMap;
+
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -39,28 +41,12 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
-/// One transfer.
-#[derive(Serialize, Debug, Clone)]
-pub struct TransferRow {
-    id: i64,
-    number: String,
-    from: String,
-    to: String,
-    lines: String,
-    status: String,
-    status_kind: &'static str,
-    when: String,
-    can_send: bool,
-    can_receive: bool,
-    warning: String,
-}
-
 /// What the transfers page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-inventory/transfers.html")]
 pub(crate) struct TransfersPage {
     tx: Texts,
-    rows: Vec<TransferRow>,
+    transfers: GridPage<Transfer>,
     can_make: bool,
     from: Vec<(String, String)>,
     to: Vec<(String, String)>,
@@ -68,31 +54,78 @@ pub(crate) struct TransfersPage {
     lots: Vec<(String, String)>,
 }
 
-fn status_kind(status: TransferStatus) -> &'static str {
-    match status {
-        TransferStatus::Draft => "info",
-        TransferStatus::InTransit => "warning",
-        TransferStatus::Received => "success",
-        TransferStatus::Cancelled => "error",
-    }
+/// The transfers grid: number, the two stores, items, status and when it
+/// last moved, with the buttons that send and receive in the last column.
+fn grid(lang: &Lang) -> Grid {
+    let t = tx(lang);
+    let store = |key: &str, label: &str, fk: &str| {
+        Column::related(key, label, "wl_inventory_locations", fk, "name_en").searchable()
+    };
+    Grid::new("wl-inventory-transfers")
+        .title(&t["transfers.title"])
+        .column(
+            Column::text("number", &t["transfers.number"])
+                .searchable()
+                .frozen()
+                .mobile(),
+        )
+        .column(store("from_store", &t["transfers.from"], "from_location_id").mobile())
+        .column(store("to_store", &t["transfers.to"], "to_location_id").mobile())
+        .column(
+            Column::text("lines", &t["transfers.lines"])
+                .sortable(false)
+                .filterable(false)
+                .wrap(),
+        )
+        .column(
+            Column::select(
+                "status",
+                &t["fields.status"],
+                ["draft", "in_transit", "received", "cancelled"]
+                    .map(|status| (status, word(lang, "transfer", status))),
+            )
+            .badges(&[
+                ("draft", "info"),
+                ("in_transit", "warning"),
+                ("received", "success"),
+                ("cancelled", "danger"),
+            ])
+            .mobile(),
+        )
+        .column(
+            Column::datetime("moved_at", &t["transfers.when"])
+                .computed("COALESCE({T}.\"received_at\", {T}.\"sent_at\", {T}.\"created_at\")"),
+        )
+        .column(Column::custom("actions", "").frozen_right().mobile())
+        .sort_by("-id")
+        .cards_on_mobile()
+        .empty_state(&t["transfers.empty"], Some(&t["transfers.empty_hint"]))
+}
+
+/// What the page adds to a transfer: its items in words, the buttons and the
+/// warning of a receipt into a store on hold.
+struct Extra {
+    lines: String,
+    can_send: bool,
+    can_receive: bool,
+    warning: String,
 }
 
 /// `GET /stock/transfers`.
-async fn transfers(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn transfers(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
     if !user.has_permission_anywhere(permissions::STOCK_TRANSFER)
         && !user.has_permission_anywhere(permissions::STOCK_VIEW)
     {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
-    for transfer in Transfer::query()
-        .order_by_desc(Transfer::ID)
-        .limit(100)
-        .get(&state.db)
-        .await?
-    {
-        let from = Location::find_or_404(&state.db, transfer.from_location_id).await?;
-        let to = Location::find_or_404(&state.db, transfer.to_location_id).await?;
+    let page = grid(&lang).page(Transfer::query(), &request).await?;
+    let mut extras = BTreeMap::new();
+    for transfer in page.items() {
         let mut lines = Vec::new();
         let mut item_ids = Vec::new();
         for line in lines_of(&state.db, transfer.id).await? {
@@ -114,27 +147,26 @@ async fn transfers(State(state): State<AppState>, user: AuthUser, lang: Lang) ->
         } else {
             String::new()
         };
-        let when = transfer
-            .received_at
-            .or(transfer.sent_at)
-            .or(transfer.created_at)
-            .map(dubai_text)
-            .unwrap_or_default();
-        rows.push(TransferRow {
-            id: transfer.id,
-            number: transfer.number.clone().unwrap_or_default(),
-            from: location_name(&from),
-            to: location_name(&to),
-            lines: lines.join(", "),
-            status: word(&lang, "transfer", transfer.status.as_str()),
-            status_kind: status_kind(transfer.status),
-            when,
-            can_send: transfer.status == TransferStatus::Draft
-                && user.has_permission_in(permissions::STOCK_TRANSFER, &transfer.from_scope()),
-            can_receive,
-            warning,
-        });
+        extras.insert(
+            transfer.id,
+            Extra {
+                lines: lines.join(", "),
+                can_send: transfer.status == TransferStatus::Draft
+                    && user.has_permission_in(permissions::STOCK_TRANSFER, &transfer.from_scope()),
+                can_receive,
+                warning,
+            },
+        );
     }
+    let transfers = page.extend(|transfer| match extras.get(&transfer.id) {
+        Some(extra) => renox::serde_json::json!({
+            "lines": extra.lines,
+            "can_send": extra.can_send,
+            "can_receive": extra.can_receive,
+            "warning": extra.warning,
+        }),
+        None => renox::serde_json::json!({}),
+    });
     let from: Vec<(String, String)> = locations_with(&state, &user, permissions::STOCK_TRANSFER)
         .await?
         .iter()
@@ -172,7 +204,7 @@ async fn transfers(State(state): State<AppState>, user: AuthUser, lang: Lang) ->
     }
     Ok(View::typed(TransfersPage {
         tx: tx(&lang),
-        rows,
+        transfers,
         can_make: !from.is_empty(),
         from,
         to,

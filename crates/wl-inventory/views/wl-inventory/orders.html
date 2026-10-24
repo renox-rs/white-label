@@ -1,30 +1,22 @@
-{#- wl-inventory: the purchase orders waiting for goods, with what is still to
-    come, and the button that starts a goods receipt. Replace it with
+{#- wl-inventory: the purchase orders waiting for goods, a renox::grid (search,
+    sort, filter by status and store, pages) with what is still to come, and
+    the button that starts a goods receipt. Replace it with
     resources/views/wl-inventory/orders.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['orders.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['orders.title']" :subtitle="tx['orders.subtitle']">
-      <rx-link-button route="wl_inventory.receipts" :label="tx['receipts.title']" variant="plain"/>
-    </rx-page-header>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['orders.title']" card>
-      <rx-column :label="tx['orders.number']">{{ row.number }}</rx-column>
-      <rx-column :label="tx['orders.supplier']">{{ row.supplier }}</rx-column>
-      <rx-column :label="tx['stock.store']" hide-narrow>{{ row.location }}</rx-column>
-      <rx-column :label="tx['orders.expected']" hide-narrow>{{ row.expected }}</rx-column>
-      <rx-column :label="tx['orders.outstanding']">{{ row.outstanding }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
-      <rx-row-actions>
-        <template rx-if="row.draft">
-          <rx-link-button :href="row.draft" :label="tx['orders.open_draft']" icon="package"/>
-        </template>
-        <template rx-if="row.can_receive">
-          <rx-action-sheet :id="'receive-' ~ row.id" :label="tx['orders.receive']" :action="route('wl_inventory.order_receive', row.id)"
-                           :title="tx['orders.receive']" :description="tx['orders.receive_description']" :submit-label="tx['orders.receive']" icon="package">
-            <rx-input name="delivery_note" :label="tx['receipts.delivery_note']" :id="'receive-note-' ~ row.id"/>
-          </rx-action-sheet>
-        </template>
-      </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['orders.empty']" icon="package"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['orders.title']" :subtitle="tx['orders.subtitle']">
+    <rx-link-button route="wl_inventory.receipts" :label="tx['receipts.title']" variant="plain"/>
+  </rx-page-header>
+  <rx-grid :page="orders">
+    {% if column.key == "actions" %}
+      {% if row.draft %}
+        <rx-link-button :href="row.draft" :label="tx['orders.open_draft']" icon="package"/>
+      {% endif %}
+      {% if row.can_receive %}
+        <rx-action-sheet :id="'receive-' ~ row.id" :label="tx['orders.receive']" :action="route('wl_inventory.order_receive', row.id)"
+                         :title="tx['orders.receive']" :description="tx['orders.receive_description']" :submit-label="tx['orders.receive']" icon="package">
+          <rx-input name="delivery_note" :label="tx['receipts.delivery_note']" :id="'receive-note-' ~ row.id"/>
+        </rx-action-sheet>
+      {% endif %}
+    {% endif %}
+  </rx-grid>
 </rx-page>

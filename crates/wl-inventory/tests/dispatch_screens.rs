@@ -172,25 +172,29 @@ async fn a_failed_credit_recheck_is_a_sentence_in_the_sheet() {
     );
 }
 
-/// The pages fit a phone: the tables sit in a wrapper that scrolls and the
-/// sheets are sheets.
+/// The pages fit a phone: the list is a grid that turns each row into a
+/// card under 768 px and scrolls its table in a region of its own, the
+/// record's tables sit in a wrapper that scrolls and the sheets are sheets.
 #[renox::test]
 async fn the_pages_fit_a_phone() {
     let t = boot().await;
     let (dispatch, _lot) = picked(&t).await;
     let dispatcher = t.dispatcher("Dina").await;
-    for path in [
-        "/dispatches".to_owned(),
-        format!("/dispatches/{}", dispatch.id),
-    ] {
-        let html = t.browse(&dispatcher, &path).await.text();
-        let tables = html.matches("<table").count();
-        assert!(tables > 0);
-        assert_eq!(tables, html.matches("rx-table-wrap").count(), "{path}");
-    }
-    let html = t
+    let list = t.browse(&dispatcher, "/dispatches").await.text();
+    assert!(
+        list.contains("rx-grid--cards"),
+        "the rows are cards on a phone"
+    );
+    assert_eq!(
+        list.matches("<table").count(),
+        list.matches("rx-grid__scroll").count()
+    );
+    let page = t
         .browse(&dispatcher, &format!("/dispatches/{}", dispatch.id))
         .await
         .text();
-    assert!(html.contains("rx-sheet"));
+    let tables = page.matches("<table").count();
+    assert!(tables > 0);
+    assert_eq!(tables, page.matches("rx-table-wrap").count());
+    assert!(page.contains("rx-sheet"));
 }

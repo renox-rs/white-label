@@ -198,6 +198,10 @@ pub(crate) const DISPATCH_TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.dispatch.ui.when", "Changed"),
     ("wl_inventory.dispatch.ui.open", "Open"),
     ("wl_inventory.dispatch.ui.empty", "No dispatch yet"),
+    (
+        "wl_inventory.dispatch.ui.empty_hint",
+        "Dispatches appear here as orders are picked and sent.",
+    ),
     ("wl_inventory.dispatch.ui.none", "-"),
     // The record page.
     ("wl_inventory.dispatch.ui.details", "Dispatch"),
