@@ -7,6 +7,6 @@
   <rx-grid :page="tasks">
     <template rx-if="column.key == 'task'"><a href="{{ row.url }}">{{ row.kind }}</a></template>
     <template rx-elif="column.key == 'due'">{{ row.due }}</template>
-    <template rx-elif="column.key == 'overdue'"><rx-badge rx-if="row.overdue" kind="danger" :text="tx['tasks.overdue']"/></template>
+    <template rx-elif="column.key == 'overdue'"><rx-badge rx-if="row.overdue" kind="error" :text="tx['tasks.overdue']"/></template>
   </rx-grid>
 </rx-page>
