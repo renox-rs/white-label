@@ -8,8 +8,8 @@
       <rx-badge kind="success" :text="programme.name"/>
       <rx-badge kind="info" :text="programme.earn"/>
       <rx-badge kind="info" :text="tx['loyalty.point_value'] ~ ' ' ~ programme.point_value"/>
-      <rx-badge kind="neutral" :text="tx['loyalty.validity'] ~ ' ' ~ programme.validity_months"/>
-      <rx-badge kind="neutral" :text="tx['loyalty.terms_version'] ~ ' ' ~ programme.terms_version"/>
+      <rx-badge kind="info" :text="tx['loyalty.validity'] ~ ' ' ~ programme.validity_months"/>
+      <rx-badge kind="info" :text="tx['loyalty.terms_version'] ~ ' ' ~ programme.terms_version"/>
       <rx-badge rx-if="programme.closing" kind="warning" :text="tx['terms.closing'] ~ ' ' ~ programme.closing"/>
     </template>
     <rx-link-button :href="route('wl_sales.loyalty_liability')" :label="tx['liability.title']" variant="secondary" icon="receipt"/>
