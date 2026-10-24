@@ -367,6 +367,19 @@
     "pay_reason_hint": "Say why the account is not accepted.",
     "pay_cancel": "Cancel"
   },
+  "roles": {
+    "accountant": "accountant",
+    "branch_manager": "branch manager",
+    "counter_sales": "counter sales",
+    "fleet_account_manager": "fleet account manager",
+    "insurance_coordinator": "insurance coordinator",
+    "owner": "owner",
+    "procurement": "purchaser",
+    "service_advisor": "service advisor",
+    "storekeeper": "storekeeper",
+    "technician": "technician",
+    "workshop_manager": "workshop manager"
+  },
   "activity": {
     "title": "Activity",
     "subtitle": "Logins, account changes and role changes.",
