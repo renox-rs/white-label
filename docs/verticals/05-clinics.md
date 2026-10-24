@@ -341,10 +341,6 @@ expire with appointments affected (`DOC.RUL.03`).
 | `PLT.ENT.01` | Legal entities: several trade licences and TRNs in one deployment; issuer on every document | shared | wl-kernel | MVP |
 | `PLT.IMP.01` | Data import and migration: Excel templates per entity, validation, dry run, rollback | shared | wl-kernel | MVP |
 | `PLT.SRC.01` | Global search across records, including Arabic names | shared | wl-kernel + Renox search | MVP |
-| `PLT.REL.01` | Related records of any record, in a panel and as a tool ([decision 0006](../decisions/0006-search-and-ai-agents.md)) | shared | wl-kernel | MVP |
-| `PLT.AGT.01` | AI assistant connection (MCP): search, read, summarise, reports | shared | wl-kernel + Renox (R26, R27) | Later |
-| `PLT.AGT.02` | AI assistant actions: transitions and drafts, with preview and confirm | shared | wl-kernel + Renox (R28) | Later |
-| `PLT.AGT.03` | AI assistant inbox and messages | shared | wl-kernel + wl-notify | Later |
 | `PLT.NOT.01` | Notes, comments and @mentions on any record, with an activity timeline | shared | wl-kernel | MVP |
 | `PLT.SSO.01` | Staff single sign-on with Microsoft 365 or Google Workspace | shared | Renox OAuth (renox-oauth) | Later |
 | `RPT.LIB.01` | Report library: filtered reports with export to Excel, CSV and PDF | shared | wl-kernel | MVP |
@@ -765,7 +761,7 @@ becomes a call task for the front desk.
 - **Specific to this vertical:** payer contracts and tariffs, insurance policies and
   eligibility, prior authorisations, charge capture, patient-share calculation, claims and
   remittances, practitioner licences and rosters, recalls, EMR and claims integrations.
-- **Estimated reuse:** 72 of 84 capabilities (86%) come from shared modules or Renox.
+- **Estimated reuse:** 68 of 80 capabilities (85%) come from shared modules or Renox.
 
 ## 12. MVP scope
 

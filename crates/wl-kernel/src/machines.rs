@@ -436,8 +436,6 @@ impl SubjectMachine {
     /// PostgreSQL). A missing record fails with `Failed(NotFound)`; the
     /// engine's own refusals (`Unknown`, `NotFrom`, `Guard`, `Conflict`,
     /// `ReasonRequired`, `Forbidden` for a user transition) come back as is.
-    /// A searchable record's document is written again in `tx` after the
-    /// run (wl-kernel §5.8).
     pub async fn run_in(
         &self,
         tx: &mut Transaction,
@@ -445,9 +443,7 @@ impl SubjectMachine {
         name: &str,
         run: Run,
     ) -> std::result::Result<Ran, TransitionError> {
-        let ran = (self.run)(tx, id, name, run).await?;
-        crate::search::index_in(tx, &Subject::new(&self.subject_type, id)).await?;
-        Ok(ran)
+        (self.run)(tx, id, name, run).await
     }
 
     /// Runs `back_to_<state>` on record `id` (see [`SubjectMachine::run_in`]).
