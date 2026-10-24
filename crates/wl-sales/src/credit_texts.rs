@@ -42,6 +42,10 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
         "What each customer may owe on account, and what it owes now.",
     ),
     ("wl_sales.credit.empty", "No customer accounts"),
+    (
+        "wl_sales.credit.empty_hint",
+        "Accounts appear here once a customer is given terms; clear the filters to see them all.",
+    ),
     ("wl_sales.credit.new", "New customer account"),
     (
         "wl_sales.credit.new_description",

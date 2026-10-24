@@ -729,6 +729,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_sales.orders.number", "Order"),
     ("wl_sales.orders.total", "Total"),
     ("wl_sales.orders.empty", "No sales orders"),
+    (
+        "wl_sales.orders.empty_hint",
+        "Orders appear here as they are entered; clear the filters to see them all.",
+    ),
     ("wl_sales.orders.created", "Order entered."),
     ("wl_sales.orders.add_line", "Add a line"),
     ("wl_sales.orders.line_added", "Line added."),

@@ -16,6 +16,7 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use renox::validation::{Errors, ValidationError};
 use serde::Serialize;
@@ -80,62 +81,108 @@ fn invalid<F: Serialize>(field: &str, message: String, form: &F) -> Error {
     Error::Validation(ValidationError::new(errors).with_input(form))
 }
 
-/// One account as the list shows it.
-#[derive(Serialize, Debug, Clone)]
-pub struct AccountRow {
-    /// The customer's party id, for the link.
-    pub party: i64,
-    /// The customer's name.
-    pub name: String,
-    /// The limit, `AED 50,000.00`, or *No limit*.
-    pub limit: String,
-    /// What the customer owes now.
-    pub owes: String,
-    /// The payment terms in words.
-    pub terms: String,
-    /// *On hold* or empty.
-    pub flag: String,
-}
-
 /// What the list needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-sales/credit_accounts.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    accounts: Vec<AccountRow>,
+    accounts: GridPage<CustomerAccount>,
     can_edit: bool,
 }
 
-/// `GET /credit/accounts`: the customer accounts.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
-    let mut rows = Vec::new();
-    for account in CustomerAccount::query()
-        .order_by(CustomerAccount::ID)
-        .get(&state.db)
-        .await?
-        .into_iter()
-        .take(100)
-    {
+/// The customer accounts grid: customer, limit, what it owes, terms and
+/// whether the account is on hold (filter: `?in.standing=on_hold`).
+fn accounts_grid(lang: &Lang) -> Grid {
+    Grid::new("wl-sales-credit-accounts")
+        .title(&text(lang, "credit.title"))
+        .column(
+            Column::text("customer", &text(lang, "orders.customer_name"))
+                .link("/credit/accounts/{id}")
+                .sortable(false)
+                .filterable(false)
+                .frozen()
+                .mobile(),
+        )
+        .column(
+            Column::number("party_id", &text(lang, "orders.customer"))
+                .searchable()
+                .hidden(),
+        )
+        .column(
+            Column::text("limit", &text(lang, "credit.limit"))
+                .computed("{T}.\"credit_limit\"")
+                .filterable(false)
+                .mobile(),
+        )
+        .column(
+            Column::text("owes", &text(lang, "credit.owes"))
+                .sortable(false)
+                .filterable(false)
+                .mobile(),
+        )
+        .column(
+            Column::text("terms", &text(lang, "credit.terms"))
+                .computed("{T}.\"payment_terms_days\"")
+                .filterable(false),
+        )
+        .column(
+            Column::select(
+                "standing",
+                &text(lang, "fields.status"),
+                [
+                    ("on_hold", text(lang, "credit.on_hold")),
+                    ("good", text(lang, "credit.not_on_hold")),
+                ],
+            )
+            .computed(
+                "(CASE WHEN EXISTS (SELECT 1 FROM \"wl_sales_account_hold_sources\" s \
+                 WHERE s.\"account_id\" = {T}.\"id\" AND s.\"cleared_at\" IS NULL) \
+                 THEN 'on_hold' ELSE 'good' END)",
+            )
+            .badges(&[("on_hold", "danger"), ("good", "success")])
+            .mobile(),
+        )
+        .sort_by("id")
+        .row_url("/credit/accounts/{id}")
+        .cards_on_mobile()
+        .empty_state(
+            &text(lang, "credit.empty"),
+            Some(&text(lang, "credit.empty_hint")),
+        )
+}
+
+/// `GET /credit/accounts`: the customer accounts, as a grid (search, sort,
+/// filter by standing, pages).
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
+    let page = accounts_grid(&lang)
+        .page(CustomerAccount::query(), &request)
+        .await?;
+    let mut shown = BTreeMap::new();
+    for account in page.items() {
         let owes = credit::exposure_of(&state, account.party(), None)
             .await?
             .total();
-        let on_hold = account.is_on_hold(&state.db).await?;
-        rows.push(AccountRow {
-            party: account.party_id,
-            name: party_name(&state, &lang, account.party_id).await,
-            limit: limit_text(&lang, account.credit_limit),
-            owes: money(owes),
-            terms: terms_text(&lang, account.payment_terms_days),
-            flag: if on_hold {
-                text(&lang, "credit.on_hold")
-            } else {
-                text(&lang, "credit.not_on_hold")
-            },
-        });
+        shown.insert(
+            account.id,
+            renox::serde_json::json!({
+                // The link of a row goes to the customer's page.
+                "id": account.party_id,
+                "customer": party_name(&state, &lang, account.party_id).await,
+                "limit": limit_text(&lang, account.credit_limit),
+                "owes": money(owes),
+                "terms": terms_text(&lang, account.payment_terms_days),
+            }),
+        );
     }
+    let accounts = page.extend(|account| shown.get(&account.id).cloned().unwrap_or_default());
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        accounts: rows,
+        accounts,
         can_edit: user.has_permission(permissions::CREDIT_LIMITS_APPROVE),
     }))
 }

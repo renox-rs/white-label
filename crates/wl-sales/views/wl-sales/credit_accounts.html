@@ -1,4 +1,5 @@
-{#- wl-sales: the customer accounts: what each customer may owe and owes now.
+{#- wl-sales: the customer accounts, a renox::grid (search, sort, filter by
+    standing, pages): what each customer may owe and owes now.
     Replace it with resources/views/wl-sales/credit_accounts.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['credit.title']">
   <rx-stack>
@@ -12,13 +13,6 @@
         <rx-input name="sales_rep" :label="tx['credit.sales_rep']" id="new-credit-account-rep"/>
       </rx-action-sheet>
     </rx-page-header>
-    <rx-table :rows="accounts" as="account" :key="account.party" :caption="tx['credit.title']" card>
-      <rx-column :label="tx['orders.customer']"><a href="{{ route('wl_sales.credit_account', account.party) }}">{{ account.name }}</a></rx-column>
-      <rx-column :label="tx['credit.limit']">{{ account.limit }}</rx-column>
-      <rx-column :label="tx['credit.owes']">{{ account.owes }}</rx-column>
-      <rx-column :label="tx['credit.terms']" hide-narrow>{{ account.terms }}</rx-column>
-      <rx-column :label="tx['fields.status']">{{ account.flag }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['credit.empty']" icon="inbox"/></rx-slot>
-    </rx-table>
+    <rx-grid :page="accounts"/>
   </rx-stack>
 </rx-page>

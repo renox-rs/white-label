@@ -29,6 +29,7 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use renox::state_machine::{Available, StateMachine};
 use renox::validation::{Errors, ValidationError};
@@ -165,35 +166,12 @@ fn status_kind(status: SalesOrderStatus) -> &'static str {
     }
 }
 
-/// One order as the list shows it.
-#[derive(Serialize, Debug, Clone)]
-pub struct OrderRow {
-    /// The primary key.
-    pub id: i64,
-    /// The order number.
-    pub number: String,
-    /// The customer's party id.
-    pub customer_id: i64,
-    /// The customer's name.
-    pub customer: String,
-    /// Why the order is on credit hold, for a viewer of the credit figures.
-    pub hold_reason: String,
-    /// The channel.
-    pub channel: String,
-    /// The total, `AED 105.00`.
-    pub total: String,
-    /// The status in words.
-    pub status_label: String,
-    /// The badge colour.
-    pub status_kind: &'static str,
-}
-
 /// What the list needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-sales/sales_orders.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    orders: Vec<OrderRow>,
+    orders: GridPage<SalesOrder>,
     can_create: bool,
     awaiting: bool,
     awaiting_count: i64,
@@ -207,57 +185,170 @@ pub(crate) struct IndexPage {
     delivery_options: Vec<[String; 2]>,
 }
 
-/// `GET /sales-orders`: the latest orders, newest first. An order waiting for
-/// its online payment is not in the list; `?awaiting=1` lists those instead
-/// (BL-SAL-02: they are invisible to fulfilment until the payment is
-/// confirmed). `?view=credit_hold` lists the orders on credit hold, oldest
-/// hold first, for the accountant and the sales rep.
+/// The statuses of an order, in life-cycle order.
+const STATUSES: [SalesOrderStatus; 10] = [
+    SalesOrderStatus::Draft,
+    SalesOrderStatus::AwaitingPayment,
+    SalesOrderStatus::PendingAcceptance,
+    SalesOrderStatus::CreditHold,
+    SalesOrderStatus::Confirmed,
+    SalesOrderStatus::PartiallyFulfilled,
+    SalesOrderStatus::Fulfilled,
+    SalesOrderStatus::Closed,
+    SalesOrderStatus::Rejected,
+    SalesOrderStatus::Cancelled,
+];
+
+/// The reasons an order is on credit hold, as `credit.reason.*` has them.
+const HOLD_REASONS: [&str; 3] = ["limit", "overdue", "account_on_hold"];
+
+/// The orders grid: number, customer, channel, total, status and, for a
+/// viewer of the credit figures, why an order is on credit hold. The orders
+/// on hold are listed oldest first (`held_only`), the rest newest first.
+fn orders_grid(lang: &Lang, can_see_credit: bool, held_only: bool, awaiting: bool) -> Grid {
+    let codes: Vec<&str> = STATUSES.iter().map(|s| s.as_str()).collect();
+    let mut grid = Grid::new("wl-sales-orders")
+        .title(&text(lang, "orders.title"))
+        .column(
+            Column::text("number", &text(lang, "orders.number"))
+                .link("/sales-orders/{id}")
+                .searchable()
+                .frozen()
+                .mobile(),
+        )
+        .column(
+            Column::text("customer", &text(lang, "orders.customer_name"))
+                .sortable(false)
+                .filterable(false)
+                .mobile(),
+        )
+        .column(
+            Column::number("party_id", &text(lang, "orders.customer"))
+                .searchable()
+                .hidden(),
+        )
+        .column(Column::text("channel", &text(lang, "orders.channel")).searchable())
+        .column(
+            Column::text("customer_po", &text(lang, "po.customer_po"))
+                .searchable()
+                .hidden(),
+        )
+        .column(
+            Column::money("gross_total", &text(lang, "orders.total"))
+                .currency_from("currency")
+                .mobile(),
+        )
+        .column(
+            Column::select(
+                "status",
+                &text(lang, "fields.status"),
+                codes
+                    .iter()
+                    .map(|code| (*code, text(lang, &format!("orders.status.{code}")))),
+            )
+            .badges(&[
+                ("draft", "info"),
+                ("awaiting_payment", "info"),
+                ("pending_acceptance", "info"),
+                ("credit_hold", "warning"),
+                ("confirmed", "info"),
+                ("partially_fulfilled", "info"),
+                ("fulfilled", "success"),
+                ("closed", "success"),
+                ("rejected", "danger"),
+                ("cancelled", "danger"),
+            ])
+            .mobile(),
+        );
+    if can_see_credit {
+        grid = grid.column(Column::select(
+            "hold_reason",
+            &text(lang, "credit.hold_reason"),
+            HOLD_REASONS
+                .iter()
+                .map(|code| (*code, text(lang, &format!("credit.reason.{code}")))),
+        ));
+    }
+    let empty = if awaiting {
+        text(lang, "orders.awaiting_empty")
+    } else {
+        text(lang, "orders.empty")
+    };
+    grid.sort_by(if held_only { "id" } else { "-id" })
+        .row_url("/sales-orders/{id}")
+        .cards_on_mobile()
+        .empty_state(&empty, Some(&text(lang, "orders.empty_hint")))
+}
+
+/// `GET /sales-orders`: the latest orders, newest first, as a grid (search,
+/// sort, filter, pages). An order waiting for its online payment is not in
+/// the list; `?in.status=awaiting_payment` (or `?awaiting=1`) lists those
+/// instead (BL-SAL-02: they are invisible to fulfilment until the payment is
+/// confirmed). `?in.status=credit_hold` (or `?view=credit_hold`) lists the
+/// orders on credit hold, oldest hold first, for the accountant and the
+/// sales rep.
 async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Query(query): Query<BTreeMap<String, String>>,
+    request: GridRequest,
 ) -> Result<View> {
     let db = &state.db;
-    let awaiting = matches!(query.get("awaiting").map(String::as_str), Some("1"));
-    let held_only = query.get("view").is_some_and(|v| v == "credit_hold");
+    let chosen = query.get("in.status").map(String::as_str);
+    let awaiting = matches!(query.get("awaiting").map(String::as_str), Some("1"))
+        || chosen == Some("awaiting_payment");
+    let held_only =
+        query.get("view").is_some_and(|v| v == "credit_hold") || chosen == Some("credit_hold");
     let can_see_credit = user.has_permission(permissions::CREDIT_VIEW);
-    let mut rows = SalesOrder::query()
-        .order_by_desc(SalesOrder::ID)
-        .get(db)
-        .await?;
-    let awaiting_count = rows
-        .iter()
-        .filter(|o| o.status == SalesOrderStatus::AwaitingPayment)
-        .count() as i64;
-    let held_count = rows
-        .iter()
-        .filter(|o| o.status == SalesOrderStatus::CreditHold)
-        .count() as i64;
+    let mut orders_query = SalesOrder::query();
     if held_only {
-        rows.retain(|o| o.status == SalesOrderStatus::CreditHold);
-        rows.reverse();
-    } else {
-        rows.retain(|o| (o.status == SalesOrderStatus::AwaitingPayment) == awaiting);
+        orders_query = orders_query.where_(SalesOrder::STATUS.eq(SalesOrderStatus::CreditHold));
+    } else if awaiting {
+        orders_query =
+            orders_query.where_(SalesOrder::STATUS.eq(SalesOrderStatus::AwaitingPayment));
+    } else if chosen.is_none() {
+        // The list of the orders in play leaves out those waiting for payment.
+        orders_query =
+            orders_query.where_(SalesOrder::STATUS.ne(SalesOrderStatus::AwaitingPayment));
     }
-    let mut orders = Vec::new();
-    for order in rows.into_iter().take(50) {
-        orders.push(OrderRow {
-            id: order.id,
-            number: order.number.clone(),
-            customer_id: order.party_id,
-            customer: super::party_name(&state, &lang, order.party_id).await,
-            hold_reason: if can_see_credit && order.status == SalesOrderStatus::CreditHold {
-                crate::pages::credit::hold_reason_text(&lang, order.hold_reason.as_deref())
-            } else {
-                String::new()
-            },
-            channel: order.channel.clone(),
-            total: money(order.gross_total),
-            status_label: text(&lang, &format!("orders.status.{}", order.status.as_str())),
-            status_kind: status_kind(order.status),
-        });
+    let awaiting_count = SalesOrder::query()
+        .where_(SalesOrder::STATUS.eq(SalesOrderStatus::AwaitingPayment))
+        .count(db)
+        .await? as i64;
+    let held_count = SalesOrder::query()
+        .where_(SalesOrder::STATUS.eq(SalesOrderStatus::CreditHold))
+        .count(db)
+        .await? as i64;
+    let page = orders_grid(&lang, can_see_credit, held_only, awaiting)
+        .page(orders_query, &request)
+        .await?;
+    let mut customers = BTreeMap::new();
+    for order in page.items() {
+        customers.insert(
+            order.id,
+            super::party_name(&state, &lang, order.party_id).await,
+        );
     }
+    let orders = page.extend(|order| {
+        let reason = if can_see_credit && order.status == SalesOrderStatus::CreditHold {
+            order
+                .hold_reason
+                .clone()
+                .unwrap_or_else(|| "limit".to_owned())
+        } else {
+            String::new()
+        };
+        renox::serde_json::json!({
+            // A reason is for a viewer of the credit figures, and only an
+            // order on hold has one.
+            "customer": customers.get(&order.id),
+            "hold_reason": reason,
+            "hold_open_balance": null,
+            "hold_overdue": null,
+            "hold_limit": null,
+        })
+    });
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         orders,
