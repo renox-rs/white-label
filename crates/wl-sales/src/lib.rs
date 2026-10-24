@@ -45,6 +45,7 @@ pub mod loyalty_points;
 pub mod loyalty_programme;
 pub mod loyalty_rules;
 pub mod machine;
+pub mod marketing_channel;
 pub mod merge;
 pub mod notices;
 pub mod online_payment;
@@ -108,6 +109,7 @@ pub use counter_sale::{CounterSale, CounterSalePayment, CounterSaleStatus};
 pub use customer_account::{AccountHoldSource, CreditGroup, CustomerAccount};
 pub use lead::{Captured, Lead, LeadNote, LeadRefused, LeadStatus, NewLead};
 pub use lead_source::{LeadSource, LeadSourceRefused};
+pub use marketing_channel::{CampaignChannel, ChannelRefused};
 pub use loyalty_account::{AccountStatus, Enrolment, LoyaltyAccount};
 pub use loyalty_attach::MemberRef;
 pub use loyalty_points::{LoyaltyEarning, LoyaltyReview, PointsKind, PointsMovement};
@@ -141,6 +143,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-sales/lead_sources.html",
         include_str!("../views/wl-sales/lead_sources.html"),
+    ),
+    (
+        "wl-sales/marketing_channels.html",
+        include_str!("../views/wl-sales/marketing_channels.html"),
     ),
     (
         "wl-sales/index.html",
@@ -768,6 +774,7 @@ impl Module for WlSales {
             });
         }
         app.view_data::<pages::lead_sources::IndexPage>()
+            .view_data::<pages::marketing_channels::IndexPage>()
             .view_data::<pages::acquisition::ExceptionsPage>()
             .view_data::<pages::report::ReportPage>()
             .view_data::<pages::campaigns::IndexPage>()
@@ -801,6 +808,7 @@ impl Module for WlSales {
             }
         });
         app.model::<LeadSource>();
+        app.model::<CampaignChannel>();
         app.model::<Lead>();
         app.model::<LeadNote>();
         app.model::<PartyAcquisition>();
@@ -901,7 +909,7 @@ impl Module for WlSales {
         // The nine lead sources; a re-run keeps the client's changes.
         app.command(
             "sales:install",
-            "Store the default lead sources, where the database lacks them",
+            "Store the default lead sources and marketing channels, where the database lacks them",
             |_args, state: AppState| async move {
                 let installed = seed::install(&state.db).await?;
                 println!("{} sales defaults created.", installed.total());

@@ -10,6 +10,7 @@ pub mod lead_sources;
 pub mod leads;
 pub mod liability;
 pub mod loyalty;
+pub mod marketing_channels;
 pub mod membership;
 pub mod redeem;
 pub mod report;
@@ -34,6 +35,7 @@ pub fn routes() -> Routes {
         .merge(leads::routes())
         .merge(liability::routes())
         .merge(loyalty::routes())
+        .merge(marketing_channels::routes())
         .merge(membership::routes())
         .merge(redeem::routes())
         .merge(report::routes())

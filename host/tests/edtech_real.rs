@@ -2342,7 +2342,7 @@ async fn edu_17_a_campaign_reports_its_cost_per_lead_cac_and_roas_and_waits_over
         name: "Instagram October".into(),
         code: "IG-OCT".into(),
         purpose: Some(wl_sales::Purpose::Acquisition),
-        marketing_channel: Some(wl_sales::MarketingChannel::Meta),
+        marketing_channel: Some(wl_sales::MarketingChannel::Meta.into()),
         lead_source_id: Some(source),
         owner_id: Some(marketer.id),
         start_date: Some(day(-20)),

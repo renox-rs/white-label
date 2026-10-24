@@ -325,7 +325,7 @@ async fn a_retention_broadcast_to_201_needs_a_second_approver_and_the_permit_end
         name: "Come back".into(),
         code: "COMEBACK".into(),
         purpose: Some(Purpose::Retention),
-        marketing_channel: Some(MarketingChannel::Email),
+        marketing_channel: Some(MarketingChannel::Email.into()),
         owner_id: Some(mona.id),
         start_date: Some(today()),
         end_date: Some(today() + Duration::days(60)),

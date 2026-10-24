@@ -83,7 +83,7 @@ async fn exhibition(app: &TestApp, owner: &User) -> Campaign {
         name: "Arabplast 2026".into(),
         code: CODE.into(),
         purpose: Some(Purpose::Acquisition),
-        marketing_channel: Some(MarketingChannel::Event),
+        marketing_channel: Some(MarketingChannel::Event.into()),
         lead_source_id: Some(source.id),
         owner_id: Some(owner.id),
         start_date: Some(day(-30)),

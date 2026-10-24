@@ -1,24 +1,29 @@
-//! The idempotent installer of the nine lead sources (wl-sales §3, #138 A5).
-//! [`install`] adds the sources the database lacks and keeps every row that
+//! The idempotent installer of the nine lead sources (wl-sales §3, #138 A5)
+//! and the twelve module marketing channels (BL-SAL-28).
+//! [`install`] adds the rows the database lacks and keeps every row that
 //! is there, so a client's renames and deactivations survive a re-run.
 
 use renox::auth::User;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 
+use crate::campaign::MarketingChannel;
 use crate::lead_source::{DEFAULTS, LeadSource};
+use crate::marketing_channel::CampaignChannel;
 
 /// What [`install`] created.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Installed {
     /// Lead sources created.
     pub lead_sources: usize,
+    /// Marketing channels created.
+    pub channels: usize,
 }
 
 impl Installed {
     /// The number of rows of every kind created.
     pub fn total(&self) -> usize {
-        self.lead_sources
+        self.lead_sources + self.channels
     }
 }
 
@@ -42,6 +47,25 @@ pub async fn install(db: &Db) -> Result<Installed> {
             installed.lead_sources += 1;
         }
     }
+    for channel in MarketingChannel::ALL {
+        if CampaignChannel::by_code(&mut tx, channel.as_str())
+            .await?
+            .is_none()
+        {
+            CampaignChannel::create(
+                &mut tx,
+                CampaignChannel {
+                    code: channel.as_str().to_owned(),
+                    name_en: channel.english_name(),
+                    active: true,
+                    seeded: true,
+                    ..CampaignChannel::default()
+                },
+            )
+            .await?;
+            installed.channels += 1;
+        }
+    }
     tx.commit().await?;
     Ok(installed)
 }
@@ -62,7 +86,7 @@ pub async fn demo_campaigns(db: &Db) -> Result<usize> {
             name: "Spring offer".into(),
             code: "SPRING26".into(),
             purpose: Some(Purpose::Acquisition),
-            marketing_channel: Some(MarketingChannel::Meta),
+            marketing_channel: Some(MarketingChannel::Meta.into()),
             owner_id: owner,
             start_date: day(3, 1),
             end_date: day(3, 31),
@@ -74,7 +98,7 @@ pub async fn demo_campaigns(db: &Db) -> Result<usize> {
             name: "Summer newsletter".into(),
             code: "SUMMER26".into(),
             purpose: Some(Purpose::Acquisition),
-            marketing_channel: Some(MarketingChannel::Email),
+            marketing_channel: Some(MarketingChannel::Email.into()),
             owner_id: owner,
             start_date: day(6, 1),
             end_date: day(8, 31),
@@ -959,7 +983,7 @@ mod tests {
     async fn installing_twice_leaves_nine_and_keeps_edits() {
         let app = TestApp::new(App::new().module(crate::WlSales::new())).await;
         let db = app.db();
-        assert_eq!(install(db).await.unwrap(), Installed { lead_sources: 9 });
+        assert_eq!(install(db).await.unwrap(), Installed { lead_sources: 9, channels: 0 });
         assert!(
             LeadSource::ordered(db)
                 .await

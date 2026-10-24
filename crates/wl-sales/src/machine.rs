@@ -76,7 +76,11 @@ impl Campaign {
         if self.code.trim().is_empty() {
             return Some("The campaign needs its code.");
         }
-        if self.marketing_channel.is_none() {
+        if self
+            .marketing_channel
+            .as_deref()
+            .is_none_or(|c| c.trim().is_empty())
+        {
             return Some("The campaign needs its marketing channel.");
         }
         let Some(purpose) = self.purpose else {
@@ -261,7 +265,7 @@ mod tests {
             name: "Spring".into(),
             code: "SPRING26".into(),
             purpose: Some(Purpose::Acquisition),
-            marketing_channel: Some(crate::campaign::MarketingChannel::Meta),
+            marketing_channel: Some(crate::campaign::MarketingChannel::Meta.into()),
             owner_id: Some(1),
             start_date: NaiveDate::from_ymd_opt(2026, 3, 1),
             ..Campaign::default()

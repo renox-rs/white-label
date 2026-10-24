@@ -27,7 +27,8 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::LegalEntity;
 use wl_kernel::Subject;
 
-use crate::campaign::{Campaign, MarketingChannel};
+use crate::campaign::Campaign;
+use crate::marketing_channel::CampaignChannel;
 use crate::config::config_of;
 use crate::lead_source::LeadSource;
 use crate::permissions;
@@ -321,12 +322,8 @@ async fn index(
             .map(|s| (s.code.clone(), s.name(&lang.locale).to_owned())),
     );
     let mut channels = vec![(String::new(), t("report.all"))];
-    channels.extend(MarketingChannel::ALL.iter().map(|c| {
-        (
-            c.as_str().to_owned(),
-            t(&format!("campaigns.channel.{}", c.as_str())),
-        )
-    }));
+    // Every channel, a deactivated one too: it stays in the reports (BL-SAL-28).
+    channels.extend(CampaignChannel::options(&state.db, &lang.locale).await?);
     let mut entities = vec![(String::new(), t("report.all"))];
     entities.extend(
         LegalEntity::query()

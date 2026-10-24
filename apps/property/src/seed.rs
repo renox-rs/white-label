@@ -598,16 +598,18 @@ pub const LEAD_SOURCES: [&str; 8] = [
     "referral", "walk_in", "website", "social", "paid_ads", "partner", "event", "other",
 ];
 
-/// The campaign channels of 01 (row 19) as (01's name, the `wl-sales` marketing
-/// channel it is recorded as). The module's list is fixed: listing portals are
-/// recorded as *other online*, signboards as *radio or outdoor*.
+/// The campaign channels of 01 (row 19) as (01's name, the key of the
+/// `wl-sales` marketing channel). Since BL-SAL-28 the channels are a table:
+/// the Property seed adds these six and switches off the module's others
+/// (`host::property_seed`), so a listing-portals campaign reports under
+/// *Listing portals*.
 pub const CAMPAIGN_CHANNELS: [(&str, &str); 6] = [
-    ("Listing portals", "other_online"),
-    ("Social media", "meta"),
-    ("Search ads", "google"),
+    ("Listing portals", "listing_portals"),
+    ("Social media", "social_media"),
+    ("Search ads", "search_ads"),
     ("Email", "email"),
-    ("Signboards", "radio_outdoor"),
-    ("Brokers", "partner"),
+    ("Signboards", "signboards"),
+    ("Brokers", "brokers"),
 ];
 
 /// One step of an onboarding checklist (row 20): title, owner (`hr`,

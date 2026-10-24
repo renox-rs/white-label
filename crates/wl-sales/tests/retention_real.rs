@@ -163,7 +163,7 @@ async fn world(members: i64, tune: impl FnOnce(WlNotify) -> WlNotify) -> World {
         name: "Win back".into(),
         code: "WINBACK".into(),
         purpose: Some(Purpose::Retention),
-        marketing_channel: Some(MarketingChannel::Sms),
+        marketing_channel: Some(MarketingChannel::Sms.into()),
         owner_id: Some(owner.id),
         start_date: Some(today()),
         end_date: Some(today() + Duration::days(30)),

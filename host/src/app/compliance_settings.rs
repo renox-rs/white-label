@@ -210,7 +210,7 @@ pub fn rows(client_app: &str, owner_role: &str) -> Vec<Row> {
         .collect();
     let channels: Vec<String> = seed::CAMPAIGN_CHANNELS
         .iter()
-        .map(|(name, kind)| format!("{name} (recorded as {kind})"))
+        .map(|(name, kind)| format!("{name} (key {kind})"))
         .collect();
     let certificate_texts: Vec<String> = seed::KINDS
         .iter()

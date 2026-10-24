@@ -62,7 +62,7 @@ async fn retention_campaign(t: &Booted, owner: i64, by: i64, segment: i64) -> Ca
         name: "Win back".into(),
         code: "WINBACK".into(),
         purpose: Some(Purpose::Retention),
-        marketing_channel: Some(MarketingChannel::Sms),
+        marketing_channel: Some(MarketingChannel::Sms.into()),
         owner_id: Some(owner),
         start_date: Some(today()),
         end_date: Some(today() + Duration::days(30)),

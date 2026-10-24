@@ -31,7 +31,7 @@ use wl_hr::{OnboardingTemplate, StepInput, TemplateInput};
 use wl_invoicing::BudgetCategory;
 use wl_kernel::Manifest;
 use wl_kernel::documents::{BlockCondition, BlockMode};
-use wl_sales::{LeadSource, WlSales};
+use wl_sales::{CampaignChannel, LeadSource, WlSales};
 use wl_ticketing::config::InvoiceOn;
 use wl_ticketing::{Category, Priority, SlaPolicy, WlTicketing};
 
@@ -214,6 +214,8 @@ pub struct Installed {
     pub categories: usize,
     /// Lead sources turned off.
     pub sources_off: usize,
+    /// Marketing channels added or switched off (BL-SAL-28).
+    pub channels: usize,
     /// Onboarding checklists created.
     pub checklists: usize,
     /// SOPs created.
@@ -225,7 +227,12 @@ pub struct Installed {
 impl Installed {
     /// Everything created or changed.
     pub fn total(&self) -> usize {
-        self.categories + self.sources_off + self.checklists + self.sops + self.budget_categories
+        self.categories
+            + self.sources_off
+            + self.channels
+            + self.checklists
+            + self.sops
+            + self.budget_categories
     }
 }
 
@@ -244,6 +251,7 @@ pub async fn install(state: &AppState) -> Result<Installed> {
     }
     if on("sales") {
         installed.sources_off = turn_off_unused_sources(&state.db).await?;
+        installed.channels = install_channels(&state.db).await?;
     }
     if on("hr") {
         installed.checklists = install_checklists(&state.db).await?;
@@ -255,6 +263,18 @@ pub async fn install(state: &AppState) -> Result<Installed> {
         installed.budget_categories = install_budget_categories(&state.db).await?;
     }
     Ok(installed)
+}
+
+/// The campaign channels of 01 (BL-SAL-28): the six of `seed::CAMPAIGN_CHANNELS`
+/// are added and the module's other seeded channels switched off (kept on
+/// old campaigns and in reports).
+async fn install_channels(db: &Db) -> Result<usize> {
+    let channels: Vec<(&str, &str, &str)> = seed::CAMPAIGN_CHANNELS
+        .iter()
+        .map(|(name, key)| (*key, *name, ""))
+        .collect();
+    let done = CampaignChannel::seed_vertical(db, &channels, true).await?;
+    Ok(done.added + done.deactivated)
 }
 
 /// The ticket categories of 01: fire and life safety and lifts

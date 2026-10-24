@@ -23,7 +23,10 @@ pub enum Purpose {
     Retention,
 }
 
-/// Where the campaign runs (§3; not the order channel).
+/// The module's marketing channels (§3; not the order channel). Since
+/// BL-SAL-28 the channels are a table ([`crate::marketing_channel`]): this list
+/// is its seed, and its stored names are the seeded rows' keys. A campaign
+/// holds the key (`MarketingChannel::Meta.into()` is `"meta"`).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum MarketingChannel {
     /// Google.
@@ -51,6 +54,12 @@ pub enum MarketingChannel {
     Partner,
     /// Anything else.
     Other,
+}
+
+impl From<MarketingChannel> for String {
+    fn from(channel: MarketingChannel) -> Self {
+        channel.as_str().to_owned()
+    }
 }
 
 /// Where a campaign stands (§4.6).
@@ -82,8 +91,9 @@ pub struct Campaign {
     pub code: String,
     /// `acquisition` or `retention`; needed to activate.
     pub purpose: Option<Purpose>,
-    /// Where it runs; needed to activate.
-    pub marketing_channel: Option<MarketingChannel>,
+    /// Where it runs, the key of a [`crate::marketing_channel::CampaignChannel`];
+    /// needed to activate.
+    pub marketing_channel: Option<String>,
     /// The lead source it implies, if any.
     #[model(references = "wl_sales_lead_sources")]
     pub lead_source_id: Option<i64>,

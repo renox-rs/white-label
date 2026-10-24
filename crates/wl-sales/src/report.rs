@@ -540,7 +540,11 @@ pub async fn label_of(db: &Db, key: &GroupKey, locale: &str) -> Result<String> {
                 .map_or_else(|| value.to_owned(), |c| c.code),
             None => value.to_owned(),
         },
-        GroupBy::Channel | GroupBy::Brand | GroupBy::Branch | GroupBy::Month => value.to_owned(),
+        // A channel by its name (BL-SAL-28), a deactivated one too.
+        GroupBy::Channel => {
+            crate::marketing_channel::CampaignChannel::label(db, value, locale).await?
+        }
+        GroupBy::Brand | GroupBy::Branch | GroupBy::Month => value.to_owned(),
     })
 }
 
@@ -599,7 +603,7 @@ pub async fn load(db: &Db, config: &SalesConfig) -> Result<Facts> {
         |id: Option<i64>| -> (Option<String>, Option<String>, Option<Subject>, Option<i64>) {
             match id.and_then(|id| campaigns.get(&id)) {
                 Some(c) => (
-                    c.marketing_channel.map(|m| m.to_string()),
+                    c.marketing_channel.clone(),
                     c.brand.clone(),
                     c.branch(),
                     c.legal_entity_id,

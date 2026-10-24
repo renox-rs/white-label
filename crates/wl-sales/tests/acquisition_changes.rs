@@ -29,7 +29,7 @@ async fn campaign(t: &Booted, code: &str) -> Campaign {
         name: code.to_owned(),
         code: code.into(),
         purpose: Some(Purpose::Acquisition),
-        marketing_channel: Some(MarketingChannel::Meta),
+        marketing_channel: Some(MarketingChannel::Meta.into()),
         owner_id: Some(1),
         start_date: Some(day(3, 1)),
         ..Campaign::default()

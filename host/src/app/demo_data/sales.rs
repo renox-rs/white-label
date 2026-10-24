@@ -28,7 +28,7 @@ pub const CAMPAIGNS: &[CampaignPlan] = &[
     CampaignPlan {
         code: "RAMADAN26",
         name: "Ramadan move-in offer 2026",
-        channel: "meta",
+        channel: "social_media",
         source: "social",
         start: -250,
         end: -205,
@@ -43,7 +43,7 @@ pub const CAMPAIGNS: &[CampaignPlan] = &[
     CampaignPlan {
         code: "SUMSTUDIO26",
         name: "Summer studio offer, Tower B",
-        channel: "google",
+        channel: "search_ads",
         source: "paid_ads",
         start: -130,
         end: -50,
@@ -58,7 +58,7 @@ pub const CAMPAIGNS: &[CampaignPlan] = &[
     CampaignPlan {
         code: "Q4TOWERS",
         name: "Q4 launch, Towers A and B",
-        channel: "other_online",
+        channel: "listing_portals",
         source: "website",
         start: -25,
         end: 70,
@@ -84,7 +84,7 @@ pub const CAMPAIGNS: &[CampaignPlan] = &[
     CampaignPlan {
         code: "WINTER26",
         name: "Winter relocation campaign",
-        channel: "tiktok",
+        channel: "social_media",
         source: "social",
         start: 40,
         end: 100,
@@ -95,7 +95,7 @@ pub const CAMPAIGNS: &[CampaignPlan] = &[
     CampaignPlan {
         code: "REFER26",
         name: "Tenant referral rewards",
-        channel: "other",
+        channel: "brokers",
         source: "referral",
         start: 15,
         end: 195,

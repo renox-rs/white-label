@@ -20,7 +20,7 @@ fn purpose_of(campaign: &Campaign) -> String {
 fn channel_of(campaign: &Campaign) -> String {
     campaign
         .marketing_channel
-        .map(|c| c.to_string())
+        .clone()
         .unwrap_or_default()
 }
 

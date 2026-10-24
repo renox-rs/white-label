@@ -46,7 +46,7 @@ async fn search_campaign(app: &TestApp, owner: &User) -> Campaign {
         name: "Search ads autumn".into(),
         code: CODE.into(),
         purpose: Some(Purpose::Acquisition),
-        marketing_channel: Some(MarketingChannel::Google),
+        marketing_channel: Some(MarketingChannel::Google.into()),
         lead_source_id: Some(source.id),
         owner_id: Some(owner.id),
         start_date: Some(day(-30)),

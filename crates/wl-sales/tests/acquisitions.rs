@@ -35,7 +35,7 @@ async fn c1(t: &Booted) -> Campaign {
         name: "Spring".into(),
         code: "SPRING26".into(),
         purpose: Some(Purpose::Acquisition),
-        marketing_channel: Some(MarketingChannel::Meta),
+        marketing_channel: Some(MarketingChannel::Meta.into()),
         lead_source_id: Some(source_id(t, "paid_ads").await),
         owner_id: Some(1),
         start_date: Some(day(3, 1)),

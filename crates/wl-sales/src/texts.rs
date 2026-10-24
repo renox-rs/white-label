@@ -115,6 +115,63 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.lead_sources.in_use_refused",
         "This lead source is in use; deactivate it instead.",
     ),
+    ("wl_sales.marketing_channels.title", "Marketing channels"),
+    (
+        "wl_sales.marketing_channels.subtitle",
+        "Where campaigns run. A channel in use can be switched off but not deleted; it stays on its campaigns and in the reports.",
+    ),
+    ("wl_sales.marketing_channels.created_at", "Added"),
+    ("wl_sales.marketing_channels.empty", "No marketing channels"),
+    (
+        "wl_sales.marketing_channels.empty_hint",
+        "Run the sales installer to store the defaults.",
+    ),
+    ("wl_sales.marketing_channels.add", "Add a channel"),
+    ("wl_sales.marketing_channels.add_title", "Add a marketing channel"),
+    (
+        "wl_sales.marketing_channels.add_description",
+        "The key cannot be changed later.",
+    ),
+    ("wl_sales.marketing_channels.added", "Marketing channel added."),
+    ("wl_sales.marketing_channels.rename", "Rename"),
+    ("wl_sales.marketing_channels.rename_title", "Rename :code"),
+    ("wl_sales.marketing_channels.renamed", "Marketing channel renamed."),
+    ("wl_sales.marketing_channels.activate", "Activate"),
+    ("wl_sales.marketing_channels.deactivate", "Deactivate"),
+    (
+        "wl_sales.marketing_channels.deactivate_title",
+        "Deactivate :code?",
+    ),
+    (
+        "wl_sales.marketing_channels.deactivate_message",
+        "It can no longer be chosen for new campaigns. Existing ones keep it.",
+    ),
+    ("wl_sales.marketing_channels.activated", "Marketing channel activated."),
+    (
+        "wl_sales.marketing_channels.deactivated",
+        "Marketing channel deactivated.",
+    ),
+    ("wl_sales.marketing_channels.delete", "Delete"),
+    ("wl_sales.marketing_channels.delete_title", "Delete :code?"),
+    (
+        "wl_sales.marketing_channels.delete_message",
+        "No campaign uses this channel. It is removed for good.",
+    ),
+    ("wl_sales.marketing_channels.deleted", "Marketing channel deleted."),
+    ("wl_sales.marketing_channels.in_use", "In use"),
+    (
+        "wl_sales.marketing_channels.bad_code",
+        "Use 2 to 30 lower case letters, digits or underscores.",
+    ),
+    (
+        "wl_sales.marketing_channels.code_taken",
+        "A marketing channel has this key.",
+    ),
+    ("wl_sales.marketing_channels.name_required", "Give the name."),
+    (
+        "wl_sales.marketing_channels.in_use_refused",
+        "A campaign uses this channel; deactivate it instead.",
+    ),
     (
         "wl_sales.campaigns.name_required",
         "Give the campaign a name.",

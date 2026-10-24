@@ -160,7 +160,7 @@ async fn campaign(w: &World, budget: Option<i64>, code: &str) -> Campaign {
         name: "Spring".into(),
         code: code.into(),
         purpose: Some(Purpose::Acquisition),
-        marketing_channel: Some(MarketingChannel::Meta),
+        marketing_channel: Some(MarketingChannel::Meta.into()),
         owner_id: Some(w.owner.id),
         start_date: Some(day(3, 1)),
         end_date: Some(day(3, 31)),

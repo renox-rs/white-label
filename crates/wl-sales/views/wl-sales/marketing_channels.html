@@ -1,0 +1,39 @@
+{#- wl-sales: the marketing channels (BL-SAL-28), a renox::grid that fills the
+    screen. Each row can be renamed, switched off or on; a channel in use is
+    marked and is never deleted, an unused one can be. Replace it with
+    resources/views/wl-sales/marketing_channels.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['marketing_channels.title']">
+  <rx-page-header :title="tx['marketing_channels.title']" :subtitle="tx['marketing_channels.subtitle']">
+    <rx-action-sheet id="add-marketing-channel" :label="tx['marketing_channels.add']" :action="route('wl_sales.marketing_channels.store')"
+                     :title="tx['marketing_channels.add_title']" :description="tx['marketing_channels.add_description']" :submit-label="tx['marketing_channels.add']" variant="primary" icon="plus">
+      <rx-input name="code" :label="tx['fields.code']" id="add-marketing-channel-code" required/>
+      <rx-input name="name_en" :label="tx['fields.name_en']" id="add-marketing-channel-name-en" required/>
+      <rx-input name="name_ar" :label="tx['fields.name_ar']" id="add-marketing-channel-name-ar"/>
+    </rx-action-sheet>
+  </rx-page-header>
+  <rx-grid :page="channel_rows">
+    <template rx-if="column.key == 'in_use'">
+      <rx-badge rx-if="row.in_use" kind="info" :text="tx['marketing_channels.in_use']"/>
+    </template>
+    <template rx-elif="column.key == 'actions'">
+      <rx-open-button :id="'rename-marketing-channel-' ~ row.id" :label="tx['marketing_channels.rename']" icon="pencil" size="small"/>
+      <rx-open-button rx-if="row.active" :id="'deactivate-marketing-channel-' ~ row.id" :label="tx['marketing_channels.deactivate']" variant="plain-danger" icon="x" size="small"/>
+      <rx-open-button rx-else :id="'activate-marketing-channel-' ~ row.id" :label="tx['marketing_channels.activate']" icon="check" size="small"/>
+      <rx-open-button rx-if="not row.in_use" :id="'delete-marketing-channel-' ~ row.id" :label="tx['marketing_channels.delete']" variant="plain-danger" icon="trash-2" size="small"/>
+    </template>
+  </rx-grid>
+  {#- The sheets of the sources on this page. -#}
+  <template rx-for="channel in sheets">
+    <rx-action-sheet :button="false" :id="'rename-marketing-channel-' ~ channel.id" :label="tx['marketing_channels.rename']" :action="route('wl_sales.marketing_channels.update', channel.id)"
+                     :title="tx['marketing_channels.rename_title'] | replace(':code', channel.code)" :submit-label="tx['marketing_channels.rename']" icon="pencil">
+      <rx-input name="name_en" :label="tx['fields.name_en']" :value="channel.name_en" :id="'rename-marketing-channel-name-en-' ~ channel.id" required/>
+      <rx-input name="name_ar" :label="tx['fields.name_ar']" :value="channel.name_ar" :id="'rename-marketing-channel-name-ar-' ~ channel.id"/>
+    </rx-action-sheet>
+    <rx-confirm rx-if="channel.active" :button="false" :id="'deactivate-marketing-channel-' ~ channel.id" :label="tx['marketing_channels.deactivate']" :action="route('wl_sales.marketing_channels.deactivate', channel.id)" method="POST"
+                :title="tx['marketing_channels.deactivate_title'] | replace(':code', channel.code)" :message="tx['marketing_channels.deactivate_message']" :confirm-label="tx['marketing_channels.deactivate']" :cancel-label="tx['cancel']" icon="x"/>
+    <rx-confirm rx-else :button="false" :id="'activate-marketing-channel-' ~ channel.id" :label="tx['marketing_channels.activate']" :action="route('wl_sales.marketing_channels.activate', channel.id)" method="POST"
+                :title="tx['marketing_channels.activate']" :message="channel.code" :confirm-label="tx['marketing_channels.activate']" :cancel-label="tx['cancel']" icon="check"/>
+    <rx-confirm rx-if="not channel.in_use" :button="false" :id="'delete-marketing-channel-' ~ channel.id" :label="tx['marketing_channels.delete']" :action="route('wl_sales.marketing_channels.delete', channel.id)" method="POST"
+                :title="tx['marketing_channels.delete_title'] | replace(':code', channel.code)" :message="tx['marketing_channels.delete_message']" :confirm-label="tx['marketing_channels.delete']" :cancel-label="tx['cancel']" icon="trash-2"/>
+  </template>
+</rx-page>

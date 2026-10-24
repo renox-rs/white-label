@@ -40,7 +40,7 @@ async fn linkedin_campaign(app: &TestApp, owner: &User) -> Campaign {
         name: "LinkedIn recruitment drive".into(),
         code: CODE.into(),
         purpose: Some(Purpose::Acquisition),
-        marketing_channel: Some(MarketingChannel::OtherOnline),
+        marketing_channel: Some(MarketingChannel::OtherOnline.into()),
         lead_source_id: Some(source.id),
         owner_id: Some(owner.id),
         start_date: Some(day(-30)),

@@ -1256,7 +1256,7 @@ async fn an_over_budget_linkedin_cost_waits_for_the_marketing_manager() {
         name: "LinkedIn Q1".into(),
         code: "LINKEDIN-Q1".into(),
         purpose: Some(Purpose::Acquisition),
-        marketing_channel: Some(MarketingChannel::OtherOnline),
+        marketing_channel: Some(MarketingChannel::OtherOnline.into()),
         owner_id: Some(manager.id),
         start_date: Some(day(0)),
         end_date: Some(day(60)),

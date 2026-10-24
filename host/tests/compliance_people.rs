@@ -10,7 +10,8 @@
 //! Decided where the spec is silent: the *enquiries* of the campaign report are
 //! the leads of wl-sales for the campaign (a Property enquiry row is not a
 //! wl-sales lead, see `DEFERRED-G8b.md`), and *listing portals* is the
-//! marketing channel *other online* (`seed::CAMPAIGN_CHANNELS`).
+//! marketing channel `listing_portals` of the 01 seed (`seed::CAMPAIGN_CHANNELS`,
+//! BL-SAL-28).
 
 mod support;
 
@@ -33,7 +34,7 @@ use wl_kernel::{PartyId, Subject};
 use wl_sales::costs::{self, CostInput};
 use wl_sales::report::{self, Filter, GroupBy, Viewer};
 use wl_sales::{
-    Campaign, CostEntry, CostStatus, Lead, LeadSource, MarketingChannel, NewLead, PartyAcquisition,
+    Campaign, CostEntry, CostStatus, Lead, LeadSource, NewLead, PartyAcquisition,
     Purpose,
 };
 
@@ -46,7 +47,7 @@ async fn portals_campaign(app: &TestApp, owner: &User) -> Campaign {
         .find(|(name, _)| *name == "Listing portals")
         .expect("the client offers the listing portals channel")
         .1;
-    assert_eq!(channel, "other_online");
+    assert_eq!(channel, "listing_portals");
     let source = LeadSource::by_code(app.db(), "paid_ads")
         .await
         .unwrap()
@@ -55,7 +56,7 @@ async fn portals_campaign(app: &TestApp, owner: &User) -> Campaign {
         name: "Listing portals autumn".into(),
         code: CODE.into(),
         purpose: Some(Purpose::Acquisition),
-        marketing_channel: Some(MarketingChannel::OtherOnline),
+        marketing_channel: Some(channel.into()),
         lead_source_id: Some(source.id),
         owner_id: Some(owner.id),
         start_date: Some(day(-30)),

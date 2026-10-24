@@ -163,7 +163,7 @@ async fn summer(t: &Booted) {
         name: "Summer".into(),
         code: "SUMMER".into(),
         purpose: Some(Purpose::Acquisition),
-        marketing_channel: Some(MarketingChannel::Meta),
+        marketing_channel: Some(MarketingChannel::Meta.into()),
         promo_code: Some("SUMMER".into()),
         ..Campaign::default()
     };

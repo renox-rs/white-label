@@ -40,7 +40,8 @@ use wl_kernel::invoicing::{SupplierBillLineId, SupplierBills};
 use wl_kernel::voids::web as void_web;
 
 use crate::bill_links::{self, BillLinkInput};
-use crate::campaign::{self, Campaign, CampaignRefused, CampaignStatus, MarketingChannel, Purpose};
+use crate::campaign::{self, Campaign, CampaignRefused, CampaignStatus, Purpose};
+use crate::marketing_channel::CampaignChannel;
 use crate::cost_entry::{CostEntry, CostStatus};
 use crate::costs::{self, CostInput};
 use crate::lead_source::LeadSource;
@@ -127,7 +128,10 @@ fn cost_kind(status: CostStatus) -> &'static str {
 /// The campaigns grid: search on code and name, filters by status and
 /// channel. The costs and the share of the budget they use are computed
 /// from the approved entries (the only ones any total counts), in AED.
-pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+///
+/// `channels` are the marketing channels as (key, name), every one of them
+/// (a deactivated channel still filters its old campaigns, BL-SAL-28).
+pub fn grid(lang: &Lang, can_export: bool, channels: Vec<(String, String)>) -> Grid {
     let options = |keys: Vec<(&str, String)>| -> Vec<(String, String)> {
         keys.into_iter().map(|(k, v)| (k.to_owned(), v)).collect()
     };
@@ -138,17 +142,6 @@ pub fn grid(lang: &Lang, can_export: bool) -> Grid {
                 (
                     s.as_str(),
                     text(lang, &format!("campaigns.status.{}", s.as_str())),
-                )
-            })
-            .collect(),
-    );
-    let channels = options(
-        MarketingChannel::ALL
-            .iter()
-            .map(|c| {
-                (
-                    c.as_str(),
-                    text(lang, &format!("campaigns.channel.{}", c.as_str())),
                 )
             })
             .collect(),
@@ -234,9 +227,15 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /campaigns`: the grid (`?export=` with `campaigns.manage`).
-async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
+async fn index(
+    State(db): State<Db>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     let can_manage = user.has_permission(permissions::CAMPAIGNS_MANAGE);
-    let grid = grid(&lang, can_manage);
+    let channels = CampaignChannel::options(&db, &lang.locale).await?;
+    let grid = grid(&lang, can_manage, channels);
     if request.param("export").is_some() && !can_manage {
         return Err(Error::Forbidden);
     }
@@ -437,9 +436,10 @@ async fn show(
         purpose_label: campaign
             .purpose
             .map(|p| text(&lang, &format!("campaigns.purpose.{}", p.as_str()))),
-        channel_label: campaign
-            .marketing_channel
-            .map(|c| text(&lang, &format!("campaigns.channel.{}", c.as_str()))),
+        channel_label: match campaign.marketing_channel.as_deref() {
+            Some(key) => Some(CampaignChannel::label(&db, key, &lang.locale).await?),
+            None => None,
+        },
         lead_source,
         owner: user_name(&db, campaign.owner_id).await,
         entity,
@@ -627,9 +627,7 @@ async fn form_page(db: &Db, lang: &Lang, campaign: Option<&Campaign>) -> Result<
         );
         values.insert(
             "marketing_channel",
-            c.marketing_channel
-                .map(|m| m.as_str().to_owned())
-                .unwrap_or_default(),
+            c.marketing_channel.clone().unwrap_or_default(),
         );
         values.insert("lead_source_id", id(c.lead_source_id));
         values.insert("brand", c.brand.clone().unwrap_or_default());
@@ -670,15 +668,14 @@ async fn form_page(db: &Db, lang: &Lang, campaign: Option<&Campaign>) -> Result<
             )
         })
         .collect();
-    let channels = MarketingChannel::ALL
-        .iter()
-        .map(|c| {
-            (
-                c.as_str().to_owned(),
-                text(lang, &format!("campaigns.channel.{}", c.as_str())),
-            )
-        })
-        .collect();
+    // The active channels, and the campaign's own when it was switched off
+    // since (BL-SAL-28).
+    let channels = CampaignChannel::offered(
+        db,
+        &lang.locale,
+        campaign.and_then(|c| c.marketing_channel.as_deref()),
+    )
+    .await?;
     let lead_sources = LeadSource::ordered(db)
         .await?
         .into_iter()
@@ -787,12 +784,18 @@ async fn campaign_of_form(
                 .map_err(|_| error("purpose", "campaigns.errors.choice"))?,
         ),
     };
+    // An active channel, or the one the campaign already had (BL-SAL-28).
     c.marketing_channel = match get("marketing_channel") {
         "" => None,
-        v => Some(
-            v.parse::<MarketingChannel>()
-                .map_err(|_| error("marketing_channel", "campaigns.errors.choice"))?,
-        ),
+        v => {
+            let known = CampaignChannel::by_code(&state.db, v).await?;
+            match known {
+                Some(channel) if channel.active || c.marketing_channel.as_deref() == Some(v) => {
+                    Some(channel.code)
+                }
+                _ => return Err(error("marketing_channel", "campaigns.errors.choice")),
+            }
+        }
     };
     c.lead_source_id = number("lead_source_id")?;
     if let Some(id) = c.lead_source_id
