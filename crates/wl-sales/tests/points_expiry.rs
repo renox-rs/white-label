@@ -545,4 +545,27 @@ async fn the_liability_report_groups_by_brand_entity_age_and_expiry_month() {
         .assert_see("91 to 180 days")
         .assert_see("Up to 90 days")
         .assert_see(&month);
+
+    // The lines sort by a column and download as CSV (#526).
+    let at = |html: &str, text: &str| html.find(text).unwrap_or(usize::MAX);
+    let oldest = t.app.get("/loyalty/liability?sort=-age").await;
+    oldest.assert_ok();
+    let html = oldest.text();
+    assert!(at(&html, "91 to 180 days") < at(&html, "Up to 90 days"));
+    assert!(html.contains("sort=-age&amp;export=csv"));
+    let youngest = t.app.get("/loyalty/liability?sort=age").await.text();
+    assert!(at(&youngest, "Up to 90 days") < at(&youngest, "91 to 180 days"));
+    let file = t
+        .app
+        .get("/loyalty/liability?sort=-points&export=csv")
+        .await;
+    file.assert_ok();
+    assert!(
+        file.header("content-type")
+            .is_some_and(|c| c.starts_with("text/csv"))
+    );
+    let csv = file.text();
+    assert!(csv.contains("Brand,Entity,Age of the points,Expiry month,Points,Value"));
+    assert!(csv.contains(&format!("Gold,5,Up to 90 days,{month},50,")));
+    assert!(at(&csv, "(client)") < at(&csv, "Gold"), "the most points first");
 }

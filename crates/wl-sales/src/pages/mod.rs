@@ -13,6 +13,7 @@ pub mod loyalty;
 pub mod membership;
 pub mod redeem;
 pub mod report;
+mod report_table;
 pub mod sales_orders;
 pub mod sales_returns;
 pub mod segments;

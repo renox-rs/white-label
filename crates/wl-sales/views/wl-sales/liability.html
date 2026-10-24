@@ -1,18 +1,21 @@
 {#- wl-sales: the points liability as at a date: outstanding points and
-    their value by brand, entity, age and expiry month, for the accountant.
+    their value by brand, entity, age and expiry month, for the accountant,
+    sorted by any column (`?sort=`) and exported as CSV (`?export=csv`).
     The lines are worked out from the movements as at the date, not read
-    from one table, so this stays a table (not a renox::grid) in a panel that
-    fills the screen; the totals are badges in the header.
+    from one table, so this stays a table (not a renox::grid, #526) in a panel
+    that fills the screen; the totals are badges in the header.
     Replace it with resources/views/wl-sales/liability.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['liability.title']">
   <rx-page-header :title="tx['liability.title']" :subtitle="tx['liability.subtitle']" :back="route('wl_sales.loyalty')" :back-label="tx['loyalty.title']">
     <rx-badge kind="info" :text="total_points ~ ' · ' ~ tx['liability.points']"/>
     <rx-badge kind="success" :text="total_value ~ ' · ' ~ tx['liability.value']"/>
+    <rx-link-button :href="export_url" :label="tx['report.csv']" variant="secondary" icon="download"/>
   </rx-page-header>
   <section class="rx-pane rx-fill">
     <rx-form method="GET" action="{{ route('wl_sales.loyalty_liability') }}">
       <rx-row>
         <rx-input name="as_at" type="date" :label="tx['liability.as_at']" :value="as_at" id="liability-as-at"/>
+        <rx-select name="sort" :label="tx['report.sort']" :options="sorts" :selected="sort" id="liability-sort"/>
         <rx-button type="submit" :label="tx['liability.show']"/>
       </rx-row>
     </rx-form>

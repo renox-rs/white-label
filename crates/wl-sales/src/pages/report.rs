@@ -13,7 +13,11 @@
 //! role sees every branch, a role given in a branch sees that branch only. The
 //! routes carry no permission guard of their own, since the guard counts
 //! global roles only; a user with no role that grants the permission
-//! anywhere gets a 403. The CSV has the numbers of the page.
+//! anywhere gets a 403. The CSV has the numbers of the page. `?sort=cac`
+//! (`-cac` for the highest first; any column: `group`, `leads`, `won`,
+//! `conversion`, `customers`, `value`, `cost`, `cost_linked`, `cost_manual`,
+//! `cost_per_lead`, `cac`, `roas`) orders the rows on the page and in the CSV
+//! (#526); a ratio that cannot be worked out ("—") sorts as the lowest.
 
 use std::collections::BTreeMap;
 
@@ -27,7 +31,8 @@ use crate::campaign::{Campaign, MarketingChannel};
 use crate::config::config_of;
 use crate::lead_source::LeadSource;
 use crate::permissions;
-use crate::report::{self, Cells, Facts, Filter, GroupBy, Report, Viewer};
+use super::report_table::{self, Sort, SortKey};
+use crate::report::{self, Cells, Facts, Filter, GroupBy, Report, Row, Viewer};
 use crate::texts;
 
 /// The texts a template reads as `tx['report.title']`.
@@ -69,6 +74,74 @@ pub struct ReportQuery {
     /// A month, `2026-04`.
     #[serde(default)]
     pub month: Option<String>,
+    /// The column the rows are sorted by, `-` first for descending.
+    #[serde(default)]
+    pub sort: Option<String>,
+}
+
+/// The columns the rows sort by.
+const SORT_KEYS: [&str; 12] = [
+    "group",
+    "leads",
+    "won",
+    "conversion",
+    "customers",
+    "value",
+    "cost",
+    "cost_linked",
+    "cost_manual",
+    "cost_per_lead",
+    "cac",
+    "roas",
+];
+
+/// The value of `row` (named `label`) that the column `key` sorts by; a
+/// cost the viewer may not see, or a ratio with nothing to divide by, is the
+/// lowest.
+fn sort_key(row: &Row, label: &str, key: &str) -> SortKey {
+    let none = i64::MIN;
+    let cost_known = !row.cost_hidden && row.cost.is_some();
+    let number = match key {
+        "group" => return SortKey::text(label),
+        "leads" => row.leads,
+        "won" => row.won,
+        "conversion" => row.conversion_tenths().unwrap_or(none),
+        "customers" => row.customers,
+        "value" => row.value,
+        "cost" if cost_known => row.cost.unwrap_or(none),
+        "cost_linked" if cost_known => row.cost_linked,
+        "cost_manual" if cost_known => row.cost_manual,
+        "cost_per_lead" => row.cost_per_lead().unwrap_or(none),
+        "cac" => row.cac().unwrap_or(none),
+        "roas" => row.roas_hundredths().unwrap_or(none),
+        _ => none,
+    };
+    SortKey::Number(number)
+}
+
+/// The rows of `report` and their `labels` in the order of `sort`.
+fn sorted(
+    mut report: Report,
+    labels: Vec<String>,
+    sort: Option<&Sort>,
+) -> (Report, Vec<String>) {
+    let Some(sort) = sort else {
+        return (report, labels);
+    };
+    let mut order: Vec<usize> = (0..report.rows.len()).collect();
+    sort.apply(&mut order, |&i, key| {
+        sort_key(&report.rows[i], labels.get(i).map_or("", String::as_str), key)
+    });
+    let mut rows: Vec<Option<Row>> = report.rows.drain(..).map(Some).collect();
+    let mut names: Vec<Option<String>> = labels.into_iter().map(Some).collect();
+    let mut ordered_labels = Vec::with_capacity(order.len());
+    for i in order {
+        if let Some(row) = rows.get_mut(i).and_then(Option::take) {
+            report.rows.push(row);
+            ordered_labels.push(names.get_mut(i).and_then(Option::take).unwrap_or_default());
+        }
+    }
+    (report, ordered_labels)
 }
 
 /// `text` trimmed, `None` when blank.
@@ -156,7 +229,8 @@ async fn build(
     for row in &report.rows {
         labels.push(report::label_of(&state.db, &row.key, &lang.locale).await?);
     }
-    Ok((report, labels))
+    let sort = Sort::parse(query.sort.as_deref(), &SORT_KEYS);
+    Ok(sorted(report, labels, sort.as_ref()))
 }
 
 /// One row as the page shows it.
@@ -189,6 +263,9 @@ pub(crate) struct ReportPage {
     branch: String,
     month: String,
     csv_query: String,
+    /// The orders the sort select offers, and the one chosen.
+    sorts: Vec<(String, String)>,
+    sort: String,
 }
 
 /// `GET /sales/acquisition-report`.
@@ -222,7 +299,7 @@ async fn index(
             t(&format!("report.by.{key}"))
         }
     })
-    .collect();
+    .collect::<Vec<String>>();
     let rows = report
         .rows
         .iter()
@@ -260,6 +337,21 @@ async fn index(
             .map(|e| (e.id.to_string(), format!("{} - {}", e.code, e.name_en))),
     );
     let csv_query = serde_urlencoded_pairs(&query);
+    let sort_columns: Vec<(&str, String)> = SORT_KEYS
+        .iter()
+        .zip(head.iter())
+        .map(|(key, label)| (*key, label.clone()))
+        .collect();
+    let sorts = report_table::sort_options(
+        &sort_columns,
+        &t("report.own_order"),
+        &t("report.up"),
+        &t("report.down"),
+    );
+    let sort = Sort::parse(query.sort.as_deref(), &SORT_KEYS)
+        .as_ref()
+        .map(Sort::param)
+        .unwrap_or_default();
     Ok(View::typed(ReportPage {
         tx: texts::all(&lang),
         rows,
@@ -278,6 +370,8 @@ async fn index(
         branch: given(&query.branch).unwrap_or_default(),
         month: given(&query.month).unwrap_or_default(),
         csv_query,
+        sorts,
+        sort,
     }))
 }
 
@@ -292,6 +386,7 @@ fn serde_urlencoded_pairs(query: &ReportQuery) -> String {
         ("branch", &query.branch),
         ("entity", &query.entity),
         ("month", &query.month),
+        ("sort", &query.sort),
     ];
     let encode = |text: &str| {
         text.bytes()
@@ -326,4 +421,75 @@ async fn csv(
         "text/csv; charset=utf-8",
         body.into_bytes(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::report::GroupKey;
+
+    fn row(value: &str, leads: i64, won: i64, cost: Option<i64>) -> Row {
+        Row {
+            key: GroupKey {
+                by: GroupBy::Campaign,
+                value: Some(value.to_owned()),
+            },
+            leads,
+            won,
+            customers: won,
+            value: 0,
+            cost,
+            cost_linked: 0,
+            cost_manual: cost.unwrap_or(0),
+            cost_hidden: false,
+        }
+    }
+
+    fn report() -> (Report, Vec<String>) {
+        let rows = vec![
+            row("1", 50, 10, Some(500_000)),
+            row("2", 10, 9, None),
+            row("3", 30, 3, Some(30_000)),
+        ];
+        let total = row("", 90, 22, Some(530_000));
+        let labels = vec!["SPRING26".to_owned(), "autumn".to_owned(), "Winter".to_owned()];
+        (
+            Report {
+                by: GroupBy::Campaign,
+                rows,
+                total,
+            },
+            labels,
+        )
+    }
+
+    fn by(key: &str) -> Vec<String> {
+        let (report, labels) = report();
+        let sort = Sort::parse(Some(key), &SORT_KEYS);
+        assert!(sort.is_some(), "{key} is a column");
+        let (report, labels) = sorted(report, labels, sort.as_ref());
+        assert_eq!(report.rows.len(), labels.len());
+        // Each label stays with its row.
+        for (row, label) in report.rows.iter().zip(&labels) {
+            let expected = match row.key.value.as_deref() {
+                Some("1") => "SPRING26",
+                Some("2") => "autumn",
+                _ => "Winter",
+            };
+            assert_eq!(label, expected);
+        }
+        labels
+    }
+
+    #[test]
+    fn the_rows_sort_by_any_column_with_their_labels() {
+        assert_eq!(by("-leads"), ["SPRING26", "Winter", "autumn"]);
+        assert_eq!(by("group"), ["autumn", "SPRING26", "Winter"]);
+        assert_eq!(by("-conversion"), ["autumn", "SPRING26", "Winter"]);
+        // No cost: no cost per lead, the lowest.
+        assert_eq!(by("cost_per_lead"), ["autumn", "Winter", "SPRING26"]);
+        let (report, labels) = report();
+        let (_, same) = sorted(report, labels.clone(), None);
+        assert_eq!(same, labels);
+    }
 }

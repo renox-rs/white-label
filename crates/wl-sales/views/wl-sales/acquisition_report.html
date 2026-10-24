@@ -1,9 +1,11 @@
 {#- wl-sales: the acquisition report: per source, campaign, channel, brand,
     branch or month the leads, conversion, new customers, cost, cost per lead,
-    CAC and ROAS ("—" when undefined), within the user's scope, with a CSV
-    export. The rows are worked out from the leads, sales and costs in the
-    user's scope and grouped as chosen, not read from one table, so this stays
-    a table (not a renox::grid) in a panel that fills the screen. Replace it with resources/views/wl-sales/acquisition_report.html
+    CAC and ROAS ("—" when undefined), within the user's scope, sorted by any
+    column (`?sort=`) and with a CSV export in the same order. The rows are
+    worked out from the leads, sales and costs in the user's scope and grouped
+    as chosen, not read from one table, so this stays a table (not a
+    renox::grid, #526: the CSV route stands in for the grid export) in a panel
+    that fills the screen. Replace it with resources/views/wl-sales/acquisition_report.html
     in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['report.title']">
   <rx-page-header :title="tx['report.title']" :subtitle="tx['report.subtitle']">
@@ -20,6 +22,7 @@
         <rx-input name="branch" :label="tx['report.branch']" :hint="tx['report.branch_hint']" :value="branch" id="report-branch"/>
         <rx-select name="entity" :label="tx['report.entity']" :options="entities" :selected="entity" id="report-entity"/>
         <rx-input name="month" type="month" :label="tx['report.month']" :value="month" id="report-month"/>
+        <rx-select name="sort" :label="tx['report.sort']" :options="sorts" :selected="sort" id="report-sort"/>
         <rx-button type="submit" :label="tx['report.show']"/>
       </rx-row>
     </rx-form>

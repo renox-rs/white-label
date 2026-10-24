@@ -419,6 +419,22 @@ async fn sal21_the_page_and_the_csv_show_the_same_numbers() {
         .await
         .assert_ok()
         .assert_see("SPRING26,50,10,20.0%,8,20000.00,5000.00,3000.00,2000.00,100.00,625.00,4.00");
+    // Sorted by a column, on the page and in the CSV link (#526).
+    let sorted = t
+        .app
+        .get("/sales/acquisition-report?group=campaign&sort=-leads")
+        .await;
+    sorted.assert_ok().assert_see("SPRING26");
+    assert!(
+        sorted
+            .text()
+            .contains("acquisition-report.csv?group=campaign&amp;sort=-leads")
+    );
+    t.app
+        .get("/sales/acquisition-report.csv?group=campaign&sort=-cac")
+        .await
+        .assert_ok()
+        .assert_see("SPRING26,50,10,20.0%");
     // The filters narrow it: another source has nothing.
     t.app
         .get("/sales/acquisition-report?group=campaign&source=referral")

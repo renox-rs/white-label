@@ -46,6 +46,7 @@ const TEXTS: &[(&str, &str)] = &[
         "Adjust a member's points from the members list.",
     ),
     ("wl_sales.lead_sources.created_at", "Added"),
+    ("wl_sales.loyalty.review.created_at", "Flagged"),
     ("wl_sales.segments.counted_at", "Counted"),
     ("wl_sales.segments.archived", "Archived"),
     (
@@ -308,6 +309,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Leads, conversion, cost per lead, customer acquisition cost and return on ad spend. Amounts are AED excluding VAT; \"—\" means undefined.",
     ),
     ("wl_sales.report.csv", "Export CSV"),
+    ("wl_sales.report.sort", "Sort by"),
+    ("wl_sales.report.own_order", "The report's order"),
+    ("wl_sales.report.up", "lowest or A first"),
+    ("wl_sales.report.down", "highest or Z first"),
     ("wl_sales.report.show", "Show"),
     ("wl_sales.report.all", "All"),
     ("wl_sales.report.total", "Total"),
