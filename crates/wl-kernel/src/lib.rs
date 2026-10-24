@@ -27,6 +27,7 @@ pub mod documents;
 pub mod drawings;
 pub mod einvoice;
 pub mod entities;
+pub mod generation;
 pub mod held_funds;
 pub mod integrations;
 pub mod inventory;

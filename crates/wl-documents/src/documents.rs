@@ -1120,6 +1120,20 @@ impl Documents {
         Ok(Document::find_or_404(&state.db, document.id).await?)
     }
 
+    /// `generate` (`DOC.GEN.01`, §5.3): the branded PDF of a template for a
+    /// subject, stored as an accepted document with source `generated`
+    /// ([`crate::generation`]).
+    ///
+    /// # Errors
+    ///
+    /// The database's or the disk's errors; refusals are `Ok(Err(..))`.
+    pub async fn generate(
+        state: &AppState,
+        request: wl_kernel::generation::GenerateRequest,
+    ) -> Result<wl_kernel::generation::Generated> {
+        crate::generation::generate(state, request).await
+    }
+
     /// The accepted document of kind `kind` on `subject` (the latest
     /// accepted, should two ever be), if any. An unknown kind has none.
     pub async fn current(db: &Db, subject: &Subject, kind: &str) -> Result<Option<Document>> {
@@ -1250,6 +1264,60 @@ async fn create(
         emit_uploaded(state, &document, &kind).await?;
     }
     Ok(Ok(document))
+}
+
+/// `record` of a generated document (§3: generated documents are created
+/// directly as accepted, by the system or the user who asked), in the
+/// caller's transaction `tx`, so the number taken for it and the generation
+/// row commit or roll back together. The caller has checked the file against
+/// `kind` ([`file_refusal`]) and emits [`emit_accepted`] and
+/// [`emit_superseded`] after the commit.
+pub(crate) async fn record_generated_in(
+    state: &AppState,
+    tx: &mut Transaction,
+    by: Option<i64>,
+    new: &NewDocument,
+    kind: &DocumentKind,
+) -> Result<(Document, Vec<Superseded>)> {
+    let at = now();
+    let document = Document {
+        subject_type: new.subject.subject_type.clone(),
+        subject_id: new.subject.subject_id,
+        kind_id: kind.id,
+        title: new
+            .title
+            .clone()
+            .filter(|t| !t.trim().is_empty())
+            .unwrap_or_else(|| kind.name_en.clone()),
+        number: new.number.clone().filter(|n| !n.trim().is_empty()),
+        issue_date: new.issue_date,
+        expiry_date: new.expiry_date,
+        issuing_authority: new.issuing_authority.clone(),
+        current_version: 1,
+        status: DocumentStatus::Accepted,
+        source: new.source,
+        channel: new.channel.clone(),
+        uploaded_by: by,
+        submitted_at: Some(at),
+        accepted_at: Some(at),
+        ..Document::default()
+    };
+    let document = Document::create(&mut *tx, document).await?;
+    store_version(state, tx, &document, 1, &new.file, by, new.note.clone()).await?;
+    let mut history = TransitionRecord::new(
+        Document::TABLE,
+        document.id,
+        DocumentStatus::Accepted.as_str(),
+        RECORD,
+    );
+    if let Some(user) = by {
+        history = history.actor(user);
+    }
+    history.record(&mut *tx).await?;
+    let superseded = supersede_previous(tx, &document)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((document, superseded))
 }
 
 #[cfg(test)]

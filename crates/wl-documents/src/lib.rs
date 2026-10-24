@@ -5,6 +5,7 @@ pub mod acknowledgements;
 pub mod documents;
 pub mod expiry;
 pub mod flags;
+pub mod generation;
 pub mod guard;
 pub mod kinds;
 pub mod machine;
@@ -26,6 +27,10 @@ pub use documents::{
 };
 pub use expiry::{AffectedItem, ExpiredLog, ReminderLog, RenewalTask};
 pub use flags::DocumentFlag;
+pub use generation::{
+    BrandAssets, BuiltinPdf, DocumentTemplate, Generation, PaperSize, PdfRenderer, PdfRendering,
+    RenderError, RenderJob, TemplateGenerator, TemplateSeed, TemplateWording, register_template,
+};
 pub use guard::DocumentsGuard;
 pub use kinds::{
     BlockChangeRefused, BlockSeed, DocumentKind, KindBlock, KindSeed, RefusalReason, Sensitivity,
@@ -51,6 +56,10 @@ pub mod permissions {
     /// Manage SOPs: their readers, withdrawing, and (with the SOP's owner
     /// role) accepting or rejecting a version.
     pub const SOPS_MANAGE: &str = "sops.manage";
+    /// Generate documents on demand (transitions generate as the system).
+    pub const GENERATE: &str = "documents.generate";
+    /// Edit templates (text, layout) within the branding rules.
+    pub const TEMPLATES_MANAGE: &str = "document_templates.manage";
 }
 
 /// The templates, compiled in. An app replaces one with a file of the same
@@ -149,6 +158,8 @@ impl Module for WlDocuments {
             .model::<Sop>()
             .model::<SopReader>()
             .model::<SopTranslation>()
+            .model::<DocumentTemplate>()
+            .model::<Generation>()
             .view_data::<pages::ReviewQueuePage>()
             .view_data::<pages::FlagsPage>()
             .view_data::<pages::KindsPage>()
@@ -184,6 +195,9 @@ impl Module for WlDocuments {
         // The standard guard `document_valid` other modules call through
         // `wl_kernel::documents::guard`.
         wl_kernel::documents::provide_guard(app, DocumentsGuard);
+        // `DOC.GEN.01`: `Documents::generate` other modules call through
+        // `wl_kernel::generation::generator`.
+        wl_kernel::generation::provide_generator(app, TemplateGenerator);
         // The kinds modules and verticals register, and the kinds for
         // registrations and certifications every client gets (#54), are
         // installed by this module's command and seeder; both keep the
