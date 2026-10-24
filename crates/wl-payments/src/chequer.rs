@@ -183,6 +183,11 @@ pub async fn register(
         }
     }
     tx.commit().await?;
+    // A holder who collects cheques in the field hands them over in a
+    // handover of the day, counted by someone else (`FIN.ACL.20`).
+    if let (true, Some(user_id)) = (cheque.field_collected, cheque.collected_by) {
+        crate::cash_cheques::ensure_handover(state, user_id, Some(cheque.legal_entity_id)).await?;
+    }
     Ok(cheque)
 }
 

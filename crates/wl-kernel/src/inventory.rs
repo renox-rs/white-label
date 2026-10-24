@@ -642,6 +642,7 @@ mod tests {
             subject: Some(Subject::new("clinics.visit", 3)),
             party: Some(PartyId(11)),
             lot: Some(Subject::new(LOT_SUBJECT_TYPE, 9)),
+            item: None,
             location: None,
             quantity_milli: 2_000,
             on: None,
@@ -1010,6 +1011,71 @@ pub struct ItemLabel {
     pub name: String,
 }
 
+/// Goods put back into stock by the record that took them (wl-inventory §6
+/// `StockService` *return*): the parts a job card issued and did not fit
+/// (08 §7.1 *Job card* `cancel`, `AUT.ACL.21`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReturnRequest {
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The location it goes back to, `inventory.location:2`.
+    pub location: Subject,
+    /// The quantity, in thousandths of the base unit.
+    pub quantity_milli: i64,
+    /// The record that gives it back: a job card.
+    pub source: Subject,
+    /// The record the cost was charged to, if any.
+    pub cost_object: Option<Subject>,
+    /// The lot it goes back to (`inventory.lot:4`); needed for an item
+    /// tracked by lot.
+    #[serde(default)]
+    pub lot: Option<Subject>,
+    /// Why it comes back.
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+impl ReturnRequest {
+    /// `quantity_milli` of `item` going back to `location` from `source`.
+    pub fn new(item: Subject, location: Subject, quantity_milli: i64, source: Subject) -> Self {
+        ReturnRequest {
+            item,
+            location,
+            quantity_milli,
+            source,
+            cost_object: None,
+            lot: None,
+            reason: None,
+        }
+    }
+
+    /// The cost charged to `cost_object` is taken back.
+    pub fn cost_object(mut self, cost_object: Subject) -> Self {
+        self.cost_object = Some(cost_object);
+        self
+    }
+
+    /// Goes back to `lot`.
+    pub fn lot(mut self, lot: Subject) -> Self {
+        self.lot = Some(lot);
+        self
+    }
+
+    /// For this reason.
+    pub fn reason(mut self, reason: &str) -> Self {
+        self.reason = Some(reason.to_owned());
+        self
+    }
+}
+
+/// What a return did.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Returned {
+    /// The quantity that went back into stock, in thousandths; 0 when there
+    /// is no inventory module.
+    pub posted_milli: i64,
+}
+
 /// The stock service other modules call (wl-inventory §6 `StockService`).
 /// Without the inventory module [`stock_service`] gives [`NoStockService`],
 /// which posts nothing.
@@ -1093,6 +1159,19 @@ pub trait StockService: Send + Sync + 'static {
         Box::pin(async { Ok(None) })
     }
 
+    /// Puts goods back into stock at a location: a `return_in` movement
+    /// against the record that gives them back (a job card's parts issued and
+    /// not fitted). Refused with a 422 for a quantity that is not above zero
+    /// and for an item tracked by lot without a lot. The default posts
+    /// nothing.
+    fn return_to_stock<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: ReturnRequest,
+    ) -> StockFuture<'a, Returned> {
+        Box::pin(async { Ok(Returned::default()) })
+    }
+
     /// The `source` that consumed (a visit, a sale) was cancelled before its
     /// pending issues posted: each one still open is cleared with the reason
     /// *source cancelled*, without a movement. Returns how many were cleared.
@@ -1123,6 +1202,42 @@ pub fn stock_service(state: &AppState) -> Arc<dyn StockService> {
     match state.provided::<Arc<dyn StockService>>() {
         Some(service) => Arc::clone(&service),
         None => Arc::new(NoStockService),
+    }
+}
+
+/// A Return to supplier a vertical asks for: one item sent back for credit
+/// (08 §4.6 step 4: the failed part of an accepted warranty claim).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DraftReturn {
+    /// The supplier.
+    pub supplier: PartyId,
+    /// The record the goods come from, e.g. `auto.supplier_claim:7`.
+    pub source: Subject,
+    /// The item's code in the catalogue.
+    pub item_code: String,
+    /// The quantity, in thousandths of the base unit.
+    pub quantity_milli: i64,
+    /// Why the goods go back.
+    pub reason: String,
+    /// The location the goods are kept at until the supplier collects them,
+    /// `inventory.location:2`.
+    pub location: Subject,
+}
+
+/// Drafts Returns to supplier for other modules (wl-inventory §6). Without the
+/// inventory module [`supplier_return_drafts`] gives [`NoSupplierReturnDrafts`],
+/// which drafts nothing.
+pub trait SupplierReturnDrafts: Send + Sync + 'static {
+    /// Records a draft Return to supplier with outcome *credit* for the goods
+    /// of `request` and answers it, `inventory.supplier_return:4`; `None` when
+    /// the module is off or the catalogue has no item of that code. Dispatching
+    /// and crediting it are wl-inventory's.
+    fn draft_credit<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: DraftReturn,
+    ) -> StockFuture<'a, Option<Subject>> {
+        Box::pin(async { Ok(None) })
     }
 }
 
@@ -1170,6 +1285,28 @@ pub trait SaleLineStockSource: Send + Sync + 'static {
         _line: i64,
     ) -> StockFuture<'a, Option<SaleLineStock>> {
         Box::pin(async { Ok(None) })
+    }
+}
+
+/// The drafts service when `inventory` is off: nothing is drafted.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoSupplierReturnDrafts;
+
+impl SupplierReturnDrafts for NoSupplierReturnDrafts {}
+
+/// Makes `drafts` the app's [`SupplierReturnDrafts`]; `wl-inventory` calls it
+/// in `register`.
+pub fn provide_supplier_return_drafts(app: &mut Registry, drafts: impl SupplierReturnDrafts) {
+    let drafts: Arc<dyn SupplierReturnDrafts> = Arc::new(drafts);
+    app.provide(drafts);
+}
+
+/// The app's [`SupplierReturnDrafts`], or [`NoSupplierReturnDrafts`] when none
+/// is provided.
+pub fn supplier_return_drafts(state: &AppState) -> Arc<dyn SupplierReturnDrafts> {
+    match state.provided::<Arc<dyn SupplierReturnDrafts>>() {
+        Some(drafts) => Arc::clone(&drafts),
+        None => Arc::new(NoSupplierReturnDrafts),
     }
 }
 
@@ -1539,6 +1676,10 @@ pub struct TracedHolder {
     pub party: Option<PartyId>,
     /// The lot, `inventory.lot:4`.
     pub lot: Option<Subject>,
+    /// The item, `inventory.item:3`, of a line that names no lot (an item not
+    /// tracked by lot, recalled by supplier and received dates).
+    #[serde(default)]
+    pub item: Option<Subject>,
     /// Where it was used: the location it left, `inventory.location:2`.
     pub location: Option<Subject>,
     /// The quantity, in thousandths of the base unit.
@@ -1581,6 +1722,50 @@ pub struct TracedRecall {
     pub reason: String,
     /// The day it was opened (Asia/Dubai).
     pub opened_on: Option<NaiveDate>,
+}
+
+/// Goods a customer brings back that may be under a recall (wl-sales §4.5
+/// `receive`, §5.6 step 2): what the return names of them, for
+/// [`LotTrace::recall_of`] and [`LotTrace::receive_returned`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReturnedGoods {
+    /// The code of the item.
+    pub item_code: String,
+    /// The lot the customer presents, `inventory.lot:4`, for an item tracked
+    /// by lot.
+    pub lot: Option<Subject>,
+    /// The day the goods were sold (Asia/Dubai), for an item not tracked by
+    /// lot: it must fall in the recall's trace window.
+    pub sold_on: Option<NaiveDate>,
+    /// The quantity, in thousandths of the base unit.
+    pub quantity_milli: i64,
+    /// The record that brings them back, `sales.sales_return:3`.
+    pub source: Subject,
+}
+
+impl ReturnedGoods {
+    /// `quantity_milli` of the item `item_code` brought back by `source`.
+    pub fn new(item_code: &str, quantity_milli: i64, source: Subject) -> Self {
+        ReturnedGoods {
+            item_code: item_code.trim().to_owned(),
+            lot: None,
+            sold_on: None,
+            quantity_milli,
+            source,
+        }
+    }
+
+    /// Of the lot `lot`.
+    pub fn lot(mut self, lot: Subject) -> Self {
+        self.lot = Some(lot);
+        self
+    }
+
+    /// Sold on `day`.
+    pub fn sold_on(mut self, day: NaiveDate) -> Self {
+        self.sold_on = Some(day);
+        self
+    }
 }
 
 /// The forward trace of a recall, for other modules (wl-inventory §6
@@ -1626,6 +1811,32 @@ pub trait LotTrace: Send + Sync + 'static {
     /// customer view of the trace). The default has none.
     fn recalls<'a>(&'a self, _state: &'a AppState) -> TraceFuture<'a, Vec<TracedRecall>> {
         Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// The open recall (`inventory.recall:2`, `open` or `traced` and its hold
+    /// open) that `goods` are in: their lot is in its scope, or, for an item
+    /// not tracked by lot, the item is in its scope by received dates and
+    /// `sold_on` is in its trace window. The default is no recall.
+    fn recall_of<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _goods: &'a ReturnedGoods,
+    ) -> TraceFuture<'a, Option<Subject>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Takes `goods` into quarantine and onto the stock hold of `recall`
+    /// (`recall_of` found it): a `return_in` movement to the quarantine
+    /// location and a line on the open hold. They are not restocked; the
+    /// recall decides. Returns whether they were received; the default
+    /// receives nothing.
+    fn receive_returned<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _recall: &'a Subject,
+        _goods: &'a ReturnedGoods,
+    ) -> TraceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
     }
 
     /// A vertical whose owner decided that the party of `line`

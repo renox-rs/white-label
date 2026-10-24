@@ -208,6 +208,7 @@ pub fn register_critical(client_app: &str) {
 /// lead source requires a campaign.
 pub fn sales(module: WlSales) -> WlSales {
     module
+        .back_orders_for(BACK_ORDER_CHANNELS)
         .unique_customer_po(true)
         .invoice_on_delivery(true)
         .manual_discount_limit_percent(DISCOUNT_LIMIT_PERCENT)
@@ -227,6 +228,11 @@ pub fn sales(module: WlSales) -> WlSales {
 
 // ---------------------------------------------------------------- the values
 
+/// The order channels whose confirmed lines set their stock aside (and
+/// back-order what is not there): BL-SAL-11 point 2 and BL-MFG-02 point 5 on
+/// wl-sales §7 *Back-orders allowed per channel* (BL-SAL-17). A work order's
+/// output for a line is reserved on top of it.
+pub const BACK_ORDER_CHANNELS: &[&str] = &["phone", "sales_rep", "email", "portal"];
 /// `SAL.ACL.02`: the manual discount above which a manager decides, percent.
 pub const DISCOUNT_LIMIT_PERCENT: i64 = 5;
 /// `SAL.ACL.03`: days past terms before an overdue invoice holds an order.

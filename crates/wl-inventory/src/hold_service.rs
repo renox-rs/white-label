@@ -59,6 +59,16 @@ pub enum NewScope {
         /// The items held; all of them when empty.
         item_ids: Vec<i64>,
     },
+    /// These lots wherever they are, and the whole on-hand quantity of these
+    /// items (not tracked by lot) at every location, in transit included: a
+    /// recall by item and received date range (BL-STK-17). The hold is a hold
+    /// on whole lots; its lines of an item name no lot.
+    Stock {
+        /// The lots held.
+        lots: Vec<i64>,
+        /// The items held whole.
+        items: Vec<i64>,
+    },
 }
 
 /// A hold to place.
@@ -214,6 +224,35 @@ async fn location_lines(
     Ok(lines)
 }
 
+/// The lines a hold on the whole of an item not tracked by lot is made of:
+/// one per location (in transit included) where it is on hand, for all of the
+/// quantity there, naming no lot.
+async fn item_lines(tx: &mut renox::db::Transaction, item_id: i64) -> Result<Vec<AddedLine>> {
+    let mut places: BTreeSet<i64> = BTreeSet::new();
+    for movement in StockMovement::query()
+        .where_(StockMovement::ITEM_ID.eq(item_id))
+        .get(&mut *tx)
+        .await?
+    {
+        if let Some(place) = movement.to_location_id {
+            places.insert(place);
+        }
+    }
+    let mut lines = Vec::new();
+    for location_id in places {
+        let quantity = balance::on_hand_at(&mut *tx, item_id, location_id, None).await?;
+        if quantity > 0 {
+            lines.push(AddedLine {
+                item_id,
+                location_id,
+                lot_id: None,
+                quantity_milli: quantity,
+            });
+        }
+    }
+    Ok(lines)
+}
+
 /// The users who decide the lines in `locations`: the holders of
 /// `lots.release` in the scope of each.
 async fn deciders(db: &Db, locations: &BTreeSet<i64>) -> Result<Vec<i64>> {
@@ -294,7 +333,9 @@ pub(crate) async fn place_in(
         return Err(refused(said("wl_inventory.hold.bad_reason", &[])));
     }
     let (scope_kind, location_id, item_ids, lot_ids) = match &new.scope {
-        NewScope::Lots(lots) => (HoldScope::Lots, None, Vec::new(), lots.clone()),
+        NewScope::Lots(lots) | NewScope::Stock { lots, .. } => {
+            (HoldScope::Lots, None, Vec::new(), lots.clone())
+        }
         NewScope::Location {
             location_id,
             item_ids,
@@ -305,12 +346,16 @@ pub(crate) async fn place_in(
             Vec::new(),
         ),
     };
-    if scope_kind == HoldScope::Lots && lot_ids.is_empty() {
+    let whole_items: Vec<i64> = match &new.scope {
+        NewScope::Stock { items, .. } => items.clone(),
+        _ => Vec::new(),
+    };
+    if scope_kind == HoldScope::Lots && lot_ids.is_empty() && whole_items.is_empty() {
         return Err(refused(said("wl_inventory.hold.no_scope", &[])));
     }
     let mut lines: Vec<AddedLine> = Vec::new();
     match &new.scope {
-        NewScope::Lots(lots) => {
+        NewScope::Lots(lots) | NewScope::Stock { lots, .. } => {
             for lot_id in lots {
                 let lot = Lot::find_or_404(&mut *tx, *lot_id).await?;
                 for (place, quantity) in balance::lot_locations(&mut *tx, lot.id).await? {
@@ -330,6 +375,9 @@ pub(crate) async fn place_in(
             Location::find_or_404(&mut *tx, *location_id).await?;
             lines = location_lines(&mut *tx, *location_id, item_ids).await?;
         }
+    }
+    for item_id in &whole_items {
+        lines.extend(item_lines(&mut *tx, *item_id).await?);
     }
     if lines.is_empty() && !allow_empty {
         return Err(refused(said("wl_inventory.hold.no_balance", &[])));
@@ -459,7 +507,7 @@ pub async fn place(state: &AppState, new: NewHold) -> Result<StockHold> {
 /// `Forbidden` without the permission, and the errors of [`place`].
 pub async fn place_as(state: &AppState, user: &AuthUser, mut new: NewHold) -> Result<StockHold> {
     let allowed = match &new.scope {
-        NewScope::Lots(_) => user.has_permission(permissions::STOCK_HOLD),
+        NewScope::Lots(_) | NewScope::Stock { .. } => user.has_permission(permissions::STOCK_HOLD),
         NewScope::Location { location_id, .. } => {
             let location = Location::find_or_404(&state.db, *location_id).await?;
             user.has_permission_in(permissions::STOCK_HOLD, &location.scope())

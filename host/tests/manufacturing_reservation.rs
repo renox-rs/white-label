@@ -16,7 +16,7 @@ use manufacturing::{Line, Plant, WorkOrder, WorkOrderSource, WorkOrderStatus};
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
-use wl_inventory::reservation::{Reservation, ReservationStatus, SOURCE_ORDER, SOURCE_WORK_ORDER};
+use wl_inventory::reservation::{SOURCE_ORDER, SOURCE_WORK_ORDER, StockReservation};
 use wl_inventory::{Item, Location, Lot, LotStatus, StockMovement};
 use wl_kernel::invoicing::VatCategory;
 use wl_sales::customer_account::{self, Terms};
@@ -245,7 +245,7 @@ async fn a_released_order_reserves_its_stock_and_cancelling_it_gives_it_back() {
     let held = submitted(&app, &sales, customer, "10").await;
     assert_eq!(held.status, SalesOrderStatus::CreditHold);
     assert!(
-        Reservation::of_order(app.db(), held.id)
+        StockReservation::of_order(app.db(), held.id)
             .await
             .unwrap()
             .is_empty(),
@@ -276,17 +276,18 @@ async fn a_released_order_reserves_its_stock_and_cancelling_it_gives_it_back() {
         .await
         .unwrap()
         .remove(0);
-    let rows = Reservation::of_line(app.db(), held.id, line.id)
+    let rows = StockReservation::of_line(app.db(), held.id, line.id)
         .await
         .unwrap();
     assert_eq!(rows.len(), 1, "one reservation for the line");
     assert_eq!(rows[0].source, SOURCE_ORDER);
-    assert_eq!(rows[0].status, ReservationStatus::Active);
+    assert!(rows[0].is_active());
+    // What an order reserves is by item and location, not by lot.
     assert_eq!(
         (rows[0].lot_id, rows[0].location_id, rows[0].quantity_milli),
-        (Some(lot.id), f.finished.id, 10_000)
+        (None, f.finished.id, 10_000)
     );
-    let found = wl_inventory::balance::balance(app.db(), f.panel.id, f.finished.id, Some(lot.id))
+    let found = wl_inventory::balance::balance(app.db(), f.panel.id, f.finished.id, None)
         .await
         .unwrap();
     assert_eq!(
@@ -314,11 +315,11 @@ async fn a_released_order_reserves_its_stock_and_cancelling_it_gives_it_back() {
         )
         .await
         .assert_status(303);
-    let rows = Reservation::of_line(app.db(), held.id, line.id)
+    let rows = StockReservation::of_line(app.db(), held.id, line.id)
         .await
         .unwrap();
-    assert_eq!(rows[0].status, ReservationStatus::Released);
-    let found = wl_inventory::balance::balance(app.db(), f.panel.id, f.finished.id, Some(lot.id))
+    assert!(!rows[0].is_active(), "given back");
+    let found = wl_inventory::balance::balance(app.db(), f.panel.id, f.finished.id, None)
         .await
         .unwrap();
     assert_eq!((found.reserved_milli, found.available_milli()), (0, 30_000));
@@ -341,15 +342,14 @@ async fn the_output_lot_reserved_for_a_cancelled_line_is_free_stock_after_the_un
 
     report(&app, &boss, &made, "10").await;
 
-    let rows: Vec<_> = Reservation::of_line(app.db(), order.id, line.id)
+    let rows: Vec<_> = StockReservation::of_line(app.db(), order.id, line.id)
         .await
         .unwrap()
         .into_iter()
-        .filter(|row| row.status == ReservationStatus::Active)
+        .filter(|row| row.is_active())
         .collect();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].source, SOURCE_WORK_ORDER);
-    assert_eq!(rows[0].status, ReservationStatus::Active);
     assert_eq!(rows[0].lot_id, reload(&app, made.id).await.output_lot_id);
     assert_eq!(figures(&app, &f, &made).await, (10_000, 0), "reserved");
 

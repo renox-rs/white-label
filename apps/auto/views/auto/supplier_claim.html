@@ -1,0 +1,62 @@
+{#- auto: one supplier warranty claim: the warranty ticket, the supplier, the
+    failed part, what is claimed and the terms it was judged against, the
+    claim document, what the supplier said, how it ended, and the actions of
+    the purchaser while it is raised. Replace it with
+    resources/views/auto/supplier_claim.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="part ~ ' · ' ~ supplier" :badge="status" :badge-kind="status_kind" :back="route('auto.supplier_claims')" :back-label="tx['supplier.title']">
+      <template rx-if="is_open">
+        <rx-action-sheet :id="'supplier-document-' ~ id" :label="tx['supplier.document']" :action="route('auto.supplier_claim_document', id)"
+                         :title="tx['supplier.document']" :description="tx['supplier.document_description']" :submit-label="tx['supplier.document']" icon="file-text">
+          <rx-input name="document" :label="tx['supplier.claim_document']" :hint="tx['supplier.document_hint']" :id="'supplier-document-ref-' ~ id" required/>
+          <rx-input name="reference" :label="tx['supplier.reference']" :id="'supplier-document-reference-' ~ id"/>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'supplier-answer-' ~ id" :label="tx['supplier.record_answer']" :action="route('auto.supplier_claim_answer', id)"
+                         :title="tx['supplier.record_answer']" :description="tx['supplier.answer_description']" :submit-label="tx['supplier.record_answer']" icon="check">
+          <rx-select name="answer" :label="tx['supplier.answer']" :options="[['accepted', tx['supplier.answer.accepted']], ['rejected', tx['supplier.answer.rejected']]]" :selected="'accepted'" :id="'supplier-answer-pick-' ~ id"/>
+          <rx-input name="reference" :label="tx['supplier.reference']" :id="'supplier-answer-reference-' ~ id"/>
+          <rx-textarea name="note" :label="tx['supplier.answer_note']" :hint="tx['supplier.answer_note_hint']" :id="'supplier-answer-note-' ~ id"/>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'supplier-return-' ~ id" :label="tx['supplier.link_return']" :action="route('auto.supplier_claim_return', id)"
+                         :title="tx['supplier.link_return']" :description="tx['supplier.return_description']" :submit-label="tx['supplier.link_return']" icon="package">
+          <rx-input name="supplier_return" type="number" :label="tx['supplier.return']" :id="'supplier-return-number-' ~ id" required/>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'supplier-recover-' ~ id" :label="tx['supplier.recover']" :action="route('auto.supplier_claim_recover', id)"
+                         :title="tx['supplier.recover']" :description="tx['supplier.recover_description']" :submit-label="tx['supplier.recover']" icon="check">
+          <rx-input name="reference" :label="tx['supplier.credit_reference']" :id="'supplier-recover-reference-' ~ id"/>
+          <rx-checkbox name="replacement" :label="tx['supplier.replacement']" :id="'supplier-recover-replacement-' ~ id"/>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'supplier-write-off-' ~ id" :label="tx['supplier.write_off']" :action="route('auto.supplier_claim_write_off', id)"
+                         :title="tx['supplier.write_off']" :description="tx['supplier.write_off_description']" :submit-label="tx['supplier.write_off']" icon="trash">
+          <rx-textarea name="reason" :label="tx['supplier.reason']" :id="'supplier-write-off-reason-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-alert rx-if="write_off" kind="info" :message="tx['supplier.written_off_because'] ~ ' ' ~ write_off"/>
+    <rx-card :title="tx['supplier.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['supplier.ticket']" :value="ticket"/>
+        <rx-entry :label="tx['supplier.about']" :value="about"/>
+        <rx-entry :label="tx['supplier.supplier']" :value="supplier"/>
+        <rx-entry :label="tx['supplier.part']" :value="part"/>
+        <rx-entry :label="tx['supplier.item_code']" :value="item"/>
+        <rx-entry :label="tx['supplier.quantity']" :value="quantity"/>
+        <rx-entry :label="tx['supplier.part_cost']" :value="part_cost"/>
+        <rx-entry :label="tx['supplier.labour']" :value="labour"/>
+        <rx-entry :label="tx['supplier.claimed']" :value="amount"/>
+        <rx-entry :label="tx['supplier.purchased']" :value="purchased"/>
+        <rx-entry :label="tx['supplier.terms']" :value="terms"/>
+        <rx-entry :label="tx['supplier.fitted']" :value="fitted"/>
+        <rx-entry :label="tx['supplier.failure']" :value="failure"/>
+        <rx-entry :label="tx['supplier.part_kept']" :value="kept"/>
+        <rx-entry :label="tx['supplier.claim_document']" :value="document"/>
+        <rx-entry :label="tx['supplier.reference']" :value="reference"/>
+        <rx-entry :label="tx['supplier.answer']" :value="answer"/>
+        <rx-entry :label="tx['supplier.answer_note']" :value="answer_note"/>
+        <rx-entry :label="tx['supplier.return']" :value="return_ref"/>
+        <rx-entry :label="tx['supplier.recovery']" :value="recovery"/>
+      </rx-infolist>
+    </rx-card>
+  </rx-stack>
+</rx-page>

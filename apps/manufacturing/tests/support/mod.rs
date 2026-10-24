@@ -1070,6 +1070,7 @@ pub fn holder(
         subject: Some(subject),
         party: party.map(PartyId),
         lot: Some(Subject::new(LOT_SUBJECT_TYPE, lot)),
+        item: None,
         location: None,
         quantity_milli: 5_000,
         on: None,

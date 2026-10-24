@@ -304,7 +304,7 @@ pub async fn release_reservation(
     order: SalesOrderId,
     line: i64,
 ) -> Result<bool> {
-    reservation::release(
+    reservation::release_output(
         tx,
         order.0,
         Some(line),

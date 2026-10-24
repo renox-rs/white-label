@@ -12,6 +12,7 @@
 //! | a pending issue posted with a lot *assigned on arrival* | an *uncertain* line for its subject, whichever lot it was posted against |
 //! | theoretical `consume` of the item at a location while a lot in scope was on hand there | a *possible* line, whichever lot the posting used |
 //! | a sale whose party the vertical does not know (walk-in) | one line per lot, outlet and day with the count of sales |
+//! | `issue` / `consume` / `dispatch` of an item not tracked by lot (a scope by item, supplier and received dates, BL-STK-17), dated from the first receipt in the range to the trace end date (today when none) | a *possible* line for the subject, whichever unit it used; goods put back by the subject (`return_in` against it) are taken off first |
 //!
 //! The party behind a subject comes from the vertical's
 //! [`TracePartyResolver`](wl_kernel::inventory::TracePartyResolver); without
@@ -46,7 +47,7 @@ use std::sync::Arc;
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError, Transitioned};
-use wl_kernel::documents::dubai_date;
+use wl_kernel::documents::{dubai_date, today};
 use wl_kernel::inventory::{
     DISPATCH_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE, LotTrace,
     RECALL_LINE_SUBJECT_TYPE, RECALL_SUBJECT_TYPE, RecallTraced, TraceFuture, TraceParty,
@@ -60,7 +61,9 @@ use crate::hold_service::{NewHold, NewScope, announce_added, announce_placed, pl
 use crate::lot::{self, Lot, LotStatus};
 use crate::movement::{MovementType, StockMovement};
 use crate::pending_issue::{PendingIssue, PendingStatus};
-use crate::recall::{Recall, RecallLot, RecallStatus, TRACE, TRACE_BY_SYSTEM, lots_in_scope};
+use crate::recall::{
+    Recall, RecallLot, RecallScope, RecallStatus, TRACE, TRACE_BY_SYSTEM, lots_in_scope,
+};
 use crate::recall_line::{LineKind, NoticeStatus, RecallLine, lines_of};
 use crate::stock_hold::{HoldStatus, StockHold, new_line};
 
@@ -72,6 +75,7 @@ struct Planned {
     subject: Option<Subject>,
     party: Option<i64>,
     lot_id: Option<i64>,
+    item_id: Option<i64>,
     location_id: Option<i64>,
     quantity_milli: i64,
     sales: i64,
@@ -227,13 +231,17 @@ async fn places_of(db: &Db, lot_id: i64) -> Result<BTreeSet<i64>> {
         .collect())
 }
 
+/// The (lot, item, outlet, day) a walk-in sale is grouped by.
+type WalkInKey = (i64, i64, i64, NaiveDate);
+
 /// Collects the lines, asking the resolver for the party of each subject.
 struct Collector<'a> {
     state: &'a AppState,
     resolver: Arc<dyn TracePartyResolver>,
     planned: BTreeMap<String, Planned>,
-    /// Walk-in sales: (lot, outlet, day) to the sales and the quantity.
-    walk_in: BTreeMap<(i64, i64, NaiveDate), (BTreeSet<Subject>, i64)>,
+    /// Walk-in sales: (lot, item, outlet, day) to the sales and the quantity;
+    /// the lot is 0 for an item not tracked by lot, the item 0 for a lot.
+    walk_in: BTreeMap<WalkInKey, (BTreeSet<Subject>, i64)>,
 }
 
 impl<'a> Collector<'a> {
@@ -270,7 +278,7 @@ impl<'a> Collector<'a> {
         if party == TraceParty::WalkIn {
             let entry = self
                 .walk_in
-                .entry((lot_id, location_id.unwrap_or(0), on))
+                .entry((lot_id, 0, location_id.unwrap_or(0), on))
                 .or_default();
             entry.0.insert(subject);
             entry.1 += quantity_milli;
@@ -304,6 +312,64 @@ impl<'a> Collector<'a> {
                 subject: Some(subject),
                 party,
                 lot_id: Some(lot_id),
+                item_id: None,
+                location_id,
+                quantity_milli,
+                sales: 1,
+                on: Some(on),
+                delivery,
+            },
+        );
+        Ok(())
+    }
+
+    /// Lists `subject` as a *possible* user of `quantity_milli` of `item_id`
+    /// (not tracked by lot) taken from `location_id` at `at`; `dispatch` asks
+    /// the vertical for the delivery status as well.
+    async fn add_item(
+        &mut self,
+        subject: Subject,
+        item_id: i64,
+        location_id: Option<i64>,
+        quantity_milli: i64,
+        at: DateTime,
+        dispatch: bool,
+    ) -> Result {
+        let on = dubai_date(at);
+        let party = self.resolver.party(self.state, &subject).await?;
+        if party == TraceParty::WalkIn {
+            let entry = self
+                .walk_in
+                .entry((0, item_id, location_id.unwrap_or(0), on))
+                .or_default();
+            entry.0.insert(subject);
+            entry.1 += quantity_milli;
+            return Ok(());
+        }
+        let key = format!("i:{item_id}:{subject}");
+        if let Some(found) = self.planned.get_mut(&key) {
+            found.quantity_milli += quantity_milli;
+            found.on = found.on.min(Some(on));
+            return Ok(());
+        }
+        let delivery = if dispatch {
+            self.resolver.delivery_status(self.state, &subject).await?
+        } else {
+            None
+        };
+        let party = match party {
+            TraceParty::Party(PartyId(id)) => Some(id),
+            _ => None,
+        };
+        self.planned.insert(
+            key.clone(),
+            Planned {
+                key,
+                kind: LineKind::Possible,
+                subject: Some(subject),
+                party,
+                lot_id: None,
+                item_id: Some(item_id),
                 location_id,
                 quantity_milli,
                 sales: 1,
@@ -316,8 +382,12 @@ impl<'a> Collector<'a> {
 
     /// The lines, the walk-in counts last.
     fn finish(mut self) -> Vec<Planned> {
-        for ((lot_id, location_id, on), (sales, quantity_milli)) in self.walk_in {
-            let key = format!("w:{lot_id}:{location_id}:{on}");
+        for ((lot_id, item_id, location_id, on), (sales, quantity_milli)) in self.walk_in {
+            let key = if lot_id != 0 {
+                format!("w:{lot_id}:{location_id}:{on}")
+            } else {
+                format!("w:i{item_id}:{location_id}:{on}")
+            };
             self.planned.insert(
                 key.clone(),
                 Planned {
@@ -325,7 +395,8 @@ impl<'a> Collector<'a> {
                     kind: LineKind::WalkIn,
                     subject: None,
                     party: None,
-                    lot_id: Some(lot_id),
+                    lot_id: (lot_id != 0).then_some(lot_id),
+                    item_id: (lot_id == 0).then_some(item_id),
                     location_id: (location_id != 0).then_some(location_id),
                     quantity_milli,
                     sales: sales.len() as i64,
@@ -530,10 +601,83 @@ async fn plan(state: &AppState, recall: &Recall) -> Result<Plan> {
             }
         }
     }
+    // Items not tracked by lot: every issue, consumption and dispatch from the
+    // first receipt in the received range to the trace end is *possible*.
+    for scope in item_scopes(db, recall.id).await? {
+        let (Some(first), item_id) = (scope.first_receipt_on, scope.item_id) else {
+            continue;
+        };
+        let last = scope.trace_end.unwrap_or_else(today);
+        let moves = StockMovement::query()
+            .where_(StockMovement::ITEM_ID.eq(item_id))
+            .order_by(StockMovement::ID)
+            .get(db)
+            .await?;
+        // What the subjects put back (a part issued and not fitted).
+        let mut back: BTreeMap<Subject, i64> = BTreeMap::new();
+        for moved in &moves {
+            if moved.movement_type == MovementType::ReturnIn
+                && let Some(subject) = subject_of(moved)
+            {
+                *back.entry(subject).or_default() += moved.quantity_milli;
+            }
+        }
+        let mut used: Vec<&StockMovement> = moves
+            .iter()
+            .filter(|moved| {
+                matches!(
+                    moved.movement_type,
+                    MovementType::Issue | MovementType::Consume | MovementType::Dispatch
+                )
+            })
+            .collect();
+        used.sort_by_key(|moved| (moved.moved_at, moved.id));
+        for moved in used {
+            let day = dubai_date(moved.moved_at);
+            if day < first || day > last {
+                continue;
+            }
+            let Some(subject) = subject_of(moved) else {
+                continue;
+            };
+            let mut quantity = moved.quantity_milli;
+            if let Some(returned) = back.get_mut(&subject) {
+                let taken_back = quantity.min(*returned);
+                *returned -= taken_back;
+                quantity -= taken_back;
+            }
+            if quantity <= 0 {
+                continue;
+            }
+            collector
+                .add_item(
+                    subject,
+                    item_id,
+                    moved.from_location_id,
+                    quantity,
+                    moved.moved_at,
+                    moved.movement_type == MovementType::Dispatch,
+                )
+                .await?;
+        }
+    }
     Ok(Plan {
         new_lots,
         lines: collector.finish(),
     })
+}
+
+/// The scopes of recall `recall_id` that name an item not tracked by lot and
+/// the receipt that starts their trace.
+async fn item_scopes(db: &Db, recall_id: i64) -> Result<Vec<RecallScope>> {
+    Ok(RecallScope::query()
+        .where_(RecallScope::RECALL_ID.eq(recall_id))
+        .order_by(RecallScope::ID)
+        .get(db)
+        .await?
+        .into_iter()
+        .filter(|scope| scope.first_receipt_on.is_some())
+        .collect())
 }
 
 /// Traces recall `recall_id` (§4 `trace`): builds the affected lines, adds
@@ -640,6 +784,7 @@ pub async fn trace(
                     subject_id: found.subject.as_ref().map(|s| s.subject_id),
                     party_id: found.party,
                     lot_id: found.lot_id,
+                    item_id: found.item_id,
                     location_id: found.location_id,
                     quantity_milli: found.quantity_milli,
                     sales_count: found.sales,
@@ -778,6 +923,32 @@ impl LotTrace for InventoryTrace {
                     opened_on: recall.opened_at.map(dubai_date),
                 })
                 .collect())
+        })
+    }
+
+    fn recall_of<'a>(
+        &'a self,
+        state: &'a AppState,
+        goods: &'a wl_kernel::inventory::ReturnedGoods,
+    ) -> TraceFuture<'a, Option<Subject>> {
+        Box::pin(async move {
+            Ok(crate::recall_return::recall_of(&state.db, goods)
+                .await?
+                .map(|recall| recall.subject()))
+        })
+    }
+
+    fn receive_returned<'a>(
+        &'a self,
+        state: &'a AppState,
+        recall: &'a Subject,
+        goods: &'a wl_kernel::inventory::ReturnedGoods,
+    ) -> TraceFuture<'a, bool> {
+        Box::pin(async move {
+            if recall.subject_type != RECALL_SUBJECT_TYPE {
+                return Ok(false);
+            }
+            crate::recall_return::receive_returned(&state.db, recall.subject_id, goods).await
         })
     }
 

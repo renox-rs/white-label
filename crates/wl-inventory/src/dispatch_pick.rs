@@ -119,6 +119,13 @@ pub async fn gather(
     }
     let mut claimed: BTreeMap<(i64, Option<i64>), i64> = BTreeMap::new();
     let mut reserved_own: BTreeMap<(i64, Option<i64>), i64> = BTreeMap::new();
+    let mut seen: std::collections::BTreeSet<(i64, i64, Option<i64>)> =
+        std::collections::BTreeSet::new();
+    // The same per item, over its lots: what an order set aside by item (not
+    // by lot) is not offered to a pick of any of its lots.
+    let mut seen_item: std::collections::BTreeSet<(i64, i64)> = std::collections::BTreeSet::new();
+    let mut claimed_item: BTreeMap<i64, i64> = BTreeMap::new();
+    let mut own_item: BTreeMap<i64, i64> = BTreeMap::new();
     for line in &lines {
         let position = line.position.to_string();
         let item = Item::find_or_404(&mut *tx, line.item_id).await?;
@@ -134,11 +141,14 @@ pub async fn gather(
         let at =
             balance::balance(&mut *tx, line.item_id, dispatch.location_id, line.lot_id).await?;
         // The reservation the order itself holds for the line is the
-        // dispatch's to take (no other order's pick can).
-        if let (Some(sale_line), true) = (line.sale_line_id(), dispatch.is_sales_order()) {
-            let held = reservation::own_in(
+        // dispatch's to take (no other order's pick can); once, whatever
+        // the number of dispatch lines of the sale line.
+        if let (Some(sale_line), true) = (line.sale_line_id(), dispatch.is_sales_order())
+            && seen.insert((sale_line, line.item_id, line.lot_id))
+        {
+            let held = reservation::reserved_for_line(
                 &mut *tx,
-                dispatch.source_id,
+                &dispatch.source(),
                 sale_line,
                 line.item_id,
                 dispatch.location_id,
@@ -147,23 +157,72 @@ pub async fn gather(
             .await?;
             *reserved_own.entry((line.item_id, line.lot_id)).or_insert(0) += held;
         }
+        if let (Some(sale_line), true, Some(_)) =
+            (line.sale_line_id(), dispatch.is_sales_order(), line.lot_id)
+            && seen_item.insert((sale_line, line.item_id))
+        {
+            let whole = reservation::reserved_for_line(
+                &mut *tx,
+                &dispatch.source(),
+                sale_line,
+                line.item_id,
+                dispatch.location_id,
+                None,
+            )
+            .await?;
+            *own_item.entry(line.item_id).or_insert(0) += whole;
+        }
+        *claimed_item.entry(line.item_id).or_insert(0) += line.quantity_milli;
         let reserved_own_here = reserved_own
             .get(&(line.item_id, line.lot_id))
             .copied()
             .unwrap_or(0);
-        let own = reserved_own_here + if counted { needed } else { 0 };
-        let available = (at.on_hand_milli - at.reserved_milli - at.held_milli + own).max(0);
+        // Inside the transition the dispatch's own lines count as reserved
+        // (beyond what the order's reservation covers): all of them are
+        // added back.
+        let own = if counted {
+            needed
+        } else {
+            reserved_own_here.min(needed)
+        };
+        let mut available = (at.on_hand_milli - at.reserved_milli - at.held_milli + own).max(0);
+        let mut without_hold = at.on_hand_milli - at.reserved_milli + own;
+        let mut needed = needed;
+        let mut held_here = at.held_milli;
+        if line.lot_id.is_some() && available >= needed {
+            // What orders set aside by item is not offered to the pick of a
+            // lot of it either: the item as a whole must have it.
+            let whole =
+                balance::balance(&mut *tx, line.item_id, dispatch.location_id, None).await?;
+            let item_needed = claimed_item.get(&line.item_id).copied().unwrap_or(0);
+            let item_own = if counted {
+                item_needed
+            } else {
+                own_item
+                    .get(&line.item_id)
+                    .copied()
+                    .unwrap_or(0)
+                    .min(item_needed)
+            };
+            let item_available =
+                (whole.on_hand_milli - whole.reserved_milli - whole.held_milli + item_own).max(0);
+            if item_available < item_needed {
+                available = item_available;
+                without_hold = whole.on_hand_milli - whole.reserved_milli + item_own;
+                needed = item_needed;
+                held_here = whole.held_milli;
+            }
+        }
         if available >= needed || found.stock_problem.is_some() {
             continue;
         }
-        let without_hold = at.on_hand_milli - at.reserved_milli + own;
         found.stock_problem = Some(if without_hold >= needed {
             said(
                 "wl_inventory.dispatch.held",
                 &[
                     ("position", &position),
                     ("item", &item.code),
-                    ("held", &quantity_text(at.held_milli)),
+                    ("held", &quantity_text(held_here)),
                 ],
             )
         } else {
@@ -203,26 +262,6 @@ fn with_problem(
 /// The effect of `pick`: the stock is reserved (its lines count as reserved
 /// while the dispatch is `picked`).
 async fn pick_in(tx: &mut Transaction, dispatch: Dispatch, by: Option<i64>) -> Result {
-    // The reservation the order holds for its lines becomes the dispatch's.
-    if dispatch.is_sales_order() {
-        for line in lines_of(&mut *tx, dispatch.id).await? {
-            if let Some(sale_line) = line.sale_line_id() {
-                let place = reservation::Place {
-                    item_id: line.item_id,
-                    lot_id: line.lot_id,
-                    location_id: dispatch.location_id,
-                };
-                reservation::consume(
-                    tx,
-                    dispatch.source_id,
-                    sale_line,
-                    &place,
-                    line.quantity_milli,
-                )
-                .await?;
-            }
-        }
-    }
     // Stock may have moved or been held since the guards looked.
     let found = gather(tx, &dispatch, by, true).await?;
     if let Some(problem) = found.first_problem() {

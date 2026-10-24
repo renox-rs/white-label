@@ -212,6 +212,15 @@ pub async fn held_at<'c>(
         match hold.scope_kind {
             HoldScope::Lots => {
                 whole_lots.extend(lines.iter().filter_map(|line| line.lot_id));
+                // A recall of an item not tracked by lot holds its whole
+                // quantity at each location, in lines that name no lot.
+                if lot_id.is_none() {
+                    at_location += lines
+                        .iter()
+                        .filter(|line| line.lot_id.is_none() && line.location_id == location_id)
+                        .map(|line| line.quantity_milli)
+                        .sum::<i64>();
+                }
             }
             HoldScope::Location => {
                 at_location += lines

@@ -514,6 +514,10 @@ pub async fn of_delivery_source(db: &Db, source: &Subject) -> Result<Option<Disp
 /// What a dispatch line reserves: the quantity of `item_id` that the picked
 /// dispatches at `location_id` hold aside (of `lot_id` when given).
 ///
+/// The part of a picked line that the order's own reservation of the sale
+/// line already covers is counted once (BL-SAL-17 with BL-STK-26): the
+/// reservation is in [`crate::reservation`] and the pick takes its goods.
+///
 /// # Errors
 ///
 /// A database error.
@@ -529,6 +533,8 @@ pub async fn reserved_picked<'c>(
         .where_(Dispatch::LOCATION_ID.eq(location_id))
         .get(conn.reborrow())
         .await?;
+    let mut covered: std::collections::BTreeMap<(i64, i64), i64> =
+        std::collections::BTreeMap::new();
     let mut reserved = 0;
     for dispatch in picked {
         let lines = DispatchLine::query()
@@ -536,11 +542,33 @@ pub async fn reserved_picked<'c>(
             .where_(DispatchLine::ITEM_ID.eq(item_id))
             .get(conn.reborrow())
             .await?;
-        reserved += lines
+        for line in lines
             .iter()
             .filter(|line| lot_id.is_none() || line.lot_id == lot_id)
-            .map(|line| line.quantity_milli)
-            .sum::<i64>();
+        {
+            let mut quantity = line.quantity_milli;
+            if let (true, Some(sale_line)) = (dispatch.is_sales_order(), line.sale_line_id()) {
+                let key = (dispatch.source_id, sale_line);
+                let left = match covered.get(&key) {
+                    Some(left) => *left,
+                    None => {
+                        crate::reservation::reserved_for_line(
+                            conn.reborrow(),
+                            &dispatch.source(),
+                            sale_line,
+                            item_id,
+                            location_id,
+                            lot_id,
+                        )
+                        .await?
+                    }
+                };
+                let used = left.min(quantity);
+                covered.insert(key, left - used);
+                quantity -= used;
+            }
+            reserved += quantity;
+        }
     }
     Ok(reserved)
 }

@@ -78,6 +78,10 @@ const ACTION_LABELS: &[(&str, &str)] = &[
     ("accounting.tax_profile_change", "Change a tax profile"),
     ("accounting.wip_write_off", "Write off work in progress"),
     (
+        "auto.job_card_cancel",
+        "Cancel a job card: a bill below the work done or a refused signature",
+    ),
+    (
         "campaigns.cost_over_budget",
         "Approve a campaign cost over its budget",
     ),

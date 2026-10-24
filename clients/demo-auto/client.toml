@@ -1,0 +1,32 @@
+# The demo client of F8 (08 Auto): an auto parts trader with a workshop in
+# Deira, Dubai, and a second parts shop in the Sharjah Industrial Area.
+# Data is fictional. Boot it with CLIENT_CONFIG=clients/demo-auto/client.toml.
+
+[client]
+name    = "Al Noor Auto Parts & Garage LLC"
+app     = "auto"
+domain  = "demo.alnoorauto.example"
+locales = ["en", "ar"]
+
+[branding]
+accent       = "#B45309"
+second       = "#1D4ED8"
+display_font = "Poppins"
+
+[modules]
+enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "sales", "hr", "scheduling", "inventory", "portal"]
+
+[roles]
+# `PLT.RUL.04`: a compliance-critical rule that fails alerts the owner role
+# (the Owner / GM) and the company admin (08 §7.2).
+owner = "owner"
+
+[[legal_entities]]
+code      = "ANAP"
+name_en   = "Al Noor Auto Parts & Garage LLC"
+emirate   = "dubai"
+licensing_authority = "Dubai Department of Economy and Tourism"
+trade_licence_no = "7012345"
+trn       = "100000000000003"
+address_en = "Shop 12, Naif Road, Deira, Dubai"
+default   = true

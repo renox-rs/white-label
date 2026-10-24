@@ -771,6 +771,36 @@ impl SupplierBills for BillDesk {
     }
 }
 
+/// The back-ordered demand of the sales module, set by the test.
+#[derive(Clone, Default)]
+pub struct BackOrderDesk(Arc<Mutex<Vec<wl_kernel::backorders::BackOrdered>>>);
+
+impl BackOrderDesk {
+    /// Replaces the open back-orders with `quantity_milli` of `code` at
+    /// `location` (none when 0).
+    pub fn set(&self, code: &str, location: &Location, quantity_milli: i64) {
+        let mut all = self.0.lock().unwrap();
+        all.clear();
+        if quantity_milli > 0 {
+            all.push(wl_kernel::backorders::BackOrdered {
+                item_code: code.to_owned(),
+                location: Some(Subject::new("inventory.location", location.id)),
+                quantity_milli,
+            });
+        }
+    }
+}
+
+impl wl_kernel::backorders::BackOrderDemand for BackOrderDesk {
+    fn open<'a>(
+        &'a self,
+        _state: &'a AppState,
+    ) -> wl_kernel::backorders::BackOrderFuture<'a, Vec<wl_kernel::backorders::BackOrdered>> {
+        let all = self.0.lock().unwrap().clone();
+        Box::pin(async move { Ok(all) })
+    }
+}
+
 /// The vertical's recipe: what the sale lines the test names are made of
 /// (`SaleLineStockSource`).
 #[derive(Clone, Default)]
@@ -871,6 +901,7 @@ impl wl_kernel::sales::SalesOrderDesk for OrderBook {
 
 /// Records the events and stands in for ticketing and cost entries.
 struct Fakes {
+    back_orders: BackOrderDesk,
     sale_lines: SaleLineDesk,
     orders: OrderBook,
     revised: Arc<Mutex<Vec<PurchaseOrderRevised>>>,
@@ -966,6 +997,7 @@ impl Module for Fakes {
         wl_kernel::inventory::provide_sale_line_stock(app, self.sale_lines.clone());
         wl_kernel::sales::provide_order_desk(app, self.orders.clone());
         wl_kernel::notify::provide_notifier(app, self.notices.clone());
+        wl_kernel::backorders::provide_back_orders(app, self.back_orders.clone());
     }
 }
 
@@ -1053,6 +1085,8 @@ pub struct Booted {
     pub credit: CreditDesk,
     /// The deliveries asked of wl-delivery.
     pub deliveries: DeliveryDesk,
+    /// The back-ordered demand the sales module would report.
+    pub back_orders: BackOrderDesk,
     /// The days the clock was moved forward.
     clock_days: std::sync::atomic::AtomicI64,
     /// Keeps the views directory alive.
@@ -2126,7 +2160,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     } else {
         app
     };
+    let back_orders = BackOrderDesk::default();
     let app = app.module(Fakes {
+        back_orders: back_orders.clone(),
         with_parties,
         revised: revised.clone(),
         allocated: allocated.clone(),
@@ -2325,6 +2361,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         quarantined: Recorded(quarantined),
         credit,
         deliveries,
+        back_orders,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         _views: views,
     }
@@ -2652,5 +2689,49 @@ impl Booted {
     /// The item of a dispatch line as stored now.
     pub async fn item_now_of(&self, line: &wl_inventory::DispatchLine) -> Item {
         Item::find_or_404(self.db(), line.item_id).await.unwrap()
+    }
+}
+
+impl Booted {
+    /// `quantity_milli` of `item` (not tracked by lot) received at `location`
+    /// from `supplier` on `day`: a posted goods receipt that arrived that day
+    /// and its `receive` movement.
+    pub async fn received_on(
+        &self,
+        item: &Item,
+        location: &Location,
+        supplier: PartyId,
+        quantity_milli: i64,
+        day: renox::chrono::NaiveDate,
+    ) -> GoodsReceipt {
+        let at = day.and_hms_opt(8, 0, 0).unwrap().and_utc();
+        let mut receipt = GoodsReceipt {
+            supplier_party_id: supplier.0,
+            location_id: location.id,
+            arrived_at: Some(at),
+            posted_at: Some(at),
+            status: wl_inventory::GoodsReceiptStatus::Posted,
+            ..GoodsReceipt::default()
+        };
+        let mut tx = self.db().begin().await.unwrap();
+        receipt
+            .insert_in_state(&mut tx, wl_inventory::GoodsReceiptStatus::Posted, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        let source = Subject::new("inventory.goods_receipt", receipt.id);
+        let mut moved = StockMovement::receive(
+            item.id,
+            None,
+            location.id,
+            quantity_milli,
+            1_000,
+            value_of(quantity_milli, 1_000),
+            &source,
+            None,
+        );
+        moved.moved_at = at;
+        moved.save(self.db()).await.unwrap();
+        receipt
     }
 }

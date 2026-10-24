@@ -4,7 +4,8 @@
 //! Arabic, one message per line.
 //!
 //! - [`send_notices`] (`recalls.manage`): `traced` to `traced`. The guards
-//!   need a template (`customer`, `patient` or `internal`) and at least one
+//!   need a template (`customer`, `patient`, `internal` or the softer
+//!   `possible`; a *possible* line gets the softer one by default) and at least one
 //!   line; the lines must belong to the recall, be `pending` and have a party.
 //!   The transition marks them `sent`; the notices go out right after it.
 //! - [`waive`] (`recalls.manage`, a reason): the owner decides a party need
@@ -25,7 +26,7 @@
 
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
-use wl_kernel::inventory::{RECALL_LINE_SUBJECT_TYPE, trace_party_resolver};
+use wl_kernel::inventory::{RECALL_LINE_SUBJECT_TYPE, TraceMark, trace_party_resolver};
 use wl_kernel::notify::{
     self, Category, MessageGaveUp, NotificationTypeDef, NotifyChannel, NotifyRequest,
 };
@@ -39,8 +40,24 @@ use crate::recall::{NoticeInput, Recall, RecallStatus, SEND_NOTICES};
 use crate::recall_line::{NoticeStatus, RecallLine};
 use crate::texts::{english, said};
 
-/// The templates, by the kind of party told.
-pub const TEMPLATES: [&str; 3] = ["customer", "patient", "internal"];
+/// The templates, by the kind of party told. `possible` is the softer text
+/// for lines that may be affected (an item not tracked by lot, theoretical
+/// use): "may be affected; please bring it in for a check".
+pub const TEMPLATES: [&str; 4] = ["customer", "patient", "internal", "possible"];
+
+/// The softer template of the *possible* lines.
+pub const SOFTER_TEMPLATE: &str = "possible";
+
+/// The template a notice about `line` uses when the owner chose `chosen`: a
+/// *possible* line (BL-STK-17) defaults to the softer template unless the
+/// notice is for staff, and a line that is proved keeps the one chosen.
+pub fn template_for(chosen: &str, line: &RecallLine) -> String {
+    if line.mark() == TraceMark::Possible && chosen != "internal" {
+        SOFTER_TEMPLATE.to_owned()
+    } else {
+        chosen.to_owned()
+    }
+}
 
 /// The start of the notification type key of every recall notice.
 pub const NOTICE_PREFIX: &str = "inventory.recall_notice_";
@@ -65,6 +82,10 @@ const CUSTOMER_AR: &str = "نقوم بسحب المنتج {{ item }} (الدفع
 /// The Arabic body of the notice to a patient.
 const PATIENT_AR: &str = "يتم سحب منتج استُخدم في رعايتكم بتاريخ {{ date }} ({{ item }}، الدفعة {{ lot }}). {{ reason }}. يرجى التواصل مع العيادة لترتيب فحص.";
 
+/// The Arabic body of the softer notice to a customer whose goods may be
+/// affected.
+const POSSIBLE_AR: &str = "قد يكون المنتج {{ item }} الذي استلمتموه من جهتنا متأثرًا بسحب المنتج {{ number }}. {{ reason }}. يرجى إحضاره لفحصه.";
+
 /// The Arabic body of the notice to staff.
 const INTERNAL_AR: &str = "سحب المنتج {{ number }}: {{ item }}، الدفعة {{ lot }}، استُخدم في {{ subject }} بتاريخ {{ date }}. {{ reason }}. يرجى المراجعة واتخاذ الإجراء.";
 
@@ -73,11 +94,13 @@ pub fn notice_types() -> Vec<NotificationTypeDef> {
     let english_body = |template: &str| match template {
         "customer" => english("wl_inventory.recall.notice_body_customer"),
         "patient" => english("wl_inventory.recall.notice_body_patient"),
+        "possible" => english("wl_inventory.recall.notice_body_possible"),
         _ => english("wl_inventory.recall.notice_body_internal"),
     };
     let arabic_body = |template: &str| match template {
         "customer" => CUSTOMER_AR,
         "patient" => PATIENT_AR,
+        "possible" => POSSIBLE_AR,
         _ => INTERNAL_AR,
     };
     TEMPLATES
@@ -160,13 +183,18 @@ async fn request_for(
     line: &RecallLine,
     template: &str,
 ) -> Result<NotifyRequest> {
-    let item = match line.lot_id {
-        Some(lot_id) => {
+    let item = match (line.lot_id, line.item_id) {
+        (Some(lot_id), _) => {
             let lot = Lot::find_or_404(&state.db, lot_id).await?;
             let item = Item::find_or_404(&state.db, lot.item_id).await?;
             (item.name_en.clone(), lot.number)
         }
-        None => (String::new(), String::new()),
+        // An item not tracked by lot has no lot to name.
+        (None, Some(item_id)) => {
+            let item = Item::find_or_404(&state.db, item_id).await?;
+            (item.name_en.clone(), String::new())
+        }
+        (None, None) => (String::new(), String::new()),
     };
     let number = recall.number.clone().unwrap_or_default();
     let party = PartyId(line.party_id.unwrap_or_default());
@@ -248,11 +276,17 @@ pub async fn send_notices(
             problem = Some(said("wl_inventory.recall.line_no_party", &[]));
         }
     }
+    let softer: Vec<i64> = lines
+        .iter()
+        .filter(|line| template_for(&template, line) == SOFTER_TEMPLATE)
+        .map(|line| line.id)
+        .collect();
     let input = NoticeInput {
         template: template.clone(),
         lines: ids.clone(),
         by: Some(user.id),
         problem,
+        softer,
     };
     let _outcome = recall
         .transition(SEND_NOTICES)
@@ -262,7 +296,7 @@ pub async fn send_notices(
         .await?;
     for (position, line) in lines.iter().enumerate() {
         let sent = async {
-            let request = request_for(state, &recall, line, &template).await?;
+            let request = request_for(state, &recall, line, &template_for(&template, line)).await?;
             notify::notifier(state).notify(state, request).await?;
             Ok::<(), Error>(())
         }
@@ -459,14 +493,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_templates_are_the_three_party_types_with_both_languages() {
+    fn the_templates_are_the_party_types_and_the_softer_one_with_both_languages() {
         for template in TEMPLATES {
             assert!(is_template(template));
         }
         assert!(!is_template("press"));
         assert_eq!(notice_key("patient"), "inventory.recall_notice_patient");
         let types = notice_types();
-        assert_eq!(types.len(), 3);
+        assert_eq!(types.len(), 4);
     }
 
     #[test]

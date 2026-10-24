@@ -122,6 +122,7 @@ pub async fn create_from_session(
         holder_present: None,
         holder_absent: false,
         note: Some(format!("Till session {} of {}", event.session, event.till)),
+        ..CountInput::default()
     };
     let _outcome = handover
         .transition(name)

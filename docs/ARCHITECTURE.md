@@ -228,11 +228,12 @@ white-label/
 │   └── ...
 ├── apps/
 │   ├── property/              # library crate: the property domain as a Module
-│   ├── construction/, logistics/, accounting/, clinics/, manpower/, edtech/
-│   └── ...                    # one per vertical (§9); F6 to F8 are not built yet
+│   ├── construction/, logistics/, accounting/, clinics/, manpower/, edtech/, auto/
+│   └── ...                    # one per vertical (§9); F6 and F7 are not built yet
 ├── host/                      # binary: reads client.toml, assembles the App from enabled modules
 ├── operator/                  # planned (rollout track): our control plane (wl-operator)
 ├── clients/
+│   ├── demo-auto/             # the F8 demo client: a parts trader with a workshop
 │   ├── demo-edtech/           # the F10 demo client: a training centre
 │   └── demo-properties/       # the F1 demo client
 │       ├── client.toml        # app, modules, branding, locales, TRN
@@ -314,7 +315,7 @@ extension gets its own binary: `host` + the `ext/` crate linked at build time.
 | **F5 — Clinics** | `wl-scheduling` (resources, bookings, reminders) + `apps/clinics` | Appointment to invoice, with licence expiry blocks |
 | **F6 — F&B** | Recipes and lots in `wl-inventory`, orders and POS in `wl-sales`, aggregator integrations + `apps/fnb` | Order to dispatch to food-safety log. Validate partner API access first |
 | **F7 — Manufacturing** | BOMs, lots and quality in `wl-inventory` + `apps/manufacturing` | Work order to finished stock with landed cost |
-| **F8 — Auto** | Orders and POS in `wl-sales` (if not done in F6), job cards + `apps/auto` | Job card to invoice, insurance repair |
+| **F8 — Auto** (**built**: `apps/auto`, `clients/demo-auto`, the settings of `host/src/app/auto_*.rs`; the demo command `auto:demo` is future work and not built) | Orders and POS in `wl-sales` (if not done in F6), job cards + `apps/auto`; back-orders in `wl-sales` and reservations in `wl-inventory` | Job card to invoice, insurance repair |
 | **F9 — Manpower** | The rest of `wl-hr` (visas, leave, payroll, WPS, final settlement) + `apps/manpower` | Deployment to client timesheet to WPS payroll |
 | **F10 — EdTech** (**built**: `apps/edtech`, `clients/demo-edtech`, the settings of `host/src/app/edtech_*.rs`; the demo command `edtech:demo` in `host/src/app/edtech_demo`) | Batches, enrolments, tutors, certificates on `wl-scheduling` + `apps/edtech` | Enrolment to attendance to certificate |
 | **Rollout track** (after F1, before the second paying client) | `deploy/rollout`, tested backup/restore, R8 `rnx new --from`, client onboarding in < 1 day | A new client goes live from `client.toml` alone |

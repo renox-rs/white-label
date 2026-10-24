@@ -138,6 +138,9 @@ pub struct SalesOrder {
     /// `domestic` or `export`: the VAT category of the delivery address
     /// ([`crate::delivery`]); `None` while the order does not say.
     pub delivery_destination: Option<String>,
+    /// The stock location (`inventory.location` id) the order reserves from;
+    /// set when its lines are first reserved.
+    pub location_id: Option<i64>,
     /// The loyalty account attached before the order is fulfilled.
     pub loyalty_account_id: Option<i64>,
     /// The user who attached it.

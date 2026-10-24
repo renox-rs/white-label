@@ -366,6 +366,18 @@ pub struct TicketSummary {
     pub status: String,
 }
 
+/// A ticket with what it is about and its category, for a vertical that reacts
+/// to a ticket closing (08 `AUT.RUL.07`: the warranty ticket of a job card).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TicketAbout {
+    /// The ticket.
+    pub ticket: TicketSummary,
+    /// The record it is about.
+    pub subject: Subject,
+    /// The key of its category, e.g. `warranty`.
+    pub category_key: String,
+}
+
 /// Opens tickets for other modules. `wl-ticketing` provides it; without that
 /// module, [`task_creator`] gives [`NoTickets`].
 pub trait TaskCreator: Send + Sync + 'static {
@@ -412,6 +424,18 @@ pub trait TaskCreator: Send + Sync + 'static {
         _category_key: &'a str,
     ) -> TicketFuture<'a, Vec<TicketSummary>> {
         Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// The ticket `ticket` with the record it is about and its category: what
+    /// a listener of `TicketClosed` needs to know whether the ticket is its
+    /// own. `None` for an unknown ticket. The default, and [`NoTickets`],
+    /// answer `None`.
+    fn ticket_about<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _ticket: TicketId,
+    ) -> TicketFuture<'a, Option<TicketAbout>> {
+        Box::pin(async { Ok(None) })
     }
 
     /// Resolves `ticket` on behalf of the record that opened it, with `note`
@@ -492,6 +516,45 @@ pub fn task_creator(state: &AppState) -> Arc<dyn TaskCreator> {
         Some(creator) => Arc::clone(&creator),
         None => Arc::new(NoTickets),
     }
+}
+
+/// A vertical's rule on who may resolve the tickets of one category
+/// (08 Auto: a vehicle incident is closed only with the branch manager's
+/// liability decision, taken on the job card, never by an involved person).
+/// `wl-ticketing` asks it before a user resolves a ticket of that category;
+/// the record that opened the ticket resolves it itself with
+/// [`TaskCreator::resolve_from_source`], which the rule does not see.
+pub trait ResolveRule: Send + Sync + 'static {
+    /// `Ok` when `user` may resolve `ticket` (about `subject`); the refusal
+    /// in words otherwise.
+    fn check<'a>(
+        &'a self,
+        state: &'a AppState,
+        ticket: TicketId,
+        subject: &'a Subject,
+        user: i64,
+    ) -> TicketFuture<'a, std::result::Result<(), String>>;
+}
+
+static RESOLVE_RULES: std::sync::RwLock<std::collections::BTreeMap<String, Arc<dyn ResolveRule>>> =
+    std::sync::RwLock::new(std::collections::BTreeMap::new());
+
+/// Registers `rule` for the tickets of category `category_key`; registering
+/// the same category again replaces it.
+pub fn register_resolve_rule(category_key: &str, rule: impl ResolveRule) {
+    RESOLVE_RULES
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(category_key.to_owned(), Arc::new(rule));
+}
+
+/// The rule of category `category_key`, if one is registered.
+pub fn resolve_rule(category_key: &str) -> Option<Arc<dyn ResolveRule>> {
+    RESOLVE_RULES
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(category_key)
+        .cloned()
 }
 
 /// Why a covered subject is not compliant (wl-ticketing §3 *Compliance

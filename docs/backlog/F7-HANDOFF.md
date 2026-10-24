@@ -50,6 +50,7 @@ Map of IDs to numbers: `docs/backlog/github-issues.md`. Issue text: `docs/backlo
 - Storekeeper does NOT hold `supplier_returns.manage` (base test `host/tests/inventory.rs` forbids it); NCR returns to supplier use a procurement user.
 - `dispatch.cancel` needs a reason (F6 test).
 - Dispatch migration `20261114000000_extend_wl_inventory_dispatches` alters F6's tables; F6's smaller dispatch was folded into the full lifecycle.
+- One reservation (main merged after F8): the table and model are F8's `StockReservation` (by item and location, written by wl-sales through `StockReservations`); migration `20270301500000` adds `lot_id`, `source`, `source_ref`, `released_reason` for the work order output (`source = work_order`). F7's own listener of `SalesOrderConfirmed` and its create migration were dropped: wl-sales reserves at confirm and, since the merge, at `release`/`release_partly` too, on the channels with back-orders allowed (07 turns them on for phone, sales_rep, email and portal, `manufacturing_seed::BACK_ORDER_CHANNELS`). The order's reservation is by item, not by lot; a pick of one lot is refused when the item as a whole has not got it. Migration timestamps `20270102000000` of wl-inventory and manufacturing were moved to `20270102000050` (fnb has the same one on main).
 
 ## Deferred (what stays open, provider, why)
 

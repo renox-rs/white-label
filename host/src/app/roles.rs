@@ -4,6 +4,7 @@
 //! (it runs on every sign-up, seed and `users:admin`).
 
 use accounting::permissions as acc;
+use auto::permissions as aut;
 use clinics::permissions as cln;
 use construction::permissions as con;
 use edtech::permissions as edu;
@@ -126,6 +127,23 @@ pub const ACADEMIC_COORDINATOR: &str = edu::COORDINATOR_ROLE;
 /// The tutor or trainer (10 §3.1): teaches the sessions of the batches
 /// assigned and marks attendance.
 pub const TUTOR: &str = edu::TUTOR_ROLE;
+/// The branch manager (08 Auto §3.1): runs a branch or the workshop and
+/// approves what the advisor may not decide alone.
+pub const BRANCH_MANAGER: &str = aut::BRANCH_MANAGER_ROLE;
+/// The service advisor (08 §3.1): bookings, vehicle check-in, estimates,
+/// customer approval and delivery.
+pub const SERVICE_ADVISOR: &str = aut::SERVICE_ADVISOR_ROLE;
+/// The workshop manager (08 §3.1): assigns bays and technicians, quality
+/// control and productivity.
+pub const WORKSHOP_MANAGER: &str = aut::WORKSHOP_MANAGER_ROLE;
+/// Counter sales, the parts counter (08 §3.1).
+pub const COUNTER_SALES: &str = aut::COUNTER_SALES_ROLE;
+/// The insurance coordinator (08 §3.1): registers claims and chases the
+/// insurers.
+pub const INSURANCE_COORDINATOR: &str = aut::INSURANCE_COORDINATOR_ROLE;
+/// The fleet account manager (08 §3.1): agrees the fleet contracts and
+/// follows their services and invoices.
+pub const FLEET_ACCOUNT_MANAGER: &str = aut::FLEET_ACCOUNT_MANAGER_ROLE;
 /// HR: keeps the employee records, starts and follows onboardings, and is the
 /// `hr` owner of onboarding steps (wl-hr §3, §6).
 pub const HR: &str = "hr";
@@ -523,6 +541,25 @@ pub const ROLES: &[(&str, &[&str])] = &[
             edu::SEATS_EXCEED,
             edu::SESSIONS_VIEW,
             edu::SESSIONS_TEACH,
+            // 08: the vehicles, job cards and labour menu of the workshops,
+            // the claims, fleet contracts and supplier claims.
+            aut::VEHICLES_VIEW,
+            aut::VEHICLES_MANAGE,
+            aut::JOB_CARDS_VIEW,
+            aut::JOB_CARDS_WORK,
+            aut::JOB_CARDS_ADVISE,
+            aut::JOB_CARDS_QC,
+            aut::JOB_CARDS_APPROVE,
+            aut::SUPPLIER_CLAIMS_APPROVE,
+            aut::JOB_CARDS_ACCIDENT,
+            aut::JOB_CARDS_LIABILITY,
+            aut::LABOUR_MENU_MANAGE,
+            aut::INSURANCE_MANAGE,
+            aut::FLEET_CONTRACTS_MANAGE,
+            aut::FLEET_CONTRACTS_APPROVE,
+            aut::EXPORT_SALES_VIEW,
+            aut::EXPORT_SALES_MANAGE,
+            aut::SUPPLIER_CLAIMS_MANAGE,
             edu::ENROLMENTS_VIEW,
             edu::ENROLMENTS_MANAGE,
             edu::ENROLMENTS_APPROVE,
@@ -853,6 +890,13 @@ pub const ROLES: &[(&str, &[&str])] = &[
             edu::COURSES_VIEW,
             edu::BATCHES_VIEW,
             edu::SESSIONS_VIEW,
+            aut::VEHICLES_VIEW,
+            aut::JOB_CARDS_VIEW,
+            aut::JOB_CARDS_LIABILITY,
+            // Registers the export sales and attaches their exit evidence
+            // (`AUT.EXP.01`, `AUT.RUL.15`).
+            aut::EXPORT_SALES_VIEW,
+            aut::EXPORT_SALES_MANAGE,
             edu::ENROLMENTS_VIEW,
             // Decides the refund of a withdrawal, never the one who asked
             // (`FIN.ACL.04`).
@@ -979,6 +1023,15 @@ pub const ROLES: &[(&str, &[&str])] = &[
             edu::COURSES_VIEW,
             edu::BATCHES_VIEW,
             edu::SESSIONS_VIEW,
+            aut::VEHICLES_VIEW,
+            aut::JOB_CARDS_VIEW,
+            // Decides the liability of a vehicle incident when the branch
+            // manager was involved (`AUT.ACL.22`).
+            aut::JOB_CARDS_LIABILITY,
+            // Approves the early termination of a fleet contract and a waiver
+            // of its fee (`PLT.APR.01`, BL-AUT-12).
+            aut::FLEET_CONTRACTS_APPROVE,
+            aut::EXPORT_SALES_VIEW,
             edu::ENROLMENTS_VIEW,
             edu::CERTIFICATES_VIEW,
             invoices::VIEW,
@@ -1102,6 +1155,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::STOCK_ADJUST,
             inventory::STOCK_HOLD,
             inventory::LOTS_RELEASE,
+            // 08: issues parts to a job card and takes back what was not fitted.
+            aut::JOB_CARDS_VIEW,
             inventory::DISPATCH_MANAGE,
             mfg::WORK_ORDERS_VIEW,
             mfg::WORK_ORDERS_ISSUE,
@@ -1204,6 +1259,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         PROCUREMENT,
         &[
+            // 08: raises and recovers supplier warranty claims.
+            aut::SUPPLIER_CLAIMS_MANAGE,
             inventory::ITEMS_VIEW,
             inventory::STOCK_VIEW,
             inventory::PURCHASE_ORDERS_VIEW,
@@ -1276,7 +1333,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             tickets::SERVICE_CONTRACTS_MANAGE,
         ],
     ),
-    (TECHNICIAN, &[tickets::VIEW, tickets::WORK]),
+    (
+        TECHNICIAN,
+        &[tickets::VIEW, tickets::WORK, aut::JOB_CARDS_WORK],
+    ),
     (
         MARKETING,
         &[
@@ -1651,6 +1711,159 @@ pub const ROLES: &[(&str, &[&str])] = &[
             log::REMITTANCES_REQUEST_ACCOUNT,
             // It disputes a paid statement in the portal (`LOG.ACL.12`).
             log::REMITTANCES_DISPUTE,
+        ],
+    ),
+    (
+        BRANCH_MANAGER,
+        &[
+            hr::LEAVE_REQUEST,
+            hr::LEAVE_VIEW,
+            hr::LEAVE_APPROVE,
+            scheduling::VIEW,
+            scheduling::VIEW_DETAILS,
+            scheduling::MANAGE,
+            scheduling::CHECKIN,
+            scheduling::RESOURCES_MANAGE,
+            parties::VIEW,
+            parties::CREATE,
+            parties::UPDATE,
+            aut::VEHICLES_VIEW,
+            aut::VEHICLES_MANAGE,
+            aut::JOB_CARDS_VIEW,
+            aut::JOB_CARDS_ADVISE,
+            aut::JOB_CARDS_QC,
+            aut::JOB_CARDS_APPROVE,
+            aut::SUPPLIER_CLAIMS_APPROVE,
+            aut::JOB_CARDS_ACCIDENT,
+            aut::JOB_CARDS_LIABILITY,
+            aut::LABOUR_MENU_MANAGE,
+            documents::VIEW,
+            documents::REVIEW,
+            documents::MANAGE,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::STOCK_APPROVE,
+            // A branch manager opens a recall of a part and tells the
+            // customers who got it (08 §7.1 settings *Recall*, BL-AUT-16).
+            inventory::RECALLS_MANAGE,
+            invoices::VIEW,
+            payments::VIEW,
+            payments::REFUNDS_APPROVE,
+            tickets::VIEW,
+            tickets::CREATE,
+            tickets::ASSIGN,
+            tickets::WORK,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
+            tickets::TASKS_REVIEW,
+            // The owner of the check-in, QC, counter, cash and returns SOPs
+            // publishes their versions (`DOC.RUL.04`, 08 §7.1 settings).
+            documents::SOPS_MANAGE,
+        ],
+    ),
+    (
+        SERVICE_ADVISOR,
+        &[
+            hr::LEAVE_REQUEST,
+            scheduling::VIEW,
+            scheduling::MANAGE,
+            scheduling::CHECKIN,
+            parties::VIEW,
+            parties::CREATE,
+            parties::UPDATE,
+            aut::VEHICLES_VIEW,
+            aut::VEHICLES_MANAGE,
+            aut::JOB_CARDS_VIEW,
+            aut::JOB_CARDS_ADVISE,
+            documents::VIEW,
+            documents::UPLOAD,
+            invoices::VIEW,
+            payments::VIEW,
+            payments::RECORD,
+            tickets::VIEW,
+            tickets::CREATE,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
+        ],
+    ),
+    (
+        WORKSHOP_MANAGER,
+        &[
+            hr::LEAVE_REQUEST,
+            hr::LEAVE_VIEW,
+            hr::LEAVE_APPROVE,
+            scheduling::VIEW,
+            scheduling::VIEW_DETAILS,
+            scheduling::MANAGE,
+            scheduling::CHECKIN,
+            scheduling::RESOURCES_MANAGE,
+            aut::VEHICLES_VIEW,
+            aut::JOB_CARDS_VIEW,
+            aut::JOB_CARDS_ADVISE,
+            aut::JOB_CARDS_QC,
+            aut::JOB_CARDS_ACCIDENT,
+            aut::LABOUR_MENU_MANAGE,
+            documents::VIEW,
+            documents::REVIEW,
+            tickets::VIEW,
+            tickets::CREATE,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
+            // The owner of the check-in, QC and workshop safety SOPs
+            // publishes their versions (`DOC.RUL.04`, 08 §7.1 settings).
+            documents::SOPS_MANAGE,
+        ],
+    ),
+    (
+        COUNTER_SALES,
+        &[
+            hr::LEAVE_REQUEST,
+            parties::VIEW,
+            parties::CREATE,
+            aut::VEHICLES_VIEW,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            sales::POS_SELL,
+            sales::SALES_ORDERS_VIEW,
+            sales::SALES_ORDERS_CREATE,
+            sales::RETURNS_REQUEST,
+        ],
+    ),
+    (
+        INSURANCE_COORDINATOR,
+        &[
+            hr::LEAVE_REQUEST,
+            parties::VIEW,
+            parties::CREATE,
+            parties::UPDATE,
+            documents::VIEW,
+            documents::UPLOAD,
+            aut::VEHICLES_VIEW,
+            aut::JOB_CARDS_VIEW,
+            aut::INSURANCE_MANAGE,
+            invoices::PAYER_BILLS_VIEW,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
+        ],
+    ),
+    (
+        FLEET_ACCOUNT_MANAGER,
+        &[
+            hr::LEAVE_REQUEST,
+            parties::VIEW,
+            parties::CREATE,
+            parties::UPDATE,
+            documents::VIEW,
+            documents::UPLOAD,
+            aut::VEHICLES_VIEW,
+            aut::VEHICLES_MANAGE,
+            aut::JOB_CARDS_VIEW,
+            aut::FLEET_CONTRACTS_MANAGE,
+            invoices::VIEW,
+            sales::LEADS_VIEW,
+            sales::LEADS_MANAGE,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
         ],
     ),
     (

@@ -1,114 +1,106 @@
-//! Stock set aside for a sales order line (wl-inventory §3 *Stock balance*:
-//! reserved; BL-SAL-11 point 2, BL-MFG-02 point 5, BL-MFG-03).
+//! Stock set aside for a sales order line (wl-sales §4.2 *Back-orders*,
+//! wl-inventory §3 *Stock balance* "reserved"; BL-SAL-17, BL-SAL-11 point 2,
+//! BL-MFG-02 point 5, BL-MFG-03). One table, [`StockReservation`], for both
+//! ways stock is set aside:
 //!
-//! A [`Reservation`] names an item at a location (and a lot of it, for a
-//! lot-tracked item), the sales order and the sale line it is for, and where
-//! it came from:
+//! - `order` ([`SOURCE_ORDER`]): `wl-sales` asks through the kernel's
+//!   [`StockReservations`]: [`reserve`] sets aside what is available of the
+//!   quantity wanted when the order is confirmed (also when a held order is
+//!   released), [`release`] gives it back (order cancelled, line cancelled or
+//!   lowered, goods handed over). By item and location, not by lot.
+//! - `work_order` ([`SOURCE_WORK_ORDER`]): the output lot of a work order
+//!   serving the line ([`ProductionStock::reserve_output`]), by lot, kept
+//!   equal to what the line needs by [`set`] and given back by
+//!   [`release_output`] (the work order's `unlink` or abort) or when the line
+//!   or the order goes ([`register`]).
 //!
-//! - `order`: the order was confirmed (`SalesOrderConfirmed`, also when a
-//!   held order is released and confirmed). The stock of each item line that
-//!   is available at the location with the most of it is set aside, first
-//!   expiry first, for the open quantity less what dispatches already carry.
-//!   One reservation per line, once: a replay of the event, or a line that
-//!   had nothing to reserve, leaves a row behind that stops a second try.
-//! - `work_order`: the output lot of a work order serving the line
-//!   ([`ProductionStock::reserve_output`](wl_kernel::production::ProductionStock::reserve_output)).
+//! - Reserved stock is not available: [`crate::balance::reserved_at`] adds
+//!   these rows to what draft returns to supplier and picked dispatches set
+//!   aside, so no picking, transfer or consumption takes it. A row with a lot
+//!   counts for that lot and for the item's total; a row without a lot
+//!   counts for the item's total only.
+//! - Available is on hand less reserved less on hold. For an item tracked by
+//!   lot, a reservation without a lot lowers the item's total available at
+//!   the location (the sum over its released lots), not a lot's balance.
+//! - The location is the one the caller names, else the selling location: the
+//!   first location of the type store, else the first warehouse, branch,
+//!   central store or outlet.
+//! - An item the catalogue does not know is not managed: everything asked is
+//!   reserved. A client with no location has nothing in stock: nothing is
+//!   reserved.
+//! - A row given back keeps its history at quantity 0.
 //!
-//! What a reservation does:
+//! A dispatch picked for the order that reserved the goods (BL-STK-26 beside
+//! BL-SAL-17) is the same goods: `pick` sees the order's reservation of the
+//! sale line as available (see [`reserved_for_line`]), and
+//! [`crate::balance::reserved_at`] counts the picked line only for what the
+//! order's reservation does not cover.
 //!
-//! - it counts in [`crate::balance::reserved_at`], so the available quantity
-//!   falls and the pick of another order cannot take the lot;
-//! - the dispatch of the same order can: its pick adds the order's own
-//!   reservation back, and the pick turns the reservation into the
-//!   dispatch's own (the reservation is `consumed`, the picked lines count as
-//!   reserved from then on);
-//! - it is given back (`released`) when the order is cancelled, when the line
-//!   is cancelled or lowered below it (`SalesOrderLineCancelled`,
-//!   `SalesOrderAmended`), and by the work order's `unlink` or abort.
-//!
-//! Decisions: the reservation of a confirmed order is made at one location
-//! (the one with the most available stock of the item, not a quarantine,
-//! scrap, transit or van location) and takes what is available, so it may be
-//! less than the open quantity; the rest is not queued (back-orders come with
-//! BL-SAL-17). An increase of a line by an amendment reserves nothing more.
+//! Decision: a consumption posted for the order itself (a dispatch that
+//! fulfils it) sees the reserved stock as unavailable, so the dispatch gives
+//! the reservation back first; wl-sales does so when the order's goods are
+//! handed over.
 
-use renox::db::{DateTime, Executor, Transaction};
+use renox::db::{Executor, Transaction};
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
+use wl_kernel::Subject;
+use wl_kernel::backorders::{BackOrderFuture, ReserveStock, Reserved, StockReservations};
 use wl_kernel::sales::{
-    SalesOrderAmended, SalesOrderCancelled, SalesOrderConfirmed, SalesOrderId,
+    SALES_ORDER_SUBJECT_TYPE, SalesOrderAmended, SalesOrderCancelled, SalesOrderId,
     SalesOrderLineCancelled, order_desk,
 };
 
 use crate::balance;
-use crate::dispatch::{Dispatch, DispatchLine, SALE_LINE_SUBJECT_TYPE};
 use crate::item::Item;
 use crate::location::{Location, LocationType};
-use crate::stock_service::plan;
 
-/// The source of the reservation a confirmed order makes.
+/// The source of a reservation `wl-sales` asked for (a confirmed order).
 pub const SOURCE_ORDER: &str = "order";
 
 /// The source of the reservation of a work order's output lot.
 pub const SOURCE_WORK_ORDER: &str = "work_order";
 
-/// Why the reservations of a cancelled order are given back.
-pub const ORDER_CANCELLED: &str = "order cancelled";
-
-/// Why the reservations of a cancelled or lowered line are given back.
-pub const LINE_CHANGED: &str = "line cancelled or lowered";
-
 /// Why the reservation of a work order's output is given back.
 pub const WORK_ORDER_RELEASED: &str = "output no longer needed by the line";
 
-/// Why a line that found no stock keeps a row.
-const NOTHING_AVAILABLE: &str = "no stock available";
+/// Why the reservation of a cancelled or lowered line is given back.
+pub const LINE_CHANGED: &str = "line cancelled or lowered";
 
-/// Where a reservation stands.
-#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum ReservationStatus {
-    /// The stock is set aside.
-    #[default]
-    Active,
-    /// Given back to free stock.
-    Released,
-    /// A dispatch of the order picked it: the dispatch's lines reserve it.
-    Consumed,
-}
+/// Why the reservations of a cancelled order are given back.
+pub const ORDER_CANCELLED: &str = "order cancelled";
 
-/// Stock set aside for one sale line.
+/// Stock set aside for one line of a record.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(
     table = "wl_inventory_reservations",
-    unique(order_id, sale_line_id, source, lot_key),
     index(item_id, location_id),
-    index(order_id),
+    index(owner_type, owner_id),
     index(lot_id)
 )]
-pub struct Reservation {
+pub struct StockReservation {
     /// The primary key.
     pub id: i64,
     /// The item.
     pub item_id: i64,
-    /// The lot, for a lot-tracked item.
-    pub lot_id: Option<i64>,
-    /// The lot, or 0 (makes the key unique).
-    pub lot_key: i64,
-    /// Where the stock is.
+    /// The location.
     pub location_id: i64,
-    /// The quantity set aside, in thousandths.
+    /// The type of the record the stock is set aside for.
+    pub owner_type: String,
+    /// The id of that record.
+    pub owner_id: i64,
+    /// The line of the record.
+    pub line_id: i64,
+    /// What is still set aside, in thousandths.
     pub quantity_milli: i64,
-    /// The sales order (its id in `wl-sales`).
-    pub order_id: i64,
-    /// The sale line (its id in `wl-sales`).
-    pub sale_line_id: i64,
+    /// The lot, for the output lot of a work order; none for stock set aside
+    /// by item and location.
+    pub lot_id: Option<i64>,
     /// [`SOURCE_ORDER`] or [`SOURCE_WORK_ORDER`].
     pub source: String,
     /// The record that asked, e.g. `manufacturing.work_order:5`.
     pub source_ref: Option<String>,
-    /// Where it stands.
-    pub status: ReservationStatus,
-    /// Why it was given back.
+    /// Why it was given back (the quantity is then 0).
     pub released_reason: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
@@ -116,8 +108,9 @@ pub struct Reservation {
     pub updated_at: Option<DateTime>,
 }
 
-impl Reservation {
-    /// The reservations of sale line `line` of `order`, oldest first.
+impl StockReservation {
+    /// The reservations of line `line` of `order`, oldest first, given back
+    /// ones (at 0) included.
     ///
     /// # Errors
     ///
@@ -126,56 +119,58 @@ impl Reservation {
         db: impl Executor<'c>,
         order: i64,
         line: i64,
-    ) -> Result<Vec<Reservation>> {
-        Reservation::query()
-            .where_(Reservation::ORDER_ID.eq(order))
-            .where_(Reservation::SALE_LINE_ID.eq(line))
-            .order_by(Reservation::ID)
+    ) -> Result<Vec<StockReservation>> {
+        StockReservation::query()
+            .where_(StockReservation::OWNER_TYPE.eq(SALES_ORDER_SUBJECT_TYPE.to_owned()))
+            .where_(StockReservation::OWNER_ID.eq(order))
+            .where_(StockReservation::LINE_ID.eq(line))
+            .order_by(StockReservation::ID)
             .get(db)
             .await
     }
 
-    /// The reservations of `order`, oldest first.
+    /// The reservations of `order`, oldest first, given back ones included.
     ///
     /// # Errors
     ///
     /// A database error.
-    pub async fn of_order<'c>(db: impl Executor<'c>, order: i64) -> Result<Vec<Reservation>> {
-        Reservation::query()
-            .where_(Reservation::ORDER_ID.eq(order))
-            .order_by(Reservation::ID)
+    pub async fn of_order<'c>(db: impl Executor<'c>, order: i64) -> Result<Vec<StockReservation>> {
+        StockReservation::query()
+            .where_(StockReservation::OWNER_TYPE.eq(SALES_ORDER_SUBJECT_TYPE.to_owned()))
+            .where_(StockReservation::OWNER_ID.eq(order))
+            .order_by(StockReservation::ID)
             .get(db)
             .await
     }
 
-    /// The active reservations that hold `item` at `location`.
-    async fn active_at<'c>(
-        db: impl Executor<'c>,
-        item_id: i64,
-        location_id: i64,
-    ) -> Result<Vec<Reservation>> {
-        Reservation::query()
-            .where_(Reservation::ITEM_ID.eq(item_id))
-            .where_(Reservation::LOCATION_ID.eq(location_id))
-            .where_(Reservation::STATUS.eq(ReservationStatus::Active))
-            .get(db)
-            .await
+    /// Whether stock is set aside by this row.
+    pub fn is_active(&self) -> bool {
+        self.quantity_milli > 0
     }
 }
 
-/// What a reservation is made of: the stock and the line it is for.
-#[derive(Debug, Clone)]
-pub struct Place {
-    /// The item.
-    pub item_id: i64,
-    /// The lot, for a lot-tracked item.
-    pub lot_id: Option<i64>,
-    /// Where the stock is.
-    pub location_id: i64,
+/// What sales orders have set aside of `item_id` at `location_id` by item
+/// (without a lot), in thousandths.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn sales_reserved<'c>(
+    db: impl Executor<'c>,
+    item_id: i64,
+    location_id: i64,
+) -> Result<i64> {
+    StockReservation::query()
+        .where_(StockReservation::ITEM_ID.eq(item_id))
+        .where_(StockReservation::LOCATION_ID.eq(location_id))
+        .where_(StockReservation::LOT_ID.is_null())
+        .sum::<i64, _>(db, "quantity_milli")
+        .await
 }
 
-/// What of `item_id` at `location_id` (of `lot_id` when given) the active
-/// reservations set aside, in thousandths. `only` limits it to one source.
+/// What the reservations set aside of `item_id` at `location_id`, in
+/// thousandths: all of them, or those of `lot_id` when given. `only` limits
+/// it to one source.
 ///
 /// # Errors
 ///
@@ -187,7 +182,11 @@ pub async fn reserved_in<'c>(
     lot_id: Option<i64>,
     only: Option<&str>,
 ) -> Result<i64> {
-    Ok(Reservation::active_at(db, item_id, location_id)
+    Ok(StockReservation::query()
+        .where_(StockReservation::ITEM_ID.eq(item_id))
+        .where_(StockReservation::LOCATION_ID.eq(location_id))
+        .where_(StockReservation::QUANTITY_MILLI.gt(0i64))
+        .get(db)
         .await?
         .iter()
         .filter(|row| lot_id.is_none() || row.lot_id == lot_id)
@@ -196,33 +195,214 @@ pub async fn reserved_in<'c>(
         .sum())
 }
 
-/// What the active reservations of sale line `line` of `order` set aside at
-/// `location_id` of `item_id` (of `lot_id` when given), in thousandths: the
-/// part of the reserved quantity that the order's own dispatch may take.
+/// What the record `owner` has set aside for `line` of `item_id` at
+/// `location_id` (of `lot_id` when given), in thousandths: the part of a
+/// picked dispatch that is already counted as reserved for its own order.
 ///
 /// # Errors
 ///
 /// A database error.
-pub async fn own_in<'c>(
+pub async fn reserved_for_line<'c>(
     db: impl Executor<'c>,
-    order: i64,
+    owner: &Subject,
     line: i64,
     item_id: i64,
     location_id: i64,
     lot_id: Option<i64>,
 ) -> Result<i64> {
-    Ok(Reservation::query()
-        .where_(Reservation::ORDER_ID.eq(order))
-        .where_(Reservation::SALE_LINE_ID.eq(line))
-        .where_(Reservation::ITEM_ID.eq(item_id))
-        .where_(Reservation::LOCATION_ID.eq(location_id))
-        .where_(Reservation::STATUS.eq(ReservationStatus::Active))
+    Ok(StockReservation::query()
+        .where_(StockReservation::OWNER_TYPE.eq(owner.subject_type.clone()))
+        .where_(StockReservation::OWNER_ID.eq(owner.subject_id))
+        .where_(StockReservation::LINE_ID.eq(line))
+        .where_(StockReservation::ITEM_ID.eq(item_id))
+        .where_(StockReservation::LOCATION_ID.eq(location_id))
+        .where_(StockReservation::QUANTITY_MILLI.gt(0i64))
         .get(db)
         .await?
         .iter()
-        .filter(|row| lot_id.is_none() || row.lot_id.is_none() || row.lot_id == lot_id)
+        .filter(|row| lot_id.is_none() || row.lot_id == lot_id)
         .map(|row| row.quantity_milli)
         .sum())
+}
+
+/// The location stock is sold from when the caller names none: the first
+/// store, else the first warehouse, branch, central store or outlet.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn selling_location(db: &Db) -> Result<Option<Location>> {
+    let found = Location::query().order_by(Location::ID).get(db).await?;
+    let sells = |location: &&Location| {
+        matches!(
+            location.location_type,
+            LocationType::Store
+                | LocationType::Warehouse
+                | LocationType::Branch
+                | LocationType::CentralStore
+                | LocationType::Outlet
+        )
+    };
+    Ok(found
+        .iter()
+        .find(|location| location.location_type == LocationType::Store)
+        .or_else(|| found.iter().find(sells))
+        .cloned())
+}
+
+/// What can be set aside of `item` at `location_id` now, in thousandths.
+async fn available(db: &Db, item: &Item, location_id: i64) -> Result<i64> {
+    if item.lot_tracked {
+        let free = balance::available_to_take(db, item, location_id).await?;
+        let taken = sales_reserved(db, item.id, location_id).await?;
+        Ok((free - taken).max(0))
+    } else {
+        Ok(balance::balance(db, item.id, location_id, None)
+            .await?
+            .available_milli())
+    }
+}
+
+/// Sets aside what is available, up to the quantity wanted (see
+/// [`StockReservations::reserve`]).
+///
+/// # Errors
+///
+/// A database error.
+pub async fn reserve(state: &AppState, request: ReserveStock) -> Result<Reserved> {
+    let Some(item) = Item::query()
+        .where_(Item::CODE.eq(request.item_code.clone()))
+        .first(&state.db)
+        .await?
+    else {
+        // Not in the catalogue: stock is not managed for it.
+        return Ok(Reserved {
+            reserved_milli: request.quantity_milli,
+            location: request.location,
+        });
+    };
+    let location = match &request.location {
+        Some(subject) => Location::find(&state.db, subject.subject_id).await?,
+        None => selling_location(&state.db).await?,
+    };
+    let Some(location) = location else {
+        return Ok(Reserved {
+            reserved_milli: 0,
+            location: None,
+        });
+    };
+    let take = request
+        .quantity_milli
+        .min(available(&state.db, &item, location.id).await?)
+        .max(0);
+    if take > 0 {
+        StockReservation::create(
+            &state.db,
+            StockReservation {
+                item_id: item.id,
+                location_id: location.id,
+                owner_type: request.owner.subject_type.clone(),
+                owner_id: request.owner.subject_id,
+                line_id: request.line,
+                quantity_milli: take,
+                source: SOURCE_ORDER.to_owned(),
+                ..StockReservation::default()
+            },
+        )
+        .await?;
+    }
+    Ok(Reserved {
+        reserved_milli: take,
+        location: Some(location.subject()),
+    })
+}
+
+/// Gives back up to `quantity_milli` (all when `None`) of what was set aside
+/// for `line` (every line when `None`) of `owner`: what `wl-sales` reserved
+/// first, newest first, then the output lots of work orders. Returns the
+/// quantity given back.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn release(
+    state: &AppState,
+    owner: &Subject,
+    line: Option<i64>,
+    quantity_milli: Option<i64>,
+) -> Result<i64> {
+    let mut query = StockReservation::query()
+        .where_(StockReservation::OWNER_TYPE.eq(owner.subject_type.clone()))
+        .where_(StockReservation::OWNER_ID.eq(owner.subject_id))
+        .where_(StockReservation::QUANTITY_MILLI.gt(0i64));
+    if let Some(line) = line {
+        query = query.where_(StockReservation::LINE_ID.eq(line));
+    }
+    let mut rows = query
+        .order_by_desc(StockReservation::ID)
+        .get(&state.db)
+        .await?;
+    rows.sort_by_key(|row| row.source == SOURCE_WORK_ORDER);
+    let mut left = quantity_milli.unwrap_or(i64::MAX);
+    let mut released = 0;
+    for row in rows {
+        if left <= 0 {
+            break;
+        }
+        let take = row.quantity_milli.min(left);
+        let remaining = row.quantity_milli - take;
+        let now = renox::db::now();
+        let reason = (remaining == 0).then(|| ORDER_CANCELLED.to_owned());
+        StockReservation::query()
+            .where_(StockReservation::ID.eq(row.id))
+            .update(
+                &state.db,
+                &[
+                    ("quantity_milli", &remaining),
+                    ("released_reason", &reason),
+                    ("updated_at", &now),
+                ],
+            )
+            .await?;
+        left -= take;
+        released += take;
+    }
+    Ok(released)
+}
+
+/// The module's [`StockReservations`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct InventoryReservations;
+
+impl StockReservations for InventoryReservations {
+    fn reserve<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: ReserveStock,
+    ) -> BackOrderFuture<'a, Reserved> {
+        Box::pin(async move { reserve(state, request).await })
+    }
+
+    fn release<'a>(
+        &'a self,
+        state: &'a AppState,
+        owner: &'a Subject,
+        line: Option<i64>,
+        quantity_milli: Option<i64>,
+    ) -> BackOrderFuture<'a, i64> {
+        Box::pin(async move { release(state, owner, line, quantity_milli).await })
+    }
+}
+
+/// What a reservation is made of: the stock it holds.
+#[derive(Debug, Clone)]
+pub struct Place {
+    /// The item.
+    pub item_id: i64,
+    /// The lot, for a lot-tracked item.
+    pub lot_id: Option<i64>,
+    /// Where the stock is.
+    pub location_id: i64,
 }
 
 /// The sale line a reservation is for, and who asked.
@@ -238,9 +418,10 @@ pub struct ForLine {
     pub source_ref: Option<String>,
 }
 
-/// Sets the reservation of `for_line` on the stock `place` to exactly `quantity_milli`: made when there is none, changed
-/// when it exists, given back (with `reason`) at 0 or less. Returns whether a
-/// reservation is active afterwards.
+/// Sets the reservation of `for_line` on the stock `place` to exactly
+/// `quantity_milli`: made when there is none, changed when it exists, given
+/// back (with `reason`) at 0 or less. Returns whether stock is set aside
+/// afterwards.
 ///
 /// # Errors
 ///
@@ -258,31 +439,25 @@ pub async fn set(
         source,
         source_ref,
     } = for_line;
-    let lot_key = place.lot_id.unwrap_or(0);
-    let found = Reservation::query()
-        .where_(Reservation::ORDER_ID.eq(order))
-        .where_(Reservation::SALE_LINE_ID.eq(line))
-        .where_(Reservation::SOURCE.eq(source.to_owned()))
-        .where_(Reservation::LOT_KEY.eq(lot_key))
+    let found = StockReservation::query()
+        .where_(StockReservation::OWNER_TYPE.eq(SALES_ORDER_SUBJECT_TYPE.to_owned()))
+        .where_(StockReservation::OWNER_ID.eq(order))
+        .where_(StockReservation::LINE_ID.eq(line))
+        .where_(StockReservation::SOURCE.eq(source.to_owned()))
+        .where_(StockReservation::LOT_ID.eq(place.lot_id))
         .first(&mut *tx)
         .await?;
     let wanted = quantity_milli.max(0);
-    let status = if wanted > 0 {
-        ReservationStatus::Active
-    } else {
-        ReservationStatus::Released
-    };
     let note = (wanted == 0).then(|| reason.to_owned());
     match found {
         Some(row) => {
-            Reservation::query()
-                .where_(Reservation::ID.eq(row.id))
+            StockReservation::query()
+                .where_(StockReservation::ID.eq(row.id))
                 .update(
                     &mut *tx,
                     &[
                         ("location_id", &place.location_id),
                         ("quantity_milli", &wanted),
-                        ("status", &status),
                         ("released_reason", &note),
                         ("source_ref", &source_ref),
                         ("updated_at", &renox::db::now()),
@@ -291,19 +466,18 @@ pub async fn set(
                 .await?;
         }
         None => {
-            let mut row = Reservation {
+            let mut row = StockReservation {
                 item_id: place.item_id,
-                lot_id: place.lot_id,
-                lot_key,
                 location_id: place.location_id,
+                owner_type: SALES_ORDER_SUBJECT_TYPE.to_owned(),
+                owner_id: order,
+                line_id: line,
                 quantity_milli: wanted,
-                order_id: order,
-                sale_line_id: line,
+                lot_id: place.lot_id,
                 source: source.to_owned(),
                 source_ref,
-                status,
                 released_reason: note,
-                ..Reservation::default()
+                ..StockReservation::default()
             };
             row.insert(&mut *tx).await?;
         }
@@ -311,13 +485,14 @@ pub async fn set(
     Ok(wanted > 0)
 }
 
-/// Gives back the active reservations of `order` (of its line `line` when
-/// given; of `lot` when given) with `reason`. Returns whether any was active.
+/// Gives back the output lots of work orders set aside for `order` (for its
+/// line `line` when given; of `lot` when given) with `reason`. Returns
+/// whether any was set aside.
 ///
 /// # Errors
 ///
 /// A database error.
-pub async fn release(
+pub async fn release_output(
     tx: &mut Transaction,
     order: i64,
     line: Option<i64>,
@@ -325,19 +500,20 @@ pub async fn release(
     reason: &str,
 ) -> Result<bool> {
     let mut released = false;
-    for row in Reservation::of_order(&mut *tx, order).await? {
-        if row.status != ReservationStatus::Active
-            || line.is_some_and(|line| row.sale_line_id != line)
+    for row in StockReservation::of_order(&mut *tx, order).await? {
+        if !row.is_active()
+            || row.source != SOURCE_WORK_ORDER
+            || line.is_some_and(|line| row.line_id != line)
             || lot.is_some_and(|lot| row.lot_id != Some(lot))
         {
             continue;
         }
-        Reservation::query()
-            .where_(Reservation::ID.eq(row.id))
+        StockReservation::query()
+            .where_(StockReservation::ID.eq(row.id))
             .update(
                 &mut *tx,
                 &[
-                    ("status", &ReservationStatus::Released),
+                    ("quantity_milli", &0i64),
                     ("released_reason", &Some(reason.to_owned())),
                     ("updated_at", &renox::db::now()),
                 ],
@@ -348,42 +524,33 @@ pub async fn release(
     Ok(released)
 }
 
-/// Brings the active reservations of line `line` of `order` down to `open_milli`
-/// (the line's open quantity): the confirmed order's own reservation gives
-/// way first, then the work orders'. At 0 everything is given back.
+/// Brings the output lots of work orders set aside for line `line` of
+/// `order` down to `open_milli` (the line's open quantity), the latest
+/// first. At 0 everything is given back.
 ///
 /// # Errors
 ///
 /// A database error.
-pub async fn trim_to(tx: &mut Transaction, order: i64, line: i64, open_milli: i64) -> Result {
-    let mut rows: Vec<Reservation> = Reservation::of_line(&mut *tx, order, line)
+pub async fn trim_output(tx: &mut Transaction, order: i64, line: i64, open_milli: i64) -> Result {
+    let mut rows: Vec<StockReservation> = StockReservation::of_line(&mut *tx, order, line)
         .await?
         .into_iter()
-        .filter(|row| row.status == ReservationStatus::Active)
+        .filter(|row| row.is_active() && row.source == SOURCE_WORK_ORDER)
         .collect();
     let mut excess = rows.iter().map(|row| row.quantity_milli).sum::<i64>() - open_milli.max(0);
-    // The order's own rows first, the latest first.
-    rows.sort_by_key(|row| (row.source != SOURCE_ORDER, std::cmp::Reverse(row.id)));
+    rows.sort_by_key(|row| std::cmp::Reverse(row.id));
     for row in rows {
         if excess <= 0 {
             break;
         }
         let cut = excess.min(row.quantity_milli);
         let left = row.quantity_milli - cut;
-        Reservation::query()
-            .where_(Reservation::ID.eq(row.id))
+        StockReservation::query()
+            .where_(StockReservation::ID.eq(row.id))
             .update(
                 &mut *tx,
                 &[
                     ("quantity_milli", &left),
-                    (
-                        "status",
-                        &if left > 0 {
-                            ReservationStatus::Active
-                        } else {
-                            ReservationStatus::Released
-                        },
-                    ),
                     (
                         "released_reason",
                         &(left == 0).then(|| LINE_CHANGED.to_owned()),
@@ -397,213 +564,21 @@ pub async fn trim_to(tx: &mut Transaction, order: i64, line: i64, open_milli: i6
     Ok(())
 }
 
-/// A dispatch of `order` picked `quantity_milli` of `item_id` for `line` at
-/// `location_id`: the reservation of the line gives way to the dispatch's own
-/// lines (which count as reserved while it is `picked`).
-///
-/// # Errors
-///
-/// A database error.
-pub async fn consume(
-    tx: &mut Transaction,
-    order: i64,
-    line: i64,
-    place: &Place,
-    quantity_milli: i64,
-) -> Result {
-    let mut left = quantity_milli;
-    for row in Reservation::of_line(&mut *tx, order, line).await? {
-        if left <= 0 {
-            break;
-        }
-        if row.status != ReservationStatus::Active
-            || row.item_id != place.item_id
-            || row.location_id != place.location_id
-            || !(place.lot_id.is_none() || row.lot_id.is_none() || row.lot_id == place.lot_id)
-        {
-            continue;
-        }
-        let take = left.min(row.quantity_milli);
-        let rest = row.quantity_milli - take;
-        Reservation::query()
-            .where_(Reservation::ID.eq(row.id))
-            .update(
-                &mut *tx,
-                &[
-                    ("quantity_milli", &rest),
-                    (
-                        "status",
-                        &if rest > 0 {
-                            ReservationStatus::Active
-                        } else {
-                            ReservationStatus::Consumed
-                        },
-                    ),
-                    ("updated_at", &renox::db::now()),
-                ],
-            )
-            .await?;
-        left -= take;
-    }
-    Ok(())
-}
-
-/// The quantity of sale line `line` that dispatches of `order` already carry
-/// (their lines in any state but cancelled), in thousandths.
-async fn carried(tx: &mut Transaction, order: i64, line: i64) -> Result<i64> {
-    let mut total = 0;
-    for row in DispatchLine::query()
-        .where_(DispatchLine::SOURCE_LINE_TYPE.eq(Some(SALE_LINE_SUBJECT_TYPE.to_owned())))
-        .where_(DispatchLine::SOURCE_LINE_ID.eq(Some(line)))
-        .get(&mut *tx)
-        .await?
-    {
-        let dispatch = Dispatch::find_or_404(&mut *tx, row.dispatch_id).await?;
-        if dispatch.source_id == order
-            && dispatch.status != crate::dispatch::DispatchStatus::Cancelled
-        {
-            total += row.quantity_milli;
-        }
-    }
-    Ok(total)
-}
-
-/// The location with the most available stock of `item`, with the stock to
-/// take in the order to pick it: `(location, [(lot, quantity)])`.
-async fn best_place(
-    tx: &mut Transaction,
-    item: &Item,
-    want: i64,
-) -> Result<Option<(i64, Vec<(Option<i64>, i64)>)>> {
-    let mut best: Option<(i64, i64)> = None;
-    for location in Location::query()
-        .order_by(Location::ID)
-        .get(&mut *tx)
-        .await?
-    {
-        if matches!(
-            location.location_type,
-            LocationType::Quarantine
-                | LocationType::Scrap
-                | LocationType::InTransit
-                | LocationType::Van
-        ) {
-            continue;
-        }
-        let free = balance::available_to_take(&mut *tx, item, location.id).await?;
-        if free > 0 && best.is_none_or(|(_, most)| free > most) {
-            best = Some((location.id, free));
-        }
-    }
-    let Some((location, _)) = best else {
-        return Ok(None);
-    };
-    let candidates = balance::candidates(&mut *tx, item, location).await?;
-    let (parts, _) = plan(&candidates, want);
-    Ok(Some((location, parts)))
-}
-
-/// `SalesOrderConfirmed`: reserves the stock of each item line of the order
-/// (see the module). Once per line.
-///
-/// # Errors
-///
-/// A database error.
-pub async fn on_confirmed(state: &AppState, event: &SalesOrderConfirmed) -> Result {
-    let Some(view) = order_desk(state).find(state, event.order).await? else {
-        return Ok(());
-    };
-    let order = event.order.0;
-    for line in view.lines.iter().filter(|line| line.is_item) {
-        let Some(item) = Item::query()
-            .where_(Item::CODE.eq(line.item_code.clone()))
-            .first(&state.db)
-            .await?
-        else {
-            continue;
-        };
-        let mut tx = state.db.begin().await?;
-        let done = Reservation::of_line(&mut tx, order, line.id)
-            .await?
-            .iter()
-            .any(|row| row.source == SOURCE_ORDER);
-        if done {
-            continue;
-        }
-        let want = line.open_milli() - carried(&mut tx, order, line.id).await?;
-        if want <= 0 {
-            continue;
-        }
-        match best_place(&mut tx, &item, want).await? {
-            Some((location_id, parts)) => {
-                for (lot_id, quantity) in parts {
-                    let place = Place {
-                        item_id: item.id,
-                        lot_id,
-                        location_id,
-                    };
-                    set(&mut tx, &place, for_order(order, line.id), quantity, "").await?;
-                }
-            }
-            None => {
-                // A mark that this line was looked at, so a replay of the
-                // event does not reserve later arrivals (there is nothing to
-                // mark when the module has no location at all).
-                if let Some(location_id) = first_location(&mut tx).await? {
-                    let place = Place {
-                        item_id: item.id,
-                        lot_id: None,
-                        location_id,
-                    };
-                    set(
-                        &mut tx,
-                        &place,
-                        for_order(order, line.id),
-                        0,
-                        NOTHING_AVAILABLE,
-                    )
-                    .await?;
-                }
-            }
-        }
-        tx.commit().await?;
-    }
-    Ok(())
-}
-
-/// The reservation a confirmed order makes for its line.
-fn for_order(order: i64, line: i64) -> ForLine {
-    ForLine {
-        order,
-        line,
-        source: SOURCE_ORDER,
-        source_ref: None,
-    }
-}
-
-/// Any location (the mark of a line with nothing to reserve needs one).
-async fn first_location(tx: &mut Transaction) -> Result<Option<i64>> {
-    Ok(Location::query()
-        .order_by(Location::ID)
-        .first(&mut *tx)
-        .await?
-        .map(|location| location.id))
-}
-
-/// `SalesOrderCancelled`: every reservation of the order is given back.
+/// `SalesOrderCancelled`: the output lots set aside for the order are given
+/// back (what `wl-sales` reserved it gives back itself).
 ///
 /// # Errors
 ///
 /// A database error.
 pub async fn on_order_cancelled(state: &AppState, event: &SalesOrderCancelled) -> Result {
     let mut tx = state.db.begin().await?;
-    release(&mut tx, event.order.0, None, None, ORDER_CANCELLED).await?;
+    release_output(&mut tx, event.order.0, None, None, ORDER_CANCELLED).await?;
     tx.commit().await?;
     Ok(())
 }
 
-/// `SalesOrderLineCancelled`: the reservations of the line shrink to what is
-/// still open of it (all given back when none is).
+/// `SalesOrderLineCancelled`: the output lots set aside for the line shrink
+/// to what is still open of it (all given back when none is).
 ///
 /// # Errors
 ///
@@ -612,8 +587,8 @@ pub async fn on_line_cancelled(state: &AppState, event: &SalesOrderLineCancelled
     trim_line(state, event.order, event.line).await
 }
 
-/// `SalesOrderAmended`: a line lowered below its reservation gives the rest
-/// back.
+/// `SalesOrderAmended`: a line lowered below what is set aside for it gives
+/// the rest back.
 ///
 /// # Errors
 ///
@@ -627,7 +602,8 @@ pub async fn on_amended(state: &AppState, event: &SalesOrderAmended) -> Result {
     Ok(())
 }
 
-/// Brings the reservations of `line` down to the open quantity the order says.
+/// Brings the output lots set aside for `line` down to the open quantity the
+/// order says.
 async fn trim_line(state: &AppState, order: SalesOrderId, line: i64) -> Result {
     let open = match order_desk(state).find(state, order).await? {
         Some(view) => view
@@ -638,17 +614,13 @@ async fn trim_line(state: &AppState, order: SalesOrderId, line: i64) -> Result {
         None => 0,
     };
     let mut tx = state.db.begin().await?;
-    trim_to(&mut tx, order.0, line, open).await?;
+    trim_output(&mut tx, order.0, line, open).await?;
     tx.commit().await?;
     Ok(())
 }
 
-/// Registers the model and the listeners.
+/// Registers the listeners (the model is registered by the module).
 pub(crate) fn register(app: &mut Registry) {
-    app.model::<Reservation>();
-    app.listen(|event: SalesOrderConfirmed, state: AppState| async move {
-        on_confirmed(&state, &event).await
-    });
     app.listen(|event: SalesOrderCancelled, state: AppState| async move {
         on_order_cancelled(&state, &event).await
     });

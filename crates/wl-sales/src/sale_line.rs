@@ -65,6 +65,12 @@ pub struct SaleLine {
     pub fulfilled_milli: i64,
     /// The quantity cancelled (sales orders), in thousandths.
     pub cancelled_milli: i64,
+    /// The quantity of the open part set aside in stock (back-orders on),
+    /// in thousandths.
+    pub reserved_milli: i64,
+    /// The quantity of the open part that could not be reserved and waits
+    /// for stock, in thousandths.
+    pub backordered_milli: i64,
     /// The added quantity that waits for its payment link to be paid, in
     /// thousandths: reserved but not handed over (BL-SAL-06).
     pub held_milli: i64,

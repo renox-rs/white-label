@@ -2207,6 +2207,29 @@ async fn without_sales_no_package_is_sold_and_none_has_credits() {
     );
 }
 
+/// 08 Auto (#412): without the `sales` module nobody is the customer of a
+/// sale, so a recall trace lists the sale with the party unknown.
+#[renox::test]
+async fn without_sales_nobody_is_the_customer_of_a_sale() {
+    use wl_kernel::sales::SaleCustomer;
+    use wl_kernel::{Subject, sale_customers};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let sale = Subject::new("sales.counter_sale", 4);
+    assert_eq!(
+        sale_customers(app.state())
+            .customer(app.state(), &sale)
+            .await
+            .unwrap(),
+        SaleCustomer::Unknown
+    );
+    assert_eq!(
+        renox::serde_json::to_value(SaleCustomer::Party(PartyId(3))).unwrap(),
+        renox::serde_json::json!({ "party": 3 })
+    );
+}
+
 /// 10 EdTech (#439, #440): without the `sales` module the days an enrolment
 /// stood frozen move no package.
 #[renox::test]
@@ -2484,4 +2507,221 @@ async fn the_deposit_handover_falls_back_when_payments_is_off() {
     assert_eq!(request.source, lease);
     assert_eq!(request.new_holder, PartyId(31));
     assert_eq!(request.receipt, "RCPT-1");
+}
+
+/// 08 Auto (#134): without an inventory module no recall holds returned goods.
+#[renox::test]
+async fn without_inventory_no_recall_holds_returned_goods() {
+    use wl_kernel::Subject;
+    use wl_kernel::inventory::{ReturnedGoods, lot_trace};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let goods = ReturnedGoods::new("BRK-PAD", 2_000, Subject::new("sales.sales_return", 3))
+        .lot(Subject::new("inventory.lot", 7))
+        .sold_on(NaiveDate::from_ymd_opt(2026, 9, 10).unwrap());
+    assert_eq!(goods.item_code, "BRK-PAD");
+    let trace = lot_trace(app.state());
+    assert_eq!(trace.recall_of(app.state(), &goods).await.unwrap(), None);
+    let recall = Subject::new("inventory.recall", 1);
+    assert!(
+        !trace
+            .receive_returned(app.state(), &recall, &goods)
+            .await
+            .unwrap()
+    );
+}
+
+/// 08 Auto (#136): without an inventory module nothing is short, and without a
+/// sales module no back-order is open.
+#[renox::test]
+async fn without_inventory_every_reservation_succeeds_and_without_sales_nothing_is_back_ordered() {
+    use wl_kernel::Subject;
+    use wl_kernel::backorders::{ReserveStock, back_orders, stock_reservations};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let owner = Subject::new("sales.sales_order", 5);
+    let reserved = stock_reservations(app.state())
+        .reserve(
+            app.state(),
+            ReserveStock::new("BRK-PAD", 5_000, owner.clone(), 9),
+        )
+        .await
+        .unwrap();
+    assert_eq!(reserved.reserved_milli, 5_000);
+    assert_eq!(
+        stock_reservations(app.state())
+            .release(app.state(), &owner, None, None)
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(
+        back_orders(app.state())
+            .open(app.state())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+/// 08 Auto: without a scheduling module the booking actions link and complete
+/// nothing, and without an inventory module a return posts nothing.
+#[renox::test]
+async fn without_scheduling_and_inventory_the_workshop_contracts_do_nothing() {
+    use wl_kernel::Subject;
+    use wl_kernel::inventory::{ReturnRequest, stock_service};
+    use wl_kernel::scheduling::{BookingId, booking_actions};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+
+    let actions = booking_actions(state);
+    actions
+        .link_work_done(state, BookingId(4), Subject::new("auto.job_card", 9))
+        .await
+        .unwrap();
+    actions.complete(state, BookingId(4)).await.unwrap();
+
+    let request = ReturnRequest::new(
+        Subject::new("inventory.item", 1),
+        Subject::new("inventory.location", 2),
+        2_000,
+        Subject::new("auto.job_card", 9),
+    )
+    .cost_object(Subject::new("auto.job_card", 9))
+    .reason("not fitted");
+    assert_eq!(request.reason.as_deref(), Some("not fitted"));
+    let returned = stock_service(state)
+        .return_to_stock(state, request)
+        .await
+        .unwrap();
+    assert_eq!(returned.posted_milli, 0);
+}
+
+/// 08 Auto: without a scheduling module a fleet service books nothing and
+/// refuses, and a booking cancels nothing.
+#[renox::test]
+async fn without_scheduling_a_service_booking_is_refused_and_a_cancel_does_nothing() {
+    use wl_kernel::Subject;
+    use wl_kernel::scheduling::{BookingId, ServiceBooking, booking_actions};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+
+    let request = ServiceBooking::new(PartyId(7), "periodic_service", renox::db::now())
+        .for_subject(Subject::new("auto.vehicle", 3))
+        .at(Subject::new("scheduling.location", 1))
+        .note("Due at 60,000 km");
+    assert_eq!(request.service_code, "periodic_service");
+    assert_eq!(request.notes.as_deref(), Some("Due at 60,000 km"));
+    let actions = booking_actions(state);
+    let refused = actions.book_service(state, request).await.unwrap_err();
+    assert!(refused.to_string().contains("not available"), "{refused}");
+    assert!(
+        !actions
+            .cancel_booking(state, BookingId(4), "fleet_contract_ended")
+            .await
+            .unwrap()
+    );
+    assert!(
+        !actions
+            .cancel_booking_by_staff(state, BookingId(4), "job_stopped", 9)
+            .await
+            .unwrap()
+    );
+    assert!(
+        actions
+            .starts_at(state, BookingId(4))
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+/// #409: without a vertical's gate every new booking is allowed.
+#[renox::test]
+async fn without_a_booking_gate_every_new_booking_is_allowed() {
+    use wl_kernel::Subject;
+    use wl_kernel::scheduling::{BookingGateQuery, CheckInAnswer, booking_gate};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+
+    let query = BookingGateQuery {
+        party: PartyId(7),
+        subject: Some(Subject::new("auto.vehicle", 3)),
+        service_code: "periodic_service".to_owned(),
+        at: renox::db::now(),
+    };
+    let answer = booking_gate(state).check(state, query).await.unwrap();
+    assert_eq!(answer, CheckInAnswer::Allowed);
+}
+
+/// #407: without a ticketing module a closed ticket is unknown, and without an
+/// inventory module no return to supplier is drafted.
+#[renox::test]
+async fn without_ticketing_and_inventory_a_ticket_is_unknown_and_no_return_is_drafted() {
+    use wl_kernel::inventory::{DraftReturn, supplier_return_drafts};
+    use wl_kernel::tickets::{TicketId, task_creator};
+    use wl_kernel::{PartyId, Subject};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+
+    assert!(
+        task_creator(state)
+            .ticket_about(state, TicketId(12))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let drafted = supplier_return_drafts(state)
+        .draft_credit(
+            state,
+            DraftReturn {
+                supplier: PartyId(40),
+                source: Subject::new("auto.supplier_claim", 7),
+                item_code: "ALT-9".to_owned(),
+                quantity_milli: 1_000,
+                reason: "Alternator failed".to_owned(),
+                location: Subject::new("inventory.location", 2),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(drafted.is_none());
+}
+
+/// #402: a vertical binds who resolves the tickets of one category; a category
+/// with no rule has none.
+#[test]
+fn a_resolve_rule_is_registered_per_ticket_category() {
+    use renox::prelude::*;
+    use wl_kernel::Subject;
+    use wl_kernel::tickets::{
+        ResolveRule, TicketFuture, TicketId, register_resolve_rule, resolve_rule,
+    };
+
+    struct Nobody;
+    impl ResolveRule for Nobody {
+        fn check<'a>(
+            &'a self,
+            _state: &'a AppState,
+            _ticket: TicketId,
+            _subject: &'a Subject,
+            _user: i64,
+        ) -> TicketFuture<'a, std::result::Result<(), String>> {
+            Box::pin(async { Ok(Err("not here".to_owned())) })
+        }
+    }
+    assert!(resolve_rule("package_test_category").is_none());
+    register_resolve_rule("package_test_category", Nobody);
+    assert!(resolve_rule("package_test_category").is_some());
+    assert!(resolve_rule("another_category").is_none());
 }

@@ -1,0 +1,51 @@
+{#- auto: one vehicle: the plate, the VIN, what it is, the owner or fleet, the
+    odometer and the next service, its job cards, and the action that changes
+    its details. Replace it with resources/views/auto/vehicle.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="vehicle" :back="route('auto.vehicles')" :back-label="tx['vehicles.title']">
+      <template rx-if="can_manage">
+        <rx-action-sheet :id="'vehicle-edit-' ~ id" :label="tx['vehicles.edit']" :action="route('auto.vehicle_update', id)"
+                         :title="tx['vehicles.edit']" :description="tx['vehicles.edit_description']" :submit-label="tx['vehicles.edit']" icon="pencil">
+          <rx-select name="emirate" :label="tx['vehicles.emirate']" :options="emirate_options" :selected="emirate" :id="'vehicle-edit-emirate-' ~ id"/>
+          <rx-input name="plate_code" :label="tx['vehicles.plate_code']" :hint="tx['vehicles.plate_code_hint']" :value="plate_code" :id="'vehicle-edit-code-' ~ id" required/>
+          <rx-input name="plate_number" :label="tx['vehicles.plate_number']" :value="plate_number" :id="'vehicle-edit-number-' ~ id" required/>
+          <rx-input name="make" :label="tx['vehicles.make']" :value="make" :id="'vehicle-edit-make-' ~ id" required/>
+          <rx-input name="model_name" :label="tx['vehicles.model']" :value="model_name" :id="'vehicle-edit-model-' ~ id" required/>
+          <rx-input name="model_year" type="number" :label="tx['vehicles.year']" :value="model_year" :id="'vehicle-edit-year-' ~ id"/>
+          <rx-input name="vin" :label="tx['vehicles.vin']" :hint="tx['vehicles.vin_hint']" :value="raw_vin" :id="'vehicle-edit-vin-' ~ id"/>
+          <rx-input name="engine" :label="tx['vehicles.engine']" :value="raw_engine" :id="'vehicle-edit-engine-' ~ id"/>
+          <rx-input name="colour" :label="tx['vehicles.colour']" :value="raw_colour" :id="'vehicle-edit-colour-' ~ id"/>
+          <rx-select name="owner" :label="tx['vehicles.owner']" :options="owner_options" :selected="owner_id" :placeholder="tx['vehicles.owner_placeholder']" options-url="{{ route('auto.party_options') }}" :id="'vehicle-edit-owner-' ~ id" required/>
+          <rx-input name="fleet_contract" type="number" :label="tx['vehicles.fleet_contract']" :hint="tx['vehicles.fleet_contract_hint']" :value="fleet_contract" :id="'vehicle-edit-fleet-' ~ id"/>
+          <rx-input name="odometer" type="number" :label="tx['vehicles.odometer']" :value="odometer_value" :id="'vehicle-edit-odometer-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-alert rx-if="not active" kind="info" :message="tx['vehicles.inactive']"/>
+    <rx-card :title="tx['vehicles.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['vehicles.plate']" :value="plate"/>
+        <rx-entry :label="tx['vehicles.vin']" :value="vin"/>
+        <rx-entry :label="tx['vehicles.make']" :value="vehicle"/>
+        <rx-entry :label="tx['vehicles.engine']" :value="engine"/>
+        <rx-entry :label="tx['vehicles.colour']" :value="colour"/>
+        <rx-entry :label="tx['vehicles.owner']" :value="owner"/>
+        <rx-entry :label="tx['vehicles.fleet_contract']" :value="fleet"/>
+        <rx-entry :label="tx['vehicles.odometer']" :value="odometer"/>
+        <rx-entry :label="tx['vehicles.odometer_at']" :value="odometer_at"/>
+        <rx-entry :label="tx['vehicles.next_service']" :value="next_service"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['vehicles.history']">
+      <rx-table :rows="history" as="row" :key="row.id" :caption="tx['vehicles.history']">
+        <rx-column :label="tx['jobs.number']"><a href="{{ route('auto.job_card', row.id) }}">{{ row.number }}</a></rx-column>
+        <rx-column :label="tx['jobs.date']">{{ row.date }}</rx-column>
+        <rx-column :label="tx['jobs.complaint']" hide-narrow>{{ row.complaint }}</rx-column>
+        <rx-column :label="tx['jobs.odometer_in']" align="num" hide-narrow>{{ row.odometer }}</rx-column>
+        <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['vehicles.history_empty']" icon="wrench"/></rx-slot>
+      </rx-table>
+    </rx-card>
+  </rx-stack>
+</rx-page>

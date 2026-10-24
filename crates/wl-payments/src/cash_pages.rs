@@ -4,8 +4,9 @@
 //! |---|---|---|
 //! | `GET /cash` | `wl_payments.cash.index` | `cash.view` |
 //! | `GET /cash/{id}` | `wl_payments.cash.show` | `cash.view` |
-//! | `POST /cash/{id}/count` | `wl_payments.cash.count` | `cash.count` (fields `counted`, `absent`, `note`) |
-//! | `POST /cash/{id}/recount` | `wl_payments.cash.recount` | `cash.count` (fields `counted`, `holder_present`, `absent`, `note`) |
+//! | `POST /cash/{id}/count` | `wl_payments.cash.count` | `cash.count` (fields `counted`, `absent`, `note`; `shown` lists the cheques expected and `present` ticks those handed over, the others are missing) |
+//! | `POST /cash/{id}/recount` | `wl_payments.cash.recount` | `cash.count` (fields `counted`, `holder_present`, `absent`, `note`; `shown` and `present` for the cheques still missing) |
+//! | `POST /cash/{id}/cheques/{cheque}/lost` | `wl_payments.cash.cheque_lost` | `cheques.manage` (returns a missing cheque with the reason "lost") |
 //! | `POST /cash/{id}/recoveries` | `wl_payments.cash.recovery` | `cash.count` (fields `amount`, `note`) |
 //! | `POST /cash/{id}/deductions` | `wl_payments.cash.deduction` | `cash.count` (fields `amount`, `note`) |
 //! | `POST /cash/{id}/recover` | `wl_payments.cash.recover` | `cash.count` (field `amount`, optional cash) |
@@ -27,6 +28,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 use wl_kernel::custody::{HandoverKind, HandoverStatus};
 
+use crate::cash_cheques::{self, CashCheque, ChequeTicks};
 use crate::cash_count;
 use crate::cash_handover::{
     CashCount, CashEntry, CashHandover, CashPosting, CountKind, PostingKind,
@@ -35,6 +37,7 @@ use crate::cash_later::{self, RaiseShortage};
 use crate::cash_notices::period_text;
 use crate::cash_recovery::{self, CashRecovery, RecoveryKind, RecoveryStatus};
 use crate::cash_settle::{self, WriteOffRequest};
+use crate::cheque::Cheque;
 use crate::config_of;
 use crate::followup::money_text;
 use crate::pages::{Text, Texts, filled, invalid, options, parse_amount, texts_in};
@@ -67,6 +70,12 @@ pub fn routes() -> Routes {
                 .post("/cash/shortages", store_shortage)
                 .name("wl_payments.cash.raise")
                 .require_permission(permissions::CASH_COUNT),
+        )
+        .merge(
+            Routes::new()
+                .post("/cash/{id}/cheques/{cheque}/lost", store_cheque_lost)
+                .name("wl_payments.cash.cheque_lost")
+                .require_permission(permissions::CHEQUES_MANAGE),
         )
         .merge(
             Routes::new()
@@ -212,6 +221,15 @@ pub(crate) struct RecoveryRow {
 }
 
 #[derive(Serialize, Debug, Clone)]
+pub(crate) struct ChequeRow {
+    id: i64,
+    label: String,
+    state: String,
+    state_kind: &'static str,
+    can_return_lost: bool,
+}
+
+#[derive(Serialize, Debug, Clone)]
 pub(crate) struct PostingRow {
     id: i64,
     kind: String,
@@ -244,6 +262,9 @@ pub(crate) struct ShowPage {
     counts: Vec<CountRow>,
     recoveries: Vec<RecoveryRow>,
     postings: Vec<PostingRow>,
+    cheques: Vec<ChequeRow>,
+    cheque_options: Vec<[String; 2]>,
+    shown_cheques: String,
     timeline: Vec<Value>,
     presence: Vec<(String, String)>,
     can_count: bool,
@@ -335,6 +356,40 @@ async fn show(
             location: posting.location.unwrap_or_default(),
         });
     }
+    let may_return = user.has_permission(permissions::CHEQUES_MANAGE);
+    let mut cheques = Vec::new();
+    for row in CashCheque::of_handover(&db, handover.id).await? {
+        let Some(cheque) = Cheque::find(&db, row.cheque_id).await? else {
+            continue;
+        };
+        cheques.push(ChequeRow {
+            id: cheque.id,
+            label: cheque_label(&cheque),
+            state: t(&format!("cash.cheques.state.{}", row.state.as_str())),
+            state_kind: match row.state {
+                cash_cheques::ChequeTick::Present | cash_cheques::ChequeTick::Found => "success",
+                cash_cheques::ChequeTick::Missing => "error",
+                cash_cheques::ChequeTick::ReturnedLost => "neutral",
+            },
+            can_return_lost: may_return && row.state == cash_cheques::ChequeTick::Missing,
+        });
+    }
+    // The cheques the next count has to tick: the expected ones at a count,
+    // the ones still missing at a recount.
+    let mut cheque_options = Vec::new();
+    let mut shown = Vec::new();
+    if matches!(
+        handover.status,
+        HandoverStatus::Open | HandoverStatus::Short
+    ) {
+        let recount = handover.status == HandoverStatus::Short;
+        for id in cash_cheques::to_tick(&db, &handover, recount).await? {
+            if let Some(cheque) = Cheque::find(&db, id).await? {
+                cheque_options.push([id.to_string(), cheque_label(&cheque)]);
+                shown.push(id.to_string());
+            }
+        }
+    }
     let history = state_machine::history(&db, CashHandover::TABLE, handover.id).await?;
     let mut timeline =
         state_machine::timeline(&history, Some(&state_machine::info_of::<CashHandover>()));
@@ -376,6 +431,9 @@ async fn show(
         counts,
         recoveries,
         postings,
+        cheques,
+        cheque_options,
+        shown_cheques: shown.join(","),
         timeline,
         presence: vec![
             (String::new(), String::new()),
@@ -393,6 +451,33 @@ async fn show(
         can_write_off: short && user.has_permission(permissions::CASH_WRITE_OFF),
         handover,
     }))
+}
+
+/// A cheque for people: its number, bank and amount.
+fn cheque_label(cheque: &Cheque) -> String {
+    format!(
+        "{} · {} · {}",
+        cheque.number,
+        cheque.bank,
+        money_text(&cheque.currency, cheque.amount)
+    )
+}
+
+/// The ticks of a count form: the cheques it `shown` that it ticked `present`
+/// are present, the others missing. A form without `shown` ticks nothing.
+fn ticks_of(shown: &Option<String>, present: &[String]) -> ChequeTicks {
+    let shown: Vec<i64> = filled(shown)
+        .map(|list| {
+            list.split(',')
+                .filter_map(|id| id.trim().parse::<i64>().ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    let present: Vec<i64> = present
+        .iter()
+        .filter_map(|id| id.trim().parse::<i64>().ok())
+        .collect();
+    ChequeTicks::present_of(&shown, &present)
 }
 
 /// `text` as fils for a count: dirhams, `0` allowed.
@@ -445,6 +530,13 @@ pub struct CountForm {
     /// At a recount: `yes` or `no`, whether the holder was present or notified.
     #[validate(max = 8)]
     pub holder_present: Option<String>,
+    /// The ids of the cheques the count is about, like `4,5`.
+    #[validate(max = 500)]
+    pub shown: Option<String>,
+    /// The ids of the cheques the counter has in hand; the others of
+    /// `shown` are missing.
+    #[serde(default)]
+    pub present: Vec<String>,
 }
 
 /// `POST /cash/{id}/count`: counts the open handover.
@@ -459,13 +551,14 @@ async fn store_count(
     let Some(counted) = filled(&form.counted).and_then(parse_counted) else {
         return Err(invalid("counted", t("cash.amount_required"), &form));
     };
-    match cash_count::count(
+    match cash_count::count_with_cheques(
         &state,
         &user,
         &handover,
         counted,
         truthy(&form.absent),
         filled(&form.note),
+        ticks_of(&form.shown, &form.present),
     )
     .await
     {
@@ -486,7 +579,7 @@ async fn store_recount(
     let Some(counted) = filled(&form.counted).and_then(parse_counted) else {
         return Err(invalid("counted", t("cash.amount_required"), &form));
     };
-    match cash_count::recount(
+    match cash_count::recount_with_cheques(
         &state,
         &user,
         &handover,
@@ -494,11 +587,29 @@ async fn store_recount(
         presence(&form.holder_present),
         truthy(&form.absent),
         filled(&form.note),
+        ticks_of(&form.shown, &form.present),
     )
     .await
     {
         Ok(_) => Ok(done(&lang, "wl_payments.cash.recount.done")),
         Err(error) => Err(refuse(error, "counted", &form)),
+    }
+}
+
+/// `POST /cash/{id}/cheques/{cheque}/lost`: returns a missing cheque with the
+/// reason "lost"; the party is asked for a replacement.
+async fn store_cheque_lost(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path((_, cheque_id)): Path<(i64, i64)>,
+) -> Result<Response> {
+    match cash_cheques::return_lost(&state, &user, cheque_id).await {
+        Ok(_) => Ok(done(&lang, "wl_payments.cash.cheque_lost.done")),
+        Err(TransitionError::Guard(message)) => {
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message))
+        }
+        Err(other) => Err(other.into_error()),
     }
 }
 

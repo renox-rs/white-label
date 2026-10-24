@@ -233,6 +233,9 @@ pub struct SalesConfig {
     /// The role told (mail and task) when an order goes on credit hold,
     /// with the sales rep (`SAL.RUL.01`); the company admin when empty.
     pub accountant_role: String,
+    /// The order channels whose lines without stock are back-ordered
+    /// (§7 *Back-orders allowed per channel*). Empty: none.
+    pub back_order_channels: Vec<String>,
     /// Whether an external order number may be used once per channel (§7
     /// *Unique external order number per channel*, BL-SAL-01: on).
     pub unique_external_order_number: bool,
@@ -322,6 +325,7 @@ impl Default for SalesConfig {
             unique_customer_po: false,
             invoice_on_delivery: false,
             accountant_role: DEFAULT_ACCOUNTANT_ROLE.to_owned(),
+            back_order_channels: Vec::new(),
             unique_external_order_number: true,
             online_payment_window_minutes: DEFAULT_ONLINE_PAYMENT_WINDOW_MINUTES,
             order_manager_role: String::new(),
@@ -403,6 +407,13 @@ impl SalesConfig {
                 .clinical_items
                 .iter()
                 .any(|c| c.eq_ignore_ascii_case(code.trim()))
+    }
+
+    /// Whether a line without stock is back-ordered on `channel`.
+    pub fn back_orders_allowed(&self, channel: &str) -> bool {
+        self.back_order_channels
+            .iter()
+            .any(|c| c.eq_ignore_ascii_case(channel.trim()))
     }
 
     /// Whether `reason` is one of the lost reasons.

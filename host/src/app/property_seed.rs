@@ -168,6 +168,7 @@ pub fn sales_for(client_app: &str) -> WlSales {
         super::edtech_seed::EDTECH => super::edtech_settings::sales(module),
         super::logistics_seed::LOGISTICS => super::logistics_seed::sales(module),
         super::manufacturing_seed::MANUFACTURING => super::manufacturing_seed::sales(module),
+        super::auto_seed::AUTO => super::auto_settings::sales(module),
         super::fnb_seed::FNB => super::fnb_seed::sales(module),
         _ => module,
     }
@@ -188,6 +189,7 @@ pub fn hr_for(client_app: &str, owner_role: &str) -> wl_hr::WlHr {
         super::manufacturing_seed::MANUFACTURING => super::manufacturing_seed::hr(module),
         super::fnb_seed::FNB => super::fnb_compliance::hr(module),
         super::edtech_seed::EDTECH => super::edtech_seed::hr(module, owner_role),
+        super::auto_seed::AUTO => super::auto_seed::hr(module, owner_role),
         _ => module,
     }
 }

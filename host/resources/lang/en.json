@@ -97,6 +97,14 @@
     "sessions": "Sessions",
     "enrolments": "Enrolments",
     "certificates": "Certificates",
+    "vehicles": "Vehicles",
+    "job_cards": "Job cards",
+    "my_job_cards": "My job cards",
+    "labour_menu": "Labour menu",
+    "insurance_claims": "Insurance claims",
+    "insurers": "Insurers",
+    "fleet_contracts": "Fleet contracts",
+    "supplier_claims": "Supplier claims",
     "negative_flow": "Money settings",
     "compliance_settings": "Compliance settings",
     "tickets": "Tickets",
@@ -125,6 +133,7 @@
     "log_in": "Log in",
     "log_out": "Log out",
     "sections": "Sections",
+    "export_sales": "Export sales",
     "orders": "Orders",
     "kitchen": "Kitchen",
     "cod_customers": "Customers without cash on delivery",
@@ -384,5 +393,12 @@
     "forbidden": "You do not have permission for this action.",
     "home": "Go to the home page",
     "refused": "This could not be done"
+  },
+  "wl_kernel": {
+    "block_kind": {
+      "fleet_contract": "Fleet contract",
+      "job_card": "Job card",
+      "insurance_claim": "Insurance claim"
+    }
   }
 }
