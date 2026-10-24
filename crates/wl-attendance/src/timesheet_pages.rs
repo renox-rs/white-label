@@ -287,7 +287,7 @@ fn worded_sql(words: &BTreeMap<i64, String>) -> String {
 
 /// The words of the worker, client and work of the listed timesheets, as the
 /// SQL of their columns (see [`worded_sql`]).
-pub(crate) struct Names {
+pub(crate) struct SheetNames {
     worker: String,
     client: String,
     work: String,
@@ -299,7 +299,7 @@ pub(crate) struct Names {
 /// period; the hours drawn by the template. The client and the month of the
 /// header are page filters that feed the query (they stay in the address,
 /// BL-MPW-27). Exported by who submits or approves timesheets.
-pub(crate) fn sheets_grid(lang: &Lang, names: &Names, can_export: bool) -> Grid {
+pub(crate) fn sheets_grid(lang: &Lang, names: &SheetNames, can_export: bool) -> Grid {
     let t = |key: &str| text(lang, key);
     let standings: Vec<(String, String)> = STANDINGS
         .iter()
@@ -490,7 +490,7 @@ async fn list(
                 .map_or_else(|| "-".to_owned(), |info| info.label.clone()),
         );
     }
-    let names = Names {
+    let names = SheetNames {
         worker: worded_sql(&workers),
         client: worded_sql(&clients_of),
         work: worded_sql(&works),
