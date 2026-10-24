@@ -321,7 +321,7 @@ impl StateMachine for Booking {
             .state(Cancelled)
             .tone("neutral")
             .terminal()
-            .transition(
+            .transition(crate::search::reindex_booking(
                 transition(ACCEPT, &[Requested], Booked)
                     .label("Accept")
                     .tone("success")
@@ -338,8 +338,8 @@ impl StateMachine for Booking {
                             set(tx, id, &[("hold_until", &none)]).await
                         })
                     }),
-            )
-            .transition(
+            ))
+            .transition(crate::search::reindex_booking(
                 transition(DECLINE, &[Requested], Cancelled)
                     .label("Decline")
                     .tone("danger")
@@ -381,8 +381,8 @@ impl StateMachine for Booking {
                             release_rows(tx, id).await
                         })
                     }),
-            )
-            .transition(
+            ))
+            .transition(crate::search::reindex_booking(
                 transition(CONFIRM, &[Booked], Confirmed)
                     .label("Confirm")
                     .effect(|booking: &Booking, ctx, tx| {
@@ -390,8 +390,8 @@ impl StateMachine for Booking {
                         let at = Some(input_of(ctx).at());
                         Box::pin(async move { set(tx, id, &[("confirmed_at", &at)]).await })
                     }),
-            )
-            .transition(
+            ))
+            .transition(crate::search::reindex_booking(
                 transition(RESCHEDULE, &[Booked, Confirmed], Booked)
                     .label("Reschedule")
                     .guard("before_cutoff", |_b: &Booking, ctx| {
@@ -411,8 +411,8 @@ impl StateMachine for Booking {
                             async move { move_booking(tx, id, start, end, &input, false).await },
                         )
                     }),
-            )
-            .transition(
+            ))
+            .transition(crate::search::reindex_booking(
                 transition(
                     RESCHEDULE_REQUEST,
                     &[Requested, Booked, Confirmed],
@@ -434,8 +434,8 @@ impl StateMachine for Booking {
                     let input = input_of(ctx);
                     Box::pin(async move { move_booking(tx, id, start, end, &input, true).await })
                 }),
-            )
-            .transition(
+            ))
+            .transition(crate::search::reindex_booking(
                 transition(CHECK_IN, &[Booked, Confirmed], CheckedIn)
                     .label("Check in")
                     .guard("check_in_required", |_b: &Booking, ctx| {
@@ -453,8 +453,8 @@ impl StateMachine for Booking {
                         let at = Some(input_of(ctx).at());
                         Box::pin(async move { set(tx, id, &[("checked_in_at", &at)]).await })
                     }),
-            )
-            .transition(
+            ))
+            .transition(crate::search::reindex_booking(
                 transition(START, &[CheckedIn], InProgress)
                     .label("Start")
                     .guard("tracks_in_progress", |_b: &Booking, ctx| {
@@ -472,8 +472,8 @@ impl StateMachine for Booking {
                         let at = Some(input_of(ctx).at());
                         Box::pin(async move { set(tx, id, &[("started_at", &at)]).await })
                     }),
-            )
-            .transition(
+            ))
+            .transition(crate::search::reindex_booking(
                 transition(
                     COMPLETE,
                     &[Booked, Confirmed, CheckedIn, InProgress],
@@ -510,8 +510,8 @@ impl StateMachine for Booking {
                         release_rows(tx, id).await
                     })
                 }),
-            )
-            .transition(
+            ))
+            .transition(crate::search::reindex_booking(
                 transition(MARK_NO_SHOW, &[Booked, Confirmed], NoShow)
                     .label("Mark no-show")
                     .tone("danger")
@@ -546,11 +546,19 @@ impl StateMachine for Booking {
                             release_rows(tx, id).await
                         })
                     }),
-            )
-            .transition(reassign_transition(REASSIGN_REQUESTED, Requested))
-            .transition(reassign_transition(REASSIGN, Booked))
-            .transition(reassign_transition(REASSIGN_CONFIRMED, Confirmed))
-            .transition(
+            ))
+            .transition(crate::search::reindex_booking(reassign_transition(
+                REASSIGN_REQUESTED,
+                Requested,
+            )))
+            .transition(crate::search::reindex_booking(reassign_transition(
+                REASSIGN, Booked,
+            )))
+            .transition(crate::search::reindex_booking(reassign_transition(
+                REASSIGN_CONFIRMED,
+                Confirmed,
+            )))
+            .transition(crate::search::reindex_booking(
                 transition(
                     CANCEL,
                     &[Requested, Booked, Confirmed, CheckedIn, InProgress],
@@ -664,7 +672,7 @@ impl StateMachine for Booking {
                         release_rows(tx, id).await
                     })
                 }),
-            )
+            ))
     }
 }
 

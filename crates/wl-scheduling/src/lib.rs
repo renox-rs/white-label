@@ -19,6 +19,7 @@ pub mod prepayment;
 pub mod refusal;
 pub mod resource;
 pub mod rules;
+pub mod search;
 pub mod service;
 pub mod slots;
 pub mod staff_pages;
@@ -237,6 +238,9 @@ impl Module for WlScheduling {
     }
 
     fn register(&self, app: &mut Registry) {
+        // Bookings and resources in the search index and the Related panel
+        // (BL-AGT-11).
+        search::register();
         // A page that holds only a booking's id (a ticket, a task) shows its
         // number.
         wl_kernel::documents::register_subject_label(

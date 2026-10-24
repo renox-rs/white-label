@@ -501,6 +501,8 @@ async fn create(
         &occupy_rows(&service, &locked, start, end),
     )
     .await?;
+    // Found by its number from now on (BL-AGT-11).
+    crate::search::index_booking_in(&mut tx, booking.id).await?;
     tx.commit().await?;
     let mut booking = Booking::find_or_404(&state.db, booking.id).await?;
     if due > 0 {

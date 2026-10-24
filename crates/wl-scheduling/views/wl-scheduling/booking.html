@@ -76,5 +76,6 @@
         <rx-entry :label="tx['booking.work_done']" :value="work_done" :placeholder="tx['none']"/>
       </rx-infolist>
     </rx-card>
+    <div id="booking-related" hx-get="/related/scheduling.booking:{{ booking.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>
