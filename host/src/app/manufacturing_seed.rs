@@ -47,7 +47,7 @@ use wl_sales::{LeadSource, WlSales};
 
 use super::roles::{
     ACCOUNTANT, ADMIN, LINE_OPERATOR, OWNER, PRODUCTION_MANAGER, PRODUCTION_PLANNER, QC_INSPECTOR,
-    SALES_MANAGER, STOREKEEPER, SUPERVISOR,
+    SALES, SALES_MANAGER, STOREKEEPER, SUPERVISOR,
 };
 
 /// The client app these values are for.
@@ -709,7 +709,11 @@ impl Module for ManufacturingSeed {
 
 /// What the roles that 07 shares with other verticals hold for 07's tasks: the
 /// storekeeper and the line supervisor are given tasks (a hold for material,
-/// the re-pick of a recalled dispatch) and open them as tickets.
+/// the re-pick of a recalled dispatch) and open them as tickets; the production
+/// manager owns the onboarding checklists; the production manager and the QC
+/// inspector publish the SOPs they own; sales plan
+/// campaigns and the sales manager decides their costs over budget and reads
+/// the acquisition report.
 pub fn grant_roles(client_app: &str) {
     if client_app != MANUFACTURING {
         return;
@@ -718,6 +722,45 @@ pub fn grant_roles(client_app: &str) {
     for role in [STOREKEEPER, SUPERVISOR, LINE_OPERATOR] {
         super::roles::grant_extra(role, &[tickets::VIEW, tickets::WORK]);
     }
+    // `HRM.ONB.01`, `DOC.RUL.04`: the owner roles of the SOP library (the
+    // production manager for the work instructions, the QC inspector for the
+    // inspection and quality SOPs) upload and accept the versions that
+    // readers are then asked to acknowledge.
+    for role in [PRODUCTION_MANAGER, QC_INSPECTOR] {
+        super::roles::grant_extra(
+            role,
+            &[
+                wl_documents::permissions::VIEW,
+                wl_documents::permissions::SOPS_MANAGE,
+            ],
+        );
+    }
+    // `HRM.RUL.17`: the plant has no HR officer of its own; the production
+    // manager owns the onboarding checklists, so an onboarding step that is
+    // five days overdue is told to the production manager and the line
+    // supervisor (the employee's manager).
+    super::roles::grant_extra(
+        PRODUCTION_MANAGER,
+        &[
+            wl_hr::permissions::ONBOARDING_VIEW,
+            wl_hr::permissions::ONBOARDING_MANAGE,
+        ],
+    );
+    // `SAL.CRM.02`, `SAL.ACL.07`: sales plan the trade-exhibition campaigns
+    // and enter their costs; a cost that takes a campaign over its budget
+    // waits for the sales manager (never the one who entered it), who also
+    // reads the acquisition report (leads, conversion, CAC, ROAS).
+    use wl_sales::permissions as sales;
+    super::roles::grant_extra(SALES, &[sales::CAMPAIGNS_VIEW, sales::CAMPAIGNS_MANAGE]);
+    super::roles::grant_extra(
+        SALES_MANAGER,
+        &[
+            sales::CAMPAIGNS_VIEW,
+            sales::CAMPAIGNS_MANAGE,
+            sales::CAMPAIGNS_COSTS_MANAGE,
+            sales::ACQUISITION_REPORTS_VIEW,
+        ],
+    );
     // `MFG.RUL.08`: the export exit evidence is the accountant's document
     // (the kind's responsible role); the export evidence page links to the
     // dispatch's documents, so the accountant may open and fill them.

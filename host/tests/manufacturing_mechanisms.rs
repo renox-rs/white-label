@@ -200,7 +200,10 @@ async fn a_bounced_cheque_holds_the_account_and_a_third_presentation_is_refused(
         )
     };
     act("deposit", vec![]).await.assert_ok();
-    let invoices = wl_invoicing::Invoice::query().count(app.db()).await.unwrap();
+    let invoices = wl_invoicing::Invoice::query()
+        .count(app.db())
+        .await
+        .unwrap();
     bounce().await.assert_ok();
 
     // `SAL.RUL.05` with no bounce fee in 07: nothing is charged or invoiced
@@ -218,7 +221,10 @@ async fn a_bounced_cheque_holds_the_account_and_a_third_presentation_is_refused(
     assert!(returns[0].fee_charge_type.is_none());
     assert!(returns[0].fee_subject_id.is_none(), "no charge was made");
     assert_eq!(
-        wl_invoicing::Invoice::query().count(app.db()).await.unwrap(),
+        wl_invoicing::Invoice::query()
+            .count(app.db())
+            .await
+            .unwrap(),
         invoices,
         "no invoice for a bounce fee"
     );
@@ -526,8 +532,7 @@ async fn an_owner_drawing_is_never_approved_by_the_person_who_recorded_it() {
 /// report and never in the expense or the operating result, while the rent
 /// bill is; the result after drawings takes the drawing off.
 #[renox::test]
-async fn owner_drawings_stay_out_of_the_operating_result_and_the_budget_is_the_owners_to_approve()
-{
+async fn owner_drawings_stay_out_of_the_operating_result_and_the_budget_is_the_owners_to_approve() {
     let app = manufacturing_booted().await;
     let amal = person(&app, "Amal", ACCOUNTANT).await;
     let bilal = person(&app, "Bilal", ACCOUNTANT).await;
