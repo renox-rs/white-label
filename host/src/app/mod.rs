@@ -3,6 +3,7 @@ pub mod accounting_portal;
 pub mod accounting_seed;
 pub mod activity;
 pub mod approvals_inbox;
+pub mod auto_demo;
 pub mod auto_money;
 pub mod auto_seed;
 pub mod auto_settings;

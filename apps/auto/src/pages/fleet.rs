@@ -192,7 +192,7 @@ fn term_text(lang: &Lang, contract: &FleetContract) -> String {
 pub(crate) struct IndexPage {
     tx: Texts,
     rows: Vec<ContractRow>,
-    tabs: Vec<(String, String)>,
+    status_tabs: Vec<(String, String)>,
     tab_current: String,
     tab: String,
     q: String,
@@ -226,7 +226,7 @@ async fn index(
             status_kind: status_kind(contract.status),
         });
     }
-    let tabs = vec![
+    let status_tabs = vec![
         (filter.with_tab("").href(), text(&lang, "fleet.tab.all")),
         (
             filter.with_tab("active").href(),
@@ -244,7 +244,7 @@ async fn index(
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         rows,
-        tabs,
+        status_tabs,
         tab_current: filter.href(),
         tab: filter.tab.clone(),
         q: filter.q.clone(),
@@ -477,6 +477,8 @@ pub(crate) struct ShowPage {
     jobs: Vec<JobRow>,
     invoices: Vec<InvoiceRow>,
     vehicle_options: Vec<[String; 2]>,
+    /// The service types a plan books, by code with their names.
+    service_options: Vec<[String; 2]>,
     can_edit: bool,
     can_activate: bool,
     can_suspend: bool,
@@ -562,6 +564,11 @@ async fn plan_rows(
     lang: &Lang,
     plans: &[crate::fleet_service::FleetService],
 ) -> Result<Vec<PlanRow>> {
+    // The service's name where the scheduling module knows it
+    // (`periodic_service` is *Periodic service*), else its code.
+    let names = wl_kernel::scheduling::service_names(state)
+        .names(state, &lang.locale)
+        .await?;
     let mut rows = Vec::new();
     for plan in plans {
         let plate = Vehicle::find(&state.db, plan.vehicle_id)
@@ -570,7 +577,10 @@ async fn plan_rows(
         rows.push(PlanRow {
             id: plan.id,
             plate,
-            service: plan.service_code.clone(),
+            service: names
+                .get(&plan.service_code)
+                .cloned()
+                .unwrap_or_else(|| plan.service_code.clone()),
             interval: interval_text(lang, plan),
             next_due: due_text(lang, plan),
             booking: plan.booking_id.map_or_else(
@@ -714,6 +724,17 @@ async fn show(
             ]
         })
         .collect();
+    // The services a plan can book, named; the code alone when the
+    // scheduling module knows no names.
+    let mut service_options: Vec<[String; 2]> = wl_kernel::scheduling::service_names(&state)
+        .names(&state, &lang.locale)
+        .await?
+        .into_iter()
+        .map(|(code, name)| [code, name])
+        .collect();
+    if service_options.is_empty() {
+        service_options.push(["periodic_service".to_owned(), "periodic_service".to_owned()]);
+    }
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         id: contract.id,
@@ -746,6 +767,7 @@ async fn show(
         jobs: job_rows,
         invoices: invoice_rows,
         vehicle_options,
+        service_options,
         can_edit: manage && status != FleetStatus::Ended,
         can_activate: manage && status == FleetStatus::Draft,
         can_suspend: manage && matches!(status, FleetStatus::Active | FleetStatus::RenewalDue),

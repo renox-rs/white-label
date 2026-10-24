@@ -972,6 +972,15 @@ async fn show(
             line_description(&lang, &line.description, line.safety_work),
         ]);
     }
+    // The invoice by its number (`INV-2026-0004`), not its row id.
+    let invoice = match card.invoice_id {
+        Some(invoice) => wl_kernel::invoicing::invoicer(&state)
+            .find(&state.db, wl_kernel::invoicing::InvoiceId(invoice))
+            .await?
+            .and_then(|found| found.number)
+            .unwrap_or_else(|| format!("#{invoice}")),
+        None => String::new(),
+    };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         id: card.id,
@@ -1026,9 +1035,7 @@ async fn show(
             (Some(to), Some(at)) => format!("{to} · {}", dubai_text(at)),
             _ => String::new(),
         },
-        invoice: card
-            .invoice_id
-            .map_or_else(String::new, |id| format!("#{id}")),
+        invoice,
         labour,
         parts: parts_rows,
         net: money_text(totals.net()),
@@ -1691,8 +1698,10 @@ async fn finish(
     done(&lang, "jobs.work_finished")
 }
 
-/// The form of the QC checklist.
-#[derive(Deserialize, Serialize, Debug, Default)]
+/// The form of the QC checklist. It is read with `Valid`, which takes the
+/// ticked boxes of the checklist (`done=fluids&done=wheels`) as a list; the
+/// prelude's `Form` refuses them.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
 pub struct QcForm {
     /// The checks that were done.
     #[serde(default)]
@@ -1705,7 +1714,7 @@ async fn save_qc(
     user: AuthUser,
     lang: Lang,
     Path(id): Path<i64>,
-    Form(form): Form<QcForm>,
+    Valid(form): Valid<QcForm>,
 ) -> Result<Response> {
     job_cards::save_qc(&state, &user, id, &form.done).await?;
     done(&lang, "jobs.qc_saved")

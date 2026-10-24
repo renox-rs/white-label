@@ -4,7 +4,7 @@
 //!
 //! It is a list only on `/login`, with `APP_ENV=local`, and once `db:seed`
 //! made the people (`super::seed::PEOPLE`, and the staff of the demo companies,
-//! `super::demo_data::LOGINS` and the other verticals' `LOGINS` (the EdTech centre's and the Accounting firm's included), one per role); anywhere else it is `none`, so
+//! `super::demo_data::LOGINS` and the other verticals' `LOGINS` (the EdTech centre's, the Accounting firm's and the Auto workshop's included), one per role); anywhere else it is `none`, so
 //! a server in production never shows it, whatever its database holds.
 
 use renox::Environment;
@@ -132,6 +132,18 @@ pub async fn for_view(ctx: renox::view::ViewContext) -> Result<Option<Demo>> {
         }
     }
     for login in super::accounting_demo::LOGINS {
+        if User::find_by_email(&ctx.state.db, login.email)
+            .await?
+            .is_some()
+        {
+            accounts.push(Account {
+                name: login.name,
+                email: login.email,
+                label: login.label,
+            });
+        }
+    }
+    for login in super::auto_demo::LOGINS {
         if User::find_by_email(&ctx.state.db, login.email)
             .await?
             .is_some()

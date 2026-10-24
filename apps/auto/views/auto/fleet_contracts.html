@@ -11,7 +11,7 @@
                          :title="tx['fleet.new']" :description="tx['fleet.new_description']" :submit-label="tx['fleet.new']" icon="plus">
           <rx-select name="fleet" :label="tx['fleet.fleet']" :options="[]" :placeholder="tx['fleet.fleet_placeholder']" options-url="{{ route('auto.party_options') }}" id="fleet-new-fleet" required/>
           <rx-select name="contact" :label="tx['fleet.contact']" :options="[]" :placeholder="tx['fleet.contact_placeholder']" options-url="{{ route('auto.party_options') }}" id="fleet-new-contact"/>
-          <rx-input name="title" :label="tx['fleet.name']" id="fleet-new-title" required/>
+          <rx-input name="title" :label="tx['fleet.name']" id="fleet-new-name" required/>
           <rx-input name="start_date" type="date" :label="tx['fleet.start']" id="fleet-new-start" required/>
           <rx-input name="end_date" type="date" :label="tx['fleet.end']" :hint="tx['fleet.end_hint']" id="fleet-new-end" required/>
           <rx-input name="labour_rate" :label="tx['fleet.labour_rate']" :hint="tx['fleet.money_hint']" id="fleet-new-rate"/>
@@ -30,7 +30,7 @@
         <rx-button type="submit" :label="tx['fleet.show']" icon="search"/>
       </rx-toolbar>
     </form>
-    <rx-link-tabs :items="tabs" :current="tab_current" :label="tx['fleet.filter']"/>
+    <rx-link-tabs :items="status_tabs" :current="tab_current" :label="tx['fleet.filter']"/>
     <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['fleet.title']" card>
       <rx-column :label="tx['fleet.number']"><a href="{{ route('auto.fleet_contract', row.id) }}">{{ row.number }}</a></rx-column>
       <rx-column :label="tx['fleet.name']">{{ row.title }}</rx-column>

@@ -115,7 +115,7 @@
           <rx-action-sheet :id="'fleet-plan-add-' ~ id" :label="tx['fleet.plan_add']" :action="route('auto.fleet_plan_add', id)"
                            :title="tx['fleet.plan_add']" :description="tx['fleet.plan_add_description']" :submit-label="tx['fleet.plan_add']" icon="plus">
             <rx-select name="vehicle" :label="tx['fleet.vehicle']" :options="vehicle_options" :placeholder="tx['fleet.vehicle_placeholder']" :id="'fleet-plan-vehicle-' ~ id" required/>
-            <rx-input name="service" :label="tx['fleet.service']" :hint="tx['fleet.service_hint']" value="periodic_service" :id="'fleet-plan-service-' ~ id" required/>
+            <rx-select name="service" :label="tx['fleet.service']" :options="service_options" :selected="'periodic_service'" :id="'fleet-plan-service-' ~ id" required/>
             <rx-input name="interval_km" type="number" :label="tx['fleet.interval_km']" :id="'fleet-plan-km-' ~ id"/>
             <rx-input name="interval_months" type="number" :label="tx['fleet.interval_months']" :id="'fleet-plan-months-' ~ id"/>
             <rx-input name="last_date" type="date" :label="tx['fleet.last_date']" :id="'fleet-plan-last-date-' ~ id"/>

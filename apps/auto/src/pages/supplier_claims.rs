@@ -146,7 +146,7 @@ fn answer_text(lang: &Lang, answer: SupplierAnswer) -> String {
 pub(crate) struct IndexPage {
     tx: Texts,
     rows: Vec<ClaimRow>,
-    tabs: Vec<(String, String)>,
+    status_tabs: Vec<(String, String)>,
     tab_current: String,
     tab: String,
     q: String,
@@ -175,7 +175,7 @@ async fn index(
             status_kind: status_kind(claim.status),
         });
     }
-    let tabs = vec![
+    let status_tabs = vec![
         (filter.with_tab("").href(), text(&lang, "supplier.tab.all")),
         (
             filter.with_tab("raised").href(),
@@ -189,7 +189,7 @@ async fn index(
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         rows,
-        tabs,
+        status_tabs,
         tab_current: filter.href(),
         tab: filter.tab.clone(),
         q: filter.q.clone(),

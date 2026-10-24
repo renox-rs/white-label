@@ -38,7 +38,7 @@
         <rx-button type="submit" :label="tx['supplier.show']" icon="search"/>
       </rx-toolbar>
     </form>
-    <rx-link-tabs :items="tabs" :current="tab_current" :label="tx['supplier.filter']"/>
+    <rx-link-tabs :items="status_tabs" :current="tab_current" :label="tx['supplier.filter']"/>
     <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['supplier.title']" card>
       <rx-column :label="tx['supplier.number']"><a href="{{ route('auto.supplier_claim', row.id) }}">{{ row.number }}</a></rx-column>
       <rx-column :label="tx['supplier.ticket']" hide-narrow>{{ row.ticket }}</rx-column>

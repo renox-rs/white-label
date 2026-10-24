@@ -216,7 +216,7 @@ async fn insurer_options(state: &AppState, lang: &Lang) -> Result<Vec<[String; 2
 pub(crate) struct IndexPage {
     tx: Texts,
     rows: Vec<ClaimRow>,
-    tabs: Vec<(String, String)>,
+    status_tabs: Vec<(String, String)>,
     tab_current: String,
     tab: String,
     q: String,
@@ -252,7 +252,7 @@ async fn index(
             status_kind: status_kind(claim.status),
         });
     }
-    let tabs = vec![
+    let status_tabs = vec![
         (filter.with_tab("").href(), text(&lang, "claims.tab.all")),
         (
             filter.with_tab("open").href(),
@@ -270,7 +270,7 @@ async fn index(
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         rows,
-        tabs,
+        status_tabs,
         tab_current: filter.href(),
         tab: filter.tab.clone(),
         q: filter.q.clone(),

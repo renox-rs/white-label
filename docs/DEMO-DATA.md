@@ -1,6 +1,6 @@
 # Demo Data
 
-> Status: draft · Last updated: 2026-10-15
+> Status: draft · Last updated: 2026-10-24
 
 Each vertical ships one **demo company**: a fictional but realistic UAE business, with enough
 history that dashboards, reports and automations look alive the moment a prospect logs in.
@@ -276,6 +276,40 @@ realisation.
 **Must not appear.** Real client companies, real TRNs, real sanctions-list names (screening
 uses a fictional list).
 
+**Implemented as** `clients/demo-accounting/client.toml` and `host/src/app/accounting_demo/`
+(*Falcon Ledger Accountants LLC*, nine client companies; the story of the table above at a smaller
+size). `APP_ENV=local CLIENT_CONFIG=clients/demo-accounting/client.toml cargo run -p host --
+migrate`, then `-- accounting:demo` (or `-- db:seed`), then `-- serve`; the logins are on the login
+page, password `password123`. Every date is relative to today. Each client company has a UBO and a
+director, KYC documents on file (Desert Rose's trade licence expires in three weeks) and clear
+screenings on current lists; each engagement is onboarded through the app's own routes (the
+manager proposes it, the accountant records the tax profile and prepares the CDD file, the MLRO
+approves it, the letter is signed in the portal or recorded on paper, the manager activates it,
+which lays out the compliance calendar and starts the retainer).
+
+| Client | What it shows |
+|---|---|
+| Marina Bay Trading LLC | active; last quarter's return approved by the owner in the portal and filed, this quarter's with the client for approval; a published KPI pack; the owner and the finance contact in the portal; its request list received |
+| Desert Rose Interiors LLC | active; a return with the reviewer; last quarter's return filed and corrected by a voluntary disclosure; its CDD file due for review |
+| Oasis Fresh Foods LLC | active (monthly VAT); a return due in five days with the workpapers missing; a retainer invoice overdue; an AML concern closed with no action |
+| Al Waha General Trading FZE | high risk with enhanced due diligence; an AML concern under the MLRO's review; a re-screening possible match on its UBO; a return cancelled (the client files it) |
+| Palm Tech Solutions LLC | onboarding: the CDD file waiting for the MLRO, the letter out for signature |
+| Sand Dune Contracting LLC | suspended for non-payment: two invoices overdue, the deadline notice sent |
+| Coral Reef Restaurants LLC | ended at the client's request, nothing left to bill |
+| Pearl Fashion House LLC | declined: the letter was not signed |
+| Gulf Horizon Logistics LLC | active; a move to monthly VAT periods waiting for the partner; a KPI pack in draft |
+
+**Demo users:** partner, company admin, engagement manager, accountant, tax specialist, MLRO,
+billing admin, and in the portal Marina Bay's owner and finance contact and Desert Rose's owner (a
+client user's dashboard lists the return to approve, the letter to sign, the KPI packs and the
+portal sections of its company).
+
+**Screens.** `accounting:demo` ends by printing the screen map; the code is
+`host/src/app/accounting_demo/screens.rs` (`host::accounting_demo::screen_map`) and
+`host/tests/accounting_demo_screens.rs` opens every URL as its owner. The groups: **Start**,
+**Engagements** (each status, the tax profiles, the deadlines), **CDD and AML**, **Returns** (each
+status), **KPI packs**, **Money**, **People and documents** and the **client portal**.
+
 ---
 
 ## 05 — Clinics: *Shifa Family & Dental Clinics*
@@ -458,14 +492,49 @@ ready but not collected for 5 days.
 
 **Implemented as** `clients/demo-auto/client.toml` (a fictional Deira / Sharjah parts trader with a
 workshop; parties, documents, notify, invoicing, ticketing, payments, sales, hr, scheduling,
-inventory and portal) and the seeds of `host/src/app/auto_seed.rs`, `auto_settings.rs` and
-`auto_money.rs`: a fresh deployment starts with the workshop service types, the ticket categories,
-the document kinds (police accident report, claim documents, trade licence, fleet contract), the
-08 values for the shared modules (back-orders on the counter, phone and sales rep channels, the
-cheque, cash and stock limits, the loyalty programme, the onboarding checklists and the SOP
-library) and the two settings pages. **There is no demo company yet: the command `auto:demo` is
-future work and not built**, so the 10-minute script above is walked by hand on an empty
-deployment (the tests of `apps/auto` and `host/tests/auto_*.rs` hold the fixtures).
+inventory and portal), the seeds of `host/src/app/auto_seed.rs`, `auto_settings.rs` and
+`auto_money.rs` (the workshop service types, the ticket categories, the document kinds, the 08
+values for the shared modules and the two settings pages), and the demo company of
+`host/src/app/auto_demo/` (*Al Noor Auto Parts & Garage LLC*, one workshop in Al Quoz and the Deira
+counter; the story at a smaller size). `APP_ENV=local CLIENT_CONFIG=clients/demo-auto/client.toml
+cargo run -p host -- migrate`, then `-- auto:demo` (or `-- db:seed`), then `-- serve`; the logins
+are on the login page, password `password123`. Every date is relative to today. Each job card
+comes from a booking of the workshop's bay checked in through wl-scheduling's service, then goes
+through the app's own routes as the person who does it (intake, technician, inspection, labour from
+the menu, parts from the store, estimate, the customer's approval on the link, work, QC, delivery
+and its invoice); vehicles, the labour menu, insurers, claims, fleet contracts, counter sales,
+credit accounts, the export sale and the recall are made through their pages too; the parties,
+the opening stock and the accepted police reports are the modules' records.
+
+| Vehicle / customer | What it shows |
+|---|---|
+| Land Cruiser, Mona Hassan | 60,000 km service delivered and invoiced, parts taken from the store, the approval on the customer's link |
+| Patrol, Rashid Al Nuaimi | ready for collection |
+| Hilux, Gulf Build Contracting | in quality check; also on a fleet contract in draft |
+| Accord, Priya Raman | in progress: battery issued, diagnosis part done |
+| Pajero, Omar Siddiqui | waiting for an alternator on special order, with its expected day |
+| Camry, Fatima Al Zaabi | estimate with the customer |
+| Corolla, Joseph Fernandes | being inspected |
+| Altima, Ahmed Karim | just checked in |
+| Sunny, Ravi Kumar | the clutch estimate declined |
+| Fortuner, Sara Al Mansoori | insurance repair: police report accepted, claim approved by Gulf Shield line by line with the excess, body work running |
+| Tiida, Khalid Obaid | insurance repair: the estimate with Desert Falcon |
+| Two Hiace vans, Emirates Fleet Rentals | an active fleet contract with a service plan per van |
+| Quick Fix Garage LLC | a B2B credit account with an invoice overdue |
+| Afri Motors Export FZE | a zero-rated export waiting for its exit evidence |
+| The Toyota brake pads | the supplier's recall, traced to the Land Cruiser that had a set fitted |
+
+Three walk-in sales at the counter (cash and card) and the opening stock of both stores (some parts
+below their reorder point) complete it. **Demo users:** owner, company admin, branch manager,
+service advisor, workshop manager, two technicians, counter sales, storekeeper, purchaser,
+accountant, insurance coordinator, fleet account manager.
+
+**Screens.** `auto:demo` ends by printing the screen map; the code is
+`host/src/app/auto_demo/screens.rs` (`host::auto_demo::screen_map`) and
+`host/tests/auto_demo_screens.rs` opens every URL as its owner. The groups: **Start**, **Workshop**
+(job cards in every status, the estimate sheet, the technician's list, the labour menu, the
+bookings), **Vehicles**, **Insurance** (claims, insurers), **Fleet**, **Parts and sales** (stock,
+counter sales, credit accounts, export sales, the recall, supplier claims), **Money** and **People**.
 
 ---
 
