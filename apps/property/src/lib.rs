@@ -35,6 +35,7 @@ pub mod notices;
 pub mod pages;
 pub mod parse;
 pub mod permissions;
+pub mod portal;
 pub mod renew;
 pub mod renewal;
 pub mod scope_members;
