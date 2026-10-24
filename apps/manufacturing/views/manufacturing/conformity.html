@@ -1,11 +1,12 @@
 {#- manufacturing: the items that need a conformity certificate or are export
-    only, with the certificates on file. Replace it with
+    only, a renox::grid (the item frozen, the three flags, the certificate
+    kinds that count and the certificates on file; filtered on the flags,
+    searched by the item's number) that fills the screen, and the sheet that
+    flags an item. Replace it with
     resources/views/manufacturing/conformity.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['conformity.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['conformity.title']" :subtitle="tx['conformity.subtitle']"/>
-    <rx-form-errors/>
-    <rx-row rx-if="can_flag">
+  <rx-page-header :title="tx['conformity.title']" :subtitle="tx['conformity.subtitle']">
+    <template rx-if="can_flag">
       <rx-action-sheet id="flag-item" :label="tx['conformity.new']" :action="route('manufacturing.conformity_flag')"
                        :title="tx['conformity.new']" :description="tx['conformity.new_hint']" :submit-label="tx['conformity.new_save']" variant="primary" icon="plus">
         <rx-input name="code" type="text" :label="tx['conformity.code']" :hint="tx['conformity.code_hint']" id="flag-item-code" required/>
@@ -14,26 +15,16 @@
         <rx-checkbox name="customer_specific" value="1" :label="tx['conformity.customer_specific']" :hint="tx['conformity.customer_specific_hint']" id="flag-item-customer"/>
         <rx-checkbox rx-for="kind in kinds" name="kind" :value="kind[0]" :label="kind[1]" :id="'flag-item-kind-' ~ kind[0]"/>
       </rx-action-sheet>
-    </rx-row>
-    <rx-table :rows="rows" as="row" :key="row.item" :caption="tx['conformity.title']" card>
-      <rx-column :label="tx['conformity.item']">
-        <rx-stack>
-          <span>{{ row.item }}</span>
-          <span class="rx-subtitle">{{ row.accepted }}</span>
-        </rx-stack>
-      </rx-column>
-      <rx-column :label="tx['conformity.regulated']">{{ row.regulated }}</rx-column>
-      <rx-column :label="tx['conformity.export_only']">{{ row.export_only }}</rx-column>
-      <rx-column :label="tx['conformity.customer_specific']" hide-narrow>{{ row.customer_specific }}</rx-column>
-      <rx-column :label="tx['conformity.certificates']" hide-narrow>
-        <rx-stack>
-          <span rx-for="certificate in row.certificates">
-            {{ certificate.kind }} {{ certificate.number }} - {{ certificate.valid_to }}
-            <rx-badge :kind="certificate.validity_kind" :text="certificate.validity"/>
-          </span>
-        </rx-stack>
-      </rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['conformity.empty']" :message="tx['conformity.empty_text']" icon="shield-check"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+    </template>
+  </rx-page-header>
+  <rx-grid :page="flags">
+    <template rx-if="column.key == 'item'">{{ row.item }}</template>
+    <template rx-elif="column.key == 'accepted'">{{ row.accepted }}</template>
+    <template rx-elif="column.key == 'certificates'">
+      <span rx-for="certificate in row.certificates">
+        {{ certificate.kind }} {{ certificate.number }} - {{ certificate.valid_to }}
+        <rx-badge :kind="certificate.validity_kind" :text="certificate.validity"/>
+      </span>
+    </template>
+  </rx-grid>
 </rx-page>

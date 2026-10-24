@@ -1,9 +1,12 @@
-{#- manufacturing: the recalls, each linking to its customers. Replace it with
+{#- manufacturing: the recalls, each linking to its customers. The rows come
+    from the lot-trace contract (the recall records are wl-inventory's), so
+    there is no model of the app to page as a renox::grid: the table fills the
+    screen in one panel instead. Replace it with
     resources/views/manufacturing/recalls.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['recalls.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['recalls.title']" :subtitle="tx['recalls.subtitle']"/>
-    <rx-table :rows="rows" as="recall" :key="recall.number" :caption="tx['recalls.title']" card>
+  <rx-page-header :title="tx['recalls.title']" :subtitle="tx['recalls.subtitle']"/>
+  <section class="rx-pane rx-fill">
+    <rx-table :rows="rows" as="recall" :key="recall.number" :caption="tx['recalls.title']">
       <rx-column :label="tx['recalls.recall']">
         <rx-stack>
           <span><a href="{{ recall.url }}">{{ recall.number }}</a></span>
@@ -14,5 +17,5 @@
       <rx-column :label="tx['recalls.opened']" hide-narrow>{{ recall.opened }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['recalls.empty']" :message="tx['recalls.empty_text']" icon="triangle-alert"/></rx-slot>
     </rx-table>
-  </rx-stack>
+  </section>
 </rx-page>

@@ -1,34 +1,23 @@
 {#- manufacturing: the zero-rated export dispatches and the evidence of their
-    exit (BL-MFG-12). Replace it with resources/views/manufacturing/exports.html
-    in the app. -#}
+    exit (BL-MFG-12), a renox::grid (the dispatch frozen, the customer, the
+    day it left and the days since, the invoices, where it stands, the link
+    that attaches the evidence and the contract note; searched by dispatch and
+    invoice, oldest first) that fills the screen. Replace it with
+    resources/views/manufacturing/exports.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['exports.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['exports.title']" :subtitle="tx['exports.subtitle']"/>
-    <rx-form-errors/>
-    <rx-table :rows="rows" as="row" :key="row.dispatch" :caption="tx['exports.title']" card>
-      <rx-column :label="tx['exports.dispatch']">
-        <rx-stack>
-          <span><a href="{{ row.dispatch_url }}">{{ row.dispatch }}</a> - {{ row.customer }}</span>
-          <span class="rx-subtitle">{{ row.invoices }}</span>
-          <span><rx-badge :kind="row.state_kind" :text="row.state"/></span>
-        </rx-stack>
-      </rx-column>
-      <rx-column :label="tx['exports.left']" hide-narrow>{{ row.left }}</rx-column>
-      <rx-column :label="tx['exports.days']" align="num">{{ row.days }}</rx-column>
-      <rx-column :label="tx['exports.evidence']">
-        <rx-link-button :href="row.evidence_url" :label="tx['exports.attach']"/>
-      </rx-column>
-      <rx-column :label="tx['exports.note']" hide-narrow>
-        <rx-stack>
-          <span>{{ row.note }}</span>
-          <rx-action-sheet :id="'note-' ~ row.party_id ~ '-' ~ row.dispatch" :label="tx['exports.note_edit']" :action="route('manufacturing.exports_note')"
-                           :title="tx['exports.note_edit']" :description="tx['exports.note_hint']" :submit-label="tx['exports.note_save']" variant="secondary" icon="pencil">
-            <input type="hidden" name="party_id" :value="row.party_id"/>
-            <rx-textarea name="note" :label="tx['exports.note']" :id="'note-text-' ~ row.party_id ~ '-' ~ row.dispatch"/>
-          </rx-action-sheet>
-        </rx-stack>
-      </rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['exports.empty']" :message="tx['exports.empty_text']" icon="truck"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['exports.title']" :subtitle="tx['exports.subtitle']"/>
+  <rx-grid :page="watches">
+    <template rx-if="column.key == 'customer'">{{ row.customer }}</template>
+    <template rx-elif="column.key == 'days'">{{ row.days }}</template>
+    <template rx-elif="column.key == 'evidence'"><rx-link-button :href="row.evidence_url" :label="tx['exports.attach']" size="small"/></template>
+    <template rx-elif="column.key == 'note'">
+      <span>{{ row.note }}</span>
+      <rx-open-button rx-if="row.party_id" :id="'note-' ~ row.party_id" :label="tx['exports.note_edit']" size="small" icon="pencil"/>
+    </template>
+  </rx-grid>
+  <rx-action-sheet rx-for="note in notes" :button="false" :id="'note-' ~ note[0]" :label="tx['exports.note_edit']" :action="route('manufacturing.exports_note')"
+                   :title="tx['exports.note_edit']" :description="tx['exports.note_hint']" :submit-label="tx['exports.note_save']" icon="pencil">
+    <input type="hidden" name="party_id" :value="note[0]"/>
+    <rx-textarea name="note" :label="tx['exports.note']" :value="note[1]" :id="'note-text-' ~ note[0]"/>
+  </rx-action-sheet>
 </rx-page>

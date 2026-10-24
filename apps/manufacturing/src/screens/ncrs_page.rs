@@ -1,17 +1,24 @@
 //! The NCR list (`GET /manufacturing/ncrs`, `docs/UX.md` §2.1) and its
 //! *Raise an NCR* sheet.
 //!
-//! The list shows the non-conformance reports of the plants the person works
-//! for: the number, the item and lot, the quantity, the cause, the
-//! disposition and the status. The status filter is `?status=<key>` (`active`
-//! is every NCR that is not closed or cancelled).
+//! The list is a `renox::grid` of the non-conformance reports of the plants
+//! the person works for: the number, the item and lot, the status, the
+//! quantity, the cause, the disposition and the day it was raised; searched
+//! by number, lot and defect, filtered by cause, disposition, status and
+//! dates. A `?status=<key>` link (`active` is every NCR that is not closed
+//! or cancelled) narrows the rows to those states under the grid's own
+//! filters; JSON keeps answering the rows in words, filtered the same way.
+
+use std::collections::HashMap;
 
 use renox::axum::http::HeaderMap;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::{Value, json};
 use serde::{Deserialize, Serialize};
 
-use super::{Texts, date_text, options, quantity_text};
-use crate::ncr::{Cause, Ncr, NcrStatus};
+use super::{Texts, date_text, grids, options, quantity_text};
+use crate::ncr::{Cause, Disposition, Ncr, NcrStatus};
 use crate::permissions;
 use crate::plant::Plant;
 use crate::texts::{screen_texts, t, tf, word};
@@ -67,29 +74,87 @@ pub(crate) struct NewForm {
 #[view(template = "manufacturing/ncrs.html")]
 pub(crate) struct NcrsPage {
     tx: Texts,
-    rows: Vec<Row>,
-    status_tabs: Vec<(String, String)>,
-    status_current: String,
+    ncrs: GridPage<Ncr>,
     can_raise: bool,
     form: NewForm,
 }
 
-/// The status tabs: all, those still to work on and each state.
-fn tabs(lang: &Lang) -> Vec<(String, String)> {
-    let mut tabs = vec![
-        (URL.to_owned(), t(lang, "manufacturing.screen.filter.all")),
-        (
-            format!("{URL}?status=active"),
-            t(lang, "manufacturing.screen.filter.open"),
-        ),
-    ];
-    for status in ["open", "dispositioned", "closed", "cancelled"] {
-        tabs.push((
-            format!("{URL}?status={status}"),
-            word(lang, "ncr_status", status),
-        ));
+/// The NCRs grid: the number first and frozen, the item, the lot, the status
+/// in words, the quantity, the cause, the disposition, the day it was raised
+/// and the defect (hidden); newest first.
+pub(crate) fn grid(lang: &Lang) -> Grid {
+    let text = |key: &str| t(lang, &format!("manufacturing.screen.{key}"));
+    let statuses: Vec<(String, String)> = NcrStatus::ALL
+        .iter()
+        .map(|status| (status.as_str().to_owned(), word(lang, "ncr_status", status.as_str())))
+        .collect();
+    let tones: Vec<(&str, &str)> = NcrStatus::ALL
+        .iter()
+        .map(|status| (status.as_str(), grids::tone(status_kind(*status))))
+        .collect();
+    let causes: Vec<(String, String)> = Cause::ALL
+        .iter()
+        .map(|cause| (cause.as_str().to_owned(), word(lang, "cause", cause.as_str())))
+        .collect();
+    let dispositions: Vec<(String, String)> = Disposition::ALL
+        .iter()
+        .map(|d| (d.as_str().to_owned(), word(lang, "disposition", d.as_str())))
+        .collect();
+    grids::baseline(Grid::new("manufacturing-ncrs"))
+        .title(&text("ncrs.title"))
+        .column(
+            Column::text("number", &text("ncrs.ncr"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link(&format!("{URL}/{{id}}")),
+        )
+        .column(Column::custom("item", &text("grid.item")).mobile())
+        .column(Column::custom("lot", &text("grid.lot")))
+        .column(
+            Column::select("status", &text("grid.status"), statuses)
+                .badges(&tones)
+                .mobile(),
+        )
+        .column(
+            Column::quantity("quantity_milli", &text("ncrs.quantity"))
+                .scale(3)
+                .mobile(),
+        )
+        .column(Column::select("cause", &text("ncrs.cause"), causes))
+        .column(Column::select(
+            "disposition",
+            &text("ncrs.disposition"),
+            dispositions,
+        ))
+        .column(Column::date("raised_on", &text("ncrs.raised")))
+        .column(
+            Column::text("lot_number", &text("grid.lot_number"))
+                .searchable()
+                .hidden(),
+        )
+        .column(
+            Column::text("defect", &text("ncrs.form.defect"))
+                .searchable()
+                .hidden(),
+        )
+        .sort_by("-id")
+        .row_url(&format!("{URL}/{{id}}"))
+        .empty_state(&text("ncrs.empty"), Some(&text("ncrs.empty_text")))
+}
+
+/// The states a `?status=<key>` link names: `active` is every NCR still
+/// to work on; nothing for no filter.
+fn linked_statuses(key: &str) -> Vec<&'static str> {
+    match key {
+        "" => Vec::new(),
+        "active" => vec![NcrStatus::Open.as_str(), NcrStatus::Dispositioned.as_str()],
+        key => NcrStatus::ALL
+            .iter()
+            .map(|status| status.as_str())
+            .filter(|status| *status == key)
+            .collect(),
     }
-    tabs
 }
 
 /// Whether `user` may see anything of NCRs in `ncr`'s plant.
@@ -124,47 +189,22 @@ pub(crate) async fn lot_text(state: &AppState, lang: &Lang, ncr: &Ncr) -> String
     }
 }
 
-/// `GET /manufacturing/ncrs`: the page for a browser, JSON otherwise.
+/// `GET /manufacturing/ncrs`: the grid for a browser, JSON otherwise.
 pub(crate) async fn show(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     headers: HeaderMap,
     Query(filter): Query<ListFilter>,
+    request: GridRequest,
 ) -> Result<Response> {
-    let mut rows = Vec::new();
-    let mut any = false;
+    let mut visible = Vec::new();
     for ncr in Ncr::query().order_by_desc(Ncr::ID).get(&state.db).await? {
-        if !may_see(&user, &ncr) {
-            continue;
+        if may_see(&user, &ncr) {
+            visible.push(ncr);
         }
-        any = true;
-        let wanted = match filter.status.as_str() {
-            "" => true,
-            "active" => matches!(ncr.status, NcrStatus::Open | NcrStatus::Dispositioned),
-            key => ncr.status.as_str() == key,
-        };
-        if !wanted {
-            continue;
-        }
-        rows.push(Row {
-            id: ncr.id,
-            url: super::ncr_page::url(ncr.id),
-            number: ncr.number.clone(),
-            item: item_text(&state, &lang, ncr.item_id).await,
-            lot: lot_text(&state, &lang, &ncr).await,
-            quantity: quantity_text(ncr.quantity_milli),
-            cause: word(&lang, "cause", ncr.cause.as_str()),
-            disposition: ncr.disposition.map_or_else(
-                || t(&lang, "manufacturing.screen.not_set"),
-                |d| word(&lang, "disposition", d.as_str()),
-            ),
-            raised: date_text(ncr.raised_on),
-            status: word(&lang, "ncr_status", ncr.status.as_str()),
-            status_kind: status_kind(ncr.status),
-        });
     }
-    if !any
+    if visible.is_empty()
         && !user.has_permission_anywhere(permissions::NCRS_VIEW)
         && !user.has_permission_anywhere(permissions::NCRS_RAISE)
         && !user.has_permission_anywhere(permissions::NCRS_DISPOSITION)
@@ -172,8 +212,43 @@ pub(crate) async fn show(
         return Err(Error::Forbidden);
     }
     if !wl_kernel::negotiate::wants_html(&headers) {
+        let mut rows = Vec::new();
+        for ncr in &visible {
+            let wanted = match filter.status.as_str() {
+                "" => true,
+                "active" => matches!(ncr.status, NcrStatus::Open | NcrStatus::Dispositioned),
+                key => ncr.status.as_str() == key,
+            };
+            if wanted {
+                rows.push(row(&state, &lang, ncr).await);
+            }
+        }
         return Ok(Json(&rows).into_response());
     }
+    // QC and the people who decide the NCRs may export the list (no supplier
+    // or cost is in it).
+    let can_export = user.has_permission_anywhere(permissions::NCRS_VIEW)
+        || user.has_permission_anywhere(permissions::NCRS_DISPOSITION);
+    let grid = grids::exporting(grid(&lang), can_export);
+    let mut query = Ncr::query().where_in("id", visible.iter().map(|ncr| ncr.id));
+    if !filter.status.is_empty() {
+        query = query.where_in("status", linked_statuses(&filter.status));
+    }
+    if let Some(file) = grids::export_file(&grid, can_export, query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut extra: HashMap<i64, Value> = HashMap::new();
+    for ncr in page.items() {
+        extra.insert(
+            ncr.id,
+            json!({
+                "item": item_text(&state, &lang, ncr.item_id).await,
+                "lot": lot_text(&state, &lang, ncr).await,
+            }),
+        );
+    }
+    let ncrs = page.extend(|ncr| extra.get(&ncr.id).cloned().unwrap_or(Value::Null));
     let mut form = NewForm {
         causes: options(
             &lang,
@@ -202,17 +277,31 @@ pub(crate) async fn show(
     }
     form.plant_selected = form.plants.first().map(|p| p.0.clone()).unwrap_or_default();
     form.cause_selected = String::new();
-    let current = match filter.status.as_str() {
-        "" => URL.to_owned(),
-        key => format!("{URL}?status={key}"),
-    };
     let page = NcrsPage {
         tx: screen_texts(&lang),
-        rows,
-        status_tabs: tabs(&lang),
-        status_current: current,
+        ncrs,
         can_raise,
         form,
     };
     Ok(View::typed(page).into_response())
+}
+
+/// An NCR in words, for the JSON answer.
+async fn row(state: &AppState, lang: &Lang, ncr: &Ncr) -> Row {
+    Row {
+        id: ncr.id,
+        url: super::ncr_page::url(ncr.id),
+        number: ncr.number.clone(),
+        item: item_text(state, lang, ncr.item_id).await,
+        lot: lot_text(state, lang, ncr).await,
+        quantity: quantity_text(ncr.quantity_milli),
+        cause: word(lang, "cause", ncr.cause.as_str()),
+        disposition: ncr.disposition.map_or_else(
+            || t(lang, "manufacturing.screen.not_set"),
+            |d| word(lang, "disposition", d.as_str()),
+        ),
+        raised: date_text(ncr.raised_on),
+        status: word(lang, "ncr_status", ncr.status.as_str()),
+        status_kind: status_kind(ncr.status),
+    }
 }

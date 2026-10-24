@@ -1648,6 +1648,26 @@ const TEXTS: &[(&str, &str)] = &[
         "The purchase orders you send appear here.",
     ),
     ("manufacturing.screen.po.done", "The PO was sent."),
+    // The column labels of the list grids (#556).
+    ("manufacturing.screen.grid.item", "Item"),
+    ("manufacturing.screen.grid.item_number", "Item number"),
+    ("manufacturing.screen.grid.status", "Status"),
+    ("manufacturing.screen.grid.made", "Made"),
+    ("manufacturing.screen.grid.planned_quantity", "Planned quantity"),
+    ("manufacturing.screen.grid.planned_start", "Planned start"),
+    ("manufacturing.screen.grid.planned_end", "Planned end"),
+    ("manufacturing.screen.grid.source", "Source"),
+    ("manufacturing.screen.grid.lot", "Lot"),
+    ("manufacturing.screen.grid.lot_number", "Lot number"),
+    ("manufacturing.screen.grid.customer", "Customer"),
+    ("manufacturing.screen.grid.ended", "How it ended"),
+    ("manufacturing.screen.grid.invoices", "Invoices"),
+    ("manufacturing.screen.grid.accepted", "Certificates that count"),
+    ("manufacturing.screen.grid.reason", "Reason"),
+    ("manufacturing.screen.grid.scrap", "Scrap value"),
+    ("manufacturing.screen.grid.came_back", "Came back"),
+    ("manufacturing.screen.grid.decided_at", "Decided at"),
+    ("manufacturing.screen.grid.details", "Details"),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

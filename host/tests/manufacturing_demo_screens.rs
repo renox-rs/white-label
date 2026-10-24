@@ -227,13 +227,15 @@ async fn every_screen_of_the_map_opens_for_its_owner_in_words() {
             }
         }
         // The pages of the vertical keep every table in the kit's wrapper;
-        // the shared grids (invoices, stock) are the platform's.
+        // the grids (the lists since #556, invoices, stock) are the
+        // platform's and scroll by themselves.
         if screen.url.contains("/manufacturing/") || screen.url.contains("/portal") {
             unique_ids(&html, &screen.url);
         }
         if screen.url.contains("/manufacturing/") {
             assert_eq!(
-                html.matches("<table").count(),
+                html.matches("<table").count()
+                    - html.matches("<table class=\"rx-grid__table\"").count(),
                 html.matches("rx-table-wrap").count(),
                 "{}: every table scrolls inside its own box",
                 screen.url

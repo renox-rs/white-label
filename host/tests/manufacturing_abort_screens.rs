@@ -181,10 +181,12 @@ async fn an_abort_posts_the_real_movements_and_the_page_shows_the_outcome() {
     report.assert_see("wrong BOM");
     report.assert_see("Amal");
     report.assert_see("Mona");
-    report.assert_see("Loss:");
+    // The loss is a column of the grid (#556), in dirhams for who may see
+    // costs and empty for the others.
+    report.assert_see("AED ");
     let planner_report = browse(&app, &planner, "/manufacturing/aborted").await;
     planner_report.assert_see(&done.number);
-    planner_report.assert_dont_see("Loss:");
+    planner_report.assert_dont_see("AED ");
     let for_planner = browse(&app, &planner, &format!("/manufacturing/work-orders/{id}")).await;
     for_planner.assert_see("wrong BOM");
     for_planner.assert_dont_see("Loss");

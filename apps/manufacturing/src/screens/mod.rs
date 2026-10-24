@@ -13,12 +13,15 @@
 //!   words inside the sheet that sent the form.
 //! - **An action** is an [`Act`]: hidden when the person may not run it, a
 //!   disabled button with the reason when a guard fails now, else a sheet.
-//! - **On a phone (390 px)** the pages are a stack of cards and tables inside
-//!   `rx-table` wrappers; the columns that do not fit are `hide-narrow`.
+//! - **A list is a `renox::grid`** ([`grids`]): search, sort, filters, pages,
+//!   column choice and export, filling the screen on a desktop (the grid is a
+//!   direct child of `<rx-page>`) and one card a row on a phone. The record
+//!   pages keep their small `rx-table`s of lines.
 
 pub(crate) mod aborted_page;
 pub(crate) mod conformity_page;
 pub(crate) mod exports_page;
+pub(crate) mod grids;
 pub(crate) mod inspections_page;
 pub(crate) mod names;
 pub(crate) mod ncr_page;

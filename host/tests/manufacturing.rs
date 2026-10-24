@@ -104,7 +104,8 @@ async fn the_list_opens_for_the_roles_of_the_plant_and_not_for_others() {
         page.assert_ok();
         page.assert_see("Work orders");
         page.assert_see("WO-HOST-1");
-        page.assert_see("rx-table-wrap");
+        // The list is the standard grid (#556), which holds on a phone.
+        page.assert_see("rx-grid");
     }
     // The sidebar links the list for the admin.
     browse(&app, &admin, "/manufacturing/work-orders")
