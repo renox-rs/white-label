@@ -24,7 +24,11 @@
 //! free seats. The transitions are the machine's: the pages only read the
 //! form and call [`crate::enrolments`].
 
+use std::collections::BTreeMap;
+
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::approvals::{self, ApprovalCard};
@@ -118,25 +122,160 @@ async fn subject_text(state: &AppState, enrolment: &Enrolment) -> String {
     enrolment.item_name.clone().unwrap_or_default()
 }
 
-/// One enrolment of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct EnrolmentRow {
-    /// The primary key.
-    pub id: i64,
-    /// `ENR-0007`.
-    pub number: String,
-    /// The student's name.
-    pub student: String,
-    /// Course, package or membership.
-    pub kind: String,
-    /// The batch or the item.
-    pub subject: String,
-    /// The fee after the discount, `AED 2,520.00`.
-    pub fee: String,
-    /// The status.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
+/// The kinds of enrolment, for the filter and the form.
+const KINDS: [EnrolmentKind; 3] = [
+    EnrolmentKind::Course,
+    EnrolmentKind::Package,
+    EnrolmentKind::Membership,
+];
+
+/// The enrolments grid: search on the number, the item and (through
+/// `party_match`) the student and the guardian, filters by kind, batch and
+/// status, sums of the fees, and the export for who enrols. The names, the
+/// subject and the status badge are drawn by the template (`custom`).
+///
+/// `party_match` is an SQL expression that is the searched text for the
+/// enrolments whose student or guardian the directory found by that text, else
+/// empty (the names are in the parties module, not in this table).
+pub(crate) fn grid(lang: &Lang, batches: &[Batch], party_match: &str, can_export: bool) -> Grid {
+    let kinds: Vec<(String, String)> = KINDS
+        .into_iter()
+        .map(|kind| (kind.as_str().to_owned(), kind_text(lang, kind)))
+        .collect();
+    let statuses: Vec<(String, String)> = [
+        EnrolmentStatus::PendingPayment,
+        EnrolmentStatus::Active,
+        EnrolmentStatus::Frozen,
+        EnrolmentStatus::Completed,
+        EnrolmentStatus::Withdrawn,
+        EnrolmentStatus::Transferred,
+        EnrolmentStatus::Lapsed,
+    ]
+    .into_iter()
+    .map(|status| (status.as_str().to_owned(), status_text(lang, status)))
+    .collect();
+    let batch_options: Vec<(String, String)> = batches
+        .iter()
+        .map(|b| (b.id.to_string(), b.number()))
+        .collect();
+    let grid = Grid::new("edtech-enrolments")
+        .title(&text(lang, "enrolments.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &text(lang, "enrolments.number"))
+                .computed(
+                    "'ENR-' || CASE WHEN {T}.\"id\" < 10 THEN '000' WHEN {T}.\"id\" < 100 THEN '00' \
+                     WHEN {T}.\"id\" < 1000 THEN '0' ELSE '' END || CAST({T}.\"id\" AS TEXT)",
+                )
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/edtech/enrolments/{id}"),
+        )
+        .column(Column::custom("student", &text(lang, "enrolments.student")).mobile())
+        .column(Column::custom("guardian", &text(lang, "enrolments.guardian")).hidden())
+        .column(
+            Column::text("party_match", &text(lang, "enrolments.student"))
+                .computed(party_match)
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
+        )
+        .column(Column::select("kind", &text(lang, "enrolments.kind"), kinds))
+        .column(Column::custom("subject", &text(lang, "enrolments.subject")).mobile())
+        .column(
+            Column::select("batch_id", &text(lang, "enrolments.batch"), batch_options).hidden(),
+        )
+        .column(
+            Column::text("item_name", &text(lang, "enrolments.item_name"))
+                .hidden()
+                .searchable(),
+        )
+        .column(
+            Column::money("fee", &text(lang, "enrolments.fee"))
+                .computed(
+                    "CASE WHEN {T}.\"price\" > {T}.\"discount\" \
+                     THEN {T}.\"price\" - {T}.\"discount\" ELSE 0 END",
+                )
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("price", &text(lang, "enrolments.price"))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("discount", &text(lang, "enrolments.discount"))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::select("status", &text(lang, "fields.status"), statuses)
+                .badges(&[
+                    ("pending_payment", "warning"),
+                    ("active", "success"),
+                    ("completed", "success"),
+                    ("frozen", "info"),
+                    ("withdrawn", "info"),
+                    ("transferred", "info"),
+                    ("lapsed", "info"),
+                ])
+                .mobile(),
+        )
+        .sort_by("-id")
+        .row_url("/edtech/enrolments/{id}")
+        .cards_on_mobile()
+        .empty_state(&text(lang, "enrolments.empty"), None);
+    if can_export { grid.exports() } else { grid }
+}
+
+/// The search text of the grid as the request has it: the query string's, or
+/// the one the session remembers for a fresh visit (`Grid::remember`).
+fn searched(request: &GridRequest, session: &Session) -> Option<String> {
+    let remembered: Option<Vec<(String, String)>> = session.get("_grid_q.edtech-enrolments");
+    let params = match (request.param("state"), remembered) {
+        (None, Some(saved)) => saved,
+        _ => request
+            .param("search")
+            .map(|v| vec![("search".to_owned(), v.to_owned())])
+            .unwrap_or_default(),
+    };
+    params
+        .into_iter()
+        .find(|(name, _)| name == "search")
+        .map(|(_, value)| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+}
+
+/// The SQL of the `party_match` column for the search `term`: the text itself
+/// for the enrolments of the parties the directory found by it, else empty.
+async fn party_match(state: &AppState, term: Option<&str>) -> String {
+    let Some(term) = term else {
+        return "''".to_owned();
+    };
+    let found = directory(state)
+        .search(&state.db, term, 50)
+        .await
+        .unwrap_or_default();
+    if found.is_empty() {
+        return "''".to_owned();
+    }
+    let ids: Vec<String> = found.iter().map(|party| party.id.0.to_string()).collect();
+    let ids = ids.join(", ");
+    // The term goes in as a quoted literal: no quote and no placeholder in it.
+    let literal: String = term
+        .chars()
+        .filter(|c| !matches!(c, '\'' | '?' | '\\'))
+        .take(200)
+        .collect();
+    format!(
+        "CASE WHEN {{T}}.\"student_party_id\" IN ({ids}) OR {{T}}.\"guardian_party_id\" IN ({ids}) \
+         THEN '{literal}' ELSE '' END"
+    )
 }
 
 /// What the list page needs.
@@ -144,7 +283,7 @@ pub struct EnrolmentRow {
 #[view(template = "edtech/enrolments.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    enrolments: Vec<EnrolmentRow>,
+    enrolments: GridPage<Enrolment>,
     kind_options: Vec<[String; 2]>,
     batch_options: Vec<[String; 2]>,
     batch_selected: String,
@@ -152,31 +291,65 @@ pub(crate) struct IndexPage {
     integration_banner: Option<renox::serde_json::Value>,
 }
 
-/// `GET /edtech/enrolments`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+/// `GET /edtech/enrolments`, or its export (`?export=`, with
+/// `enrolments.manage`).
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    session: Session,
+    request: GridRequest,
+) -> Result<Response> {
     require(&user, permissions::ENROLMENTS_VIEW)?;
-    let all = Enrolment::query()
-        .order_by_desc(Enrolment::ID)
-        .get(&state.db)
-        .await?;
-    let mut rows = Vec::new();
-    for e in &all {
-        rows.push(EnrolmentRow {
-            id: e.id,
-            number: e.number(),
-            student: party_name(&state, &lang.locale, e.student_party_id).await,
-            kind: kind_text(&lang, e.kind),
-            subject: subject_text(&state, e).await,
-            fee: money_text(e.fee()),
-            status: status_text(&lang, e.status),
-            status_kind: status_kind(e.status),
-        });
+    let batches = Batch::query().order_by(Batch::ID).get(&state.db).await?;
+    let term = searched(&request, &session);
+    let can_export = user.has_permission(permissions::ENROLMENTS_MANAGE);
+    let grid = grid(
+        &lang,
+        &batches,
+        &party_match(&state, term.as_deref()).await,
+        can_export,
+    );
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
     }
-    let open = Batch::query()
-        .where_(Batch::STATUS.eq(BatchStatus::Open))
-        .order_by(Batch::ID)
-        .get(&state.db)
-        .await?;
+    let query = Enrolment::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    // The names of the people on this page, from the parties module.
+    let mut names: BTreeMap<i64, String> = BTreeMap::new();
+    for e in page.items() {
+        for id in [Some(e.student_party_id), e.guardian_party_id]
+            .into_iter()
+            .flatten()
+        {
+            if let std::collections::btree_map::Entry::Vacant(slot) = names.entry(id) {
+                slot.insert(party_name(&state, &lang.locale, id).await);
+            }
+        }
+    }
+    let page = page.extend(|e| {
+        let subject = e
+            .batch_id
+            .and_then(|id| batches.iter().find(|b| b.id == id))
+            .map(Batch::number)
+            .or_else(|| e.item_name.clone())
+            .unwrap_or_default();
+        json!({
+            "student": names.get(&e.student_party_id).cloned().unwrap_or_default(),
+            "guardian": e
+                .guardian_party_id
+                .and_then(|id| names.get(&id).cloned())
+                .unwrap_or_default(),
+            "subject": subject,
+        })
+    });
+    let open: Vec<&Batch> = batches
+        .iter()
+        .filter(|b| b.status == BatchStatus::Open)
+        .collect();
     let batch_options = open_batch_options(&state, &lang, None, false).await?;
     // The first batch that still has a seat, not a full one.
     let batch_selected = open
@@ -185,23 +358,20 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .or_else(|| open.first())
         .map(|b| b.id.to_string())
         .unwrap_or_default();
-    let kind_options = [
-        EnrolmentKind::Course,
-        EnrolmentKind::Package,
-        EnrolmentKind::Membership,
-    ]
-    .into_iter()
-    .map(|kind| [kind.as_str().to_owned(), kind_text(&lang, kind)])
-    .collect();
+    let kind_options = KINDS
+        .into_iter()
+        .map(|kind| [kind.as_str().to_owned(), kind_text(&lang, kind)])
+        .collect();
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        enrolments: rows,
+        enrolments: page,
         kind_options,
         batch_options,
         batch_selected,
         can_manage: user.has_permission(permissions::ENROLMENTS_MANAGE),
         integration_banner: banner_for(&state.db, defaults::DESK_SCREEN, &lang).await?,
-    }))
+    })
+    .into_response())
 }
 
 /// The open batches as options, `[id, "BAT-0012 · course · 3 seats free"]`;

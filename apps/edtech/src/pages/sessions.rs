@@ -20,15 +20,17 @@
 use std::collections::BTreeMap;
 
 use renox::db::now;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
 use wl_kernel::integrations::web::banner_for;
-use wl_kernel::scheduling::ResourceChoiceKind;
+use wl_kernel::scheduling::{ResourceChoice, ResourceChoiceKind};
 
 use super::{
     Names, Texts, invalid, names_of, parse_date, parse_local_time, parse_number, require,
-    resource_options, resource_text, text,
+    resource_choices, resource_options, resource_text, text,
 };
 use crate::attendance::Mark;
 use crate::batch::Batch;
@@ -150,49 +152,132 @@ pub(crate) fn flag_text(lang: &Lang, session: &Session) -> String {
     }
 }
 
+/// The sessions grid: filters by day range, batch, tutor, room and status,
+/// search on the batch, and the export for who manages batches. The time
+/// range and the flag are drawn by the template (`custom`).
+pub(crate) fn grid(
+    lang: &Lang,
+    batches: &[Batch],
+    tutors: Vec<(String, String)>,
+    rooms: Vec<(String, String)>,
+    can_export: bool,
+) -> Grid {
+    let statuses: Vec<(String, String)> = [
+        SessionStatus::Scheduled,
+        SessionStatus::Held,
+        SessionStatus::Cancelled,
+    ]
+    .into_iter()
+    .map(|status| (status.as_str().to_owned(), status_text(lang, status)))
+    .collect();
+    let batch_options: Vec<(String, String)> = batches
+        .iter()
+        .map(|b| (b.id.to_string(), b.number()))
+        .collect();
+    let grid = Grid::new("edtech-sessions")
+        .title(&text(lang, "sessions.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::date("session_date", &text(lang, "sessions.date"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/edtech/sessions/{id}"),
+        )
+        .column(Column::custom("time", &text(lang, "sessions.time")).mobile())
+        .column(
+            Column::select("batch_id", &text(lang, "sessions.batch"), batch_options).mobile(),
+        )
+        .column(
+            Column::text("batch", &text(lang, "sessions.batch"))
+                .computed(
+                    "(SELECT 'BAT-' || CASE WHEN b.\"id\" < 10 THEN '000' WHEN b.\"id\" < 100 THEN '00' \
+                     WHEN b.\"id\" < 1000 THEN '0' ELSE '' END || CAST(b.\"id\" AS TEXT) \
+                     FROM \"edtech_batches\" b WHERE b.\"id\" = {T}.\"batch_id\")",
+                )
+                .hidden()
+                .searchable(),
+        )
+        .column(Column::select(
+            "tutor_resource_id",
+            &text(lang, "sessions.tutor"),
+            tutors,
+        ))
+        .column(Column::select(
+            "room_resource_id",
+            &text(lang, "sessions.room"),
+            rooms,
+        ))
+        .column(Column::bool("make_up", &text(lang, "sessions.make_up")).hidden())
+        .column(
+            Column::select("status", &text(lang, "fields.status"), statuses)
+                .badges(&[
+                    ("scheduled", "info"),
+                    ("held", "success"),
+                    ("cancelled", "info"),
+                ])
+                .mobile(),
+        )
+        .column(Column::custom("flag", &text(lang, "sessions.flag_column")))
+        .sort_by("session_date,starts_at")
+        .row_url("/edtech/sessions/{id}")
+        .cards_on_mobile()
+        .empty_state(&text(lang, "sessions.empty"), None);
+    if can_export { grid.exports() } else { grid }
+}
+
 /// What the list page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "edtech/sessions.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    sessions: Vec<SessionRow>,
+    sessions: GridPage<Session>,
 }
 
-/// `GET /edtech/sessions`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+/// `GET /edtech/sessions`, or its export (`?export=`, with `batches.manage`).
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     require(&user, permissions::SESSIONS_VIEW)?;
     let own = sessions::assigned_scope(&state, &user).await?;
-    let coming: Vec<Session> = Session::query()
-        .where_(Session::SESSION_DATE.gte(today()))
-        .order_by(Session::STARTS_AT)
-        .get(&state.db)
-        .await?
-        .into_iter()
-        // A tutor sees the sessions they teach (`EDU.ACL.03`).
-        .filter(|s| own.is_none_or(|employee| s.tutor_employee_id == Some(employee)))
-        .collect();
-    let batches = Batch::query().get(&state.db).await?;
-    let names = names_of(
-        &state,
-        coming
-            .iter()
-            .flat_map(|s| [s.tutor_resource_id, s.room_resource_id]),
-    )
-    .await;
-    let rows = coming
-        .iter()
-        .map(|s| {
-            let batch = batches
-                .iter()
-                .find(|b| b.id == s.batch_id)
-                .map_or_else(|| format!("#{}", s.batch_id), Batch::number);
-            row_of(&lang, &names, s, &batch)
+    let batches = Batch::query().order_by(Batch::ID).get(&state.db).await?;
+    let tutors = resource_choices(&state, ResourceChoiceKind::Person).await;
+    let rooms = resource_choices(&state, ResourceChoiceKind::Room).await;
+    let options = |choices: Vec<ResourceChoice>| -> Vec<(String, String)> {
+        choices
+            .into_iter()
+            .map(|c| (c.id.to_string(), c.name))
+            .collect()
+    };
+    let can_export = user.has_permission(permissions::BATCHES_MANAGE);
+    let grid = grid(&lang, &batches, options(tutors), options(rooms), can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    // The sessions from today; a tutor sees the ones they teach (`EDU.ACL.03`).
+    let mut query = Session::query().where_(Session::SESSION_DATE.gte(today()));
+    if let Some(employee) = own {
+        query = query.where_(Session::TUTOR_EMPLOYEE_ID.eq(employee));
+    }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?.extend(|s| {
+        json!({
+            "time": time_range(s),
+            "flag": flag_text(&lang, s),
         })
-        .collect();
+    });
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        sessions: rows,
-    }))
+        sessions: page,
+    })
+    .into_response())
 }
 
 /// What the page of one session needs.

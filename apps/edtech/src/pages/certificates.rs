@@ -21,6 +21,7 @@
 //! (`print_copy`: the same document, the same number and code, nothing changes);
 //! neither is offered for a draft, a revoked or a superseded certificate.
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -73,35 +74,65 @@ pub(crate) fn status_kind(status: CertificateStatus) -> &'static str {
     }
 }
 
-/// One certificate of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct CertificateRow {
-    /// The primary key.
-    pub id: i64,
-    /// The number, or a draft label.
-    pub number: String,
-    /// The name on it.
-    pub student: String,
-    /// The course on it.
-    pub course: String,
-    /// The day the course was completed.
-    pub completed: String,
-    /// The status.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
-}
-
-fn row_of(lang: &Lang, c: &Certificate) -> CertificateRow {
-    CertificateRow {
-        id: c.id,
-        number: c.label(),
-        student: c.student_name.clone(),
-        course: c.course_title.clone(),
-        completed: c.completion_date.to_string(),
-        status: status_text(lang, c.status),
-        status_kind: status_kind(c.status),
-    }
+/// The certificates grid: search on the number, the name and the course,
+/// filters by status and completion day, and the export for who issues them.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let statuses: Vec<(String, String)> = [
+        CertificateStatus::Draft,
+        CertificateStatus::Issued,
+        CertificateStatus::Superseded,
+        CertificateStatus::Revoked,
+    ]
+    .into_iter()
+    .map(|status| (status.as_str().to_owned(), status_text(lang, status)))
+    .collect();
+    let grid = Grid::new("edtech-certificates")
+        .title(&text(lang, "certificates.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        // The number once issued, else the draft label (`Certificate::label`).
+        .column(
+            Column::text("number", &text(lang, "certificates.number"))
+                .computed(
+                    "COALESCE({T}.\"number\", 'CRT-draft-' || CAST({T}.\"id\" AS TEXT))",
+                )
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/edtech/certificates/{id}"),
+        )
+        .column(
+            Column::text("student_name", &text(lang, "certificates.student"))
+                .mobile()
+                .searchable(),
+        )
+        .column(
+            Column::text("course_title", &text(lang, "certificates.course"))
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::date(
+            "completion_date",
+            &text(lang, "certificates.completed"),
+        ))
+        .column(Column::date("issued_on", &text(lang, "certificates.issued")).hidden())
+        .column(Column::text("approval_no", &text(lang, "certificates.approval")).hidden())
+        .column(
+            Column::select("status", &text(lang, "fields.status"), statuses)
+                .badges(&[
+                    ("draft", "info"),
+                    ("issued", "success"),
+                    ("superseded", "info"),
+                    ("revoked", "danger"),
+                ])
+                .mobile(),
+        )
+        .sort_by("-id")
+        .row_url("/edtech/certificates/{id}")
+        .cards_on_mobile()
+        .empty_state(&text(lang, "certificates.empty"), None);
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list page needs.
@@ -109,20 +140,31 @@ fn row_of(lang: &Lang, c: &Certificate) -> CertificateRow {
 #[view(template = "edtech/certificates.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    certificates: Vec<CertificateRow>,
+    certificates: GridPage<Certificate>,
 }
 
-/// `GET /edtech/certificates`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+/// `GET /edtech/certificates`, or its export (`?export=`, with
+/// `certificates.issue`).
+async fn index(
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     require(&user, permissions::CERTIFICATES_VIEW)?;
-    let all = Certificate::query()
-        .order_by_desc(Certificate::ID)
-        .get(&state.db)
-        .await?;
+    let can_export = user.has_permission(permissions::CERTIFICATES_ISSUE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    let query = Certificate::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        certificates: all.iter().map(|c| row_of(&lang, c)).collect(),
-    }))
+        certificates: grid.page(query, &request).await?,
+    })
+    .into_response())
 }
 
 /// What the page of one certificate needs.
