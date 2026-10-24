@@ -193,7 +193,7 @@ pub async fn create_unit(db: &Db, new: NewUnit) -> Result<Unit> {
             &[],
         )));
     }
-    Unit::create(
+    let unit = Unit::create(
         db,
         Unit {
             building_id: new.building_id,
@@ -209,7 +209,10 @@ pub async fn create_unit(db: &Db, new: NewUnit) -> Result<Unit> {
             ..Default::default()
         },
     )
-    .await
+    .await?;
+    // Findable from now on (BL-AGT-04).
+    crate::search::index(db, &[unit.subject()]).await?;
+    Ok(unit)
 }
 
 #[cfg(test)]

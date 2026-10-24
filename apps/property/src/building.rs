@@ -148,7 +148,7 @@ pub async fn create_building(db: &Db, new: NewBuilding) -> Result<Building> {
         "" => "dubai".to_owned(),
         other => other.to_lowercase(),
     };
-    Building::create(
+    let building = Building::create(
         db,
         Building {
             code,
@@ -161,7 +161,10 @@ pub async fn create_building(db: &Db, new: NewBuilding) -> Result<Building> {
             ..Default::default()
         },
     )
-    .await
+    .await?;
+    // Findable from now on (BL-AGT-04).
+    crate::search::index(db, &[building.subject()]).await?;
+    Ok(building)
 }
 
 /// Adds the floor `level` to `building_id`, or returns the one it has.

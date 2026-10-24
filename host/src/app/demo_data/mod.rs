@@ -209,6 +209,15 @@ impl Seed {
         lap("finance", self);
         Box::pin(self.tail()).await?;
         lap("tail", self);
+        // The demo ends with a full search index (BL-AGT-04): every record
+        // was indexed as it was made, and a record a step inserted in its
+        // state or changed outside a transition is caught up here.
+        let indexed = property::search::rebuild_in_order(self.db()).await?;
+        self.report.add(
+            "search documents",
+            usize::try_from(indexed.iter().map(|(_, count)| count).sum::<u64>()).unwrap_or(0),
+        );
+        lap("search index", self);
         // The sign that the seed is done.
         renox::audit::record(
             self.db(),

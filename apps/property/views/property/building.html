@@ -58,5 +58,8 @@
       </rx-row-actions>
       <rx-slot name="empty"><rx-empty :title="tx['units.empty']" icon="door-open"/></rx-slot>
     </rx-table>
+    {#- The Related panel (wl-kernel, BL-AGT-04): the units, leases and tickets,
+        loaded in place. -#}
+    <div id="building-related" hx-get="/related/property.building:{{ building.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

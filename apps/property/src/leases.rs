@@ -280,6 +280,8 @@ pub async fn create_draft(state: &AppState, by: Option<i64>, new: NewLease) -> R
         new.instalments,
     )
     .await?;
+    // Findable as a draft from the commit on (BL-AGT-04).
+    wl_kernel::search::index_in(&mut tx, &lease.subject()).await?;
     tx.commit().await?;
     Ok(lease)
 }
@@ -359,6 +361,7 @@ pub async fn create_version(
     )
     .await?;
     insert_plan(&mut tx, &lease, first_due, new.instalments).await?;
+    wl_kernel::search::index_in(&mut tx, &lease.subject()).await?;
     tx.commit().await?;
     Ok(lease)
 }
@@ -808,6 +811,8 @@ pub async fn record_ejari(
     )
     .await
     .map_err(TransitionError::into_error)?;
+    // Found by its Ejari number from now on (BL-AGT-04).
+    crate::search::index(&state.db, &[lease.subject()]).await?;
     let creator = task_creator(state);
     if let Some(task) = creator.find_open(state, &ejari_task_key(&lease)).await? {
         creator

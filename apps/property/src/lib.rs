@@ -40,6 +40,7 @@ pub mod portal;
 pub mod renew;
 pub mod renewal;
 pub mod scope_members;
+pub mod search;
 pub mod seed;
 pub mod statement;
 pub mod statement_dispute;
@@ -153,6 +154,9 @@ impl Module for Property {
     }
 
     fn register(&self, app: &mut Registry) {
+        // Buildings, units and leases in the global search, and the
+        // relations of the vertical (BL-AGT-04).
+        search::register(app);
         app.view_data::<pages::portfolio::IndexPage>()
             .view_data::<pages::portfolio::BuildingPage>()
             .view_data::<pages::leases::IndexPage>()
