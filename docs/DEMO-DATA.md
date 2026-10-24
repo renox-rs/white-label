@@ -481,6 +481,7 @@ notifier (21:00-08:00 Asia/Dubai) included; the workshop's bay is open all week.
 
 | Screen | What the seed puts there |
 |---|---|
+| Labour menu | four operations kept by the workshop manager: oil and filter change, front brake pads, the 60,000 km service (flat rate) and diagnostics (hourly) |
 | Vehicles | thirty-odd vehicles with plates of four emirates, VIN, year and odometer: private cars, the vans of three fleets |
 | Job cards | one in every state: checked in (from a booking), awaiting approval (the customer's link is open), in progress, awaiting parts (an imported part, the legal supply date), quality check, ready, delivered and paid, cancelled (work done billed, the filter back in the store), declined (the inspection fee billed), voided; accident cards with the police report waiting for review and accepted |
 | Not collected | the ready vehicle, the cancelled one and the declined one: reminders at 3 and 7 days, the branch manager's task at 30 days (the SMS channel has no gateway in the demo, so the texts are kept as suppressed) |

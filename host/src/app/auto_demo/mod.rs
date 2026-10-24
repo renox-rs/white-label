@@ -422,6 +422,7 @@ impl Seed {
         self.people().await?;
         self.shop().await?;
         self.insurers().await?;
+        self.labour_menu().await?;
         self.workshop().await?;
         self.claims().await?;
         self.fleets().await?;

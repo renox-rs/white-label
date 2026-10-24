@@ -9,6 +9,7 @@
 //! store is scoped to the workshop, so the parts of a job card come from it.
 
 use auto::insurers::{self, NewInsurer};
+use auto::labour_menu::{self, NewOperation};
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use wl_inventory::goods_receipt::{DraftLine, DraftReceipt, create_draft};
@@ -21,7 +22,7 @@ use wl_kernel::{LegalEntity, Subject};
 use wl_scheduling::{AvailabilityRule, Resource, ResourceType, ServiceType, resource};
 
 use super::super::demo_data::{at, day};
-use super::{ADMIN_LOGIN, CARLA, KARIM, PIA, Seed};
+use super::{ADMIN_LOGIN, CARLA, KARIM, PIA, Seed, WALEED};
 
 /// The workshop of the bookings and of the store.
 pub(crate) fn workshop() -> Subject {
@@ -237,6 +238,44 @@ impl Seed {
             self.driver
                 .post(KARIM, &format!("/goods-receipts/{}/post", made.id), &[])
                 .await?;
+            Ok::<(), renox::Error>(())
+        })
+    }
+
+    /// The labour menu of the workshop: the flat-rate jobs of every day and the
+    /// hourly work, kept by the workshop manager before any job card is
+    /// priced from it.
+    pub(crate) async fn labour_menu(&mut self) -> Result {
+        let waleed = self.who(WALEED).clone();
+        at!(self, day(-180), {
+            for (code, name_en, name_ar, flat) in [
+                (
+                    "OIL-CHG",
+                    "Oil and filter change",
+                    "تغيير الزيت والفلتر",
+                    Some((500, 18_000)),
+                ),
+                (
+                    "BRK-FRT",
+                    "Front brake pads",
+                    "تبديل فحمات الفرامل الأمامية",
+                    Some((1_500, 22_500)),
+                ),
+                (
+                    "SVC-60K",
+                    "Periodic service at 60,000 km",
+                    "الصيانة الدورية عند 60,000 كم",
+                    Some((3_000, 45_000)),
+                ),
+                ("DIAG", "Diagnostics", "فحص الأعطال", None),
+            ] {
+                let mut new = match flat {
+                    Some((hours, price)) => NewOperation::flat(code, name_en, hours, price),
+                    None => NewOperation::hourly(code, name_en, 15_000),
+                };
+                new.name_ar = Some(name_ar.to_owned());
+                labour_menu::create(&self.state, &waleed, new).await?;
+            }
             Ok::<(), renox::Error>(())
         })
     }
