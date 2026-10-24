@@ -35,6 +35,7 @@ use super::{Act, Texts, date_or, date_text, party_text, user_text};
 use crate::absence::{self, AbsenceCase, FAILED_ATTEMPTS};
 use crate::deployment::Deployment;
 use crate::deployments::worker_name;
+use crate::grid_lookup;
 use crate::seed::ABSENCE_CATEGORY;
 use crate::site::Site;
 use crate::texts::{screen_texts, t, tf, word};
@@ -49,10 +50,13 @@ fn days_absent(case: &AbsenceCase, until: NaiveDate) -> i64 {
     (until - case.last_present_on).num_days().max(0)
 }
 
-/// The absence cases grid: search on the MoHRE report number, filters by
+/// The absence cases grid: search on the MoHRE report number and the worker's
+/// name (`worker_match`, built by the handler from the workforce), filters by
 /// status and dates. The worker, the client, the contact attempts and the
-/// report line are drawn by the template.
-fn cases_grid(lang: &Lang) -> Grid {
+/// report line are drawn by the template. The days absent run to today for an
+/// open case, so they are worked out in Rust and not sorted in SQL; the last
+/// day present sorts the open cases in the same order.
+fn cases_grid(lang: &Lang, worker_match: &str) -> Grid {
     let text = |key: &str| t(lang, &format!("manpower.screen.{key}"));
     Grid::new("manpower-absence")
         .title(&text("absence.title"))
@@ -93,6 +97,14 @@ fn cases_grid(lang: &Lang) -> Grid {
                 .hidden(),
         )
         .column(Column::date("report_date", &text("absence.report_date")).hidden())
+        .column(
+            Column::text("worker_match", &text("absence.worker"))
+                .computed(worker_match)
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
+        )
         .sort_by("-opened_on")
         .row_url("/manpower/absence/{id}")
         .cards_on_mobile()
@@ -216,6 +228,7 @@ pub(crate) async fn list(
     user: AuthUser,
     lang: Lang,
     headers: HeaderMap,
+    session: Session,
     request: GridRequest,
 ) -> Result<Response> {
     if !wl_kernel::negotiate::wants_html(&headers) {
@@ -223,7 +236,32 @@ pub(crate) async fn list(
     }
     // Only HR (`absence.manage`) sees the cases, and all of them.
     absence::require_manage(&user)?;
-    let grid = cases_grid(&lang);
+    // The worker's name is the workforce's: with a searched text, the names
+    // of the workers of the cases are matched here.
+    let term = grid_lookup::searched(&request, &session, "manpower-absence");
+    let mut found = Vec::new();
+    if let Some(term) = term.as_deref() {
+        let wanted = term.to_lowercase();
+        let mut names: BTreeMap<i64, bool> = BTreeMap::new();
+        for case in AbsenceCase::query().get(&state.db).await? {
+            let hit = match names.get(&case.employee_id) {
+                Some(hit) => *hit,
+                None => {
+                    let hit = worker_name(&state, &lang.locale, case.employee())
+                        .await
+                        .to_lowercase()
+                        .contains(&wanted);
+                    names.insert(case.employee_id, hit);
+                    hit
+                }
+            };
+            if hit {
+                found.push(case.id);
+            }
+        }
+    }
+    let worker_match = grid_lookup::matched_sql(term.as_deref(), &["id"], &found);
+    let grid = cases_grid(&lang, &worker_match);
     let query = AbsenceCase::query();
     if let Some(file) = grid.export(query.clone(), &request).await? {
         return Ok(file);

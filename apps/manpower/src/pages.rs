@@ -294,6 +294,7 @@ async fn contracts_index(
     lang: Lang,
     headers: HeaderMap,
     Query(filter): Query<ListFilter>,
+    session: Session,
     request: renox::grid::GridRequest,
 ) -> Result<Response> {
     let mut visible = Vec::new();
@@ -333,7 +334,8 @@ async fn contracts_index(
         return Err(Error::Forbidden);
     }
     if wl_kernel::negotiate::wants_html(&headers) {
-        return screens::lists::contracts(&state, &user, &lang, &visible, request).await;
+        return screens::lists::contracts(&state, &user, &lang, &visible, &session, request)
+            .await;
     }
     let mut rows = Vec::new();
     for contract in visible {
@@ -719,6 +721,7 @@ async fn requests_index(
     lang: Lang,
     headers: HeaderMap,
     Query(filter): Query<ListFilter>,
+    session: Session,
     request: renox::grid::GridRequest,
 ) -> Result<Response> {
     let mut visible = Vec::new();
@@ -761,7 +764,7 @@ async fn requests_index(
     }
     if wl_kernel::negotiate::wants_html(&headers) {
         let ids = visible.iter().map(|request| request.id).collect();
-        return screens::lists::requests(&state, &user, &lang, ids, request).await;
+        return screens::lists::requests(&state, &user, &lang, ids, &session, request).await;
     }
     let mut rows = Vec::new();
     for request in visible {
@@ -970,6 +973,7 @@ async fn deployments_index(
     lang: Lang,
     headers: HeaderMap,
     Query(filter): Query<ListFilter>,
+    session: Session,
     request: renox::grid::GridRequest,
 ) -> Result<Response> {
     let mut staff = Vec::new();
@@ -1020,7 +1024,10 @@ async fn deployments_index(
         let is_staff = !staff.is_empty();
         let shown = if is_staff { &staff } else { &clients };
         let ids = shown.iter().map(|deployment| deployment.id).collect();
-        return screens::lists::deployments(&state, &user, &lang, ids, is_staff, request).await;
+        return screens::lists::deployments(
+            &state, &user, &lang, ids, is_staff, &session, request,
+        )
+        .await;
     }
     if staff.is_empty() {
         let mut rows = Vec::new();

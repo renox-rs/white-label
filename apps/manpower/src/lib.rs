@@ -23,6 +23,7 @@ pub mod ends;
 pub mod events;
 pub mod exits;
 pub mod expiry;
+mod grid_lookup;
 pub mod guard;
 pub mod hold;
 pub mod notices;

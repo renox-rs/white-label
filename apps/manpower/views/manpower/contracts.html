@@ -22,7 +22,7 @@
     </template>
   </rx-page-header>
   <rx-grid :page="contracts">
-    <template rx-if="column.key == 'client'">{{ row.client }}</template>
+    <template rx-if="column.key == 'client_party_id'">{{ row.client }}</template>
     <template rx-elif="column.key == 'hold'">
       <template rx-if="row.hold">
         <span class="rx-subtitle">{{ tx['contracts.held_since'] }} {{ row.hold.since }}, {{ tx['contracts.held_before'] }} {{ row.hold.before }}</span>

@@ -23,7 +23,7 @@
       <a rx-if="row.url" href="{{ row.url }}">{{ row.worker }}</a>
       <span rx-else>{{ row.worker }}</span>
     </template>
-    <template rx-elif="column.key == 'client'">{{ row.client }}</template>
+    <template rx-elif="column.key == 'client_party_id'">{{ row.client }}</template>
     <template rx-elif="column.key == 'flags'">
       <template rx-for="flag in row.flags"><rx-badge kind="warning" :text="flag"/> </template>
     </template>
