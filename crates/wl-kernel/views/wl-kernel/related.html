@@ -1,0 +1,9 @@
+{#- wl-kernel: the page of a record's related records (BL-AGT-03), where a
+    search result or a related record of a type without a page of its own
+    opens. Replace it with resources/views/wl-kernel/related.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="related.record">
+  <rx-stack>
+    <rx-page-header :title="related.record" :subtitle="tx['title']"/>
+    <rx-include template="wl-kernel/related_panel.html"/>
+  </rx-stack>
+</rx-page>

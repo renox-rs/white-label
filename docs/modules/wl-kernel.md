@@ -2,7 +2,7 @@
 
 > Status: specification, partly built; the build ledger is [crates/wl-kernel/README.md](../../crates/wl-kernel/README.md) · Last updated: 2026-10-24
 
-**Build status (2026-10-24):** Built: `client.toml` and the module manifest, branding on `Theme::from_brand`, `Subject`, legal entities and issuer snapshots (`PLT.ENT.01`), document numbering on Renox `Sequence`, state machines by name, approvals (`PLT.APR.01`), voids (`PLT.ACL.09`), late entries (`PLT.ACL.10`), the automation engine and compliance alerts (`PLT.RUL.04`, §5.15), integrations health (§4.5, §5.14), the daily digest, role tasks, and the contracts between modules (every public trait is indexed in [KERNEL-CONTRACTS.md](KERNEL-CONTRACTS.md)). Not built (later): `CustomFields`, `Sensitive` (masking and reveal log), `Dashboards`, `ApiClients`, `Imports` (§4.3), `Search` (§5.8; only a plan, decision 0006), `Notes` (§5.9), `Reports` (§5.10) and report subscriptions (§4.4), staff SSO (§5.11); the events `ImportApplied`, `NoteAdded`, `ReportExported`, `SettingChanged`, `SensitiveViewed` and `LegalEntityChanged` do not exist in code. Where a section below describes one of these, it is a specification, not behaviour. List screens use the standard Renox grid (`renox::grid::Grid`, see `.claude/skills/standard-grid`). Status of the other modules: [STATUS.md](STATUS.md).
+**Build status (2026-10-24):** Built: search and related records (§5.8, BL-AGT-01 to 03), `client.toml` and the module manifest, branding on `Theme::from_brand`, `Subject`, legal entities and issuer snapshots (`PLT.ENT.01`), document numbering on Renox `Sequence`, state machines by name, approvals (`PLT.APR.01`), voids (`PLT.ACL.09`), late entries (`PLT.ACL.10`), the automation engine and compliance alerts (`PLT.RUL.04`, §5.15), integrations health (§4.5, §5.14), the daily digest, role tasks, and the contracts between modules (every public trait is indexed in [KERNEL-CONTRACTS.md](KERNEL-CONTRACTS.md)). Not built (later): `CustomFields`, `Sensitive` (masking and reveal log), `Dashboards`, `ApiClients`, `Imports` (§4.3), `Notes` (§5.9), `Reports` (§5.10) and report subscriptions (§4.4), staff SSO (§5.11); the events `ImportApplied`, `NoteAdded`, `ReportExported`, `SettingChanged`, `SensitiveViewed` and `LegalEntityChanged` do not exist in code. Where a section below describes one of these, it is a specification, not behaviour. List screens use the standard Renox grid (`renox::grid::Grid`, see `.claude/skills/standard-grid`). Status of the other modules: [STATUS.md](STATUS.md).
 
 ## 1. Purpose
 
@@ -499,7 +499,7 @@ is archived, never deleted.
 
 ### 5.8 Search
 
-**Build status (2026-10-24):** Not built (later).
+**Build status (2026-10-24):** Built: the index (BL-AGT-01) and the search page (BL-AGT-02); portal search later (BL-AGT-05).
 
 1. Each module registers which entity types are searchable and how a record becomes a search
    document (title, secondary text, keywords). The index is updated on create, change,
@@ -529,6 +529,42 @@ in E.164; personal kinds such as Emirates ID, passport, phone and email only as 
 `search::undo_import` undoes an import and its documents together. `search::lookup_identifier`
 returns every match **unfiltered**: the search page (BL-AGT-02) filters by permission, scope and
 record rules before it shows or counts anything.
+
+**Built (BL-AGT-02, `search/query.rs`, `search/web.rs`).** `GET /search?q=` (route
+`wl_kernel.search`): identifiers first, then full-text matches (each word as a prefix, or its
+Arabic–Latin match key), ranked by identifier match, full-text rank, then the most recently
+updated; grouped by type (`Searchable::label`, each result opening at `Searchable::link`, or at
+the record's related records page without one), 5 per type with *Show all N*
+(`/search?q=&type=<subject_type>&page=`, 25 a page). One ranked statement with window functions
+filters by the type's permission and the user's scopes (`search::Access`, at most two queries),
+then counts and limits, so a hidden record is never in a page, a count or a redirect; the page
+costs the same number of queries whatever it finds. Exactly one visible identifier match
+redirects to the record. A query under 2 characters gets a hint; a user who may search nothing
+sees the box off with the reason. A matched personal identifier shows masked (`•••• 4567`).
+The top bar's box is in the host layout: it reads the menu `search` (one link shown only to a
+user who holds a searchable type's permission somewhere), and `mod+k` focuses it
+(`host/public/search.js`). A user reaches a legal entity only through a scope, so the scope
+filter is the entity filter; record rules (`OWN`/`ASG`) for staff are not used by any module yet
+and will be one more condition of the same statement when a document carries an owner.
+
+### 5.8a Related records (`PLT.REL.01`)
+
+**Built (BL-AGT-03, `crates/wl-kernel/src/related/`).** A module declares the relations of its
+types in `register()`: `Relation::has_many(from, name, to, table, foreign_key)`,
+`Relation::belongs_to(from, name, to, table, foreign_key)`, `Relation::attached(name, to, table)`
+(generic: rows attached to any record by `subject_type`/`subject_id`), or
+`Relation::new(from, name, to).load(|db, ids| …)` for anything else; then `.label("…")`,
+`.permission("…")` (required when the target type is not searchable), `.link("/x/{id}")`,
+`.expand()` (followed at depth 2), `.register()`. A loader takes many records at once, one
+query. `related::related(db, &access, &subject, depth)` returns the groups; each target is
+filtered like a search result (a searchable target needs a document the user may see; any other
+the relation's permission), a group the user may not see is absent, a hidden record is neither
+listed nor counted, a deleted target is skipped and logged once, a voided one is marked.
+`GET /related/{subject}/panel` is the panel (a record page loads it with `hx-get` …
+`hx-trigger="load"`), `GET /related/{subject}` the same on a page of its own; both answer 404 for
+a record the user may not open. The kernel declares the approval requests of any record,
+wl-documents the documents, wl-invoicing the relations of an invoice (lines, customer, payments,
+credit notes) as the example. Notes join once §5.9 exists.
 
 ### 5.9 Notes and mentions
 

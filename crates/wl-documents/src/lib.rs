@@ -147,6 +147,16 @@ impl Module for WlDocuments {
     }
 
     fn register(&self, app: &mut Registry) {
+        // The documents of any record, in its Related panel (BL-AGT-03): a
+        // generic relation, attached by `subject_type` / `subject_id`.
+        wl_kernel::related::Relation::attached(
+            "documents",
+            expiry::renewal::DOCUMENT_SUBJECT_TYPE,
+            "wl_documents_documents",
+        )
+        .label("Documents")
+        .permission(permissions::VIEW)
+        .register();
         app.model::<DocumentKind>()
             .model::<KindBlock>()
             .model::<Document>()

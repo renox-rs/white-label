@@ -1,0 +1,31 @@
+{#- wl-kernel: the Related panel of a record (BL-AGT-03, PLT.REL.01): the
+    records that belong to it across modules, one section per relation with
+    its count and up to ten rows linking to each record; voided ones carry a
+    Void badge. A group the viewer may not see is absent, and hidden records
+    are neither listed nor counted. A record page loads it in place with
+    <div hx-get="/related/<type>:<id>/panel" hx-trigger="load"></div>.
+    Replace it with resources/views/wl-kernel/related_panel.html in the app. -#}
+<rx-card :title="tx['title']" :subtitle="related.subtitle">
+  <rx-empty rx-if="not related.groups" :title="tx['empty']" icon="link"/>
+  <rx-stack>
+    <section rx-for="group in related.groups" class="wl-related-group" data-group="{{ group.name }}" data-count="{{ group.count }}" aria-label="{{ group.label }}">
+      <rx-stack>
+        <rx-row>
+          <strong>{{ group.label }}</strong>
+          <rx-badge :text="group.count ~ ''" kind="info"/>
+        </rx-row>
+        <rx-list rx-if="group.records" :label="group.label">
+          <li rx-for="record in group.records">
+            <rx-row>
+              <a href="{{ record.url }}">{{ record.title }}</a>
+              <span rx-if="record.secondary">{{ record.secondary }}</span>
+              <rx-badge rx-if="record.status" :text="record.status" kind="info"/>
+              <rx-badge rx-if="record.voided" :text="tx['void']" kind="error"/>
+            </rx-row>
+          </li>
+        </rx-list>
+        <small rx-if="group.more">{{ group.more }}</small>
+      </rx-stack>
+    </section>
+  </rx-stack>
+</rx-card>
