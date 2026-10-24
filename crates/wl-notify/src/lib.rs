@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod agent_message;
 pub mod alert;
 pub mod alternative;
 pub mod broadcast;
@@ -295,6 +296,9 @@ impl Module for WlNotify {
         app.job::<RunGiveUpReaction>();
         // Other modules send through the kernel (wl-notify §6).
         wl_kernel::notify::provide_notifier(app, Messages);
+        // A message from a template through an AI assistant, previewed and
+        // confirmed by the user (BL-AGT-10).
+        agent_message::register();
         // The kernel's `wl:install` knows only kernel data, so the types the
         // modules register are installed by this module's own command and
         // seeder; both keep the client's changes.
