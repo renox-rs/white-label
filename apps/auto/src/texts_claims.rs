@@ -4,6 +4,9 @@
 
 /// Every key of this part, with its English text.
 pub(crate) const TEXTS: &[(&str, &str)] = &[
+    ("auto.insurers.rate_card_text", "Version :version, in force from :from"),
+    ("auto.insurers.agreement_placeholder", "Pick the payer agreement"),
+    ("auto.claims.rate_card_version", "Version :version"),
     // The insurers.
     ("auto.insurers.title", "Insurers"),
     (
@@ -33,7 +36,7 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("auto.insurers.agreement", "Payer agreement"),
     (
         "auto.insurers.agreement_hint",
-        "The number of the payer agreement in Invoicing; the claims are billed under it.",
+        "The payer agreement in Invoicing the claims are billed under.",
     ),
     ("auto.insurers.email", "Claim email"),
     ("auto.insurers.surveyors", "Surveyors"),

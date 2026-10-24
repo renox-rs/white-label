@@ -434,6 +434,7 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("auto.labour.on", "On the menu"),
     ("auto.labour.off", "Off the menu"),
     ("auto.labour.take_off", "Take off the menu"),
+    ("auto.labour.put_back", "Put back on the menu"),
     ("auto.labour.added", "Operation added."),
     ("auto.labour.saved", "Menu saved."),
     ("auto.labour.empty", "The menu is empty."),

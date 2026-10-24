@@ -10,14 +10,18 @@
 //! stands in words: waiting for exit evidence, missing (the accountant was
 //! told at 60 days), *5% VAT due* (flagged at 90 days), or attached.
 
+use std::collections::HashMap;
+
 use renox::chrono::NaiveDate;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 
-use super::{Texts, invalid, parse_number, parse_optional_date, party_name, require, text};
+use super::lists;
+use super::{Texts, invalid, parse_number, parse_optional_date, require, text};
 use crate::export_sale::{EVIDENCE_KINDS, ExportSale};
 use crate::export_sales;
-use crate::money_text;
 use crate::permissions;
 use crate::texts;
 
@@ -33,28 +37,60 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
-/// One export sale of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct SaleRow {
-    /// The primary key.
-    pub id: i64,
-    /// The invoice's number.
-    pub invoice: String,
-    /// The customer's name.
-    pub customer: String,
-    /// The supply date.
-    pub supply: String,
-    /// The days since the supply date.
-    pub days: String,
-    /// The invoice's total, `AED 25,000.00`.
-    pub total: String,
-    /// Where it stands, in words.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
-    /// The evidence attached, `Bill of lading BL-77 · Airway bill AW-9`, or a
-    /// dash.
-    pub evidence: String,
+/// Where a sale stands, as SQL: *5% VAT due* once flagged at 90 days (late
+/// when evidence came after), *attached* with evidence, *missing* once the
+/// accountant was told at 60 days, else *waiting*.
+const STANDING_SQL: &str = "CASE WHEN {T}.\"vat_flagged_at\" IS NOT NULL THEN \
+    CASE WHEN EXISTS (SELECT 1 FROM \"auto_export_evidence\" e WHERE e.\"export_sale_id\" = {T}.\"id\") \
+    THEN 'vat_due_late' ELSE 'vat_due' END \
+    WHEN EXISTS (SELECT 1 FROM \"auto_export_evidence\" e WHERE e.\"export_sale_id\" = {T}.\"id\") \
+    THEN 'attached' \
+    WHEN {T}.\"notified_at\" IS NOT NULL THEN 'missing' ELSE 'waiting' END";
+
+/// The standings, in the order a sale goes through them.
+const STANDINGS: [&str; 5] = ["waiting", "missing", "vat_due", "vat_due_late", "attached"];
+
+/// The export sales grid: the invoice first and frozen (a link to the sale's
+/// record in invoicing), the customer, the supply date, the days since, the
+/// invoice total in its currency, where it stands in words and the evidence
+/// attached; searched by invoice number.
+pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
+    let standings = lists::options(t, "export.status", STANDINGS);
+    Grid::new("auto-export-sales")
+        .title(&t("export.title"))
+        .column(
+            Column::text("invoice_number", &t("export.invoice"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/invoices/{invoice_id}"),
+        )
+        .column(Column::custom("customer", &t("export.customer")).mobile())
+        .column(Column::date("supply_date", &t("export.supply_date")))
+        .column(Column::custom("days", &t("export.days")))
+        .column(
+            Column::money("gross_total", &t("export.total"))
+                .currency_from("currency")
+                .mobile(),
+        )
+        .column(
+            Column::select("standing", &t("fields.status"), standings)
+                .computed(STANDING_SQL)
+                .width("14rem")
+                .badges(&[
+                    ("waiting", "info"),
+                    ("missing", "warning"),
+                    ("vat_due", "danger"),
+                    ("vat_due_late", "danger"),
+                    ("attached", "success"),
+                ])
+                .mobile(),
+        )
+        .column(Column::custom("evidence", &t("export.evidence")))
+        .column(Column::custom("attach", "").frozen_right())
+        .sort_by("-supply_date")
+        .cards_on_mobile()
+        .empty_state(&t("export.empty"), None)
 }
 
 /// What the page needs.
@@ -62,48 +98,34 @@ pub struct SaleRow {
 #[view(template = "auto/export_sales.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    rows: Vec<SaleRow>,
+    sales: GridPage<ExportSale>,
+    /// The sales of the page, `[id, invoice number]`, for the sheets that
+    /// attach their evidence.
+    sheets: Vec<(i64, String)>,
     can_manage: bool,
     kind_options: Vec<[String; 2]>,
     today: String,
 }
 
-/// Where a sale stands, in words and as a badge kind.
-fn standing(lang: &Lang, sale: &ExportSale, has_evidence: bool) -> (String, &'static str) {
-    let (key, kind) = if sale.vat_flagged_at.is_some() {
-        if has_evidence {
-            ("export.status.vat_due_late", "error")
-        } else {
-            ("export.status.vat_due", "error")
-        }
-    } else if has_evidence {
-        ("export.status.attached", "success")
-    } else if sale.notified_at.is_some() {
-        ("export.status.missing", "warning")
-    } else {
-        ("export.status.waiting", "info")
-    };
-    (text(lang, key), kind)
-}
-
 /// `GET /auto/export-sales`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
     require(&user, permissions::EXPORT_SALES_VIEW)?;
     let today = wl_kernel::documents::today();
-    let mut rows = Vec::new();
-    for sale in export_sales::all(&state.db).await? {
+    let page = grid(&lists::texts_in(&lang))
+        .page(ExportSale::query(), &request)
+        .await?;
+    let items: Vec<ExportSale> = page.items().to_vec();
+    let mut evidence = HashMap::new();
+    for sale in &items {
         let attached = sale.evidence(&state.db).await?;
-        let (status, status_kind) = standing(&lang, &sale, !attached.is_empty());
-        rows.push(SaleRow {
-            id: sale.id,
-            invoice: sale.number(),
-            customer: party_name(&state, &lang.locale, sale.party_id).await,
-            supply: sale.supply_date.to_string(),
-            days: sale.days_since_supply(today).to_string(),
-            total: money_text(sale.gross_total),
-            status,
-            status_kind,
-            evidence: if attached.is_empty() {
+        evidence.insert(
+            sale.id,
+            if attached.is_empty() {
                 text(&lang, "none")
             } else {
                 attached
@@ -118,11 +140,22 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
                     .collect::<Vec<_>>()
                     .join(" · ")
             },
-        });
+        );
     }
+    let party_ids: Vec<i64> = items.iter().map(|sale| sale.party_id).collect();
+    let names = lists::party_names(&state, &lang, party_ids).await;
+    let sheets = items.iter().map(|sale| (sale.id, sale.number())).collect();
+    let sales = page.extend(|sale| {
+        json!({
+            "customer": names.get(&sale.party_id).cloned().unwrap_or_default(),
+            "days": sale.days_since_supply(today),
+            "evidence": evidence.get(&sale.id).cloned().unwrap_or_default(),
+        })
+    });
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        rows,
+        sales,
+        sheets,
         can_manage: user.has_permission(permissions::EXPORT_SALES_MANAGE),
         kind_options: EVIDENCE_KINDS
             .iter()

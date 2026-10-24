@@ -44,6 +44,28 @@ impl Totals {
     }
 }
 
+/// The estimate of a job card with VAT, in fils, as SQL for a list column:
+/// the sum of the lines still in the estimate (drafted, sent or approved),
+/// each line's VAT rounded half up as [`vat_of`] does. `job_card` is the SQL
+/// of the job card's id (`{T}."id"` in a grid column). The lines' prices are
+/// those of [`LabourLine::price`] and [`PartLine::price`].
+pub fn gross_sql(job_card: &str) -> String {
+    let live = "('draft', 'sent', 'approved')";
+    let vat = |price: &str| format!("({price} + (2 * {price} * {VAT_BP} + 10000) / 20000)");
+    let labour = "CASE \"l\".\"pricing\" WHEN 'hourly' THEN \
+                  (2 * \"l\".\"hours_milli\" * \"l\".\"rate\" + 1000) / 2000 \
+                  ELSE \"l\".\"rate\" END";
+    let part = "(2 * \"p\".\"quantity_milli\" * \"p\".\"unit_price\" + 1000) / 2000";
+    format!(
+        "(COALESCE((SELECT SUM({labour_vat}) FROM \"auto_job_labour_lines\" \"l\" \
+         WHERE \"l\".\"job_card_id\" = {job_card} AND \"l\".\"approval\" IN {live}), 0) + \
+         COALESCE((SELECT SUM({part_vat}) FROM \"auto_job_part_lines\" \"p\" \
+         WHERE \"p\".\"job_card_id\" = {job_card} AND \"p\".\"approval\" IN {live}), 0))",
+        labour_vat = vat(labour),
+        part_vat = vat(part),
+    )
+}
+
 /// The lines of a job card.
 #[derive(Debug, Clone, Default)]
 pub struct Estimate {

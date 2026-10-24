@@ -105,7 +105,7 @@
         <rx-entry :label="tx['claims.policy_no']" :value="policy_no"/>
         <rx-entry :label="tx['claims.claim_no']" :value="claim_no"/>
         <rx-entry :label="tx['vehicles.plate']" :value="plate"/>
-        <rx-entry :label="tx['claims.job_card']" :value="job_card"/>
+        <rx-entry :label="tx['claims.job_card']" :value="job_card" :url="route('auto.job_card', job_card_id) if job_card_id else none"/>
         <rx-entry :label="tx['claims.accident']" :value="accident"/>
         <rx-entry :label="tx['claims.police_report']" :value="police_report"/>
         <rx-entry :label="tx['police.report']" :value="police_document"/>
@@ -113,13 +113,13 @@
         <rx-entry :label="tx['claims.excess']" :value="excess"/>
         <rx-entry :label="tx['claims.estimate']" :value="estimate"/>
         <rx-entry :label="tx['claims.approved']" :value="approved"/>
-        <rx-entry :label="tx['claims.rate_card']" :value="rate_card"/>
+        <rx-entry :label="tx['claims.rate_card']" :value="rate_card" :url="rate_card_url or none"/>
         <rx-entry :label="tx['claims.total_loss_notice']" :value="total_loss"/>
         <rx-entry :label="tx['claims.withdrawal']" :value="withdrawal"/>
         <rx-entry :label="tx['claims.choice']" :value="withdrawal_choice"/>
         <rx-entry :label="tx['claims.unlinked_job_card']" :value="unlinked_job_card"/>
-        <rx-entry :label="tx['claims.payer_bill']" :value="payer_bill"/>
-        <rx-entry :label="tx['claims.customer_invoice']" :value="customer_invoice"/>
+        <rx-entry :label="tx['claims.payer_bill']" :value="payer_bill" :url="payer_bill_url or none"/>
+        <rx-entry :label="tx['claims.customer_invoice']" :value="customer_invoice" :url="customer_invoice_url or none"/>
       </rx-infolist>
       <p><a href="{{ documents_link }}">{{ tx['police.documents'] }}</a></p>
       <template rx-if="job_card_id">

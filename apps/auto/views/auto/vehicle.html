@@ -17,7 +17,7 @@
           <rx-input name="engine" :label="tx['vehicles.engine']" :value="raw_engine" :id="'vehicle-edit-engine-' ~ id"/>
           <rx-input name="colour" :label="tx['vehicles.colour']" :value="raw_colour" :id="'vehicle-edit-colour-' ~ id"/>
           <rx-select name="owner" :label="tx['vehicles.owner']" :options="owner_options" :selected="owner_id" :placeholder="tx['vehicles.owner_placeholder']" options-url="{{ route('auto.party_options') }}" :id="'vehicle-edit-owner-' ~ id" required/>
-          <rx-input name="fleet_contract" type="number" :label="tx['vehicles.fleet_contract']" :hint="tx['vehicles.fleet_contract_hint']" :value="fleet_contract" :id="'vehicle-edit-fleet-' ~ id"/>
+          <rx-select name="fleet_contract" :label="tx['vehicles.fleet_contract']" :hint="tx['vehicles.fleet_contract_hint']" :options="fleet_options" :selected="fleet_contract" :placeholder="tx['vehicles.fleet_contract_placeholder']" options-url="{{ route('auto.fleet_contract_options') }}" :id="'vehicle-edit-fleet-' ~ id"/>
           <rx-input name="odometer" type="number" :label="tx['vehicles.odometer']" :value="odometer_value" :id="'vehicle-edit-odometer-' ~ id"/>
         </rx-action-sheet>
       </template>

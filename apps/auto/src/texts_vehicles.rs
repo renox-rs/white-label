@@ -3,6 +3,8 @@
 
 /// Every key of this part, with its English text.
 pub(crate) const TEXTS: &[(&str, &str)] = &[
+    ("auto.vehicles.kind", "Kind"),
+    ("auto.vehicles.fleet_contract_placeholder", "Not under a fleet contract"),
     ("auto.vehicles.title", "Vehicles"),
     (
         "auto.vehicles.subtitle",
@@ -46,7 +48,7 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("auto.vehicles.fleet_contract", "Fleet contract"),
     (
         "auto.vehicles.fleet_contract_hint",
-        "The number of the fleet contract, when the vehicle is serviced under one.",
+        "The fleet contract, when the vehicle is serviced under one.",
     ),
     ("auto.vehicles.odometer", "Odometer (km)"),
     ("auto.vehicles.odometer_at", "Reading taken"),

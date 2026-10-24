@@ -1,38 +1,31 @@
-{#- auto: the export sales: each zero-rated invoice registered with its supply
-    date, the days since, where it stands in words (waiting for exit evidence,
-    missing, 5% VAT due, attached), the evidence attached, and the actions of
+{#- auto: the export sales, a renox::grid: each zero-rated invoice registered
+    with its supply date, the days since, where it stands in words (waiting for
+    exit evidence, missing, 5% VAT due, attached), the evidence attached, and
+    the actions of
     the accountant that register a sale and attach a customs exit certificate,
     a bill of lading or an airway bill. Replace it with
     resources/views/auto/export_sales.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['export.title']">
-  <rx-stack>
     <rx-page-header :title="tx['export.title']" :subtitle="tx['export.subtitle']">
       <template rx-if="can_manage">
         <rx-action-sheet id="export-new" :label="tx['export.new']" :action="route('auto.export_sale_create')"
                          :title="tx['export.new']" :description="tx['export.new_description']" :submit-label="tx['export.new']" icon="plus">
-          <rx-input name="invoice" type="number" :label="tx['export.invoice']" :hint="tx['export.invoice_hint']" id="export-new-invoice" required/>
+          <rx-select name="invoice" :label="tx['export.invoice']" :hint="tx['export.invoice_hint']" :options="[]" :placeholder="tx['export.invoice_placeholder']" options-url="{{ route('auto.export_invoice_options') }}" id="export-new-invoice" required/>
           <rx-input name="supply_date" type="date" :label="tx['export.supply_date']" :hint="tx['export.supply_hint']" :value="today" id="export-new-supply" required/>
         </rx-action-sheet>
       </template>
     </rx-page-header>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['export.title']" card>
-      <rx-column :label="tx['export.invoice']">{{ row.invoice }}</rx-column>
-      <rx-column :label="tx['export.customer']" hide-narrow>{{ row.customer }}</rx-column>
-      <rx-column :label="tx['export.supply_date']">{{ row.supply }}</rx-column>
-      <rx-column :label="tx['export.days']" align="num" hide-narrow>{{ row.days }}</rx-column>
-      <rx-column :label="tx['export.total']" align="num" hide-narrow>{{ row.total }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
-      <rx-column :label="tx['export.evidence']" hide-narrow>{{ row.evidence }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['export.empty']" icon="percent"/></rx-slot>
-    </rx-table>
+    <rx-grid :page="sales">
+      <template rx-if="column.key == 'customer'">{{ row.customer }}</template>
+      <template rx-elif="column.key == 'days'">{{ row.days }}</template>
+      <template rx-elif="column.key == 'evidence'">{{ row.evidence }}</template>
+      <template rx-elif="column.key == 'attach' and can_manage"><rx-open-button :id="'export-evidence-' ~ row.id" :label="tx['export.attach']" size="small"/></template>
+    </rx-grid>
     <template rx-if="can_manage">
-      <rx-stack rx-for="row in rows">
-        <rx-action-sheet :id="'export-evidence-' ~ row.id" :label="tx['export.attach'] ~ ' ' ~ row.invoice" :action="route('auto.export_evidence', row.id)"
-                         :title="tx['export.attach']" :description="tx['export.attach_description']" :submit-label="tx['export.attach']" icon="file-text">
-          <rx-select name="kind" :label="tx['export.kind']" :options="kind_options" :placeholder="tx['export.kind_placeholder']" :id="'export-evidence-kind-' ~ row.id" required/>
-          <rx-input name="reference" :label="tx['export.reference']" :id="'export-evidence-ref-' ~ row.id" required/>
-        </rx-action-sheet>
-      </rx-stack>
+      <rx-action-sheet rx-for="sheet in sheets" :button="false" :id="'export-evidence-' ~ sheet[0]" :label="tx['export.attach'] ~ ' ' ~ sheet[1]" :action="route('auto.export_evidence', sheet[0])"
+                       :title="tx['export.attach'] ~ ' ' ~ sheet[1]" :description="tx['export.attach_description']" :submit-label="tx['export.attach']" icon="file-text">
+        <rx-select name="kind" :label="tx['export.kind']" :options="kind_options" :placeholder="tx['export.kind_placeholder']" :id="'export-evidence-kind-' ~ sheet[0]" required/>
+        <rx-input name="reference" :label="tx['export.reference']" :id="'export-evidence-ref-' ~ sheet[0]" required/>
+      </rx-action-sheet>
     </template>
-  </rx-stack>
 </rx-page>
