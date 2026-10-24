@@ -30,7 +30,7 @@
         <rx-button type="submit" :label="tx['fleet.show']" icon="search"/>
       </rx-toolbar>
     </form>
-    <rx-link-tabs :items="tabs" :current="tab_current" :label="tx['fleet.filter']"/>
+    <rx-link-tabs :items="status_tabs" :current="tab_current" :label="tx['fleet.filter']"/>
     <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['fleet.title']" card>
       <rx-column :label="tx['fleet.number']"><a href="{{ route('auto.fleet_contract', row.id) }}">{{ row.number }}</a></rx-column>
       <rx-column :label="tx['fleet.name']">{{ row.title }}</rx-column>

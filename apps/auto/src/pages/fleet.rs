@@ -192,7 +192,7 @@ fn term_text(lang: &Lang, contract: &FleetContract) -> String {
 pub(crate) struct IndexPage {
     tx: Texts,
     rows: Vec<ContractRow>,
-    tabs: Vec<(String, String)>,
+    status_tabs: Vec<(String, String)>,
     tab_current: String,
     tab: String,
     q: String,
@@ -226,7 +226,7 @@ async fn index(
             status_kind: status_kind(contract.status),
         });
     }
-    let tabs = vec![
+    let status_tabs = vec![
         (filter.with_tab("").href(), text(&lang, "fleet.tab.all")),
         (
             filter.with_tab("active").href(),
@@ -244,7 +244,7 @@ async fn index(
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         rows,
-        tabs,
+        status_tabs,
         tab_current: filter.href(),
         tab: filter.tab.clone(),
         q: filter.q.clone(),

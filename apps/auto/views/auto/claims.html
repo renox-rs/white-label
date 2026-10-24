@@ -30,7 +30,7 @@
         <rx-button type="submit" :label="tx['claims.show']" icon="search"/>
       </rx-toolbar>
     </form>
-    <rx-link-tabs :items="tabs" :current="tab_current" :label="tx['claims.filter']"/>
+    <rx-link-tabs :items="status_tabs" :current="tab_current" :label="tx['claims.filter']"/>
     <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['claims.title']" card>
       <rx-column :label="tx['claims.number']"><a href="{{ route('auto.claim', row.id) }}">{{ row.number }}</a></rx-column>
       <rx-column :label="tx['claims.insurer']">{{ row.insurer }}</rx-column>
