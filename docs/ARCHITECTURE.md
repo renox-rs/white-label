@@ -217,8 +217,8 @@ behaviour without changing the module.
 
 ## 6. Module × app matrix
 
-Replaced by [CAPABILITY-MAP.md](CAPABILITY-MAP.md): 106 shared capabilities across 14 client-side
-modules, mapped to the ten verticals, with 148 vertical-specific capabilities (254 distinct).
+Replaced by [CAPABILITY-MAP.md](CAPABILITY-MAP.md): 110 shared capabilities across 14 client-side
+modules, mapped to the ten verticals, with 148 vertical-specific capabilities (258 distinct).
 Each module is specified in [modules/](modules/).
 
 ## 7. Repository layout

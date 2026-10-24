@@ -46,6 +46,10 @@ does not have. Generic gaps were proposed to Renox (all delivered in 1.2.0) and 
 | `PLT.ENT.01` | Legal entities: several trade licences and TRNs in one deployment; issuer on every document | all ten | MVP | kernel ([decision 0003](../decisions/0003-legal-entities.md)) |
 | `PLT.IMP.01` | Data import and migration: Excel templates per entity, validation, dry run, rollback | all ten | MVP | kernel on Renox import (+ R23) |
 | `PLT.SRC.01` | Global search across records, including Arabic names | all ten | MVP | kernel on Renox search (+ R22) |
+| `PLT.REL.01` | Related records of any record, in a panel and as a tool ([decision 0006](../decisions/0006-search-and-ai-agents.md)) | all ten | MVP | kernel |
+| `PLT.AGT.01` | AI assistant connection (MCP): search, read, summarise, reports | all ten | Later | kernel + Renox R26, R27 |
+| `PLT.AGT.02` | AI assistant actions: transitions and drafts, with preview and confirm | all ten | Later | kernel + Renox R28 |
+| `PLT.AGT.03` | AI assistant inbox and messages | all ten | Later | kernel + wl-notify |
 | `PLT.NOT.01` | Notes, comments and @mentions on any record, with an activity timeline | all ten | MVP | kernel |
 | `PLT.SSO.01` | Staff single sign-on with Microsoft 365 or Google Workspace | all ten | Later | renox-oauth (+ R24) |
 | `RPT.LIB.01` | Report library: filtered reports with export to Excel, CSV and PDF | all ten | MVP | kernel (on Renox grid export, R3) |
@@ -509,6 +513,22 @@ is archived, never deleted.
    (Renox R22). Emirates ID, TRN, phone and document numbers match on exact digits.
 5. Sensitive fields are never indexed in clear text; they match only on exact value and the
    result shows them masked.
+
+**Built (BL-AGT-01, `crates/wl-kernel/src/search/`).** A module registers a type with
+`Searchable::of::<M>("<module>.<entity>").permission(…).document(…)` (or `.document_in(…)`
+when it needs other rows) and calls `search::index_in(&mut tx, &subject)` in the transaction
+that creates, changes or imports a record, so a rolled back change leaves no document.
+Transitions the kernel runs by name (`SubjectMachine::run_in`) and voids re-index the record
+themselves; a voided record stays findable by its number, marked void. The documents are in
+`wl_search_documents` (full-text index by Renox: FTS5 on SQLite, `tsvector` on PostgreSQL, over
+Arabic-normalised text, plus a `forms` column of Arabic–Latin match keys), the exact values in
+`wl_search_identifiers` (normalised: upper case without spaces, dashes, slashes and dots; phones
+in E.164; personal kinds such as Emirates ID, passport, phone and email only as an HMAC under
+`APP_KEY`, and any word equal to such a value is left out of the text). `search:rebuild
+[--type <subject_type>]` builds the index again (also after an `APP_KEY` rotation);
+`search::undo_import` undoes an import and its documents together. `search::lookup_identifier`
+returns every match **unfiltered**: the search page (BL-AGT-02) filters by permission, scope and
+record rules before it shows or counts anything.
 
 ### 5.9 Notes and mentions
 
