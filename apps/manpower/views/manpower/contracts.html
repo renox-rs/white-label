@@ -1,10 +1,11 @@
-{#- manpower: the client contracts the person may see, with their status,
-    period, billing cycle and cover obligation. Replace it with
+{#- manpower: the client contracts the person may see, a renox::grid (search
+    on the reference, filters by status, billing and dates, export for those who
+    manage contracts) that fills the screen. A contract on credit hold says
+    since when, from which status and why. Replace it with
     resources/views/manpower/contracts.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['contracts.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['contracts.title']" :subtitle="tx['contracts.subtitle']"/>
-    <rx-row rx-if="can_create">
+  <rx-page-header :title="tx['contracts.title']" :subtitle="tx['contracts.subtitle']">
+    <template rx-if="can_create">
       <rx-action-sheet id="new-contract" :label="tx['contracts.new']" :action="route('manpower.contract_create')"
                        :title="tx['contracts.new']" :description="tx['contracts.new_hint']" :submit-label="tx['contracts.new_save']" variant="primary" icon="plus">
         <rx-select name="client_party_id" :label="tx['form.client']" :options="[]" :placeholder="tx['form.client_placeholder']" options-url="{{ route('manpower.party_options') }}" id="new-contract-client" required/>
@@ -18,24 +19,15 @@
         <rx-input name="deemed_approval_days" type="number" :label="tx['form.deemed_days']" :hint="tx['form.deemed_days_hint']" id="new-contract-deemed"/>
         <rx-select name="escalation_contact_party_id" :label="tx['form.escalation']" :options="[]" :placeholder="tx['form.escalation_placeholder']" options-url="{{ route('manpower.party_options') }}" id="new-contract-escalation"/>
       </rx-action-sheet>
-    </rx-row>
-    <rx-table :rows="contracts" as="contract" :key="contract.id" :caption="tx['contracts.title']" card>
-      <rx-column :label="tx['contracts.reference']">
-        <rx-stack>
-          <span><a href="{{ contract.url }}">{{ contract.reference }}</a></span>
-          <span class="rx-subtitle">{{ contract.client }}</span>
-          <span><rx-badge :kind="contract.status_kind" :text="contract.status"/></span>
-          <span rx-if="contract.hold" class="rx-subtitle">{{ tx['contracts.held_since'] }} {{ contract.hold.held_at }}, {{ tx['contracts.held_before'] }} {{ contract.hold.status_before }}</span>
-          <template rx-if="contract.hold"><template rx-for="line in contract.hold.reasons"><span class="rx-subtitle">{{ line }}</span></template></template>
-        </rx-stack>
-      </rx-column>
-      <rx-column :label="tx['contracts.period']" hide-narrow>{{ contract.period }}</rx-column>
-      <rx-column :label="tx['contracts.billing']" hide-narrow>{{ contract.billing_cycle }}</rx-column>
-      <rx-column :label="tx['contracts.cover']" hide-narrow>
-        <span rx-if="contract.cover_required">{{ tx['contracts.cover_required'] }}</span>
-        <span rx-if="not contract.cover_required">{{ tx['contracts.cover_none'] }}</span>
-      </rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['contracts.empty']" :message="tx['contracts.empty_text']" icon="file-text"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+    </template>
+  </rx-page-header>
+  <rx-grid :page="contracts">
+    <template rx-if="column.key == 'client'">{{ row.client }}</template>
+    <template rx-elif="column.key == 'hold'">
+      <template rx-if="row.hold">
+        <span class="rx-subtitle">{{ tx['contracts.held_since'] }} {{ row.hold.since }}, {{ tx['contracts.held_before'] }} {{ row.hold.before }}</span>
+        <template rx-for="line in row.hold.reasons"><span class="rx-subtitle">{{ line }}</span> </template>
+      </template>
+    </template>
+  </rx-grid>
 </rx-page>

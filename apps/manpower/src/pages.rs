@@ -75,7 +75,7 @@ use crate::site::{self, Site};
 use crate::suspension::{self, DeploymentSuspension};
 use crate::termination::TerminateAsk;
 use crate::texts::english;
-use crate::texts::{screen_texts, t, word};
+use crate::texts::{t, word};
 use wl_kernel::documents::today;
 
 /// The routes.
@@ -256,19 +256,6 @@ pub(crate) struct HoldRow {
     reasons: Vec<String>,
 }
 
-/// What the contracts page needs.
-#[derive(Serialize, ViewData)]
-#[view(template = "manpower/contracts.html")]
-pub(crate) struct ContractsPage {
-    tx: BTreeMap<&'static str, String>,
-    contracts: Vec<ContractRow>,
-    /// Whether the person may start a contract for some client.
-    can_create: bool,
-    billing_cycles: Vec<(String, String)>,
-    billing_selected: String,
-    today: String,
-}
-
 /// The badge colour of a contract.
 fn contract_kind(status: ContractStatus) -> &'static str {
     match status {
@@ -307,8 +294,9 @@ async fn contracts_index(
     lang: Lang,
     headers: HeaderMap,
     Query(filter): Query<ListFilter>,
+    request: renox::grid::GridRequest,
 ) -> Result<Response> {
-    let mut rows = Vec::new();
+    let mut visible = Vec::new();
     for contract in ClientContract::query()
         .order_by(ClientContract::ID)
         .get(&state.db)
@@ -336,6 +324,19 @@ async fn contracts_index(
                 continue;
             }
         }
+        visible.push(contract);
+    }
+    if visible.is_empty()
+        && !user.has_permission_anywhere(permissions::CONTRACTS_VIEW)
+        && !user.has_permission_anywhere(permissions::CONTRACTS_MANAGE)
+    {
+        return Err(Error::Forbidden);
+    }
+    if wl_kernel::negotiate::wants_html(&headers) {
+        return screens::lists::contracts(&state, &user, &lang, &visible, request).await;
+    }
+    let mut rows = Vec::new();
+    for contract in visible {
         let hold = if contract.status == ContractStatus::OnHold {
             let open = ContractHold::open_of(&state.db, contract.id).await?;
             Some(HoldRow {
@@ -364,27 +365,6 @@ async fn contracts_index(
             cover_required: contract.cover_required,
             hold,
         });
-    }
-    if rows.is_empty()
-        && !user.has_permission_anywhere(permissions::CONTRACTS_VIEW)
-        && !user.has_permission_anywhere(permissions::CONTRACTS_MANAGE)
-    {
-        return Err(Error::Forbidden);
-    }
-    if wl_kernel::negotiate::wants_html(&headers) {
-        return Ok(View::typed(ContractsPage {
-            tx: screen_texts(&lang),
-            contracts: rows,
-            can_create: user.has_permission_anywhere(permissions::CONTRACTS_MANAGE),
-            billing_cycles: screens::options(
-                &lang,
-                "billing",
-                &["monthly", "fortnightly", "weekly"],
-            ),
-            billing_selected: "monthly".to_owned(),
-            today: today().to_string(),
-        })
-        .into_response());
     }
     Ok(Json(rows).into_response())
 }
@@ -731,18 +711,6 @@ pub(crate) struct RequestRow {
     replaces_deployment_id: Option<i64>,
 }
 
-/// What the requests page needs.
-#[derive(Serialize, ViewData)]
-#[view(template = "manpower/requests.html")]
-pub(crate) struct RequestsPage {
-    tx: BTreeMap<&'static str, String>,
-    requests: Vec<RequestRow>,
-    /// Whether the person may write a request for some client; then the
-    /// sheet of *New request* has its options.
-    can_create: bool,
-    form: request_page::NewRequestForm,
-}
-
 /// `GET /manpower/requests`: the requests of the client companies the person
 /// works for, or the one the portal grants them (`MPW.ACL.01`).
 async fn requests_index(
@@ -751,8 +719,9 @@ async fn requests_index(
     lang: Lang,
     headers: HeaderMap,
     Query(filter): Query<ListFilter>,
+    request: renox::grid::GridRequest,
 ) -> Result<Response> {
-    let mut rows = Vec::new();
+    let mut visible = Vec::new();
     let mut any = false;
     for request in ManpowerRequest::query()
         .order_by(ManpowerRequest::ID)
@@ -779,9 +748,23 @@ async fn requests_index(
             "missing" => request.status.takes_workers(),
             key => request.status.as_str() == key,
         };
-        if !wanted {
-            continue;
+        if wanted {
+            visible.push(request);
         }
+    }
+    if !any
+        && !user.has_permission_anywhere(permissions::REQUESTS_VIEW)
+        && !user.has_permission_anywhere(permissions::REQUESTS_CREATE)
+        && !user.has_permission_anywhere(permissions::REQUESTS_MANAGE)
+    {
+        return Err(Error::Forbidden);
+    }
+    if wl_kernel::negotiate::wants_html(&headers) {
+        let ids = visible.iter().map(|request| request.id).collect();
+        return screens::lists::requests(&state, &user, &lang, ids, request).await;
+    }
+    let mut rows = Vec::new();
+    for request in visible {
         let site = Site::find(&state.db, request.site_id)
             .await?
             .map(|site| site.name)
@@ -808,23 +791,6 @@ async fn requests_index(
             cause: request.cause.clone(),
             replaces_deployment_id: request.replaces_deployment_id,
         });
-    }
-    if !any
-        && !user.has_permission_anywhere(permissions::REQUESTS_VIEW)
-        && !user.has_permission_anywhere(permissions::REQUESTS_CREATE)
-        && !user.has_permission_anywhere(permissions::REQUESTS_MANAGE)
-    {
-        return Err(Error::Forbidden);
-    }
-    if wl_kernel::negotiate::wants_html(&headers) {
-        let form = request_page::new_request_form(&state, &user, &lang).await?;
-        return Ok(View::typed(RequestsPage {
-            tx: screen_texts(&lang),
-            requests: rows,
-            can_create: !form.contracts.is_empty(),
-            form,
-        })
-        .into_response());
     }
     Ok(Json(rows).into_response())
 }
@@ -959,33 +925,12 @@ pub(crate) struct ClientDeploymentRow {
     status_kind: &'static str,
 }
 
-/// A row of the deployments page: a [`ClientDeploymentRow`] and, for staff, what
-/// they are warned of (BL-MPW-09); empty for a client user, whose JSON rows
-/// stay exactly the client's keys.
-#[derive(Debug, Serialize, Clone)]
-pub(crate) struct PageDeploymentRow {
-    #[serde(flatten)]
-    row: ClientDeploymentRow,
-    flags: Vec<String>,
-    /// The deployment's page; empty for a client user.
-    url: String,
-}
-
-/// What the deployments page needs; both kinds of row have the keys the
-/// template reads.
-#[derive(Serialize, ViewData)]
-#[view(template = "manpower/deployments.html")]
-pub(crate) struct DeploymentsPage {
-    tx: BTreeMap<&'static str, String>,
-    deployments: Vec<PageDeploymentRow>,
-    /// Whether the person may plan a deployment; the sheet's options follow.
-    can_plan: bool,
-    plan: deployment_page::PlanForm,
-}
-
 /// The line staff see on a `suspended` deployment: the reasons and the days
 /// suspended; none otherwise.
-async fn suspension_note(state: &AppState, deployment: &Deployment) -> Result<Vec<String>> {
+pub(crate) async fn suspension_note(
+    state: &AppState,
+    deployment: &Deployment,
+) -> Result<Vec<String>> {
     if deployment.status != DeploymentStatus::Suspended {
         return Ok(Vec::new());
     }
@@ -1025,8 +970,8 @@ async fn deployments_index(
     lang: Lang,
     headers: HeaderMap,
     Query(filter): Query<ListFilter>,
+    request: renox::grid::GridRequest,
 ) -> Result<Response> {
-    let wants_page = wl_kernel::negotiate::wants_html(&headers);
     let mut staff = Vec::new();
     let mut clients = Vec::new();
     for deployment in Deployment::query()
@@ -1052,52 +997,10 @@ async fn deployments_index(
         if !filter.status.is_empty() && deployment.status.as_str() != filter.status {
             continue;
         }
-        let site = Site::find(&state.db, deployment.site_id)
-            .await?
-            .map(|site| site.name)
-            .unwrap_or_default();
-        let worker = deployments::worker_name(&state, &lang.locale, deployment.employee()).await;
-        let status = word(&lang, "status", deployment.status.as_str());
-        let kind = deployment_kind(deployment.status);
         if by_staff {
-            staff.push(DeploymentRow {
-                id: deployment.id,
-                employee_id: deployment.employee_id,
-                worker: worker.clone(),
-                client_contract_id: deployment.client_contract_id,
-                client_party_id: deployment.client_party_id,
-                client: party_name(&state, &lang, deployment.client_party_id).await,
-                site_id: deployment.site_id,
-                site: site.clone(),
-                request_id: deployment.request_id,
-                role: deployment.role.clone(),
-                shift_type: deployment.shift_type.clone(),
-                start_date: deployment.start_date,
-                end_date: deployment.end_date,
-                cover: deployment.kind == DeploymentKind::Cover,
-                status: status.clone(),
-                status_kind: kind,
-                end_reason: deployment.end_reason.clone(),
-                document_flags: DeploymentDocumentFlag::open_for(&state.db, deployment.id)
-                    .await?
-                    .iter()
-                    .map(DeploymentDocumentFlag::text)
-                    .collect(),
-                days_suspended: deployment.days_suspended(today()),
-                url: deployment_page::url(deployment.id),
-                suspension: suspension_note(&state, &deployment).await?,
-            });
+            staff.push(deployment);
         } else {
-            clients.push(ClientDeploymentRow {
-                worker,
-                role: deployment.role.clone(),
-                site,
-                shift_type: deployment.shift_type.clone(),
-                start_date: deployment.start_date,
-                end_date: deployment.end_date,
-                status,
-                status_kind: kind,
-            });
+            clients.push(deployment);
         }
     }
     if staff.is_empty()
@@ -1112,60 +1015,68 @@ async fn deployments_index(
             return Err(Error::Forbidden);
         }
     }
-    if wants_page {
-        // The page reads the same keys for both kinds of row.
-        let rows: Vec<PageDeploymentRow> = if staff.is_empty() {
-            clients
-                .into_iter()
-                .map(|row| PageDeploymentRow {
-                    row,
-                    flags: Vec::new(),
-                    url: String::new(),
-                })
-                .collect()
-        } else {
-            staff
-                .iter()
-                .map(|row| PageDeploymentRow {
-                    row: ClientDeploymentRow {
-                        worker: row.worker.clone(),
-                        role: row.role.clone(),
-                        site: row.site.clone(),
-                        shift_type: row.shift_type.clone(),
-                        start_date: row.start_date,
-                        end_date: row.end_date,
-                        status: row.status.clone(),
-                        status_kind: row.status_kind,
-                    },
-                    flags: row
-                        .document_flags
-                        .iter()
-                        .chain(&row.suspension)
-                        .cloned()
-                        .collect(),
-                    url: deployment_page::url(row.id),
-                })
-                .collect()
-        };
-        let can_plan = user.has_permission_anywhere(permissions::DEPLOYMENTS_MANAGE);
-        let plan = if can_plan {
-            deployment_page::plan_form(&state, &user, &lang).await?
-        } else {
-            deployment_page::PlanForm::default()
-        };
-        return Ok(View::typed(DeploymentsPage {
-            tx: screen_texts(&lang),
-            deployments: rows,
-            can_plan: can_plan && !plan.requests.is_empty(),
-            plan,
-        })
-        .into_response());
+    if wl_kernel::negotiate::wants_html(&headers) {
+        // Staff see their deployments; a client user only the workers on site.
+        let is_staff = !staff.is_empty();
+        let shown = if is_staff { &staff } else { &clients };
+        let ids = shown.iter().map(|deployment| deployment.id).collect();
+        return screens::lists::deployments(&state, &user, &lang, ids, is_staff, request).await;
     }
     if staff.is_empty() {
-        Ok(Json(clients).into_response())
-    } else {
-        Ok(Json(staff).into_response())
+        let mut rows = Vec::new();
+        for deployment in &clients {
+            rows.push(ClientDeploymentRow {
+                worker: deployments::worker_name(&state, &lang.locale, deployment.employee()).await,
+                role: deployment.role.clone(),
+                site: site_name(&state, deployment.site_id).await?,
+                shift_type: deployment.shift_type.clone(),
+                start_date: deployment.start_date,
+                end_date: deployment.end_date,
+                status: word(&lang, "status", deployment.status.as_str()),
+                status_kind: deployment_kind(deployment.status),
+            });
+        }
+        return Ok(Json(rows).into_response());
     }
+    let mut rows = Vec::new();
+    for deployment in &staff {
+        rows.push(DeploymentRow {
+            id: deployment.id,
+            employee_id: deployment.employee_id,
+            worker: deployments::worker_name(&state, &lang.locale, deployment.employee()).await,
+            client_contract_id: deployment.client_contract_id,
+            client_party_id: deployment.client_party_id,
+            client: party_name(&state, &lang, deployment.client_party_id).await,
+            site_id: deployment.site_id,
+            site: site_name(&state, deployment.site_id).await?,
+            request_id: deployment.request_id,
+            role: deployment.role.clone(),
+            shift_type: deployment.shift_type.clone(),
+            start_date: deployment.start_date,
+            end_date: deployment.end_date,
+            cover: deployment.kind == DeploymentKind::Cover,
+            status: word(&lang, "status", deployment.status.as_str()),
+            status_kind: deployment_kind(deployment.status),
+            end_reason: deployment.end_reason.clone(),
+            document_flags: DeploymentDocumentFlag::open_for(&state.db, deployment.id)
+                .await?
+                .iter()
+                .map(DeploymentDocumentFlag::text)
+                .collect(),
+            days_suspended: deployment.days_suspended(today()),
+            url: deployment_page::url(deployment.id),
+            suspension: suspension_note(&state, deployment).await?,
+        });
+    }
+    Ok(Json(rows).into_response())
+}
+
+/// The name of a site, empty when it is gone.
+async fn site_name(state: &AppState, id: i64) -> Result<String> {
+    Ok(Site::find(&state.db, id)
+        .await?
+        .map(|site| site.name)
+        .unwrap_or_default())
 }
 
 /// `POST /manpower/deployments`: `employee_id`, `client_contract_id`,
