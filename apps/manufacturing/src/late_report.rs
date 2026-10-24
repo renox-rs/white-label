@@ -11,9 +11,8 @@
 //! The entity is [`LateReport`]: what the supervisor typed. The report itself
 //! (and its stock movements) is posted from it once the entry is recorded or
 //! approved, with [`crate::report::post`]; a rejected entry posts nothing.
-//! Goods receipts keep their arrival time in wl-inventory and the inspections
-//! of returned goods are recorded on the day, so only the production report
-//! takes a business time here.
+//! Goods receipts keep their arrival time in wl-inventory; the decision on a
+//! returned lot has the same check in [`crate::late_inspection`].
 
 use renox::db::{DateTime, Transaction, now};
 use renox::prelude::*;

@@ -830,7 +830,7 @@ pub async fn new_dispatch(
 }
 
 /// Whether `user` holds `permission` in any scope.
-fn allows(user: &AuthUser, permission: &str) -> bool {
+pub(crate) fn allows(user: &AuthUser, permission: &str) -> bool {
     user.has_permission(permission) || user.has_permission_anywhere(permission)
 }
 
@@ -843,6 +843,12 @@ async fn open_inspection(state: &AppState, user: &AuthUser, id: i64) -> Result<R
     if !found.is_open() {
         return Err(refused(english("manufacturing.returns.inspected", &[])));
     }
+    if crate::late_inspection::waiting(state, found.id)
+        .await?
+        .is_some()
+    {
+        return Err(refused(english("manufacturing.returns.waiting", &[])));
+    }
     Ok(found)
 }
 
@@ -850,7 +856,7 @@ async fn open_inspection(state: &AppState, user: &AuthUser, id: i64) -> Result<R
 /// task is completed and the complaint ticket told.
 async fn finish(
     state: &AppState,
-    user: &AuthUser,
+    (by, at): (i64, renox::db::DateTime),
     found: &ReturnInspection,
     status: &str,
     note: &str,
@@ -868,8 +874,8 @@ async fn finish(
                     &Some(note.trim().to_owned()).filter(|n| !n.is_empty()),
                 ),
                 ("ncr_id", &ncr),
-                ("decided_by", &Some(user.id)),
-                ("decided_at", &Some(renox::db::now())),
+                ("decided_by", &Some(by)),
+                ("decided_at", &Some(at)),
                 ("updated_at", &renox::db::now()),
             ],
         )
@@ -898,6 +904,18 @@ pub async fn pass(
     note: &str,
 ) -> Result<ReturnInspection> {
     let found = open_inspection(state, user, id).await?;
+    apply_pass(state, user.id, renox::db::now(), &found, note).await
+}
+
+/// Passes the open inspection `found` as `by`, decided at `at` (its business
+/// time): the lot is released.
+pub(crate) async fn apply_pass(
+    state: &AppState,
+    by: i64,
+    at: renox::db::DateTime,
+    found: &ReturnInspection,
+    note: &str,
+) -> Result<ReturnInspection> {
     // The inspection is passed first: it is what keeps the lot from release.
     ReturnInspection::query()
         .where_(ReturnInspection::ID.eq(found.id))
@@ -917,8 +935,8 @@ pub async fn pass(
     }
     finish(
         state,
-        user,
-        &found,
+        (by, at),
+        found,
         inspection::PASSED,
         note,
         None,
@@ -941,28 +959,46 @@ pub async fn fail(
     defect: &str,
 ) -> Result<(ReturnInspection, crate::ncr::Ncr)> {
     let found = open_inspection(state, user, id).await?;
-    let mut plant = None;
+    let plant_id = ncr_plant(state, user).await?;
+    apply_fail(state, user.id, renox::db::now(), &found, plant_id, defect).await
+}
+
+/// The first active plant where `user` may raise an NCR.
+///
+/// # Errors
+///
+/// `Forbidden` when there is none.
+pub(crate) async fn ncr_plant(state: &AppState, user: &AuthUser) -> Result<i64> {
     for candidate in crate::plant::Plant::query()
         .order_by(crate::plant::Plant::ID)
         .get(&state.db)
         .await?
     {
         if candidate.active && user.has_permission_in(permissions::NCRS_RAISE, &candidate.scope()) {
-            plant = Some(candidate.id);
-            break;
+            return Ok(candidate.id);
         }
     }
-    let Some(plant_id) = plant else {
-        return Err(Error::Forbidden);
-    };
+    Err(Error::Forbidden)
+}
+
+/// Fails the open inspection `found` as `by` (who may raise NCRs in plant
+/// `plant_id`), decided at `at` (its business time): an NCR is raised.
+pub(crate) async fn apply_fail(
+    state: &AppState,
+    by: i64,
+    at: renox::db::DateTime,
+    found: &ReturnInspection,
+    plant_id: i64,
+    defect: &str,
+) -> Result<(ReturnInspection, crate::ncr::Ncr)> {
     let defect = if defect.trim().is_empty() {
         found.reason.clone().unwrap_or_default()
     } else {
         defect.trim().to_owned()
     };
-    let ncr = crate::ncrs::raise(
+    let ncr = crate::ncrs::raise_as(
         state,
-        user,
+        by,
         crate::ncrs::NewNcr {
             plant_id,
             lot: found.lot(),
@@ -983,8 +1019,8 @@ pub async fn fail(
     .await?;
     let done = finish(
         state,
-        user,
-        &found,
+        (by, at),
+        found,
         inspection::FAILED,
         "",
         Some(ncr.id),

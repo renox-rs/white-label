@@ -162,6 +162,20 @@ pub async fn raise(state: &AppState, by: &AuthUser, new: NewNcr) -> Result<Ncr> 
     insert(state, &plant, new, Some(by.id)).await
 }
 
+/// Raises an NCR in plant `new.plant_id` for user `by`, whose right to raise
+/// it was checked when the entry was made (an inspection decided later).
+///
+/// # Errors
+///
+/// A 422 for an unknown or inactive plant, and as [`raise`].
+pub(crate) async fn raise_as(state: &AppState, by: i64, new: NewNcr) -> Result<Ncr> {
+    let plant = Plant::find(&state.db, new.plant_id)
+        .await?
+        .filter(|plant| plant.active)
+        .ok_or_else(|| refused(english("manufacturing.create.plant", &[])))?;
+    insert(state, &plant, new, Some(by)).await
+}
+
 /// Raises an NCR as the system in the first active plant (a customer's
 /// quality dispute, BL-MFG-13).
 ///

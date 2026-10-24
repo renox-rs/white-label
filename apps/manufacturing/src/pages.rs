@@ -37,8 +37,8 @@
 //! | `GET /manufacturing/returns` | `manufacturing.returns` | `returned_goods.view` or `returned_goods.decide` (BL-MFG-07) |
 //! | `POST /manufacturing/returns/{id}/dispatch` | `manufacturing.return_dispatch` | `returned_goods.decide`; a draft dispatch for the open quantity |
 //! | `GET /manufacturing/inspections` | `manufacturing.inspections` | `inspections.view` or `inspections.record` (BL-MFG-07) |
-//! | `POST /manufacturing/inspections/{id}/pass` | `manufacturing.inspection_pass` | `inspections.record`; releases the lot |
-//! | `POST /manufacturing/inspections/{id}/fail` | `manufacturing.inspection_fail` | `inspections.record` and `ncrs.raise`; raises an NCR on the lot |
+//! | `POST /manufacturing/inspections/{id}/pass` | `manufacturing.inspection_pass` | `inspections.record`; releases the lot; with `occurred_at` the result is entered later (late-entry flag, approval beyond N hours, `PLT.ACL.10`) |
+//! | `POST /manufacturing/inspections/{id}/fail` | `manufacturing.inspection_fail` | `inspections.record` and `ncrs.raise`; raises an NCR on the lot; `occurred_at` as for pass |
 //! | `GET /manufacturing/recalls` | `manufacturing.recalls` | `recalls.view` or `recalls.manage` (BL-MFG-10) |
 //! | `GET /manufacturing/recalls/{id}` | `manufacturing.recall` | as the list: the customers a recall reached |
 //!
@@ -460,7 +460,7 @@ async fn report_output(
 }
 
 /// A local time such as `2026-11-03T10:30` (Asia/Dubai) as an instant.
-fn parse_local(text: &str) -> Option<renox::db::DateTime> {
+pub(crate) fn parse_local(text: &str) -> Option<renox::db::DateTime> {
     let text = text.trim();
     ["%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M"]
         .iter()

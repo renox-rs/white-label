@@ -18,7 +18,7 @@
 //!   [`hr`] are the builder calls of the invoicing, payments, sales, stock and
 //!   HR modules for a manufacturer; [`ManufacturingSeed`] (command
 //!   `manufacturing:install`) stores what the modules lack: the late-entry
-//!   limits of a production report and a goods receipt, the lead sources 07 uses, the onboarding
+//!   limits of a production report, a goods receipt and the decision on a returned lot, the lead sources 07 uses, the onboarding
 //!   checklists and the SOP library. A re-run changes nothing and keeps what
 //!   the client changed.
 //!
@@ -558,18 +558,18 @@ pub async fn install(state: &AppState) -> Result<Installed> {
     Ok(installed)
 }
 
-/// M and N of a production report and of a goods receipt entered after the
-/// fact (`PLT.ACL.10`, 07 §7.1 *Late entry*): flagged with a reason after 30
-/// minutes, approved by the production manager after 24 hours. A limit the
-/// client changed is kept. Deferred (F7, BL-MFG-14): the inspections of
-/// returned goods have no business time (the decision is stamped when it is
-/// made), and no kind is registered for calibration certificates
+/// M and N of a production report, of a goods receipt and of the decision on
+/// a returned lot entered after the fact (`PLT.ACL.10`, 07 §7.1 *Late
+/// entry*): flagged with a reason after 30 minutes, approved by the production
+/// manager after 24 hours. A limit the client changed is kept. Deferred (F7,
+/// BL-MFG-14): no kind is registered for calibration certificates
 /// (`DOC.EXP.01`), there being no equipment record to attach them to.
 async fn install_late_entry_limits(db: &Db) -> Result<usize> {
     let mut created = 0;
     for subject_type in [
         manufacturing::late_report::SUBJECT_TYPE,
         wl_inventory::goods_receipt::LATE_SUBJECT_TYPE,
+        manufacturing::late_inspection::SUBJECT_TYPE,
     ] {
         let found = LateEntryLimits::query()
             .where_(LateEntryLimits::SUBJECT_TYPE.eq(subject_type))

@@ -10,6 +10,7 @@ pub mod events;
 pub mod exports;
 pub mod incidents;
 pub mod issue;
+pub mod late_inspection;
 pub mod late_report;
 pub mod material_hold;
 pub mod ncr;
@@ -197,6 +198,7 @@ impl Module for Manufacturing {
             .model::<exports::ContractNote>()
             .model::<order_changes::Adjustment>()
             .model::<late_report::LateReport>()
+            .model::<late_inspection::LateInspection>()
             .model::<returns::ReturnInspection>()
             .model::<returns::ReturnDecision>()
             .model::<returns::ReturnMove>();
@@ -205,6 +207,7 @@ impl Module for Manufacturing {
         report::register(app);
         // `PLT.ACL.10`: a report typed in from the paper job cards.
         late_report::register(app);
+        late_inspection::register(app);
         notices::register_types();
         // 07 §7.1 *Party blocked*: the work orders of a blocked customer
         // continue; the planner may `unlink` them to stock.

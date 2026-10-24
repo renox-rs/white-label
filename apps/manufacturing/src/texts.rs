@@ -189,6 +189,14 @@ const TEXTS: &[(&str, &str)] = &[
         "This inspection has its result already.",
     ),
     (
+        "manufacturing.returns.waiting",
+        "The result of this inspection waits for the production manager's approval.",
+    ),
+    (
+        "manufacturing.late_inspection.future",
+        "The time of the decision is in the future.",
+    ),
+    (
         "manufacturing.returns.passed_said",
         "Inspection passed: the lot is released.",
     ),
@@ -298,6 +306,43 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "manufacturing.screen.inspections.empty_text",
         "Lots that come back into quarantine wait here for their inspection.",
+    ),
+    ("manufacturing.screen.inspections.occurred_at", "Decided at"),
+    (
+        "manufacturing.screen.inspections.occurred_hint",
+        "Leave empty for a decision made now. Fill it in only when you looked at the goods earlier and are recording the result later.",
+    ),
+    (
+        "manufacturing.screen.inspections.late_reason",
+        "Why it is entered late",
+    ),
+    (
+        "manufacturing.screen.inspections.outage",
+        "Outage reference",
+    ),
+    (
+        "manufacturing.screen.inspections.late",
+        "Entered late: {{ reason }}",
+    ),
+    (
+        "manufacturing.screen.inspections.waits",
+        "Waiting for the production manager to approve the {{ decision }} decided on {{ at }}",
+    ),
+    (
+        "manufacturing.screen.inspections.blocked_waits",
+        "The result you entered waits for the production manager's approval.",
+    ),
+    (
+        "manufacturing.screen.inspections.late_requested",
+        "The late entry waits for the production manager's approval.",
+    ),
+    (
+        "manufacturing.screen.inspections.pass_late_done",
+        "The lot is released with the late-entry flag. Move the goods from quarantine to a store with a transfer.",
+    ),
+    (
+        "manufacturing.screen.inspections.fail_late_done",
+        "An NCR is raised on the lot with the late-entry flag.",
     ),
     ("manufacturing.screen.inspection_status.open", "Waiting"),
     ("manufacturing.screen.inspection_status.passed", "Passed"),
