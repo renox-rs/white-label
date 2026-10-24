@@ -49,7 +49,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use renox::chrono::NaiveDate;
 use renox::db::DateTime;
-use renox::grid::{Column, Grid, GridPage, GridRequest};
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::{self, TransitionError};
@@ -273,11 +273,14 @@ fn parse_degrees(text: &str) -> Option<i64> {
 
 /// The deliveries grid: search on the number, recipient and area; filter by
 /// status.
-pub fn deliveries_grid(lang: &Lang) -> Grid {
+pub fn deliveries_grid(lang: &Lang, can_export: bool) -> Grid {
     let t = texts_in(lang);
     let statuses = options(&t, "status", DeliveryStatus::ALL.iter().map(|s| s.as_str()));
-    Grid::new("wl-delivery")
+    let grid = Grid::new("wl-delivery")
         .title(&t("title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::text("number", &t("fields.number"))
                 .frozen()
@@ -309,11 +312,17 @@ pub fn deliveries_grid(lang: &Lang) -> Grid {
                 ])
                 .mobile(),
         )
+        .column(
+            Column::money("amount_to_collect", &t("fields.amount_to_collect"))
+                .hidden()
+                .summary(Summary::Sum),
+        )
         .column(Column::datetime("created_at", &t("fields.date")).hidden())
         .sort_by("-created_at")
         .row_url("/deliveries/{id}")
         .cards_on_mobile()
-        .empty_state(&t("empty"), Some(&t("empty_hint")))
+        .empty_state(&t("empty"), Some(&t("empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list page needs.
@@ -325,14 +334,21 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /deliveries`: the grid.
-async fn index(lang: Lang, request: GridRequest) -> Result<View> {
-    let deliveries = deliveries_grid(&lang)
-        .page(Delivery::query(), &request)
-        .await?;
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
+    let can_export = user.has_permission(permissions::MANAGE);
+    let grid = deliveries_grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(Delivery::query(), &request).await? {
+        return Ok(file);
+    }
+    let deliveries = grid.page(Delivery::query(), &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         deliveries,
-    }))
+    })
+    .into_response())
 }
 
 /// One line of the delivery as the page shows it.
@@ -1286,12 +1302,15 @@ async fn store_trace(
 // ---------------------------------------------------------------------------
 
 /// The runs grid.
-pub fn runs_grid(lang: &Lang) -> Grid {
+pub fn runs_grid(lang: &Lang, can_export: bool) -> Grid {
     let t = texts_in(lang);
     let statuses = options(&t, "run_status", RunStatus::ALL.iter().map(|s| s.as_str()));
     let vehicles = options(&t, "vehicle", VehicleType::ALL.iter().map(|s| s.as_str()));
-    Grid::new("wl-delivery-runs")
+    let grid = Grid::new("wl-delivery-runs")
         .title(&t("runs.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::text("number", &t("fields.number"))
                 .frozen()
@@ -1327,7 +1346,8 @@ pub fn runs_grid(lang: &Lang) -> Grid {
         .sort_by("-run_date")
         .row_url("/runs/{id}")
         .cards_on_mobile()
-        .empty_state(&t("runs.empty"), None)
+        .empty_state(&t("runs.empty"), None);
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the runs page needs.
@@ -1349,15 +1369,23 @@ async fn runs(
     lang: Lang,
     user: AuthUser,
     request: GridRequest,
-) -> Result<View> {
+) -> Result<Response> {
     let t = texts_in(&lang);
+    let can_export = user.has_permission(permissions::RUNS_DISPATCH);
+    let grid = runs_grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(Run::query(), &request).await? {
+        return Ok(file);
+    }
     let drivers =
         renox::auth::permissions::users_with_permission(&state.db, permissions::RUNS_DRIVE)
             .await?
             .into_iter()
             .map(|u| (u.id.to_string(), u.name))
             .collect();
-    let runs = runs_grid(&lang).page(Run::query(), &request).await?;
+    let runs = grid.page(Run::query(), &request).await?;
     Ok(View::typed(RunsPage {
         tx: texts::all(&lang),
         can_dispatch: user.has_permission(permissions::RUNS_DISPATCH),
@@ -1365,7 +1393,8 @@ async fn runs(
         drivers,
         today: today().format("%Y-%m-%d").to_string(),
         runs,
-    }))
+    })
+    .into_response())
 }
 
 /// The form that plans a run.

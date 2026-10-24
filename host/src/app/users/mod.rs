@@ -45,6 +45,9 @@ impl Module for Users {
 pub fn grid() -> Grid {
     Grid::new("users")
         .title("Users")
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::text("name", "Name")
                 .mobile()
@@ -63,6 +66,7 @@ pub fn grid() -> Grid {
         .column(Column::custom("actions", "Change"))
         .sort_by("-created_at")
         .cards_on_mobile()
+        .exports()
         .empty_state(
             "Nobody has signed up yet",
             Some("People show up here once they register."),
@@ -84,7 +88,10 @@ async fn roles_by_user(db: &Db) -> Result<BTreeMap<i64, Vec<String>>> {
     Ok(map)
 }
 
-async fn index(State(db): State<Db>, request: GridRequest) -> Result<View> {
+async fn index(State(db): State<Db>, request: GridRequest) -> Result<Response> {
+    if let Some(file) = grid().export(User::query(), &request).await? {
+        return Ok(file);
+    }
     let roles = roles_by_user(&db).await?;
     let page = grid().page(User::query(), &request).await?;
     // The roles sheets sit after the grid (a grid is a form, and forms
@@ -117,7 +124,8 @@ async fn index(State(db): State<Db>, request: GridRequest) -> Result<View> {
     Ok(view(
         "users/index.html",
         context! { users, members, role_names, totals },
-    ))
+    )
+    .into_response())
 }
 
 /// Ticked boxes: `roles=admin&roles=member` (none ticked: none sent).
