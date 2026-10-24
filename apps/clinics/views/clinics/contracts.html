@@ -39,7 +39,7 @@
     </template>
   </rx-page-header>
   <rx-grid :page="contracts">
-    <template rx-if="column.key == 'payer'">{{ row.payer }}</template>
+    <template rx-if="column.key == 'payer_party_id'">{{ row.payer }}</template>
     <template rx-elif="column.key == 'agreement'">{{ row.agreement }}</template>
     <template rx-elif="column.key == 'copay'">{{ row.copay }}</template>
     <template rx-elif="column.key == 'windows'">{{ row.windows }}</template>

@@ -32,6 +32,7 @@ use super::{
 use crate::claim_closing;
 use crate::contract::{PayerContract, PayerTariff};
 use crate::contracts::{self, NewContract};
+use crate::grid_lookup;
 use crate::money_text;
 use crate::permissions;
 use crate::service_names;
@@ -102,17 +103,34 @@ pub(crate) struct IndexPage {
 /// The contracts grid: search on the plan, filters on the dates, the
 /// deductible and whether the patient may be billed for a missed window. The
 /// payer, agreement, copay, windows and tariffs are drawn by the template
-/// (`custom`), and so is the edit button of each row.
-pub(crate) fn grid(lang: &Lang, can_export: bool, can_edit: bool) -> Grid {
+/// (`custom`), and so is the edit button of each row. The payer is a filter
+/// (`payers`, the options) and is searched by name (`payer_match`, see
+/// `crate::grid_lookup`). No row link: a contract is changed in its sheet.
+pub(crate) fn grid(
+    lang: &Lang,
+    payers: Vec<(String, String)>,
+    payer_match: &str,
+    can_export: bool,
+    can_edit: bool,
+) -> Grid {
     let mut grid = Grid::new("clinics-contracts")
         .title(&text(lang, "contract.title"))
         .per_page(25)
         .remember()
         .advanced_filter()
         .column(
-            Column::custom("payer", &text(lang, "policies.payer"))
+            Column::select("payer_party_id", &text(lang, "policies.payer"), payers)
+                .sortable(false)
                 .frozen()
                 .mobile(),
+        )
+        .column(
+            Column::text("payer_match", &text(lang, "policies.payer"))
+                .computed(payer_match)
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
         )
         .column(
             Column::text("plan", &text(lang, "contract.plan"))
@@ -206,11 +224,19 @@ async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
+    session: Session,
     request: GridRequest,
 ) -> Result<Response> {
     require(&user, permissions::POLICIES_VIEW)?;
     let can_manage = user.has_permission(permissions::AUTHORISATIONS_MANAGE);
-    let grid = grid(&lang, can_manage, can_manage);
+    let payer_ids = PayerContract::query()
+        .pluck::<i64, _>(&state.db, "payer_party_id")
+        .await?;
+    let payers = grid_lookup::party_options(&state, &lang.locale, payer_ids).await;
+    let term = grid_lookup::searched(&request, &session, "clinics-contracts");
+    let payer_match =
+        grid_lookup::party_match(&state, term.as_deref(), &["payer_party_id"]).await;
+    let grid = grid(&lang, payers, &payer_match, can_manage, can_manage);
     if request.param("export").is_some() && !can_manage {
         return Err(Error::Forbidden);
     }

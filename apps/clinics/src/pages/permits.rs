@@ -47,8 +47,10 @@ pub(crate) struct IndexPage {
 }
 
 /// The permits grid: search on the permit number, filters on the validity and
-/// on what is missing. The campaign is drawn by the template (`custom`).
-pub(crate) fn grid(lang: &Lang, day: NaiveDate) -> Grid {
+/// on what is missing. The campaign is drawn by the template (`custom`). The
+/// export is for who records permits; no row link, a permit has no page of
+/// its own.
+pub(crate) fn grid(lang: &Lang, day: NaiveDate, can_export: bool) -> Grid {
     // Valid, or the first thing [`AdvertisingPermit::problem_on`] finds wrong.
     let state = format!(
         "CASE WHEN NOT {{T}}.\"promotes_services\" THEN 'valid' \
@@ -56,7 +58,7 @@ pub(crate) fn grid(lang: &Lang, day: NaiveDate) -> Grid {
          WHEN {{T}}.\"valid_to\" IS NULL THEN 'no_validity' \
          WHEN {{T}}.\"valid_to\" < '{day}' THEN 'lapsed' ELSE 'valid' END"
     );
-    Grid::new("clinics-campaign-permits")
+    let grid = Grid::new("clinics-campaign-permits")
         .title(&text(lang, "permit.title"))
         .per_page(25)
         .remember()
@@ -108,25 +110,32 @@ pub(crate) fn grid(lang: &Lang, day: NaiveDate) -> Grid {
         .empty_state(
             &text(lang, "permit.empty"),
             Some(&text(lang, "permit.subtitle")),
-        )
+        );
+    if can_export { grid.exports() } else { grid }
 }
 
-/// `GET /clinics/campaign-permits`.
+/// `GET /clinics/campaign-permits` (`?export=` needs `permits.manage`).
 async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     request: GridRequest,
-) -> Result<View> {
+) -> Result<Response> {
     if !user.has_permission(permissions::PERMITS_VIEW)
         && !user.has_permission(permissions::PERMITS_MANAGE)
     {
         return Err(Error::Forbidden);
     }
     let day = today();
-    let page = grid(&lang, day)
-        .page(AdvertisingPermit::query(), &request)
-        .await?;
+    let can_manage = user.has_permission(permissions::PERMITS_MANAGE);
+    if request.param("export").is_some() && !can_manage {
+        return Err(Error::Forbidden);
+    }
+    let grid = grid(&lang, day, can_manage);
+    if let Some(file) = grid.export(AdvertisingPermit::query(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(AdvertisingPermit::query(), &request).await?;
     let mut campaigns = BTreeMap::new();
     for permit in page.items() {
         let label = wl_kernel::documents::subject_label(
@@ -141,13 +150,14 @@ async fn index(
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         permits: page,
-        can_manage: user.has_permission(permissions::PERMITS_MANAGE),
+        can_manage,
         promotes_options: vec![
             ["yes".to_owned(), text(&lang, "permit.promotes_yes")],
             ["no".to_owned(), text(&lang, "permit.promotes_no")],
         ],
         today: day,
-    }))
+    })
+    .into_response())
 }
 
 /// The form that records a permit.

@@ -27,6 +27,7 @@ pub mod contracts;
 pub mod coverage;
 mod db;
 pub mod flags;
+mod grid_lookup;
 pub mod late_times;
 pub mod licences;
 pub mod lots;

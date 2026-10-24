@@ -8,7 +8,7 @@
   <rx-grid :page="claims">
     <template rx-if="column.key == 'number'"><a href="{{ row.url }}">{{ row.number }}</a></template>
     <template rx-elif="column.key == 'patient'">{{ row.patient }}</template>
-    <template rx-elif="column.key == 'payer'">{{ row.payer }}</template>
+    <template rx-elif="column.key == 'payer_party_id'">{{ row.payer }}</template>
     <template rx-elif="column.key == 'deadline'">{{ row.deadline }}</template>
     <template rx-elif="column.key == 'closed'">{{ row.closed }}</template>
   </rx-grid>

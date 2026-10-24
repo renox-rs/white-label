@@ -20,6 +20,6 @@
   </rx-page-header>
   <rx-grid :page="policies">
     <template rx-if="column.key == 'patient'">{{ row.patient }}</template>
-    <template rx-elif="column.key == 'payer'">{{ row.payer }}</template>
+    <template rx-elif="column.key == 'payer_party_id'">{{ row.payer }}</template>
   </rx-grid>
 </rx-page>

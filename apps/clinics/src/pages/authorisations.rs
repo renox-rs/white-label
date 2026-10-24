@@ -32,6 +32,7 @@ use super::{
 };
 use crate::authorisation::{AuthStatus, PriorAuthService, PriorAuthorisation};
 use crate::authorisations::{self, NewAuthorisation};
+use crate::grid_lookup;
 use crate::permissions;
 use crate::policy::InsurancePolicy;
 use crate::service_names;
@@ -122,12 +123,17 @@ pub(crate) struct IndexPage {
     can_manage: bool,
 }
 
-/// The authorisations grid: search on the payer's reference, filters by
-/// status, services and last valid day. The names, the number and the units
-/// left are drawn by the template (`custom`).
+/// The authorisations grid: search on the number, the payer's reference and
+/// (through `party_match`, see `crate::grid_lookup`) the patient's and payer's
+/// names, filters by payer (`payers`), policy (`policies`, hidden at first),
+/// status, services and last valid day. The names and the units left are
+/// drawn by the template.
 pub(crate) fn grid(
     lang: &Lang,
     names: &std::collections::BTreeMap<String, String>,
+    payers: Vec<(String, String)>,
+    policies: Vec<(String, String)>,
+    party_match: &str,
     can_export: bool,
 ) -> Grid {
     let statuses: Vec<(String, String)> = AuthStatus::ALL
@@ -149,7 +155,15 @@ pub(crate) fn grid(
                 .mobile(),
         )
         .column(Column::custom("patient", &text(lang, "policies.patient")).mobile())
-        .column(Column::custom("payer", &text(lang, "policies.payer")))
+        .column(
+            Column::select("payer_party_id", &text(lang, "policies.payer"), payers)
+                .sortable(false),
+        )
+        .column(
+            Column::select("policy_id", &text(lang, "coverage.policy"), policies)
+                .hidden()
+                .sortable(false),
+        )
         .column(Column::tags(
             "services",
             &text(lang, "authorisation.services_shown"),
@@ -160,6 +174,25 @@ pub(crate) fn grid(
             Column::text("reference", &text(lang, "authorisation.reference"))
                 .searchable()
                 .hidden(),
+        )
+        .column(
+            Column::text("lookup", &text(lang, "authorisation.number"))
+                .computed(
+                    "'PA-' || CASE WHEN {T}.\"id\" < 10 THEN '000' WHEN {T}.\"id\" < 100 THEN '00' \
+                     WHEN {T}.\"id\" < 1000 THEN '0' ELSE '' END || CAST({T}.\"id\" AS TEXT)",
+                )
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
+        )
+        .column(
+            Column::text("party_match", &text(lang, "policies.patient"))
+                .computed(party_match)
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
         )
         .column(Column::date(
             "valid_until",
@@ -218,12 +251,47 @@ async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
+    session: Session,
     request: GridRequest,
 ) -> Result<Response> {
     require(&user, permissions::POLICIES_VIEW)?;
     let service_names = service_names::names(&state, &lang.locale).await?;
     let can_manage = user.has_permission(permissions::AUTHORISATIONS_MANAGE);
-    let grid = grid(&lang, &service_names, can_manage);
+    let policies = InsurancePolicy::query()
+        .order_by_desc(InsurancePolicy::ID)
+        .get(&state.db)
+        .await?;
+    let mut policy_options = Vec::with_capacity(policies.len());
+    for p in &policies {
+        let patient = party_name(&state, &lang, p.patient()).await;
+        policy_options.push([
+            p.id.to_string(),
+            format!("{patient} — {} {}", p.plan, p.member_id),
+        ]);
+    }
+    let payer_ids = PriorAuthorisation::query()
+        .pluck::<i64, _>(&state.db, "payer_party_id")
+        .await?;
+    let payers = grid_lookup::party_options(&state, &lang.locale, payer_ids).await;
+    let term = grid_lookup::searched(&request, &session, "clinics-authorisations");
+    let party_match = grid_lookup::party_match(
+        &state,
+        term.as_deref(),
+        &["patient_party_id", "payer_party_id"],
+    )
+    .await;
+    let policy_filter = policy_options
+        .iter()
+        .map(|[id, label]| (id.clone(), label.clone()))
+        .collect();
+    let grid = grid(
+        &lang,
+        &service_names,
+        payers,
+        policy_filter,
+        &party_match,
+        can_manage,
+    );
     if request.param("export").is_some() && !can_manage {
         return Err(Error::Forbidden);
     }
@@ -261,18 +329,6 @@ async fn index(
             payer: party_name(&state, &lang, PartyId(row.payer_party_id)).await,
             code: service_names::name_with_code(&service_names, &row.service_code),
         });
-    }
-    let policies = InsurancePolicy::query()
-        .order_by_desc(InsurancePolicy::ID)
-        .get(&state.db)
-        .await?;
-    let mut policy_options = Vec::with_capacity(policies.len());
-    for p in &policies {
-        let patient = party_name(&state, &lang, p.patient()).await;
-        policy_options.push([
-            p.id.to_string(),
-            format!("{patient} — {} {}", p.plan, p.member_id),
-        ]);
     }
     let policy_selected = policy_options
         .first()

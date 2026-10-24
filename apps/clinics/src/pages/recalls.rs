@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 
 use super::{Texts, party_name, require, text, text_with};
+use crate::grid_lookup;
 use crate::permissions;
 use crate::recall_notice::RecallNotice;
 use crate::recalls;
@@ -194,10 +195,18 @@ pub(crate) struct CallsPage {
     sheets: Vec<i64>,
 }
 
-/// The recall calls grid: search on the visit days. The patient, branch and
-/// the button that records the call are drawn by the template (`custom`); no
-/// export, the list names patients.
-pub(crate) fn calls_grid(lang: &Lang) -> Grid {
+/// The recall calls grid: search on the visit days and (through
+/// `patient_match`, see `crate::grid_lookup`) the patient's name, a filter by
+/// branch (`branch_sql` and `branches`, worked out from the notice's scope).
+/// The patient and the button that records the call are drawn by the
+/// template; no export, the list names patients (`CLN.ACL`), and no row link:
+/// the call is recorded in the row's sheet.
+pub(crate) fn calls_grid(
+    lang: &Lang,
+    patient_match: &str,
+    branch_sql: &str,
+    branches: Vec<(String, String)>,
+) -> Grid {
     Grid::new("clinics-recall-calls")
         .title(&text(lang, "recall.calls_title"))
         .per_page(25)
@@ -213,7 +222,19 @@ pub(crate) fn calls_grid(lang: &Lang) -> Grid {
                 .mobile()
                 .searchable(),
         )
-        .column(Column::custom("branch", &text(lang, "recall.branch")).mobile())
+        .column(
+            Column::select("branch", &text(lang, "recall.branch"), branches)
+                .computed(branch_sql)
+                .mobile(),
+        )
+        .column(
+            Column::text("patient_match", &text(lang, "recall.patient"))
+                .computed(patient_match)
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
+        )
         .column(Column::datetime(
             "gave_up_at",
             &text(lang, "recall.call_gave_up"),
@@ -232,6 +253,7 @@ async fn calls(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
+    session: Session,
     request: GridRequest,
 ) -> Result<View> {
     if !may_call(&user) {
@@ -256,7 +278,17 @@ async fn calls(
     } else {
         visible
     }));
-    let page = calls_grid(&lang).page(query, &request).await?;
+    let term = grid_lookup::searched(&request, &session, "clinics-recall-calls");
+    let patient_match = grid_lookup::party_match(
+        &state,
+        term.as_deref(),
+        &["patient_party_id", "party_id"],
+    )
+    .await;
+    let (branch_sql, branch_options) = grid_lookup::labelled("id", &branches);
+    let page = calls_grid(&lang, &patient_match, &branch_sql, branch_options)
+        .page(query, &request)
+        .await?;
     let shown: Vec<i64> = page.items().iter().map(|notice| notice.id).collect();
     let mut patients = BTreeMap::new();
     for notice in page.items() {

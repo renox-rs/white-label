@@ -23,7 +23,7 @@
   <rx-grid :page="authorisations">
     <template rx-if="column.key == 'number'"><a href="{{ row.url }}">{{ row.number }}</a></template>
     <template rx-elif="column.key == 'patient'">{{ row.patient }}</template>
-    <template rx-elif="column.key == 'payer'">{{ row.payer }}</template>
+    <template rx-elif="column.key == 'payer_party_id'">{{ row.payer }}</template>
     <template rx-elif="column.key == 'units'">{{ row.units }}</template>
   </rx-grid>
   <rx-sheet id="authorisation-required-list" :title="tx['authorisation.required_title']" width="lg">

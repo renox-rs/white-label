@@ -32,6 +32,7 @@ use crate::auth_check;
 use crate::consent::SelfPayConsent;
 use crate::coverage::{self, Choice, CoverageOutcome, EligibilityInput, PendingCheckIn};
 use crate::flags::AppointmentFlag;
+use crate::grid_lookup;
 use crate::money_text;
 use crate::permissions;
 use crate::policy::{EligibilityCheck, InsurancePolicy};
@@ -125,10 +126,23 @@ pub(crate) struct IndexPage {
     appointments: GridPage<Appointment>,
 }
 
-/// The appointments grid: filters by start and service. The patient, the
-/// cover and the open flags are drawn by the template (`custom`); no export,
-/// the list names patients.
-pub(crate) fn grid(lang: &Lang, names: &std::collections::BTreeMap<String, String>) -> Grid {
+/// The appointments grid: filters by start (a date range), service and open
+/// flag, a search on the booking, the service and (through `patient_match`,
+/// see `crate::grid_lookup`) the patient's name. The patient, the cover and
+/// the open flags are drawn by the template. No export, the list names
+/// patients; no row link, the appointment's page is keyed by its booking (the
+/// *Appointment* column links it). The branch is the booking's, kept by
+/// wl-scheduling, so it is not a filter here (the bookings list has it).
+pub(crate) fn grid(
+    lang: &Lang,
+    names: &std::collections::BTreeMap<String, String>,
+    patient_match: &str,
+) -> Grid {
+    let flags: Vec<(String, String)> = ["needs_authorisation", "insurance_card"]
+        .into_iter()
+        .map(|key| (key.to_owned(), text(lang, &format!("flags.{key}"))))
+        .chain([("none".to_owned(), text(lang, "flags.none"))])
+        .collect();
     let services: Vec<(String, String)> = names
         .iter()
         .map(|(code, name)| (code.clone(), name.clone()))
@@ -153,7 +167,17 @@ pub(crate) fn grid(lang: &Lang, names: &std::collections::BTreeMap<String, Strin
             .searchable(),
         )
         .column(Column::custom("cover", &text(lang, "appointments.cover")).mobile())
-        .column(Column::custom("flags", &text(lang, "flags.title")).mobile())
+        // The first open flag of the booking, else `none`; the cell lists
+        // every open one.
+        .column(
+            Column::select("flags", &text(lang, "flags.title"), flags)
+                .computed(
+                    "COALESCE((SELECT f.\"cause\" FROM \"clinics_appointment_flags\" f \
+                     WHERE f.\"booking_id\" = {T}.\"booking_id\" AND f.\"cleared_on\" IS NULL \
+                     ORDER BY f.\"id\" LIMIT 1), 'none')",
+                )
+                .mobile(),
+        )
         .column(Column::custom("open", &text(lang, "appointments.title")).frozen_right())
         // Search: the booking number (and the service code, through its own
         // column, so a code never shows as a cell); the names are in the parties
@@ -161,6 +185,14 @@ pub(crate) fn grid(lang: &Lang, names: &std::collections::BTreeMap<String, Strin
         .column(
             Column::text("lookup", &text(lang, "appointments.title"))
                 .computed("CAST({T}.\"booking_id\" AS TEXT)")
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
+        )
+        .column(
+            Column::text("patient_match", &text(lang, "appointments.patient"))
+                .computed(patient_match)
                 .hidden()
                 .searchable()
                 .sortable(false)
@@ -180,14 +212,20 @@ async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
+    session: Session,
     request: GridRequest,
 ) -> Result<View> {
     require(&user, permissions::VISITS_VIEW)?;
     let service_names = service_names::names(&state, &lang.locale).await?;
+    let term = grid_lookup::searched(&request, &session, "clinics-appointments");
+    let patient_match =
+        grid_lookup::party_match(&state, term.as_deref(), &["patient_party_id"]).await;
     let query = Appointment::query()
         .where_(Appointment::VISIT_DATE.gte(wl_kernel::documents::today()))
         .where_(Appointment::CANCELLED_ON.is_null());
-    let page = grid(&lang, &service_names).page(query, &request).await?;
+    let page = grid(&lang, &service_names, &patient_match)
+        .page(query, &request)
+        .await?;
     let mut shown = BTreeMap::new();
     for appointment in page.items() {
         let visit = Visit::of_booking(&state.db, appointment.booking_id).await?;

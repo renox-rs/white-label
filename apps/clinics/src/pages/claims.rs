@@ -45,6 +45,7 @@ use crate::claim_money::{self, Advice, AdviceLine, Recorded, Takeback};
 use crate::claim_void::{self, REASON_CODES, VoidRequest};
 use crate::claims::{self, attempt_deadline, resubmission_deadline};
 use crate::contract::PayerContract;
+use crate::grid_lookup;
 use crate::money_text;
 use crate::permissions;
 use crate::texts;
@@ -167,8 +168,17 @@ pub struct IndexFilter {
 /// The claims grid: filters by status and visit day, sums of what is claimed,
 /// paid and denied. The names, the deadline and how a claim was closed are
 /// drawn by the template (`custom`); the closing text and the denied amount
-/// start hidden.
-pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+/// start hidden. The payer is a filter (`payers`, the options); the search
+/// also finds the claims of a patient or payer by name (`party_match`, see
+/// `crate::grid_lookup`). The last day to send is worked out per attempt from
+/// the contract's windows, so it is not sorted in SQL; the visit date sorts
+/// the claims of one contract in the same order.
+pub(crate) fn grid(
+    lang: &Lang,
+    payers: Vec<(String, String)>,
+    party_match: &str,
+    can_export: bool,
+) -> Grid {
     let statuses: Vec<(String, String)> = ClaimStatus::ALL
         .iter()
         .map(|status| (status.as_str().to_owned(), status_text(lang, *status)))
@@ -184,7 +194,10 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                 .mobile(),
         )
         .column(Column::custom("patient", &text(lang, "policies.patient")).mobile())
-        .column(Column::custom("payer", &text(lang, "policies.payer")))
+        .column(
+            Column::select("payer_party_id", &text(lang, "policies.payer"), payers)
+                .sortable(false),
+        )
         .column(Column::date("visit_date", &text(lang, "claim.visit_date")))
         .column(
             Column::money("claimed", &wl_kernel::money_label(&text(lang, "claim.claimed")))
@@ -225,6 +238,14 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                      || ' ' || COALESCE({T}.\"submission_reference\", '') \
                      || ' ' || COALESCE({T}.\"last_remittance_reference\", '')",
                 )
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
+        )
+        .column(
+            Column::text("party_match", &text(lang, "policies.patient"))
+                .computed(party_match)
                 .hidden()
                 .searchable()
                 .sortable(false)
@@ -272,11 +293,23 @@ async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
+    session: Session,
     Query(filter): Query<IndexFilter>,
     request: GridRequest,
 ) -> Result<Response> {
     require(&user, permissions::CLAIMS_MANAGE)?;
-    let grid = grid(&lang, true);
+    let payer_ids = Claim::query()
+        .pluck::<i64, _>(&state.db, "payer_party_id")
+        .await?;
+    let payers = grid_lookup::party_options(&state, &lang.locale, payer_ids).await;
+    let term = grid_lookup::searched(&request, &session, "clinics-claims");
+    let party_match = grid_lookup::party_match(
+        &state,
+        term.as_deref(),
+        &["patient_party_id", "payer_party_id"],
+    )
+    .await;
+    let grid = grid(&lang, payers, &party_match, true);
     let mut query = Claim::query();
     if filter.closed == "not_submitted_in_time" {
         query = query.where_(Claim::NOT_SUBMITTED_IN_TIME.eq(true));

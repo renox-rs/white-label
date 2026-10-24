@@ -21,6 +21,7 @@ use wl_kernel::documents::today;
 
 use super::{Texts, invalid, parse_date, parse_party, party_exists, party_name, require, text};
 use crate::card_requests;
+use crate::grid_lookup;
 use crate::permissions;
 use crate::policies::{self, NewPolicy};
 use crate::policy::InsurancePolicy;
@@ -38,10 +39,18 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
-/// The policies grid: search on the plan and the member id, filters on the
-/// dates and on whether the policy is valid today. The names are drawn by the
-/// template (`custom`). The card image is not here (`CLN.ACL.12`).
-pub(crate) fn grid(lang: &Lang, day: NaiveDate, can_export: bool) -> Grid {
+/// The policies grid: search on the plan, the member id and (through
+/// `patient_match`, see [`crate::grid_lookup`]) the patient's name, filters on
+/// the payer (`payers`, the options), the dates and on whether the policy is
+/// valid today. The names are drawn by the template. The card image is not
+/// here (`CLN.ACL.12`).
+pub(crate) fn grid(
+    lang: &Lang,
+    day: NaiveDate,
+    payers: Vec<(String, String)>,
+    patient_match: &str,
+    can_export: bool,
+) -> Grid {
     let state = format!(
         "CASE WHEN {{T}}.\"valid_from\" <= '{day}' \
          AND ({{T}}.\"valid_to\" IS NULL OR {{T}}.\"valid_to\" >= '{day}') \
@@ -58,7 +67,18 @@ pub(crate) fn grid(lang: &Lang, day: NaiveDate, can_export: bool) -> Grid {
                 .frozen()
                 .mobile(),
         )
-        .column(Column::custom("payer", &text(lang, "policies.payer")))
+        .column(
+            Column::select("payer_party_id", &text(lang, "policies.payer"), payers)
+                .sortable(false),
+        )
+        .column(
+            Column::text("patient_match", &text(lang, "policies.patient"))
+                .computed(patient_match)
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
+        )
         .column(
             Column::text("plan", &text(lang, "policies.plan"))
                 .mobile()
@@ -81,6 +101,8 @@ pub(crate) fn grid(lang: &Lang, day: NaiveDate, can_export: bool) -> Grid {
             .badges(&[("valid", "success"), ("expired", "warning")])
             .mobile(),
         )
+        // No row link: a policy has no page of its own; the card is accepted
+        // on the appointment.
         .sort_by("-id")
         .cards_on_mobile()
         .empty_state(
@@ -105,12 +127,20 @@ async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
+    session: Session,
     request: GridRequest,
 ) -> Result<Response> {
     require(&user, permissions::POLICIES_VIEW)?;
     let day = today();
     let can_manage = user.has_permission(permissions::POLICIES_MANAGE);
-    let grid = grid(&lang, day, can_manage);
+    let payer_ids = InsurancePolicy::query()
+        .pluck::<i64, _>(&state.db, "payer_party_id")
+        .await?;
+    let payers = grid_lookup::party_options(&state, &lang.locale, payer_ids).await;
+    let term = grid_lookup::searched(&request, &session, "clinics-policies");
+    let patient_match =
+        grid_lookup::party_match(&state, term.as_deref(), &["patient_party_id"]).await;
+    let grid = grid(&lang, day, payers, &patient_match, can_manage);
     if request.param("export").is_some() && !can_manage {
         return Err(Error::Forbidden);
     }

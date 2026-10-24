@@ -23,6 +23,7 @@ use wl_kernel::integrations::web::banner_for;
 use super::{Texts, text};
 use crate::appointment::Appointment;
 use crate::call_list::{self, SCREEN};
+use crate::grid_lookup;
 use crate::permissions;
 use crate::texts;
 
@@ -50,9 +51,18 @@ pub(crate) struct IndexPage {
 }
 
 /// The call list grid: the appointments of the next 24 hours of the user's
-/// branches. The branch, patient, phone and the *called* tick are drawn by
-/// the template (`custom`); no export, the list names patients and phones.
-pub(crate) fn grid(lang: &Lang) -> Grid {
+/// branches, a filter by branch (`branch_sql` and `branches`) and a search
+/// that also finds the patient by name or phone (`patient_match`). The
+/// patient, phone and the *called* tick are drawn by the template; no export
+/// and no row link: the list names patients and phones, and the tick is the
+/// row's action. It does not poll: the tick's dialog of a row that a reload
+/// adds would not be on the page.
+pub(crate) fn grid(
+    lang: &Lang,
+    patient_match: &str,
+    branch_sql: &str,
+    branches: Vec<(String, String)>,
+) -> Grid {
     Grid::new("clinics-call-list")
         .title(&text(lang, "call_list.title"))
         .per_page(25)
@@ -63,7 +73,11 @@ pub(crate) fn grid(lang: &Lang) -> Grid {
                 .frozen()
                 .mobile(),
         )
-        .column(Column::custom("branch", &text(lang, "recall.branch")).mobile())
+        .column(
+            Column::select("branch", &text(lang, "recall.branch"), branches)
+                .computed(branch_sql)
+                .mobile(),
+        )
         .column(Column::custom("patient", &text(lang, "appointments.patient")).mobile())
         .column(Column::custom("phone", &text(lang, "call_list.phone")).mobile())
         .column(Column::custom("called", &text(lang, "call_list.called")))
@@ -73,6 +87,14 @@ pub(crate) fn grid(lang: &Lang) -> Grid {
         .column(
             Column::text("lookup", &text(lang, "call_list.starts"))
                 .computed("CAST({T}.\"booking_id\" AS TEXT) || ' ' || {T}.\"service_code\"")
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
+        )
+        .column(
+            Column::text("patient_match", &text(lang, "appointments.patient"))
+                .computed(patient_match)
                 .hidden()
                 .searchable()
                 .sortable(false)
@@ -97,6 +119,7 @@ async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
+    session: Session,
     request: GridRequest,
 ) -> Result<View> {
     if !may_call(&user) {
@@ -115,7 +138,35 @@ async fn index(
     } else {
         ids
     }));
-    let page = grid(&lang).page(query, &request).await?;
+    // The branch and the patient are worked out per entry: the filter and the
+    // search read them through SQL of the booking ids.
+    let branches: BTreeMap<i64, String> = entries
+        .iter()
+        .map(|entry| (entry.appointment.booking_id, entry.branch.clone()))
+        .collect();
+    let (branch_sql, branch_options) = grid_lookup::labelled("booking_id", &branches);
+    let term = grid_lookup::searched(&request, &session, "clinics-call-list");
+    let found: Vec<i64> = match term.as_deref() {
+        Some(term) => {
+            let wanted = term.to_lowercase();
+            entries
+                .iter()
+                .filter(|entry| {
+                    entry.patient.to_lowercase().contains(&wanted)
+                        || entry
+                            .phone
+                            .as_deref()
+                            .is_some_and(|phone| phone.contains(term))
+                })
+                .map(|entry| entry.appointment.booking_id)
+                .collect()
+        }
+        None => Vec::new(),
+    };
+    let patient_match = grid_lookup::matched_sql(term.as_deref(), &["booking_id"], &found);
+    let page = grid(&lang, &patient_match, &branch_sql, branch_options)
+        .page(query, &request)
+        .await?;
     let mut shown = BTreeMap::new();
     let mut to_call = Vec::new();
     for entry in &entries {
