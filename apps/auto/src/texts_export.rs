@@ -4,7 +4,10 @@
 
 /// Every key of this part, with its English text.
 pub(crate) const TEXTS: &[(&str, &str)] = &[
-    ("auto.export.invoice_placeholder", "Pick the zero-rated invoice"),
+    (
+        "auto.export.invoice_placeholder",
+        "Pick the zero-rated invoice",
+    ),
     ("auto.export.title", "Export sales"),
     (
         "auto.export.subtitle",
