@@ -113,6 +113,8 @@ impl Deliveries {
             };
             line.insert(&mut tx).await?;
         }
+        // Found by its number and its source's tracking numbers (BL-AGT-11).
+        crate::search::index_delivery_in(&mut tx, delivery.id, None).await?;
         tx.commit().await?;
         Ok(delivery)
     }
@@ -192,10 +194,13 @@ impl DeliveryRequester for Deliveries {
                 return Ok(());
             }
             let (address, area) = (address.to_owned(), area.to_owned());
+            let mut tx = state.db.begin().await?;
             Delivery::query()
                 .where_(Delivery::ID.eq(delivery.id))
-                .update(&state.db, &[("address", &address), ("area", &area)])
+                .update(&mut tx, &[("address", &address), ("area", &area)])
                 .await?;
+            crate::search::index_delivery_in(&mut tx, delivery.id, delivery.run_id).await?;
+            tx.commit().await?;
             Ok(())
         })
     }

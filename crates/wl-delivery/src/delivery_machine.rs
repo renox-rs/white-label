@@ -69,6 +69,8 @@ impl StateMachine for Delivery {
             .chain(crate::reverse::transitions())
             .chain(crate::abort::delivery_transitions())
             .chain(crate::attempted::transitions())
+            // Each transition writes the delivery's search document (BL-AGT-11).
+            .map(crate::search::reindex_delivery)
             .fold(machine, Machine::transition)
     }
 }

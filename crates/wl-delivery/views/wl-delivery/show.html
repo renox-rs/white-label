@@ -159,5 +159,6 @@
       <rx-column :label="tx['history.reason']" hide-narrow>{{ item.body or "" }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['history.none']" icon="history"/></rx-slot>
     </rx-table>
+    <div id="delivery-related" hx-get="/related/delivery.delivery:{{ delivery.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

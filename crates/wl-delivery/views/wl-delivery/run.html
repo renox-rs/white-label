@@ -140,5 +140,6 @@
         <rx-button rx-if="depot.can_receive" :label="tx['close.save']"/>
       </rx-card>
     </rx-form>
+    <div id="run-related" hx-get="/related/delivery.run:{{ run.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

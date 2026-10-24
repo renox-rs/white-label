@@ -589,6 +589,16 @@ pub async fn confirm(
                 )
                 .await
                 .map_err(TransitionError::Failed)?;
+            // The moved deliveries and both runs are found where they are
+            // now (BL-AGT-11).
+            for delivery in &open {
+                crate::search::index_delivery_in(&mut tx, delivery.id, delivery.run_id)
+                    .await
+                    .map_err(TransitionError::Failed)?;
+            }
+            crate::search::index_run_in(&mut tx, run.id)
+                .await
+                .map_err(TransitionError::Failed)?;
             tx.commit()
                 .await
                 .map_err(|e| TransitionError::Failed(e.into()))?;

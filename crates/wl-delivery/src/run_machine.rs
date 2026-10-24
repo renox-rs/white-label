@@ -43,18 +43,20 @@ impl StateMachine for Run {
             .state(Cancelled)
             .tone("neutral")
             .terminal()
-            .transition(
+            .transition(crate::search::reindex_run(
                 Transition::new(DISPATCH)
                     .label("Dispatch")
                     .tone("primary")
                     .from([Planned])
                     .to(Dispatched)
                     .permission(permissions::RUNS_DISPATCH),
-            );
+            ));
         crate::close::transitions()
             .into_iter()
             .chain(crate::hand_over::transitions())
             .chain(crate::abort::transitions())
+            // Each transition writes the run's search document (BL-AGT-11).
+            .map(crate::search::reindex_run)
             .fold(machine, Machine::transition)
     }
 }

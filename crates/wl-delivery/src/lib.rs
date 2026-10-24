@@ -21,6 +21,7 @@ pub mod reverse;
 pub mod review;
 pub mod run;
 mod run_machine;
+pub mod search;
 pub mod seed;
 pub mod settings;
 mod texts;
@@ -309,6 +310,9 @@ impl Module for WlDelivery {
         // `delivery.assign` and `run.dispatch` are guardable transitions of
         // the document kinds' `blocks` (#157).
         doc_guard::register();
+        // Deliveries and runs in the search index and the Related panel
+        // (BL-AGT-11).
+        search::register();
         // `mark_lost`'s approval (`WRK.ACL.10`), the claim ticket and
         // `DeliveryLost` after a loss, and the rule `WRK.RUL.17` at 02:00.
         lost::register(app);

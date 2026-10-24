@@ -271,7 +271,10 @@ pub async fn create_run(state: &AppState, new: NewRun) -> Result<Run> {
         status: RunStatus::Planned,
         ..Run::default()
     };
-    run.insert(&state.db).await?;
+    let mut tx = state.db.begin().await?;
+    run.insert(&mut tx).await?;
+    crate::search::index_run_in(&mut tx, run.id).await?;
+    tx.commit().await?;
     Ok(run)
 }
 
