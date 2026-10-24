@@ -11,10 +11,10 @@
 //! and tells the accountant who marked it ([`drawing_rejected`]). The import
 //! cannot `complete` while such a request is open.
 //!
-//! Not built here (they come with the match engine of the bank
-//! reconciliation feature): the match suggestions, confirming an incoming
-//! line into a payment, matching a line to cheques, invoices or bills, and the
-//! task for lines left unmatched.
+//! The match engine ([`crate::bank_match`], BL-PAY-29) suggests a match for
+//! each line after `parse`, and the payments of confirmed lines are recorded
+//! at `complete`, before the transition. Not built here: matching money out to
+//! unpaid bills, and the task for lines left unmatched.
 
 use std::collections::BTreeMap;
 
@@ -95,6 +95,8 @@ pub async fn parse(
         .input(&input)
         .run(state)
         .await?;
+    // The match suggestions (BL-PAY-29); nothing is recorded before `complete`.
+    crate::bank_match::suggest_import(state, import.id).await?;
     Ok(reload(state, &import).await?)
 }
 
@@ -238,6 +240,14 @@ pub async fn complete(
             })
             .count() as i64,
     };
+    // The payments of the confirmed lines are recorded and allocated, and the
+    // matched cheques cleared, once nothing is left open (BL-PAY-29).
+    if input.open == 0
+        && import.status == ImportStatus::InReview
+        && user.has_permission(permissions::BANK_RECONCILE)
+    {
+        crate::bank_match::record_confirmed(state, user, &import).await?;
+    }
     let _outcome = import
         .transition(COMPLETE)
         .by(user)
@@ -292,7 +302,10 @@ async fn open_line(
     if import.status != ImportStatus::InReview {
         return Err(TransitionError::NotFrom(import.status.as_str().to_owned()));
     }
-    if line.status != LineStatus::Unmatched {
+    // A suggested line (not a drawing) may still be ignored or marked.
+    let open = line.status == LineStatus::Unmatched
+        || (line.status == LineStatus::Suggested && line.drawing_request_id.is_none());
+    if !open {
         return Err(guard("The line is not unmatched."));
     }
     Ok((line, import))

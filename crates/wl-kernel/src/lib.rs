@@ -33,6 +33,7 @@ pub mod generation;
 pub mod held_funds;
 pub mod integrations;
 pub mod inventory;
+pub mod invoice_search;
 pub mod invoicing;
 pub mod late_entries;
 pub mod lead_records;

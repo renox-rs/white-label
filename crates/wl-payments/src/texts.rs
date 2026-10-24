@@ -7,6 +7,53 @@ use renox::prelude::*;
 
 /// Every key the package uses, with its English text.
 const TEXTS: &[(&str, &str)] = &[
+    // The match engine of the bank reconciliation (BL-PAY-29).
+    ("wl_payments.bank_statements.match.kind.invoices", "Invoices"),
+    ("wl_payments.bank_statements.match.kind.payment", "Payment recorded"),
+    ("wl_payments.bank_statements.match.kind.cheque", "Deposited cheque"),
+    ("wl_payments.bank_statements.match.reason.reference", "reference"),
+    ("wl_payments.bank_statements.match.reason.payer_name", "payer name"),
+    (
+        "wl_payments.bank_statements.match.reason.oldest_invoices",
+        "oldest invoices",
+    ),
+    (
+        "wl_payments.bank_statements.match.reason.already_recorded",
+        "already recorded",
+    ),
+    ("wl_payments.bank_statements.match.reason.cheque", "cheque"),
+    ("wl_payments.bank_statements.match.confirm", "Confirm"),
+    ("wl_payments.bank_statements.match.confirm_title", "Confirm the match"),
+    ("wl_payments.bank_statements.match.confirmed", "Match confirmed."),
+    ("wl_payments.bank_statements.match.manual", "Match manually"),
+    (
+        "wl_payments.bank_statements.match.manual_title",
+        "Match the line to invoices",
+    ),
+    (
+        "wl_payments.bank_statements.match.manual_description",
+        "The payment is recorded when the import is completed. What is left of the line stays on the party's credit.",
+    ),
+    ("wl_payments.bank_statements.match.allocations", "Invoices"),
+    (
+        "wl_payments.bank_statements.match.allocations_hint",
+        "One per row: invoice number | amount (no amount: the balance).",
+    ),
+    ("wl_payments.bank_statements.match.matched", "Line matched."),
+    ("wl_payments.bank_statements.match.reverse", "Reverse match"),
+    (
+        "wl_payments.bank_statements.match.reverse_title",
+        "Reverse this match?",
+    ),
+    (
+        "wl_payments.bank_statements.match.reverse_message",
+        "The payment recorded from this line is reversed and its invoices reopen.",
+    ),
+    ("wl_payments.bank_statements.match.reversed", "Match reversed."),
+    (
+        "wl_payments.bank_statements.match.reverse_requested",
+        "The reversal waits for its approval.",
+    ),
     // The party's deposit in the portal (BL-PAY-27).
     ("wl_payments.portal_deposit.title", "Deposit"),
     (

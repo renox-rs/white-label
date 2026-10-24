@@ -4,6 +4,7 @@
 //! ([`crate::bank_statement_machine`]), removed by `revert`.
 
 use renox::chrono::NaiveDate;
+use renox::db::Json;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -54,9 +55,11 @@ pub struct BankStatementLine {
     pub counterparty: String,
     /// Where it stands.
     pub status: LineStatus,
-    /// What a matched line was matched to (`payment`).
+    /// What a matched line was matched to: `payment` (a payment, recorded
+    /// or already there), `invoices` (confirmed, its payment is recorded at
+    /// `complete`), `cheque` (a deposited cheque, cleared at `complete`).
     pub match_kind: Option<String>,
-    /// The id of what it was matched to.
+    /// The id of what it was matched to: the payment, or the cheque.
     pub match_id: Option<i64>,
     /// Why an ignored line is left out.
     pub ignore_reason: Option<String>,
@@ -66,6 +69,25 @@ pub struct BankStatementLine {
     pub reason: Option<String>,
     /// The user who marked it as a drawing.
     pub marked_by: Option<i64>,
+    /// What the match engine suggests (BL-PAY-29): `invoices`, `payment`
+    /// (a payment already recorded) or `cheque` (a deposited cheque).
+    pub suggestion_kind: Option<String>,
+    /// The party of the suggestion.
+    pub suggestion_party_id: Option<i64>,
+    /// The suggested targets as `[id, amount]` pairs.
+    pub suggestion_targets: Option<Json<Vec<(i64, i64)>>>,
+    /// Why: `reference`, `payer_name`, `oldest_invoices`, `already_recorded`,
+    /// `cheque`.
+    pub suggestion_reason: Option<String>,
+    /// How sure the suggestion is, 0 to 100.
+    pub suggestion_score: Option<i64>,
+    /// The party of the confirmed match.
+    pub match_party_id: Option<i64>,
+    /// The confirmed targets as `[id, amount]` pairs (invoices to allocate to
+    /// at `complete`, or the payment or cheque the line is).
+    pub match_targets: Option<Json<Vec<(i64, i64)>>>,
+    /// The user who confirmed or made the match.
+    pub confirmed_by: Option<i64>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

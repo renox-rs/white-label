@@ -10,6 +10,14 @@
 //! | `POST /bank-statements/{id}/revert` | `wl_payments.bank_statements.revert` | `bank.reconcile` |
 //! | `POST /bank-statement-lines/{id}/ignore` | `wl_payments.bank_statements.ignore` | `bank.reconcile` (field `reason`) |
 //! | `POST /bank-statement-lines/{id}/drawing` | `wl_payments.bank_statements.drawing` | `bank.reconcile` (field `category`) |
+//! | `POST /bank-statement-lines/{id}/confirm` | `wl_payments.bank_statements.confirm` | `bank.reconcile` |
+//! | `POST /bank-statement-lines/{id}/match` | `wl_payments.bank_statements.match` | `bank.reconcile` (field `allocations`: `invoice number | amount` per row) |
+//! | `POST /bank-statement-lines/{id}/reverse` | `wl_payments.bank_statements.reverse` | `bank.reconcile` and `payments.reverse` (or the client's approval policy) |
+//!
+//! Each line shows its match suggestion (BL-PAY-29, [`crate::bank_match`]):
+//! the party, the invoices, payment or cheque and why. *Confirm* takes it,
+//! *Match manually* names the invoices with the amount of each, *Ignore*
+//! leaves the line out; a completed line's payment offers *Reverse match*.
 //!
 //! The accountant records a statement upload with its period, the text of
 //! the file (CSV or MT940) and, when the file carries none, the closing
@@ -27,6 +35,7 @@ use renox::state_machine::TransitionError;
 use serde::{Deserialize, Serialize};
 use wl_kernel::LegalEntity;
 
+use crate::bank_match;
 use crate::bank_statement::{self, BankStatementImport, FORMATS, ImportStatus, Upload};
 use crate::bank_statement_flow;
 use crate::bank_statement_line::{BankStatementLine, LineStatus};
@@ -54,6 +63,12 @@ pub fn routes() -> Routes {
         .name("wl_payments.bank_statements.ignore")
         .post("/bank-statement-lines/{id}/drawing", store_drawing)
         .name("wl_payments.bank_statements.drawing")
+        .post("/bank-statement-lines/{id}/confirm", store_confirm)
+        .name("wl_payments.bank_statements.confirm")
+        .post("/bank-statement-lines/{id}/match", store_match)
+        .name("wl_payments.bank_statements.match")
+        .post("/bank-statement-lines/{id}/reverse", store_reverse)
+        .name("wl_payments.bank_statements.reverse")
         .require_permission(permissions::BANK_RECONCILE)
 }
 
@@ -307,6 +322,14 @@ struct LineRow {
     status_kind: &'static str,
     note: String,
     open: bool,
+    /// The match suggestion or the confirmed match, in words.
+    suggestion: String,
+    /// Whether *Confirm* shows.
+    can_confirm: bool,
+    /// Whether *Match manually* shows (money in, open).
+    can_match: bool,
+    /// Whether *Reverse match* shows.
+    can_reverse: bool,
 }
 
 /// What the statement page needs.
@@ -350,10 +373,24 @@ async fn show(
 ) -> Result<View> {
     let t = texts_in(&lang);
     let entities = entities(&state).await?;
-    let lines = BankStatementLine::of_import(&state.db, import.id)
-        .await?
+    let all = BankStatementLine::of_import(&state.db, import.id).await?;
+    let mut described = Vec::new();
+    for line in &all {
+        described.push(describe(&state, &lang, line).await?);
+    }
+    let mut reversible = Vec::new();
+    for line in &all {
+        let payment = bank_match::payment_of_line(&state.db, line.id).await?;
+        reversible.push(payment.is_some_and(|p| {
+            p.status == wl_kernel::payments::PaymentStatus::Received
+        }));
+    }
+    let in_review = import.status == ImportStatus::InReview;
+    let lines = all
         .into_iter()
-        .map(|line| LineRow {
+        .zip(described)
+        .zip(reversible)
+        .map(|((line, suggestion), can_reverse)| LineRow {
             id: line.id,
             date: line.line_date.format("%Y-%m-%d").to_string(),
             amount: money_text(&line.currency, line.amount),
@@ -374,7 +411,19 @@ async fn show(
                 .clone()
                 .or_else(|| line.ignore_reason.clone())
                 .unwrap_or_default(),
-            open: import.status == ImportStatus::InReview && line.status == LineStatus::Unmatched,
+            open: in_review
+                && (line.status == LineStatus::Unmatched
+                    || (line.status == LineStatus::Suggested && line.drawing_request_id.is_none())),
+            can_confirm: in_review
+                && line.status == LineStatus::Suggested
+                && line.drawing_request_id.is_none()
+                && line.suggestion_kind.is_some(),
+            can_match: in_review
+                && line.amount > 0
+                && line.drawing_request_id.is_none()
+                && matches!(line.status, LineStatus::Unmatched | LineStatus::Suggested),
+            can_reverse,
+            suggestion,
         })
         .collect();
     let row = Row {
@@ -411,6 +460,65 @@ async fn show(
         import: row,
         lines,
     }))
+}
+
+/// The suggestion (or the confirmed match) of `line` in words: `Al Noor
+/// Trading LLC: INV-1 (AED 4,500.00) - reference, 100`.
+async fn describe(state: &AppState, lang: &Lang, line: &BankStatementLine) -> Result<String> {
+    let t = texts_in(lang);
+    let (kind, party, targets, reason) = if line.status == LineStatus::Matched {
+        (
+            line.match_kind.clone(),
+            line.match_party_id,
+            line.match_targets.clone().map(|j| j.0).unwrap_or_default(),
+            None,
+        )
+    } else {
+        (
+            line.suggestion_kind.clone(),
+            line.suggestion_party_id,
+            line.suggestion_targets.clone().map(|j| j.0).unwrap_or_default(),
+            line.suggestion_reason.clone(),
+        )
+    };
+    let Some(kind) = kind else {
+        return Ok(String::new());
+    };
+    let name = match party {
+        Some(id) => wl_kernel::parties::directory(state)
+            .display_name(&state.db, wl_kernel::PartyId(id), &lang.locale)
+            .await?
+            .unwrap_or_else(|| format!("#{id}")),
+        None => String::new(),
+    };
+    let mut items = Vec::new();
+    for (id, amount) in &targets {
+        let label = match kind.as_str() {
+            bank_match::KIND_INVOICES => wl_kernel::invoicing::invoicer(state)
+                .find(&state.db, wl_kernel::invoicing::InvoiceId(*id))
+                .await?
+                .and_then(|i| i.number)
+                .unwrap_or_else(|| format!("#{id}")),
+            bank_match::KIND_PAYMENT => crate::payment::Payment::find(&state.db, *id)
+                .await?
+                .and_then(|p| p.number)
+                .unwrap_or_else(|| format!("#{id}")),
+            _ => crate::cheque::Cheque::find(&state.db, *id)
+                .await?
+                .map_or_else(|| format!("#{id}"), |c| format!("{} {}", c.bank, c.number)),
+        };
+        items.push(format!("{label} ({})", money_text(&line.currency, *amount)));
+    }
+    let what = t(&format!("bank_statements.match.kind.{kind}"));
+    let mut text = format!("{what}: {name} - {}", items.join(", "));
+    if let Some(reason) = reason {
+        text.push_str(&format!(
+            " ({}, {})",
+            t(&format!("bank_statements.match.reason.{reason}")),
+            line.suggestion_score.unwrap_or_default()
+        ));
+    }
+    Ok(text)
 }
 
 /// The statement page, refreshed, with `done` as the toast.
@@ -505,4 +613,115 @@ async fn store_drawing(
         }
         Err(other) => Err(other.into_error()),
     }
+}
+
+/// `POST /bank-statement-lines/{id}/confirm`: takes the suggestion.
+async fn store_confirm(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    bank_match::confirm(&state, &user, id)
+        .await
+        .map_err(TransitionError::into_error)?;
+    refreshed(texts_in(&lang)("bank_statements.match.confirmed"))
+}
+
+/// The manual match sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct MatchForm {
+    /// One invoice per row: `invoice number | amount` (the amount may be
+    /// left out: the invoice's balance).
+    #[validate(max = 4000)]
+    pub allocations: Option<String>,
+}
+
+/// `POST /bank-statement-lines/{id}/match`: matches the line to the named
+/// invoices of the bank account's entity, one party's.
+async fn store_match(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<MatchForm>,
+) -> Result<Response> {
+    let line = BankStatementLine::find_or_404(&state.db, id).await?;
+    let open = wl_kernel::invoice_search::invoice_search(&state)
+        .open_of_entity(&state.db, line.legal_entity_id, &line.currency)
+        .await?;
+    let mut allocations = Vec::new();
+    let mut party = None;
+    for (i, row) in filled(&form.allocations).unwrap_or_default().lines().enumerate() {
+        if row.trim().is_empty() {
+            continue;
+        }
+        let mut parts = row.split('|').map(str::trim);
+        let number = parts.next().unwrap_or_default();
+        let found = open.iter().find(|invoice| {
+            invoice
+                .number
+                .as_deref()
+                .is_some_and(|n| n.eq_ignore_ascii_case(number))
+                || invoice.id.0.to_string() == number
+        });
+        let Some(invoice) = found else {
+            return Err(invalid(
+                "allocations",
+                format!("Row {}: no open invoice {number} of this entity.", i + 1),
+                &form,
+            ));
+        };
+        let amount = match parts.next().filter(|a| !a.is_empty()) {
+            Some(typed) => crate::pages::parse_amount(typed).ok_or_else(|| {
+                invalid(
+                    "allocations",
+                    format!("Row {}: the amount is not a number above 0.", i + 1),
+                    &form,
+                )
+            })?,
+            None => invoice.balance,
+        };
+        if party.is_some_and(|p| p != invoice.party) {
+            return Err(invalid(
+                "allocations",
+                "The invoices are of different parties.".to_owned(),
+                &form,
+            ));
+        }
+        party = Some(invoice.party);
+        allocations.push((invoice.id.0, amount));
+    }
+    let Some(party) = party else {
+        return Err(invalid(
+            "allocations",
+            "Name the invoices the line pays.".to_owned(),
+            &form,
+        ));
+    };
+    match bank_match::match_manually(&state, &user, id, party, &allocations).await {
+        Ok(_) => refreshed(texts_in(&lang)("bank_statements.match.matched")),
+        Err(TransitionError::Guard(message)) => Err(invalid("allocations", message, &form)),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// `POST /bank-statement-lines/{id}/reverse`: reverses the payment of a
+/// confirmed match (*bank match wrong*), or asks the approvers when the
+/// client's policy says so.
+async fn store_reverse(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let payment = bank_match::reverse_match(&state, &user, id)
+        .await
+        .map_err(TransitionError::into_error)?;
+    let key = if payment.status == wl_kernel::payments::PaymentStatus::Reversed {
+        "bank_statements.match.reversed"
+    } else {
+        "bank_statements.match.reverse_requested"
+    };
+    refreshed(texts_in(&lang)(key))
 }

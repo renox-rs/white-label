@@ -26,8 +26,27 @@
       <rx-column :label="tx['bank_statements.line.amount']">{{ line.amount }}</rx-column>
       <rx-column :label="tx['bank_statements.line.description']" hide-narrow>{{ line.description }}</rx-column>
       <rx-column :label="tx['bank_statements.line.reference']" hide-narrow>{{ line.reference }}</rx-column>
-      <rx-column :label="tx['bank_statements.line.status']"><rx-badge :kind="line.status_kind" :text="line.status"/> {{ line.note }}</rx-column>
+      <rx-column :label="tx['bank_statements.line.status']">
+        <rx-stack>
+          <span><rx-badge :kind="line.status_kind" :text="line.status"/> {{ line.note }}</span>
+          <span rx-if="line.suggestion">{{ line.suggestion }}</span>
+        </rx-stack>
+      </rx-column>
       <rx-column :label="tx['bank_statements.actions']">
+        <template rx-if="line.can_confirm">
+          <rx-action-sheet :id="'confirm-line-' ~ line.id" :label="tx['bank_statements.match.confirm']" :action="route('wl_payments.bank_statements.confirm', line.id)"
+                           :title="tx['bank_statements.match.confirm_title']" :description="line.suggestion" :submit-label="tx['bank_statements.match.confirm']" icon="check" variant="primary"/>
+        </template>
+        <template rx-if="line.can_match">
+          <rx-action-sheet :id="'match-line-' ~ line.id" :label="tx['bank_statements.match.manual']" :action="route('wl_payments.bank_statements.match', line.id)"
+                           :title="tx['bank_statements.match.manual_title']" :description="tx['bank_statements.match.manual_description']" :submit-label="tx['bank_statements.match.manual']" icon="link">
+            <rx-textarea name="allocations" :label="tx['bank_statements.match.allocations']" :hint="tx['bank_statements.match.allocations_hint']" :id="'match-allocations-' ~ line.id" required/>
+          </rx-action-sheet>
+        </template>
+        <template rx-if="line.can_reverse">
+          <rx-confirm :id="'reverse-line-' ~ line.id" :label="tx['bank_statements.match.reverse']" :action="route('wl_payments.bank_statements.reverse', line.id)" method="POST"
+                      :title="tx['bank_statements.match.reverse_title']" :message="tx['bank_statements.match.reverse_message']" :confirm-label="tx['bank_statements.match.reverse']" icon="undo-2"/>
+        </template>
         <template rx-if="line.open">
           <rx-action-sheet :id="'ignore-line-' ~ line.id" :label="tx['bank_statements.line.ignore.action']" :action="route('wl_payments.bank_statements.ignore', line.id)"
                            :title="tx['bank_statements.line.ignore.title']" :description="tx['bank_statements.line.ignore.description']" :submit-label="tx['bank_statements.line.ignore.submit']" icon="eye-off">

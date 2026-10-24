@@ -76,6 +76,7 @@ pub mod invoicer;
 pub mod issue;
 pub mod line;
 mod machine;
+mod open_search;
 pub mod overdue;
 pub mod owner;
 pub mod owner_drawings;
@@ -1371,6 +1372,7 @@ impl Module for WlInvoicing {
         reversal::register(app);
         // Other modules draft and read invoices through the kernel (§6).
         wl_kernel::invoicing::provide_invoicer(app, Invoices);
+        wl_kernel::invoice_search::provide_invoice_search(app, open_search::OpenInvoices);
         // Other modules read supplier bill lines through the kernel (§6).
         wl_kernel::invoicing::provide_supplier_bills(app, payables::Payables);
         // `SupplierBillApproved` / `SupplierBillVoided` after a commit, and

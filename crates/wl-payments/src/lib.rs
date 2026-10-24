@@ -3,6 +3,7 @@
 
 pub mod allocate;
 pub mod allocation;
+pub mod bank_match;
 pub mod bank_statement;
 pub mod bank_statement_flow;
 pub mod bank_statement_line;
