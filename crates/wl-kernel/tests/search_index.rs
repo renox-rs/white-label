@@ -718,14 +718,20 @@ async fn an_undone_import_that_changed_a_record_gives_back_its_old_document() {
         .await
         .unwrap();
     assert_eq!(report.imported, 1);
-    let changed = search::document_of(app.db(), &subject).await.unwrap().unwrap();
+    let changed = search::document_of(app.db(), &subject)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(changed.secondary, "سارة الحسن");
 
     let undone = search::undo_import(app.state(), report.batch_id.unwrap())
         .await
         .unwrap();
     assert_eq!(undone.restored, 1);
-    let restored = search::document_of(app.db(), &subject).await.unwrap().unwrap();
+    let restored = search::document_of(app.db(), &subject)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(restored.secondary, "سارة حسن");
     // Still found by its ID after the undo.
     assert_eq!(

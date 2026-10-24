@@ -328,15 +328,15 @@ pub(super) fn hash(kind: &str, normalized: &str) -> String {
 /// without one uses a fixed key; production refuses to start without one.
 fn hash_key() -> &'static [u8] {
     static KEY: OnceLock<Vec<u8>> = OnceLock::new();
-    KEY.get_or_init(|| {
-        match renox::Config::load().ok().and_then(|config| config.key) {
+    KEY.get_or_init(
+        || match renox::Config::load().ok().and_then(|config| config.key) {
             Some(key) => key.into_bytes(),
             None => {
                 eprintln!("search: no APP_KEY; sensitive identifiers are hashed with a local key");
                 b"wl-search-local-key".to_vec()
             }
-        }
-    })
+        },
+    )
 }
 
 /// `text` without the sensitive values: each one removed where it appears
