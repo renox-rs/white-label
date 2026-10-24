@@ -51,6 +51,31 @@ impl Module for ApprovalsInbox {
 
     fn register(&self, app: &mut Registry) {
         approvals::register_subject_link("hr.employee", |id| format!("/hr/employees/{id}"));
+        // The agent inbox lists what the dashboard's "awaiting you" lists
+        // (BL-AGT-09): the kernel's requests, and these pay accounts.
+        wl_kernel::agent::inbox::register_source(
+            wl_kernel::agent::inbox::APPROVALS,
+            "hr.pay_accounts",
+            |call| {
+                Box::pin(async move {
+                    let lang = call.state.current_lang();
+                    let items = pay_account_items(&call.state, &lang, &call.user).await?;
+                    Ok(items
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, item)| {
+                            wl_kernel::agent::InboxItem::new(
+                                format!("pay_account:{}", i + 1),
+                                item.title,
+                                "Waiting for your decision. Open it to decide: an assistant \
+                                 cannot approve or reject.",
+                            )
+                            .url(Some(item.url))
+                        })
+                        .collect())
+                })
+            },
+        );
         app.nav(
             "app",
             NavLink::route("approvals.inbox", "nav.approvals")
