@@ -86,10 +86,12 @@ jobs:
       - run: .github/ci-test.sh ${{ matrix.part }}
 
   # The check branch protection and the PR page know: green when lint and
-  # every test part are green.
+  # every test part are green, red when one failed. A run cancelled because
+  # a newer push replaced it skips this job instead of showing red; the
+  # newer run reports.
   done:
     name: fmt, clippy, test
-    if: always()
+    if: ${{ !cancelled() }}
     needs: [lint, test]
     runs-on: ubuntu-24.04
     steps:
