@@ -1,6 +1,6 @@
 # Workflow
 
-> Status: draft for review · Last updated: 2026-10-16
+> Status: specification; the engine is built (Renox 1.2.0 state machines, used by the F1-F10 modules) · Last updated: 2026-10-24
 
 How work moves through the system: statuses, approvals, automations and integrations. Each
 vertical lists only its own state machines and automations
@@ -117,8 +117,8 @@ Two tables per entity, in the vertical or module document:
 **Diagram:** a Mermaid `stateDiagram-v2` drawn from the transitions table, one arrow per
 `from → to` pair, labelled with the transition. The table is authoritative.
 
-Once the engine exists, the same diagram is **generated** from the declaration and shown
-read-only in the admin next to each entity. It is never drawn by hand.
+The engine exists (Renox 1.2.0), so the same diagram can be **generated** from the declaration with
+`rnx state:diagram`; a hand-drawn diagram in a document must match it, and the table stays authoritative.
 
 ## 4. Automation rules
 
