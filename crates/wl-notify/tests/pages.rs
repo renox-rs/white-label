@@ -3,6 +3,7 @@
 
 mod support;
 
+use renox::prelude::*;
 use wl_notify::permissions as perm;
 use wl_notify::{MessageStatus, SendError};
 
