@@ -1,0 +1,41 @@
+{#- wl-payments: the party's deposit in the portal (BL-PAY-27): the amount,
+    the refund status, the latest published deductions with their evidence,
+    the last day of the dispute window and, while it is open, Dispute on the
+    lines not disputed yet. Never a draft, an internal note or a block status.
+    Replace it with resources/views/wl-payments/portal_deposit.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['portal_deposit.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['portal_deposit.title']" :subtitle="tx['portal_deposit.subtitle']" :back="home_url" :back-label="tx['portal_deposit.home']"/>
+    <rx-alert rx-if="read_only_notice" kind="warning" :message="read_only_notice"/>
+    <rx-form-errors/>
+    <rx-empty rx-if="not deposit_rows" :title="tx['portal_deposit.empty']" icon="banknote"/>
+    <rx-card rx-for="deposit in deposit_rows" :title="tx['portal_deposit.deposit'] ~ ' ' ~ deposit.amount">
+      <rx-stack>
+        <rx-infolist columns="2">
+          <rx-entry :label="tx['portal_deposit.amount']" :value="deposit.amount"/>
+          <rx-entry :label="tx['portal_deposit.refund']" :value="deposit.refund_status"/>
+          <rx-entry rx-if="deposit.published" :label="tx['portal_deposit.deductions']" :value="deposit.published_text"/>
+          <rx-entry rx-if="deposit.window_text" :label="tx['portal_deposit.dispute_window']" :value="deposit.window_text"/>
+          <rx-entry rx-if="deposit.forfeiture" :label="tx['portal_deposit.forfeiture']" :value="deposit.forfeiture"/>
+        </rx-infolist>
+        <rx-table rx-if="deposit.published" :rows="deposit.lines" as="line" :key="line.name" :caption="tx['portal_deposit.deductions']">
+          <rx-column :label="tx['portal_deposit.line']">{{ line.description }}</rx-column>
+          <rx-column :label="tx['portal_deposit.evidence']" hide-narrow>{{ line.evidence }}</rx-column>
+          <rx-column :label="tx['portal_deposit.amount']" align="num">{{ line.amount }}</rx-column>
+          <rx-column :label="tx['portal_deposit.state']"><rx-badge rx-if="line.disputed" kind="warning" :text="tx['portal_deposit.disputed']"/></rx-column>
+          <rx-slot name="empty"><rx-empty :title="tx['portal_deposit.no_deductions']" icon="circle-check"/></rx-slot>
+        </rx-table>
+        <rx-row rx-if="deposit.can_dispute">
+          <rx-action-sheet :id="'deposit-dispute-' ~ deposit.id" :label="tx['portal_deposit.dispute']" :action="dispute_base ~ '/' ~ deposit.id ~ '/dispute'"
+                           :title="tx['portal_deposit.dispute_title']" :description="tx['portal_deposit.dispute_hint']" :submit-label="tx['portal_deposit.dispute_send']" icon="triangle-alert">
+            <input type="hidden" name="version" value="{{ deposit.version }}">
+            <template rx-for="line in deposit.lines">
+              <rx-checkbox rx-if="not line.disputed" :name="line.name" :label="line.description ~ ' (' ~ line.amount ~ ')'" :id="'deposit-dispute-' ~ deposit.id ~ '-' ~ line.name"/>
+            </template>
+            <rx-textarea name="comment" :label="tx['portal_deposit.comment']" :id="'deposit-dispute-comment-' ~ deposit.id" required/>
+          </rx-action-sheet>
+        </rx-row>
+      </rx-stack>
+    </rx-card>
+  </rx-stack>
+</rx-page>

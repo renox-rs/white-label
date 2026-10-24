@@ -49,6 +49,7 @@ pub mod deposit_deductions;
 mod deposit_events;
 mod deposit_machine;
 pub mod deposit_pages;
+pub mod deposit_portal;
 pub mod drawings;
 mod events;
 pub mod expense_actual;
@@ -103,6 +104,10 @@ pub use refund_attempt::RefundAttempt;
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
 const VIEWS: &[(&str, &str)] = &[
+    (
+        "wl-payments/portal_deposit.html",
+        include_str!("../views/wl-payments/portal_deposit.html"),
+    ),
     (
         "wl-payments/index.html",
         include_str!("../views/wl-payments/index.html"),
@@ -650,6 +655,7 @@ impl Module for WlPayments {
         app.model::<expense_claim::ExpenseClaim>();
         app.model::<expense_claim::ExpenseLine>();
         app.view_data::<pages::IndexPage>()
+            .view_data::<deposit_portal::PortalDepositPage>()
             .view_data::<pages::NewPage>()
             .view_data::<pages::ShowPage>()
             .view_data::<pages::DrawingPage>()

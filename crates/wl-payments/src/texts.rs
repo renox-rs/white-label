@@ -7,6 +7,47 @@ use renox::prelude::*;
 
 /// Every key the package uses, with its English text.
 const TEXTS: &[(&str, &str)] = &[
+    // The party's deposit in the portal (BL-PAY-27).
+    ("wl_payments.portal_deposit.title", "Deposit"),
+    (
+        "wl_payments.portal_deposit.subtitle",
+        "Your deposit, the deductions published to you and the refund.",
+    ),
+    ("wl_payments.portal_deposit.home", "Portal home"),
+    ("wl_payments.portal_deposit.empty", "No deposit is held for you"),
+    ("wl_payments.portal_deposit.deposit", "Deposit"),
+    ("wl_payments.portal_deposit.amount", "Amount"),
+    ("wl_payments.portal_deposit.refund", "Refund"),
+    ("wl_payments.portal_deposit.in_review", "In review"),
+    ("wl_payments.portal_deposit.paid", "Paid"),
+    ("wl_payments.portal_deposit.status.held", "Held"),
+    ("wl_payments.portal_deposit.status.forfeited", "Kept"),
+    ("wl_payments.portal_deposit.status.transferred", "Transferred"),
+    ("wl_payments.portal_deposit.deductions", "Deductions"),
+    (
+        "wl_payments.portal_deposit.published",
+        "Version :version, published :date",
+    ),
+    ("wl_payments.portal_deposit.dispute_window", "You may dispute"),
+    ("wl_payments.portal_deposit.window", "until :date"),
+    ("wl_payments.portal_deposit.forfeiture", "Kept because"),
+    ("wl_payments.portal_deposit.line", "Deduction"),
+    ("wl_payments.portal_deposit.evidence", "Evidence"),
+    ("wl_payments.portal_deposit.state", "State"),
+    ("wl_payments.portal_deposit.disputed", "Disputed"),
+    ("wl_payments.portal_deposit.no_deductions", "No deductions"),
+    ("wl_payments.portal_deposit.dispute", "Dispute"),
+    ("wl_payments.portal_deposit.dispute_title", "Dispute deductions"),
+    (
+        "wl_payments.portal_deposit.dispute_hint",
+        "Tick the deductions you do not agree with and tell us why.",
+    ),
+    ("wl_payments.portal_deposit.comment", "Why"),
+    ("wl_payments.portal_deposit.dispute_send", "Send the dispute"),
+    (
+        "wl_payments.portal_deposit.dispute_done",
+        "We received your dispute. The refund waits until we answer.",
+    ),
     ("wl_payments.title", "Payments"),
     ("wl_payments.bad_date", "Enter a date as YYYY-MM-DD."),
     ("wl_payments.expense_claims.title", "Expense claims"),

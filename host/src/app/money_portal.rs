@@ -1,5 +1,6 @@
 //! The money sections of the portal: the party's invoices and statement of
-//! account with the dispute (wl-invoicing, BL-INV-31).
+//! account with the dispute (wl-invoicing, BL-INV-31), and the deposit with
+//! its published deductions and their dispute (wl-payments, BL-PAY-27).
 //!
 //! The pages and the data belong to the modules; the host mounts the routes
 //! because the access check is wl-portal's, which the modules do not depend
@@ -15,6 +16,8 @@
 //! | `GET /portal/{party}/invoices` | the `invoices` section (`portal.invoices.view`) |
 //! | `GET /portal/{party}/invoices/statement` | the same; `?from=&to=`, default this month |
 //! | `POST /portal/{party}/invoices/{id}/dispute` | the same, a grant that may write, the client's portal disputes on |
+//! | `GET /portal/{party}/deposit` | the `deposit` section (`portal.leases.view`) |
+//! | `POST /portal/{party}/deposit/{id}/dispute` | the same; a `read_only` grant keeps it (BL-POR-03) |
 
 use std::collections::HashMap;
 
@@ -22,6 +25,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::Deserialize;
 use wl_invoicing::portal as invoices;
+use wl_payments::deposit_portal as deposits;
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
 use wl_portal::{
@@ -77,10 +81,48 @@ impl PortalSection for InvoicesSection {
     }
 }
 
+/// The menu order of the deposit (01 tenant portal: after the cheques).
+const DEPOSIT_ORDER: i32 = 40;
+
+/// The deposit section of the portal menu; its page is
+/// `GET /portal/{party}/deposit` below.
+pub struct DepositSection;
+
+impl PortalSection for DepositSection {
+    fn title(&self) -> String {
+        "Deposit".to_owned()
+    }
+
+    fn permission(&self) -> Option<&str> {
+        Some(deposits::VIEW_PERMISSION)
+    }
+
+    fn order(&self) -> i32 {
+        DEPOSIT_ORDER
+    }
+
+    fn rows<'a>(
+        &'a self,
+        state: &'a AppState,
+        party: PartyId,
+    ) -> SectionFuture<'a, Vec<SectionRow>> {
+        Box::pin(async move {
+            let lang = state.lang("en");
+            let rows = deposits::deposits_of(state, &lang, party).await?;
+            Ok::<Vec<SectionRow>, Error>(
+                rows.iter()
+                    .map(|row| SectionRow::new(&row.amount, &row.refund_status))
+                    .collect(),
+            )
+        })
+    }
+}
+
 /// Registers the money sections (every client: the permission decides who
 /// sees them).
 pub fn register() {
     register_section(invoices::SECTION, InvoicesSection);
+    register_section(deposits::SECTION, DepositSection);
 }
 
 /// The menu of `user` for `party` when it holds `section`, else 403.
@@ -178,6 +220,51 @@ async fn dispute(
     Ok((Toast::success(done), renox::HxRefresh).into_response())
 }
 
+/// `GET /portal/{party}/deposit`.
+async fn deposit_index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(party): Path<i64>,
+) -> Result<View> {
+    let menu = menu_with(&state, &user, &lang, party, deposits::SECTION).await?;
+    let context = deposits::PortalContext {
+        home_url: format!("/portal/{party}"),
+        read_only_notice: menu
+            .read_only_since
+            .map(|since| read_only_notice(&lang, since)),
+    };
+    deposits::deposit_page(&state, &lang, PartyId(party), context).await
+}
+
+/// `POST /portal/{party}/deposit/{id}/dispute`: `version`, `comment` and
+/// `line_<id>`. The window and the lines are checked by wl-payments.
+async fn deposit_dispute(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path((party, id)): Path<(i64, i64)>,
+    Form(form): Form<HashMap<String, String>>,
+) -> Result<Response> {
+    menu_with(&state, &user, &lang, party, deposits::SECTION).await?;
+    PortalGuard::require(
+        &state,
+        &lang,
+        &user,
+        PartyId(party),
+        PortalAction::DepositDeductionDispute,
+    )
+    .await?;
+    deposits::dispute(&state, PartyId(party), id, &form).await?;
+    let done = lang.t("wl_payments.portal_deposit.dispute_done", &[]);
+    let done = if done == "wl_payments.portal_deposit.dispute_done" {
+        "We received your dispute. The refund waits until we answer.".to_owned()
+    } else {
+        done
+    };
+    Ok((Toast::success(done), renox::HxRefresh).into_response())
+}
+
 /// The routes, for every signed-in user (each handler checks the grant).
 pub struct MoneyPortal;
 
@@ -194,6 +281,10 @@ impl Module for MoneyPortal {
             .name("money_portal.statement")
             .post("/portal/{party}/invoices/{id}/dispute", dispute)
             .name("money_portal.dispute")
+            .get("/portal/{party}/deposit", deposit_index)
+            .name("money_portal.deposit")
+            .post("/portal/{party}/deposit/{id}/dispute", deposit_dispute)
+            .name("money_portal.deposit_dispute")
             .require_auth()
     }
 }
