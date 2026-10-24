@@ -189,4 +189,52 @@ impl Seed {
         .await?;
         Ok(())
     }
+
+    /// An abort the production manager approved (the list of aborted work
+    /// orders has a row with its asker and approver), and a long list of
+    /// planned work orders for stock (the list pages).
+    pub(crate) async fn more_work(&mut self) -> Result {
+        let id = self
+            .work_order("aborted_rtl", "BOX-RTL", "300", 0, None)
+            .await?;
+        self.act(PLANNER_EMAIL, id, "release", &[]).await?;
+        self.issue(id, "KRAFT-LINER", "80", "KL-2305").await?;
+        self.act(SUPERVISOR_EMAIL, id, "start", &[]).await?;
+        let key = format!(
+            "return_{}_{}",
+            self.items["KRAFT-LINER"], self.lots["KL-2305"]
+        );
+        self.act(
+            PLANNER_EMAIL,
+            id,
+            "abort",
+            &[("reason", "Customer withdrew the order"), (&key, "60")],
+        )
+        .await?;
+        let request = wl_kernel::approvals::ApprovalRequest::query()
+            .where_(wl_kernel::approvals::ApprovalRequest::SUBJECT_ID.eq(id))
+            .order_by_desc(wl_kernel::approvals::ApprovalRequest::ID)
+            .first(self.db())
+            .await?
+            .ok_or_else(|| renox::anyhow::anyhow!("demo seed: the abort of {id} was not asked"))?;
+        self.driver
+            .post(
+                MANAGER_EMAIL,
+                &format!("/approvals/{}/approve", request.id),
+                &[],
+            )
+            .await?;
+        // Planned for stock over the next weeks: the list has more than one
+        // page.
+        for n in 0..26_usize {
+            let (code, quantity) = if n % 2 == 0 {
+                ("BOX-FOOD", "500")
+            } else {
+                ("BOX-RTL", "800")
+            };
+            self.work_order("stock_more", code, quantity, n % 2, None)
+                .await?;
+        }
+        Ok(())
+    }
 }
