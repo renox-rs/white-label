@@ -259,10 +259,10 @@ async fn aut_base_the_pages_list_search_and_show_the_vehicles() {
         .assert_see("Dubai A 12345")
         .assert_see("Sharjah D 9001")
         .assert_see("Mona Hassan");
-    let fleet = t.app.get("/auto/vehicles?kind=fleet").await;
+    let fleet = t.app.get("/auto/vehicles?in.kind=fleet").await;
     fleet.assert_ok().assert_see("Sharjah D 9001");
     assert!(!fleet.text().contains("Dubai A 12345"));
-    let found = t.app.get("/auto/vehicles?q=hilux").await;
+    let found = t.app.get("/auto/vehicles?search=hilux").await;
     found.assert_ok().assert_see("Dubai A 12345");
     assert!(!found.text().contains("Sharjah D 9001"));
 

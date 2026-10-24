@@ -651,7 +651,8 @@ async fn aut_base_a_technician_sees_only_the_job_cards_assigned_to_them() {
         .get("/auto/technician")
         .await
         .assert_ok()
-        .assert_see("Brake noise");
+        .assert_see(&mine.number())
+        .assert_see("Dubai A 12345");
 }
 
 /// The QC: the checklist is ticked, the vehicle passes only when it is

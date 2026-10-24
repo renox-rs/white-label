@@ -1,6 +1,6 @@
 # Epic: wl-inventory — negative flows
 
-> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
+> Status: in use (F1–F10 built; open items in [README](../README.md) §7) · Last updated: 2026-10-24
 
 This epic builds the negative flows in [wl-inventory](../../modules/wl-inventory.md): goods
 rejected at receipt, returns to suppliers and free replacements, purchase order revision and

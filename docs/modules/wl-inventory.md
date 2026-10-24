@@ -1,6 +1,8 @@
 # wl-inventory
 
-> Status: draft · Last updated: 2026-10-16
+> Status: specification, partly built; the build ledger is [crates/wl-inventory/README.md](../../crates/wl-inventory/README.md) · Last updated: 2026-10-24
+
+**Build status (2026-10-24):** Built: items, locations, stock balances and movements, lots, purchase requests and orders (with revisions), goods receipts, returns to supplier, transfers, stock counts, stock holds, recalls, bills of materials with versions, landed cost, the Dispatch lifecycle with its screens, reservations, item suppliers and the supplier score, reorder suggestions, pending issues. Not built (later): Asset and its machine (§3, §4, §5.5), Meter reading, Unit conversion, the events `StockBelowMinimum`, `ItemOutOfStock`, `LotExpiring`, `LotExpired`, `StockCountApproved`, `AssetStatusChanged`, `MeterReadingRecorded`, the value limits and segregation of duties of `issue`, `short_close`, `close` and `cancel` of a purchase order, and the field PWA screens. The contracts it provides are listed in §6; the ones marked *planned* there have no code. List screens use the standard Renox grid (`renox::grid::Grid`).
 
 ## 1. Purpose
 
@@ -64,9 +66,10 @@ Related capabilities owned elsewhere and used here:
 | Entity | Description | Important fields |
 |---|---|---|
 | Item | Anything stocked or bought | code, name EN/AR, type (`stocked`, `non_stocked`, `consumable`, `finished`, `component`, `service`), category, base unit, purchase unit, stock unit, sales unit, lot-tracked flag, regulated flag, export-only flag, shelf life (days), barcodes, item suppliers (one preferred, alternatives ranked), min / reorder point / max (or par), standard cost (optional), average cost, VAT category, custom fields |
-| Unit conversion | How units relate for an item | item (or global), from unit, to unit, fixed factor. E.g. 1 roll = 500 m, 1 carton = 24 pcs. No dimension formulas |
+| Unit conversion (not built) | How units relate for an item | item (or global), from unit, to unit, fixed factor. E.g. 1 roll = 500 m, 1 carton = 24 pcs. No dimension formulas |
 | Location | A place that holds stock | code, name, type (`warehouse`, `central_store`, `store`, `site`, `outlet`, `kitchen`, `branch`, `van`, `in_transit`, `quarantine`, `scrap`), parent, scope link (building / project / outlet / branch), cost object on receipt (optional), negative stock policy (`block` or `allow_consumption`) |
 | Stock balance | Derived quantity per item, location and lot | on hand, reserved, on hold, available (on hand − reserved − on hold), value. Never edited directly. Reserved = draft returns to supplier, picked dispatches and the reservations for sales order lines (a confirmed order reserves its lines' stock on `SalesOrderConfirmed`, a work order's output lot is reserved for the line it serves; both are given back when the order or the line is cancelled or the work order is unlinked; the order's own dispatch can still pick it) |
+| Reservation | Stock set aside for a sales order line or for the output of a work order | source (`order` or `work_order`), item, location, lot (work order output), quantity, owner line (a `Subject` and line), source reference, released reason. Table `wl_inventory_reservations`; changed through the kernel's `StockReservations` and `ProductionStock`. The stock of a picked dispatch counts as reserved as well (`reserved_picked`, §4 Dispatch) |
 | Stock movement | One immutable quantity change | type (`receive`, `issue`, `consume`, `produce`, `transfer_out`, `transfer_in`, `adjust`, `wastage`, `return_in`, `return_out`, `dispatch`), item, lot, from/to location, quantity in base unit, unit cost, value, cost object (`Subject`), source (`Subject`), reason, user, time |
 | Lot | A batch of one item | item, number, supplier lot, source (GRN or production), parent lots (genealogy, from the `produce` movement's source), manufactured / expiry date, actual measure for variable quantities (e.g. roll weight), status, open holds, certificates |
 | Stock count | A counting session | locations, scope (full / partial / items list), blind or not, lines (expected, counted, variance qty and value), status |
@@ -82,8 +85,8 @@ Related capabilities owned elsewhere and used here:
 | Pending issue | Consumption that could not be posted because stock was short | item, location, qty, source and cost object (`Subject`), recorded at, cleared by (receipt, transfer, count or storekeeper), lot assigned, status (`open`, `posted`, `cleared`) |
 | BOM | Components to make one unit, or a recipe | output item, version, output quantity and yield %, lines (component item, quantity, unit, scrap %), sub-BOMs, status, rolled-up cost |
 | Dispatch | Picking, packing and shipping goods to a recipient | recipient (`Party`), address, source (`Subject`, e.g. sales order), lines with lots, packages, delivery note no., handover (own delivery run or courier), status |
-| Asset | Equipment, vehicle, tool or machine the company owns or leases | code, type, category, serial / plate / VIN, location or assignee, purchase date and cost, meters (km, hours), next service date / meter, documents (registration, insurance), status, custom fields |
-| Meter reading | A recorded asset meter value | asset, meter, value, time, source |
+| Asset (not built) | Equipment, vehicle, tool or machine the company owns or leases | code, type, category, serial / plate / VIN, location or assignee, purchase date and cost, meters (km, hours), next service date / meter, documents (registration, insurance), status, custom fields |
+| Meter reading (not built) | A recorded asset meter value | asset, meter, value, time, source |
 | Reorder suggestion | Proposed purchase from stock levels | item, location, supplier, supplier role (`preferred` or `alternative`, with the reason the preferred one was skipped), alternatives shown (supplier, lead time, last price, score), suggested qty, reason, status (`open`, `converted`, `dismissed`) |
 | Item supplier | A supplier that can deliver an item (`STK.SUP.01`) | item, supplier (`Party`), role (`preferred` or `alternative`), rank among alternatives, supplier item code, purchase unit, lead time (days), minimum order qty, last price (derived), active flag, notes. At most one preferred per item |
 | Supplier score | A monthly snapshot of one supplier's performance (`STK.SUP.01`) | supplier, window (the W calendar months ending with the month before the snapshot date; W = 3 by default), receipts counted, on-time %, rejected value %, quality incidents (NCRs, supplier recalls), debit notes (count, value), price variance %, score 0–100, band (`good`, `watch`, `below_threshold`, `not_enough_data`), computed at, review notes (text, by, at). Derived and never edited; notes are added, never changed |
@@ -692,6 +695,8 @@ stateDiagram-v2
 
 ### Dispatch
 
+Reservations (§3 *Reservation*) and `pick`: picked lines count as reserved (`reserved_picked`), and the order's own dispatch can still pick stock reserved for its lines.
+
 Canonical base: [07-manufacturing.md](../verticals/07-manufacturing.md#dispatch-shared--wl-inventory).
 The move to the customer is handed over to **wl-delivery** ([CAPABILITY-MAP.md](../CAPABILITY-MAP.md) §5, decision 5).
 
@@ -711,7 +716,7 @@ The move to the customer is handed over to **wl-delivery** ([CAPABILITY-MAP.md](
 | `pick` | draft | picked | `dispatch.manage` | released lots only, no held quantity (FEFO suggested); vertical item-flag guards (e.g. `MFG.ACL.11`) | stock reserved |
 | `dispatch` | picked | dispatched | `dispatch.manage` | no picked lot on hold (re-pick otherwise); source is a sales order on account: `credit_recheck(order)` passes (wl-sales `CreditChecker`; a failure puts the order on `credit_hold` and the dispatch stays `picked`, reserved); handover chosen: own delivery (wl-delivery), courier with tracking no., or customer collection with the collector's signature (`DOC.SIG.01`) | `dispatch` movements; delivery note PDF; event `DispatchSent` → wl-delivery creates the delivery |
 | `confirm_delivery` | dispatched | delivered | system (`DeliveryDelivered` from wl-delivery) or `dispatch.manage` with courier proof | delivered qty per line taken from the proof (`DeliveryDelivered` lines); manual: delivered and refused qty entered per line | delivered qty recorded per line; refused qty recorded as *in return* with the refusal reason (no movement yet: the goods are still with the driver); event `DispatchDelivered` with delivered and refused qty (e.g. sales order `fulfil` of delivered qty, draft invoice) |
-| `return` | dispatched | returned | `dispatch.manage` or system (`DeliveryReturned` from wl-delivery) | reason recorded | `return_in` movements to quarantine |
+| `return` | dispatched | returned | `dispatch.manage` or system (`DeliveryReturned` from wl-delivery) | reason recorded | `return_in` movements to quarantine; a complaint ticket is opened for the dispatch; event `DispatchGoodsQuarantined` (refused-goods inspection and re-delivery live in apps/manufacturing) |
 | `discard` | dispatched | discarded | system (`DeliveryDiscarded` from wl-delivery) | — | the dispatched lines are recorded as wastage with the delivery's reason and photo (no new stock movement: the goods already left); value to wastage through `CostPoster`; source notified; event `DispatchDiscarded` |
 | `mark_lost` | dispatched, delivered | lost | system (`DeliveryLost` from wl-delivery; from `delivered` when the delivery was `under_review`) | — | from `delivered`: delivered qty set back to zero, refused qty stays in return or in quarantine; value of the lost lines to a loss pending the claim (`CostPoster`); source notified; event `DispatchLost` (from `delivered`, the source reverses its fulfilment) |
 | `found` | lost | dispatched | system (`DeliveryFound` from wl-delivery) | — | loss reversed; the delivery continues and ends in `confirm_delivery` or `return` |
@@ -756,6 +761,8 @@ own approval by someone other than the recorder, even when the cancellation was 
 (`SAL.ACL.05`).
 
 ### Asset
+
+**Build status (2026-10-24):** Not built (later): no asset table or machine exists.
 
 Canonical base: *Vehicle* in [03-logistics.md](../verticals/03-logistics.md#vehicle-shared--wl-inventory-asset),
 generalised to every asset type.
@@ -952,14 +959,24 @@ stateDiagram-v2
 | `StockService` | Reserve, release, issue, consume, produce, transfer and adjust stock, with source and cost object; returns the movements, or a pending issue when automatic consumption is short (§3 negative stock) |
 | `StockHoldService` | Place a stock hold on lots or on a location's stock with a reason and reference, or add lines to an open location hold (used by recalls and vertical automations, e.g. 06 temperature excursions and stock moved into the held fridge) |
 | `LotTrace` | Forward trace (lot → movements → subjects, output lots and parties) and backward trace (output lot → component lots) |
-| `Availability` | Available quantity per item and location (all or in the user's scope) |
-| `ItemLookup` | Find an item or lot by code or barcode |
-| `ItemCost` | Current average or standard cost of an item |
-| `Purchasing` | Create a purchase request or PO from another module (e.g. reorder, work order shortfall) |
-| `BomExplosion` | Components and quantities needed for N units of an output item |
-| `AssetRegistry` | Asset status and availability for planning (runs, bookings, jobs) |
-| `SupplierScorecard` | Live score and monthly snapshots per supplier; item suppliers with lead time and last price (used by the supplier view in wl-parties and by verticals) |
+| `Availability` | Available quantity per item and location (all or in the user's scope) **Planned, not built:** no trait exists in `wl-kernel`; today callers use `StockService::on_hand` and `choices_of_item`. |
+| `ItemLookup` | Find an item or lot by code or barcode **Planned, not built:** no trait exists in `wl-kernel`; today items are looked up by the module's own screens and queries. |
+| `ItemCost` | Current average or standard cost of an item **Planned, not built:** no trait exists in `wl-kernel`; today cost is read through `StockService` movements and `stock.cost.view`. |
+| `Purchasing` | Create a purchase request or PO from another module (e.g. reorder, work order shortfall) **Planned, not built:** no trait exists in `wl-kernel`; today a purchase request is drafted from reorder suggestions inside the module (`SupplierReturnDrafts` drafts returns to supplier for other modules). |
+| `BomExplosion` | Components and quantities needed for N units of an output item **Planned, not built:** no trait exists in `wl-kernel`; today `BillsOfMaterials` gives the components of a released version. |
+| `AssetRegistry` | Asset status and availability for planning (runs, bookings, jobs) **Planned, not built:** no trait exists in `wl-kernel`; today Asset is not built. |
+| `SupplierScorecard` | Live score and monthly snapshots per supplier; item suppliers with lead time and last price (used by the supplier view in wl-parties and by verticals) **Planned, not built:** no trait exists in `wl-kernel`; today the score and snapshots are read on the module's supplier screens; `SupplierIncidentSource` feeds NCRs in. |
 | `PurchaseMatchSource` (trait implemented for wl-invoicing) | PO and goods-received lines for the supplier bill 3-way match |
+| `StockReservations` | Reserve and release stock for sales order lines (kernel `backorders`); `BackOrderDemand` is the sales side |
+| `ProductionStock` | Reserve and release the output of a work order (`reserve_output`, `release_reservation`) |
+| `BillsOfMaterials` | Released bill of materials of a finished item |
+| `ScopeStock` | Open purchase orders and stock of a scope that stops (a project) |
+| `SaleLineStockSource` | Stock side of a sales order's lines (provided by `apps/fnb`, asked by wl-sales) |
+| `LotDisposal`, `BatchStock`, `LotReleaseGuard` | Disposal of lots, batch stock, and whether something outside stock keeps a lot from release (`LotReleaseGuard` provided by `apps/manufacturing`) |
+| `PurchaseOrderRules` | Rules a vertical adds to the purchase order (provided by `apps/construction`) |
+| `DeliveryWastage`, `SupplierReturnDrafts` | Wastage estimate of a discarded delivery; drafts of returns to supplier for other modules |
+
+All of these are kernel traits; the file, purpose and providers of each are in [KERNEL-CONTRACTS.md](KERNEL-CONTRACTS.md).
 
 **Consumes**
 
@@ -979,25 +996,28 @@ stateDiagram-v2
 
 | Event | When | Payload |
 |---|---|---|
-| `StockMoved` | Any movement posted | movement id, type, item, lot, location(s), quantity, value, source, cost object |
-| `StockBelowMinimum` | Available quantity falls below min / reorder point / par | item, location, available, threshold |
-| `ItemOutOfStock` | Available quantity reaches zero at a location | item, location |
-| `PurchaseOrderIssued` | PO issued | PO id, supplier, lines, total, cost objects |
+| `StockMoved` (no event struct: the movement row is the record; wl-sales reacts to `StockArrived`) | Any movement posted | movement id, type, item, lot, location(s), quantity, value, source, cost object |
+| `StockBelowMinimum` (not built) | Available quantity falls below min / reorder point / par | item, location, available, threshold |
+| `ItemOutOfStock` (not built) | Available quantity reaches zero at a location | item, location |
+| `PurchaseOrderIssued` (not built; comes with the issue limits) | PO issued | PO id, supplier, lines, total, cost objects |
 | `PurchaseOrderRevised` | PO `revise` | PO id, revision number, changed lines, old and new total, reason |
 | `GoodsReceived` | Goods receipt posted | receipt id, PO id, lines with accepted qty, rejected qty and reason, values |
 | `SupplierReturnDispatched` | Return to supplier `dispatch` | return id, supplier, source, lines (item, lot, qty, PO line, PO price, wanted outcome, reason) |
 | `SupplierReturnCredited` | Return to supplier `credit` | return id, debit note or reason |
 | `LandedCostAllocated` | Landed cost allocated | receipts, amounts per item |
 | `LandedCostAdjusted` | Landed cost `adjust` | landed cost id, amount, per item re-valued amount and variance amount |
-| `LotReleased` / `LotExpiring` / `LotExpired` / `LotHeld` / `LotDiscarded` | Lot status or expiry reached | lot, item, quantity, expiry, reason |
+| `LotReleased` / `LotExpiring` (not built) / `LotExpired` (not built) / `LotHeld` / `LotDiscarded` | Lot status or expiry reached | lot, item, quantity, expiry, reason |
 | `StockHoldPlaced` / `StockHoldClosed` | Stock hold transitions | hold id, reason, reference, lines with qty and outcome |
 | `RecallOpened` / `RecallTraced` / `RecallClosed` | Recall transitions | recall id, scope, lots, affected lines (subject, party, qty), outcomes |
 | `StockNegative` | A balance goes below zero or a pending issue is recorded | item, location, qty, source |
-| `StockCountApproved` | Count approved | count id, variance value, adjustments |
+| `StockCountApproved` (not built) | Count approved | count id, variance value, adjustments |
 | `DispatchSent` / `DispatchDelivered` / `DispatchReturned` / `DispatchDiscarded` / `DispatchLost` / `DispatchReversed` | Dispatch transitions | dispatch id, source, lines (delivered and refused qty with reason where known), recipient |
-| `AssetStatusChanged` | Asset transition | asset id, from, to, reason |
-| `MeterReadingRecorded` | New meter value | asset, meter, value |
+| `AssetStatusChanged` (not built) | Asset transition | asset id, from, to, reason |
+| `MeterReadingRecorded` (not built) | New meter value | asset, meter, value |
 | `SupplierScoreBelowThreshold` | Monthly snapshot under the threshold (`STK.RUL.09`) | supplier, window, score, components |
+| `StockArrived` / `StockArrivalReversed` | A `receive` or `transfer_in` movement is posted, or a receipt is reversed (kernel `backorders`; wl-sales reserves the stock for open back-orders) | source (goods receipt or transfer), kind (`receive` or `transfer_in`), location, lines (item, item code, quantity) |
+| `PendingIssueClosed` | A transition closes a pending issue (`post`, `clear`, `clear_approved`, `source_cancelled`) | pending issue, original pending issue, source, item, location, quantity |
+| `DispatchGoodsQuarantined` | A returned dispatch puts goods into quarantine | dispatch, source, recipient, returned (whole dispatch) or refused lines only, complaint ticket, lines booked |
 | `PreferredSupplierChanged` | Another item supplier made preferred (after `STK.ACL.07`) | item, old and new supplier, requester, approver |
 
 **Attaches to:** stock movements, purchase requests and dispatches refer to any `Subject` as
@@ -1012,7 +1032,7 @@ Documents and tickets attach to items, lots, receipts, dispatches and assets.
 `goods_receipts.reverse`, `landed_costs.post`, `lots.release`, `stock.hold`,
 `supplier_returns.manage`, `recalls.manage`, `boms.view`, `boms.manage`, `boms.release`,
 `dispatch.manage`, `assets.view`, `assets.manage`, `assets.dispose`, `item_suppliers.manage`,
-`item_suppliers.approve`, `supplier_scores.view`.
+`item_suppliers.approve`, `supplier_scores.view`, `recalls.view`.
 
 `stock.cost.view` controls every cost, value and margin field (`FLD`). Stock permissions are
 checked in the scope of the location.

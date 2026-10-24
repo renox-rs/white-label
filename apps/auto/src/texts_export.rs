@@ -4,6 +4,10 @@
 
 /// Every key of this part, with its English text.
 pub(crate) const TEXTS: &[(&str, &str)] = &[
+    (
+        "auto.export.invoice_placeholder",
+        "Pick the zero-rated invoice",
+    ),
     ("auto.export.title", "Export sales"),
     (
         "auto.export.subtitle",
@@ -17,7 +21,7 @@ pub(crate) const TEXTS: &[(&str, &str)] = &[
     ("auto.export.invoice", "Invoice"),
     (
         "auto.export.invoice_hint",
-        "The invoice number shown on the invoice page (its reference id).",
+        "An issued invoice without VAT that is not an export sale yet.",
     ),
     ("auto.export.supply_date", "Supply date"),
     (

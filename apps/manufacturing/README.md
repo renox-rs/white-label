@@ -60,7 +60,7 @@ Comes with other issues (the states they need are declared):
 
 | Issue | What | Where it plugs in |
 |---|---|---|
-| The shortage list at release, the schedule board, `MFG.RUL.01`, `02`, `05`, `06` | | `work_orders::release` |
+| The shortage list at release, the schedule board, `MFG.RUL.01`, `02`, `03`, `05`, `06` (none of them built) | | `work_orders::release` |
 
 The BOM base is wl-inventory's (`crates/wl-inventory/src/bom.rs`) and is kept to what the work order
 release and the F7 issues need. Left out, to come when an issue needs it: sub-BOMs and recipes with
@@ -98,7 +98,7 @@ moving the goods from the quarantine location to a store is a transfer by the st
 ## Deferred in F7 (what stays open, who provides it)
 
 Each row is a Done-when point or a seam that is not built or not testable end to end yet. The list is
-kept with the audit of the round (`DEFERRED-F7`).
+kept in [`docs/progress/f7-manufacturing.md`](../../docs/progress/f7-manufacturing.md).
 
 | Issue, point | What is missing | Provider |
 |---|---|---|

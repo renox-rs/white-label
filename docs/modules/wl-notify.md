@@ -1,6 +1,8 @@
 # wl-notify
 
-> Status: draft · Last updated: 2026-10-16
+> Status: specification, partly built; the build ledger is [crates/wl-notify/README.md](../../crates/wl-notify/README.md) · Last updated: 2026-10-24
+
+**Build status (2026-10-24):** Built: notification types and templates (EN/AR) with rendering, the `Notifier`, the Message machine with retry, fallback and give-up reactions, suppressions and opt-out, send windows, one-time codes, statutory notices with proof of delivery (`notifications.notices.record_proof`), the Broadcast machine with the kernel approval for requests over the limit, the marketing frequency cap and stale broadcasts. Not built (later): the WhatsApp template machine (§4.2) and the BSP, contact points and preferences as screens, manual bulk messages. List screens use the standard Renox grid (`renox::grid::Grid`).
 
 ## 1. Purpose
 
@@ -63,6 +65,7 @@ What the verticals send:
 | Message | One message to one recipient on one channel | type, subject (`Subject` it is about), recipient, channel, language, rendered content, provider, provider message id, cost (if reported), status, scheduled for, attempts |
 | Delivery event | A status update from a provider | message, status, provider code, timestamp, raw payload reference |
 | Broadcast | One message of one marketing or manual type to a list of recipients | requester `Subject` (a wl-sales campaign in the MVP), notification type, template, channel, recipient source (a wl-sales segment; a filtered party list, Later), send at, recipients resolved, excluded counts by reason (no consent, opted out, suppressed, no contact point, frequency cap, blocked party, expired, broadcast stopped), requested by (a user, never the system: for a campaign, the user who last set its retention fields), approved by, cancel reason (rejected, cancelled, approval expired, requester guard failed), stopped by and at, results (sent, delivered, failed, opted out), status |
+| One-time code | A code sent to confirm a person (`send_otp`, `verify_otp`) | purpose, subject, recipient, code hash, tries, expires at, status (`live`, `used`, `locked`, `replaced`). Table `wl_notify_otp_codes` |
 | In-app notification | A bell entry for a staff or portal user | user, type, title, link, read at (Renox database notifications) |
 
 Rules that apply to all entities:
@@ -129,6 +132,8 @@ only because a later read receipt can still arrive.
 
 ### 4.2 WhatsApp template
 
+**Build status (2026-10-24):** Not built (later): no template table or machine exists; a WhatsApp channel adapter is not provided.
+
 Business-initiated WhatsApp messages need templates approved by Meta through the BSP.
 
 | State | Tone | Terminal | Meaning |
@@ -168,8 +173,11 @@ stateDiagram-v2
 
 ### 4.3 Broadcast
 
+**Build status (2026-10-24):** Built (`broadcast_machine`). The code differs from the table below in these points: a row is inserted in an initial `draft` state and moved by `request` (estimate at most the limit, to `scheduled`) or `request_over_limit` (above it, to `pending_approval`); there is no user transition `approve`: the approval is the kernel approval engine (`PLT.APR.01`), whose last yes runs the system transition `request_over_limit_approved` (to `scheduled`); `cancel_system` is the system twin of `cancel` (a withdrawn request, an ended requester) and `back_to_draft` is run by the kernel when a request ends without a yes (here it cancels the broadcast).
+
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
+| `draft` | neutral | no | Inserted, not yet requested; `request` or `request_over_limit` moves it on in the same transaction |
 | `pending_approval` | warning | no | Waiting for a second person (`NTF.ACL.03`); expires 24 h after send at (`NTF.RUL.03`) |
 | `scheduled` | info | no | Approved or below the limit; waits for its send time |
 | `sending` | info | no | Recipients resolved; messages being queued |
@@ -178,8 +186,8 @@ stateDiagram-v2
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `request` | — | pending_approval, scheduled | the requester module on behalf of a user (marketing types: an `active` wl-sales campaign, `NTF.ACL.04`); `notifications.broadcast.send` (other types, Later) | type of category `marketing` or a manual type; template active (WhatsApp: `approved`) in every language used; SMS: an `AD-` sender ID configured; the requesting user named | estimated recipients shown (the members of the recipient source now who would pass consent, opt-out, suppression, contact point and blocked-party checks for the channel; the frequency cap is not estimated); `pending_approval` when the estimate is above the limit of `NTF.ACL.03`, otherwise `scheduled` |
-| `approve` | pending_approval | scheduled | `notifications.marketing.send` | approver ≠ requester (`NTF.ACL.03`) | — |
+| `request` (`request_over_limit` above the limit) | draft | pending_approval, scheduled | the requester module on behalf of a user (marketing types: an `active` wl-sales campaign, `NTF.ACL.04`); `notifications.broadcast.send` (other types, Later) | type of category `marketing` or a manual type; template active (WhatsApp: `approved`) in every language used; SMS: an `AD-` sender ID configured; the requesting user named | estimated recipients shown (the members of the recipient source now who would pass consent, opt-out, suppression, contact point and blocked-party checks for the channel; the frequency cap is not estimated); `pending_approval` when the estimate is above the limit of `NTF.ACL.03`, otherwise `scheduled` |
+| `approve` (in code: `request_over_limit_approved`, run by the kernel approval engine on the last yes) | pending_approval | scheduled | `notifications.marketing.send` (the approvers of the policy) | approver ≠ requester (`NTF.ACL.03`) | — |
 | `reject` | pending_approval | cancelled | `notifications.marketing.send` | reason; rejecter ≠ requester | requester told; event `BroadcastCancelled` |
 | `start` | scheduled | sending | system (send at reached) | the requester `Subject` still allows the send (`NTF.ACL.04`: campaign `active`, the vertical's guards pass), otherwise `cancel` with reason *requester guard failed* | recipients resolved now; blocked, archived and merged parties left out; consent, opt-out, suppression and `NTF.RUL.02` applied per recipient; excluded counts recorded |
 | `complete` | sending | completed | system | every recipient has a message or an exclusion | event `BroadcastCompleted` |
@@ -188,9 +196,10 @@ stateDiagram-v2
 
 ```mermaid
 stateDiagram-v2
-  [*] --> pending_approval: request
-  [*] --> scheduled: request
-  pending_approval --> scheduled: approve
+  [*] --> draft
+  draft --> pending_approval: request_over_limit
+  draft --> scheduled: request
+  pending_approval --> scheduled: request_over_limit_approved
   pending_approval --> cancelled: reject
   pending_approval --> cancelled: cancel
   pending_approval --> cancelled: expire

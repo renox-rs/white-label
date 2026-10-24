@@ -12,9 +12,12 @@
 //! never typed as an id; the payer agreement and the rate card are those of
 //! wl-invoicing.
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 
+use super::lists;
 use super::{
     Texts, parse_money, parse_number, parse_optional_id, party_name, party_of, require, text,
 };
@@ -40,26 +43,43 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
-/// One insurer of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct InsurerRow {
-    /// The primary key.
-    pub id: i64,
-    /// The insurer's name.
-    pub name: String,
-    /// Where claims are emailed.
-    pub email: String,
-    /// Days to pay.
-    pub terms: String,
-    /// The labour rate agreed.
-    pub labour_rate: String,
-    /// Whether it takes new claims, in words.
-    pub active: String,
-}
-
 /// `"30 days"` and so on.
 fn days_text(lang: &Lang, days: i64) -> String {
     texts::t_with(lang, "auto.insurers.days", &[("days", &days)])
+}
+
+/// The insurers grid: the name first and frozen (a link, drawn by the page),
+/// where claims are emailed, the days to pay, the labour rate agreed in
+/// dirhams and whether it takes new claims.
+pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
+    let standing = vec![
+        ("active".to_owned(), t("insurers.active")),
+        ("stopped".to_owned(), t("insurers.stopped")),
+    ];
+    Grid::new("auto-insurers")
+        .title(&t("insurers.title"))
+        .column(
+            Column::custom("name", &t("insurers.name"))
+                .frozen()
+                .mobile(),
+        )
+        .column(
+            Column::text("claim_email", &t("insurers.email"))
+                .searchable()
+                .copyable(),
+        )
+        .column(Column::number("payment_terms_days", &t("insurers.terms")))
+        .column(lists::money("labour_rate", &t("insurers.labour_rate")).mobile())
+        .column(
+            Column::select("standing", &t("fields.status"), standing)
+                .computed("CASE WHEN {T}.\"active\" THEN 'active' ELSE 'stopped' END")
+                .badges(&[("active", "success"), ("stopped", "neutral")])
+                .mobile(),
+        )
+        .sort_by("-id")
+        .row_url("/auto/insurers/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("insurers.empty"), None)
 }
 
 /// What the list page needs.
@@ -67,38 +87,33 @@ fn days_text(lang: &Lang, days: i64) -> String {
 #[view(template = "auto/insurers.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    rows: Vec<InsurerRow>,
+    insurers: GridPage<Insurer>,
 }
 
 /// `GET /auto/insurers`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
     require(&user, permissions::INSURANCE_MANAGE)?;
-    let mut rows = Vec::new();
-    for insurer in insurers::all(&state.db).await? {
-        rows.push(InsurerRow {
-            id: insurer.id,
-            name: party_name(&state, &lang.locale, insurer.party_id).await,
-            email: insurer
-                .claim_email
-                .clone()
-                .unwrap_or_else(|| text(&lang, "none")),
-            terms: days_text(&lang, insurer.payment_terms_days),
-            labour_rate: insurer
-                .labour_rate
-                .map_or_else(|| text(&lang, "none"), money_text),
-            active: text(
-                &lang,
-                if insurer.active {
-                    "insurers.active"
-                } else {
-                    "insurers.stopped"
-                },
-            ),
-        });
-    }
+    let page = grid(&lists::texts_in(&lang))
+        .page(Insurer::query(), &request)
+        .await?;
+    let ids: Vec<i64> = page
+        .items()
+        .iter()
+        .map(|insurer| insurer.party_id)
+        .collect();
+    let names = lists::party_names(&state, &lang, ids).await;
+    let insurers = lists::with_currency(
+        page,
+        |insurer| json!({ "name": names.get(&insurer.party_id).cloned().unwrap_or_default() }),
+    );
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        rows,
+        insurers,
     }))
 }
 
@@ -185,7 +200,9 @@ pub(crate) struct ShowPage {
     labour_rate: String,
     storage_rate: String,
     agreement: String,
+    agreement_options: Vec<[String; 2]>,
     rate_card: String,
+    rate_card_url: String,
     raw_agreement: String,
     raw_email: String,
     raw_surveyors: String,
@@ -210,6 +227,16 @@ async fn show(
     let insurer = Insurer::find_or_404(&state.db, id).await?;
     let none = text(&lang, "none");
     let card = insurers::rate_card_of(&state, &insurer, wl_kernel::documents::today()).await?;
+    let agreement_name = match insurer.payer_agreement_id {
+        Some(agreement) => super::choices::payer_agreement_name(&state.db, agreement).await,
+        None => None,
+    };
+    let rate_card_url = match &card {
+        Some(version) if user.has_permission("rate_cards.view") => {
+            format!("/rate-cards/{}", version.rate_card)
+        }
+        _ => String::new(),
+    };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         id: insurer.id,
@@ -225,13 +252,22 @@ async fn show(
         storage_rate: insurer
             .storage_rate_daily
             .map_or_else(|| none.clone(), money_text),
-        agreement: insurer
-            .payer_agreement_id
-            .map_or_else(|| none.clone(), |a| format!("#{a}")),
+        agreement: agreement_name.clone().unwrap_or_else(|| none.clone()),
+        agreement_options: match (insurer.payer_agreement_id, agreement_name) {
+            (Some(agreement), Some(name)) => vec![[agreement.to_string(), name]],
+            _ => Vec::new(),
+        },
         rate_card: card.map_or_else(
             || text(&lang, "insurers.no_rate_card"),
-            |v| format!("#{} v{} · {}", v.rate_card, v.version, v.effective_from),
+            |v| {
+                texts::t_with(
+                    &lang,
+                    "auto.insurers.rate_card_text",
+                    &[("version", &v.version), ("from", &v.effective_from)],
+                )
+            },
         ),
+        rate_card_url,
         raw_agreement: insurer
             .payer_agreement_id
             .map(|a| a.to_string())

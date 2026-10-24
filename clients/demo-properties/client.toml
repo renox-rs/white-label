@@ -1,5 +1,6 @@
 # The demo client of F1 (ARCHITECTURE.md §9): a property management company
 # with a mainland LLC and a free-zone company. Data is fictional.
+# `property:demo` (and `db:seed` in local) fills it with the demo company.
 
 [client]
 name    = "Palm Grove Properties LLC"
@@ -13,7 +14,7 @@ second       = "#B8532E"
 display_font = "Poppins"
 
 [modules]
-# F1 modules are added here as they are built.
+# The shared modules F1 uses.
 enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "sales", "hr", "portal"]
 
 [[legal_entities]]

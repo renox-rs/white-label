@@ -1,6 +1,6 @@
 # Capability Map
 
-> Status: draft · Last updated: 2026-10-18 · Built from the capability tables (§5) of the
+> Status: draft · Last updated: 2026-10-24 · Built from the capability tables (§5) of the
 > [vertical documents](verticals/). Change a vertical first, then update this map to match.
 
 The helicopter view: every capability the ten verticals need, which module provides it, and
@@ -10,26 +10,26 @@ who uses it. ID conventions are in [README.md](README.md).
 
 | # | Vertical | Capabilities | Shared | Specific | Reuse |
 |---|---|---|---|---|---|
-| 01 | [Property](verticals/01-property.md) | 60 | 48 | 12 | 80% |
-| 02 | [Construction](verticals/02-construction.md) | 75 | 59 | 16 | 79% |
-| 03 | [Logistics](verticals/03-logistics.md) | 76 | 61 | 15 | 80% |
-| 04 | [Accounting](verticals/04-accounting.md) | 67 | 52 | 15 | 78% |
-| 05 | [Clinics](verticals/05-clinics.md) | 80 | 68 | 12 | 85% |
-| 06 | [F&B](verticals/06-fnb.md) | 98 | 74 | 24 | 76% |
-| 07 | [Manufacturing](verticals/07-manufacturing.md) | 79 | 67 | 12 | 85% |
-| 08 | [Auto](verticals/08-auto.md) | 94 | 76 | 18 | 81% |
-| 09 | [Manpower](verticals/09-manpower.md) | 66 | 57 | 9 | 86% |
-| 10 | [EdTech](verticals/10-edtech.md) | 77 | 62 | 15 | 81% |
-| | **Distinct** | **254** | **106** | **148** | |
+| 01 | [Property](verticals/01-property.md) | 64 | 52 | 12 | 81% |
+| 02 | [Construction](verticals/02-construction.md) | 79 | 63 | 16 | 80% |
+| 03 | [Logistics](verticals/03-logistics.md) | 80 | 65 | 15 | 81% |
+| 04 | [Accounting](verticals/04-accounting.md) | 71 | 56 | 15 | 79% |
+| 05 | [Clinics](verticals/05-clinics.md) | 84 | 72 | 12 | 86% |
+| 06 | [F&B](verticals/06-fnb.md) | 102 | 78 | 24 | 76% |
+| 07 | [Manufacturing](verticals/07-manufacturing.md) | 83 | 71 | 12 | 86% |
+| 08 | [Auto](verticals/08-auto.md) | 98 | 80 | 18 | 82% |
+| 09 | [Manpower](verticals/09-manpower.md) | 70 | 61 | 9 | 87% |
+| 10 | [EdTech](verticals/10-edtech.md) | 81 | 66 | 15 | 81% |
+| | **Distinct** | **258** | **110** | **148** | |
 
-Every vertical gets 76–86% of its capabilities from shared modules. Building the shared
-modules once covers 106 capabilities; each vertical then adds 9–24 of its own.
+Every vertical gets 76–87% of its capabilities from shared modules. Building the shared
+modules once covers 110 capabilities; each vertical then adds 9–24 of its own.
 
 ## 2. Modules
 
 | Module | Shared capabilities | Used by | Notes |
 |---|---|---|---|
-| `wl-kernel + Renox` | 18 | 10 verticals | Branding, legal entities, approvals, automations, import, search, notes, reports, API. With Renox: users, SSO, audit, state machines, webhooks, dashboards, scanning |
+| `wl-kernel + Renox` | 22 | 10 verticals | Branding, legal entities, approvals, automations, import, search, related records, AI assistants, notes, reports, API. With Renox: users, SSO, audit, state machines, webhooks, dashboards, scanning |
 | `wl-parties` | 6 | 10 verticals | Companies and people in any role, identity, relationships, consents, UBO, screening |
 | `wl-portal` | 3 | 10 verticals | External users' self-service and document exchange |
 | `wl-documents` | 4 | 10 verticals | Files, expiry reminders, generated PDFs, e-signature, SOP library with acknowledgements |
@@ -67,6 +67,10 @@ although their document does not list it yet; confirm when that vertical is revi
 | `PLT.ORG.01` | Branded deployment: logo, colours, domain, languages (EN/AR) | wl-kernel | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  |
 | `PLT.SCN.01` | Scan barcodes and QR codes with the device camera | Renox (R5) |  |  | ● |  |  |  |  |  |  |  |  |
 | `PLT.SRC.01` | Global search across records, including Arabic names | wl-kernel + Renox search | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  |
+| `PLT.REL.01` | Related records of any record, in a panel and as a tool ([decision 0006](decisions/0006-search-and-ai-agents.md)) | wl-kernel | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  |
+| `PLT.AGT.01` | AI assistant connection (MCP): search, read, summarise, reports | wl-kernel + Renox (R26, R27) | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ |  |
+| `PLT.AGT.02` | AI assistant actions: transitions and drafts, with preview and confirm | wl-kernel + Renox (R28) | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ |  |
+| `PLT.AGT.03` | AI assistant inbox and messages | wl-kernel + wl-notify | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ |  |
 | `PLT.SSO.01` | Staff single sign-on with Microsoft 365 or Google Workspace | Renox OAuth (renox-oauth) | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ | ○ |  |
 | `PLT.USR.01` | Staff users and roles, scoped and time-bound | Renox Permissions | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  |
 | `PLT.WFL.01` | State machines with transition history and available actions | Renox (R12) + wl-kernel | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  |
@@ -474,6 +478,7 @@ Decisions taken when the ten verticals were reconciled (2026-10-14). The module 
 | 16 | Gap analysis: vertical gaps | 08 insurance accident repairs (`AUT.INS.*`), 06 dine-in and table reservations (`FNB.DIN.*`, Later), 01 vendor AMCs with fire, life safety and lift compliance (`WRK.SVC.01`, `WRK.PPM.01` now MVP) |
 | 17 | `AUT.WAR.01` warranty claims and `WRK.TKT.01` (review of 08, 2026-10-15) | Customer warranty claims are tickets of category *warranty* in `wl-ticketing`; supplier recovery stays in Auto (`AUT.WAR.02`) |
 | 18 | `AUT.INS.05` insurer receivables and `CLN.CLM.*` insurance claims (review of 08, 2026-10-15) | New shared `FIN.TPP.01` third-party payer billing in `wl-invoicing`: split billing, payer invoices, remittance reconciliation and payer receivables. Clinical coding, claim channels and denial codes stay in Clinics; surveys, estimates and supplementaries stay in Auto |
+| 19 | Search and AI assistants ([decision 0006](decisions/0006-search-and-ai-agents.md), 2026-10-24) | Added `PLT.REL.01` related records (MVP, all ten) and `PLT.AGT.01`–`03` AI assistant connection, actions, inbox and messages (Later, all ten), owned by `wl-kernel` with Renox R26–R28 (BL-AGT-01) |
 
 ## 6. Promotion candidates
 

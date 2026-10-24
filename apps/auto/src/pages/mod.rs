@@ -4,6 +4,7 @@
 //! a signed-in user; each handler checks the permission of its action.
 
 pub mod accident;
+pub mod choices;
 pub mod claims;
 pub mod export_sales;
 pub mod fleet;
@@ -11,6 +12,7 @@ pub mod incidents;
 pub mod insurers;
 pub mod job_cards;
 pub mod labour;
+pub(crate) mod lists;
 pub mod recalls;
 pub mod stops;
 pub mod supplier_claims;
@@ -32,6 +34,7 @@ pub(crate) type Texts = BTreeMap<&'static str, String>;
 pub fn routes() -> Routes {
     Routes::new()
         .merge(vehicles::routes())
+        .merge(choices::routes())
         .merge(job_cards::routes())
         .merge(job_cards::public_routes())
         .merge(labour::routes())
@@ -243,6 +246,83 @@ pub(crate) async fn role_options(db: &Db, role: &str, blank: String) -> Vec<[Str
     options
 }
 
+/// A stored code as words: `periodic_service` is *Periodic service*.
+pub(crate) fn words(code: &str) -> String {
+    let spaced = code.replace('_', " ");
+    let mut chars = spaced.trim().chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
+/// A record of another module as a page shows it: its number and, when the
+/// user may open it, the address of its page; both empty for a record that is
+/// not there.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub(crate) struct RecordRef {
+    /// `INV-2026-0009`, or the word for a draft.
+    pub label: String,
+    /// `/invoices/9`, or empty.
+    pub url: String,
+}
+
+/// The invoice `id` as `INV-2026-0009` (a draft has no number: the word
+/// *Draft*) linked to its page for who may view invoices.
+pub(crate) async fn invoice_ref(
+    state: &AppState,
+    user: &AuthUser,
+    lang: &Lang,
+    id: i64,
+) -> RecordRef {
+    let found = wl_kernel::invoicing::invoicer(state)
+        .find(&state.db, wl_kernel::invoicing::InvoiceId(id))
+        .await
+        .ok()
+        .flatten();
+    let Some(invoice) = found else {
+        return RecordRef::default();
+    };
+    RecordRef {
+        label: invoice
+            .number
+            .unwrap_or_else(|| text(lang, "records.draft_invoice")),
+        url: if user.has_permission("invoices.view") {
+            format!("/invoices/{id}")
+        } else {
+            String::new()
+        },
+    }
+}
+
+/// The payer bill `id` as its number (the word for a draft) linked to its
+/// page for who may view payer bills.
+pub(crate) async fn payer_bill_ref(
+    state: &AppState,
+    user: &AuthUser,
+    lang: &Lang,
+    id: i64,
+) -> RecordRef {
+    let found = wl_kernel::payer_bills::payer_bills(state)
+        .find(&state.db, wl_kernel::payer_bills::PayerBillId(id))
+        .await
+        .ok()
+        .flatten();
+    let Some(bill) = found else {
+        return RecordRef::default();
+    };
+    RecordRef {
+        label: bill
+            .number
+            .unwrap_or_else(|| text(lang, "records.draft_bill")),
+        url: if user.has_permission("payer_bills.view") {
+            format!("/payer-bills/{id}")
+        } else {
+            String::new()
+        },
+    }
+}
+
 /// The name of party `id` in `lang`, else `#id`.
 pub async fn party_name(state: &AppState, lang: &str, id: i64) -> String {
     directory(state)
@@ -287,6 +367,13 @@ pub(crate) fn ticked(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_code_reads_as_words() {
+        assert_eq!(words("periodic_service"), "Periodic service");
+        assert_eq!(words("oil"), "Oil");
+        assert_eq!(words(""), "");
+    }
 
     #[test]
     fn a_blank_id_is_none_and_a_bad_one_is_refused() {

@@ -1,6 +1,8 @@
 # The demo client of F4 (04 Accounting): an accounting firm and fractional CFO
 # services provider. Data is fictional. Boot it with
-# CLIENT_CONFIG=clients/demo-accounting/client.toml.
+# CLIENT_CONFIG=clients/demo-accounting/client.toml. F4 has no demo command
+# (there is no `accounting:demo`); `attendance` is not enabled, so there is no
+# unbilled time (WIP) in this demo.
 
 [client]
 name    = "Falcon Ledger Accountants LLC"

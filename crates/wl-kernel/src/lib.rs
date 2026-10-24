@@ -53,6 +53,7 @@ pub mod sales;
 pub mod scheduling;
 pub mod scopes;
 pub mod screening_guard;
+pub mod search;
 pub mod segments;
 pub mod subject;
 pub mod subscriptions;
@@ -73,7 +74,7 @@ pub mod voids;
 pub mod wip;
 pub mod workforce;
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use renox::db::Migration;
 use renox::nav::NavLink;
@@ -343,6 +344,14 @@ const VIEWS: &[(&str, &str)] = &[
     ),
 ];
 
+/// The kernel's migrations: its SQL files, then the full-text index of the
+/// search documents, which Renox builds from the model.
+static MIGRATIONS: LazyLock<Vec<Migration>> = LazyLock::new(|| {
+    let mut migrations = renox::migrations!().to_vec();
+    migrations.push(search::index_migration());
+    migrations
+});
+
 /// The kernel module. The host adds it with [`apply`], which also gives the
 /// app the client's theme and languages.
 pub struct WlKernel {
@@ -428,7 +437,7 @@ impl Module for WlKernel {
     }
 
     fn migrations(&self) -> &'static [Migration] {
-        renox::migrations!()
+        &MIGRATIONS
     }
 
     fn register(&self, app: &mut Registry) {
@@ -448,6 +457,7 @@ impl Module for WlKernel {
         integrations::register_models(app);
         compliance::register_models(app);
         digest::register(app);
+        search::register(app);
         // In the admin group of the staff sidebar; the label is the app's
         // `nav.legal_entities` text.
         app.nav(

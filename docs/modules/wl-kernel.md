@@ -1,6 +1,8 @@
 # wl-kernel
 
-> Status: draft · Last updated: 2026-10-16
+> Status: specification, partly built; the build ledger is [crates/wl-kernel/README.md](../../crates/wl-kernel/README.md) · Last updated: 2026-10-24
+
+**Build status (2026-10-24):** Built: `client.toml` and the module manifest, branding on `Theme::from_brand`, `Subject`, legal entities and issuer snapshots (`PLT.ENT.01`), document numbering on Renox `Sequence`, state machines by name, approvals (`PLT.APR.01`), voids (`PLT.ACL.09`), late entries (`PLT.ACL.10`), the automation engine and compliance alerts (`PLT.RUL.04`, §5.15), integrations health (§4.5, §5.14), the daily digest, role tasks, and the contracts between modules (every public trait is indexed in [KERNEL-CONTRACTS.md](KERNEL-CONTRACTS.md)). Not built (later): `CustomFields`, `Sensitive` (masking and reveal log), `Dashboards`, `ApiClients`, `Imports` (§4.3), `Search` (§5.8; only a plan, decision 0006), `Notes` (§5.9), `Reports` (§5.10) and report subscriptions (§4.4), staff SSO (§5.11); the events `ImportApplied`, `NoteAdded`, `ReportExported`, `SettingChanged`, `SensitiveViewed` and `LegalEntityChanged` do not exist in code. Where a section below describes one of these, it is a specification, not behaviour. List screens use the standard Renox grid (`renox::grid::Grid`, see `.claude/skills/standard-grid`). Status of the other modules: [STATUS.md](STATUS.md).
 
 ## 1. Purpose
 
@@ -44,6 +46,10 @@ does not have. Generic gaps were proposed to Renox (all delivered in 1.2.0) and 
 | `PLT.ENT.01` | Legal entities: several trade licences and TRNs in one deployment; issuer on every document | all ten | MVP | kernel ([decision 0003](../decisions/0003-legal-entities.md)) |
 | `PLT.IMP.01` | Data import and migration: Excel templates per entity, validation, dry run, rollback | all ten | MVP | kernel on Renox import (+ R23) |
 | `PLT.SRC.01` | Global search across records, including Arabic names | all ten | MVP | kernel on Renox search (+ R22) |
+| `PLT.REL.01` | Related records of any record, in a panel and as a tool ([decision 0006](../decisions/0006-search-and-ai-agents.md)) | all ten | MVP | kernel |
+| `PLT.AGT.01` | AI assistant connection (MCP): search, read, summarise, reports | all ten | Later | kernel + Renox R26, R27 |
+| `PLT.AGT.02` | AI assistant actions: transitions and drafts, with preview and confirm | all ten | Later | kernel + Renox R28 |
+| `PLT.AGT.03` | AI assistant inbox and messages | all ten | Later | kernel + wl-notify |
 | `PLT.NOT.01` | Notes, comments and @mentions on any record, with an activity timeline | all ten | MVP | kernel |
 | `PLT.SSO.01` | Staff single sign-on with Microsoft 365 or Google Workspace | all ten | Later | renox-oauth (+ R24) |
 | `RPT.LIB.01` | Report library: filtered reports with export to Excel, CSV and PDF | all ten | MVP | kernel (on Renox grid export, R3) |
@@ -256,6 +262,8 @@ stateDiagram-v2
 
 ### 4.3 Import job
 
+**Build status (2026-10-24):** Not built (later).
+
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
 | `uploaded` | neutral | no | File stored; not yet checked |
@@ -319,6 +327,8 @@ stateDiagram-v2
   matching sensitivity permission, and the uploaded file is deleted after the job closes.
 
 ### 4.4 Report subscription (Later)
+
+**Build status (2026-10-24):** Not built (later).
 
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
@@ -475,6 +485,8 @@ is archived, never deleted.
 
 ### 5.7 Onboard a client's data
 
+**Build status (2026-10-24):** Not built (later).
+
 1. During onboarding, the implementer downloads the templates of the vertical's modules
    (parties, units, items, employees, opening balances…), in dependency order.
 2. The client fills them from their old Excel or system export.
@@ -486,6 +498,8 @@ is archived, never deleted.
 6. The onboarding checklist in `wl-operator` shows which templates were applied.
 
 ### 5.8 Search
+
+**Build status (2026-10-24):** Not built (later).
 
 1. Each module registers which entity types are searchable and how a record becomes a search
    document (title, secondary text, keywords). The index is updated on create, change,
@@ -500,7 +514,25 @@ is archived, never deleted.
 5. Sensitive fields are never indexed in clear text; they match only on exact value and the
    result shows them masked.
 
+**Built (BL-AGT-01, `crates/wl-kernel/src/search/`).** A module registers a type with
+`Searchable::of::<M>("<module>.<entity>").permission(…).document(…)` (or `.document_in(…)`
+when it needs other rows) and calls `search::index_in(&mut tx, &subject)` in the transaction
+that creates, changes or imports a record, so a rolled back change leaves no document.
+Transitions the kernel runs by name (`SubjectMachine::run_in`) and voids re-index the record
+themselves; a voided record stays findable by its number, marked void. The documents are in
+`wl_search_documents` (full-text index by Renox: FTS5 on SQLite, `tsvector` on PostgreSQL, over
+Arabic-normalised text, plus a `forms` column of Arabic–Latin match keys), the exact values in
+`wl_search_identifiers` (normalised: upper case without spaces, dashes, slashes and dots; phones
+in E.164; personal kinds such as Emirates ID, passport, phone and email only as an HMAC under
+`APP_KEY`, and any word equal to such a value is left out of the text). `search:rebuild
+[--type <subject_type>]` builds the index again (also after an `APP_KEY` rotation);
+`search::undo_import` undoes an import and its documents together. `search::lookup_identifier`
+returns every match **unfiltered**: the search page (BL-AGT-02) filters by permission, scope and
+record rules before it shows or counts anything.
+
 ### 5.9 Notes and mentions
+
+**Build status (2026-10-24):** Not built (later).
 
 1. Any record that opts in shows a notes panel and an activity timeline.
 2. A user writes a note, optionally attaching files and mentioning colleagues with `@name`.
@@ -514,6 +546,8 @@ is archived, never deleted.
    keeps an audit entry.
 
 ### 5.10 Run and export a report
+
+**Build status (2026-10-24):** Not built (later).
 
 1. Modules register report definitions; each vertical's §10 KPIs map to reports and tiles.
 2. A user opens the report library and sees only reports they have the permission for.
@@ -640,29 +674,31 @@ The MVP is online only. When a site loses internet or power, staff keep working 
 | Service | Purpose |
 |---|---|
 | `Subject` | Typed reference: resolve name, URL and scope; list a record's attachments from every module |
-| `Settings` | Typed read/write of settings, with change events |
-| `Sequences` | `next(key)` within a transaction; gapless option |
-| `CustomFields` | Definitions per entity; validation; form, list, PDF and portal rendering |
+| `Settings` | Typed read/write of settings, with change events. Partly built: settings are read through the Renox `Settings` module; there is no `SettingChanged` event. |
+| `Sequences` | `next(key)` within a transaction; gapless option. Built as `numbering` on the Renox `Sequence`. |
+| `CustomFields` | Definitions per entity; validation; form, list, PDF and portal rendering. **Not built (2026-10-24).** |
 | `Approvals` | `require(action, subject, payload)` → `Allowed` or `Pending(request)` |
 | `Automations` | Rule registration by modules; trigger hooks; run log |
-| `Sensitive` | Masking, reveal with logging, field-visibility checks for `FLD` rules |
+| `Sensitive` | Masking, reveal with logging, field-visibility checks for `FLD` rules. **Not built (2026-10-24).** |
 | `Capabilities` | Registry of capability traits (`Invoicer`, `PaymentRecorder`, `Notifier`, `DocumentGuard`, `TaskCreator`, …) and their no-op fallbacks when a module is disabled |
-| `Dashboards` | Tile registration and per-role default dashboards |
-| `ApiClients` | Party-bound API tokens, scope and rate limit |
+| `Dashboards` | Tile registration and per-role default dashboards. **Not built (2026-10-24).** |
+| `ApiClients` | Party-bound API tokens, scope and rate limit. **Not built (2026-10-24).** |
 | `LegalEntities` | Entity for a scope; issuer snapshot at issue time; entity filter for reports |
-| `Imports` | Template registration by modules (columns, natural key, opening-balance templates); validate, dry run, apply, roll back |
-| `Search` | Searchable-type registration; index updates; permission-filtered queries |
-| `Notes` | Notes panel and activity timeline on any opted-in record; mention notifications |
-| `Reports` | Report registration (filters, columns, permission, sensitivity); export; subscriptions (Later) |
+| `Imports` | Template registration by modules (columns, natural key, opening-balance templates); validate, dry run, apply, roll back. **Not built (2026-10-24).** |
+| `Search` | Searchable-type registration; index updates; permission-filtered queries. **Not built (2026-10-24).** |
+| `Notes` | Notes panel and activity timeline on any opted-in record; mention notifications. **Not built (2026-10-24).** |
+| `Reports` | Report registration (filters, columns, permission, sensitivity); export; subscriptions (Later). **Not built (2026-10-24).** |
 | `BusinessCalendar` | Working time, holidays and Ramadan hours per scope; due-date and SLA arithmetic |
 | `Voids` | Opt-in `void` transition with reverse handlers, number kept, Void record ([§5.12](#512-void-a-record-entered-in-error)) |
 | `LateEntry` | Opt-in late-entry flag, reason and approval on a business-time field ([§5.13](#513-late-entry-after-an-outage)) |
 | `Integrations` | Connection registration, health state, queue and retry, banner, manual fallback text, late sync and reconciliation tasks ([§5.14](#514-integration-down)) |
 
-**Contracts between modules (added in F1).** The kernel also defines the traits one module
+**Contracts between modules (F1 to F8).** The kernel also defines the traits one module
 provides and others call, each with a no-op fallback when the providing module is off. The
-full list, with the module path of each, is in
-[crates/wl-kernel/README.md](../../crates/wl-kernel/README.md):
+complete list (every public trait, its file and its providers) is
+[KERNEL-CONTRACTS.md](KERNEL-CONTRACTS.md); the main contracts with their module path are in
+[crates/wl-kernel/README.md](../../crates/wl-kernel/README.md). The table below groups the
+main ones by provider:
 
 | Contract | Provided by | Purpose |
 |---|---|---|
@@ -677,7 +713,18 @@ full list, with the module path of each, is in
 | `DepositTopUps` | apps/property (the owner of the charges) | The top-up charge of a deposit that grew |
 | `CashForecastSource`, `ActualCostSource`, `DrawingPaymentSource`, `ChaseHolds`, `HeldFundsSource` | registries any module adds to | Cash-flow forecast lines, budget vs actual, drawings payments, chase holds during a legal case, funds held for a party |
 | `SubjectMachine` registry, `digest`, `role_tasks` | kernel | Transitions by name ([§4.1](#41-approval-request), WORKFLOW §3.4), the daily digest of voids and late entries, tasks for a role |
-| `SupplierDebitNotes` (wl-invoicing), `Checklists` (wl-ticketing), `Segments` (wl-sales), `Consents` (wl-parties), `BounceFees` (wl-invoicing), `ChargeInvoicer` (the charge owner), `LandedCosts` and `CostPoster` (inventory, job costing), `RecipientLookup` (the ASP adapter), `BroadcastRequesters` (the module that asks for a broadcast) | defined; no module provides them yet in F1, so the no-op fallback applies | Debit notes, checklist runs, broadcast audiences and consent, bounce fees, invoicing a charge before a cheque write-off, landed cost and cost posting, the e-invoicing recipient ID, broadcast requesters |
+| `SupplierDebitNotes`, `RecipientLookup` | wl-invoicing | Debit notes to a supplier; the e-invoicing recipient ID (ASP adapter) |
+| `Segments`, `BroadcastRequesters` | wl-sales | Broadcast audiences; the broadcast a sales rule asks for |
+| `LandedCosts` | wl-inventory | Landed cost on received goods |
+| `StockService`, `StockReservations`, `StockHoldService`, `LotTrace`, `ProductionStock`, `BillsOfMaterials`, `ScopeStock`, `LotDisposal`, `BatchStock` | wl-inventory | Stock movements and choices, reservations for order lines, holds, lot tracing, production output, bills of materials, stock of a stopped scope, disposal of lots |
+| `BackOrderDemand`, `TillDesk`, `SalesOrderDesk`, `OrderFulfilment` | wl-sales | Back-ordered demand for reorder suggestions, the till, the sales order desk |
+| `BookingActions` | wl-scheduling | Link, complete and cancel a booking from a vertical |
+| `BookingGate`, `CheckInGuard`, `CompleteGuard`, `WorkDoneStatus`, `ResourceEligibility` | the vertical (for example apps/auto, apps/clinics, apps/edtech) | Strategy traits scheduling asks before a booking, a check-in or a completion |
+| `DispatchGuard` | apps/manufacturing | Guard asked by wl-inventory before a dispatch moves |
+| `TimesheetClosing`, `Timesheets`, `AttendanceHistory`, `AttendanceReview` | wl-attendance | Closing timesheets, attendance days and review |
+| `DeliveryRequester` | wl-delivery | Ask for a delivery of a source record |
+| `BounceFees`, `ChargeInvoicer` | apps/property | Bounce fees and invoicing a charge before a cheque write-off |
+| `Checklists`, `Consents`, `CostPoster` | defined; no production provider yet (providers exist only in tests; the no-op fallback applies) | Checklist runs, consent reads and withdrawals, cost posting on cost objects |
 
 **Consumes:** Renox auth, permissions, audit, queue, scheduler, events, charts, tokens,
 import, search, grid export and renox-oauth; Renox R2 (settings store), R3 (PDF export),
@@ -734,6 +781,7 @@ import row results reference any `Subject`.
 | `records.void` | Void a record of an entity the user may edit (each module may name its own alias, e.g. `receipts.void`); approval per `PLT.ACL.09` |
 | `late_entries.approve` | Approve a late entry beyond N hours (`PLT.ACL.10`) |
 | `integrations.view`, `integrations.manage` | See connection health and queues; disable, enable, edit fallback instructions |
+| `integrations.heartbeat` | A device sends its own heartbeat (`POST /devices/{key}/heartbeat`) |
 
 **Shared access rules owned:** `PLT.ACL.01`–`PLT.ACL.10`
 ([ACCESS-CONTROL.md](../ACCESS-CONTROL.md) §8). The two added for negative flows:
@@ -811,6 +859,8 @@ import row results reference any `Subject`.
   (01), or a manpower deployment invoiced by the entity that sponsors the worker's visa (09).
 
 ## 9. Renox fit
+
+List screens use the standard Renox grid (`renox::grid::Grid`): see `.claude/skills/standard-grid`. Where the table below says `rx-grid`/`rx-table`, read the standard grid.
 
 | Need | Renox provides | Gap |
 |---|---|---|

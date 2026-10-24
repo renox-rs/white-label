@@ -1,6 +1,8 @@
 # wl-portal
 
-> Status: draft · Last updated: 2026-10-16
+> Status: specification, partly built; the build ledger is [crates/wl-portal/README.md](../../crates/wl-portal/README.md) · Last updated: 2026-10-24
+
+**Build status (2026-10-24):** Built: the access grant and its lifecycle (with self-registration), the neutral refusal of new business and money out for a blocked party and its log, read-only sections (`register_section`), `PortalUsers` (who acts for a party), signed links (`SignedLinks`). Not built (later): invitations (tokens, mail; §5.1), portal roles with their permissions, login methods (§5.3), Document request and Request list (§4, §5.5), the other signed-link actions (tracking, confirmation, approval), the module-specific sections (leases, invoices, statements, refund requests) and the close-after timer. Where a section below describes one of these, it is a specification, not behaviour. The crate has two tables: access grants and the refusal log.
 
 ## 1. Purpose
 
@@ -41,11 +43,11 @@ Audiences per vertical:
 | **Audience** | A kind of external user, configured per vertical | key (e.g. `tenant`, `owner`, `client`, `worker`), label, login methods, available portal roles, home page, close-after period, self-registration allowed |
 | **Portal user** | An external login: a Renox user of the external kind, linked to exactly one person party (`PLT.ACL.05`) | user, person party, preferred language, last login, 2FA on |
 | **Access grant** | What a portal user may do for one party | portal user, acting-for party (self, their company, a dependant), audience, portal roles, source (invitation, self-registration, relationship), valid from, valid until, status |
-| **Portal role** | A named set of portal permissions inside an audience | key (e.g. `primary_contact`, `finance_contact`, `approver`, `viewer`, `guardian`), permissions |
-| **Invitation** | An offer to create or extend access | email or mobile, person party, acting-for party, audience, roles, token, expires at, invited by |
+| **Portal role** (not built) | A named set of portal permissions inside an audience | key (e.g. `primary_contact`, `finance_contact`, `approver`, `viewer`, `guardian`), permissions |
+| **Invitation** (not built) | An offer to create or extend access | email or mobile, person party, acting-for party, audience, roles, token, expires at, invited by |
 | **Signed link** | Access to one record without a login | record (`Subject`), allowed actions declared by the issuing module (e.g. view, pay, confirm, approve a timesheet, answer feedback), expires at, single use flag, issued for (party or contact point) |
-| **Request list** | A set of documents asked from a party for a period (`POR.DOC.01`) | party, period, template, due date, assignee (staff), status |
-| **Document request** | One item on a request list | list, description, required flag, due date, files (`wl-documents`), reviewer, reject reason, status |
+| **Request list** (not built) | A set of documents asked from a party for a period (`POR.DOC.01`) | party, period, template, due date, assignee (staff), status |
+| **Document request** (not built) | One item on a request list | list, description, required flag, due date, files (`wl-documents`), reviewer, reject reason, status |
 | **Portal section** | A page or menu entry contributed by a module | module, audience, required portal permission, order, label |
 
 An access grant is a **scoped role assignment**: the portal role is assigned in the scope of the
@@ -115,6 +117,8 @@ grant directly in `active`, for the user's own party, with the audience's defaul
 
 ### Document request (from [04-accounting.md](../verticals/04-accounting.md), generalised)
 
+**Build status (2026-10-24):** Not built (later).
+
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
 | `requested` | neutral | no | Asked from the party, with a due date |
@@ -145,6 +149,8 @@ stateDiagram-v2
 
 ### Request list
 
+**Build status (2026-10-24):** Not built (later).
+
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
 | `open` | info | no | At least one required item is `requested`, `uploaded` or `rejected` |
@@ -168,6 +174,8 @@ stateDiagram-v2
 ## 5. Workflows
 
 ### 5.1 Invite a company contact
+
+**Build status (2026-10-24):** Not built (later): no invitation table or token exists.
 
 1. Staff open a company party and choose a contact (`contact_of` relationship in
    `wl-parties`), or create one.
@@ -206,6 +214,8 @@ stateDiagram-v2
    reveals other records.
 
 ### 5.5 Document exchange
+
+**Build status (2026-10-24):** Not built (later).
 
 1. A request list is created from a template, by staff or by an automation (`ACC.RUL.02`
    creates one per tax period).

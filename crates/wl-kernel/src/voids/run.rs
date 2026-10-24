@@ -211,6 +211,9 @@ async fn reverse_and_record<M: StateMachine<Key = i64>>(
     }
     .insert(&mut *tx)
     .await?;
+    // The status is already `voided` here: the document keeps the number
+    // and shows the record as void (wl-kernel §5.8).
+    crate::search::index_in(tx, &Subject::new(subject_type, id)).await?;
     Ok(())
 }
 

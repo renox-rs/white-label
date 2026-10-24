@@ -1,6 +1,8 @@
 # 07 — Light Manufacturing & Assembly
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
+> Spec: accepted · Reviewed: 2026-10-15 · Spec text last changed: 2026-10-16
+
+**Build status (2026-10-24):** Built in F7 (#521), merged. **Built:** the Work order and NCR machines of §7.1, BOM and lot checks, material issue, production reports and late entries, credit hold and release, dispatch lifecycle, recall trace, export evidence (`MFG.RUL.04`, `MFG.RUL.08`), the customer PO upload in the portal, the Manufacturing demo (`manufacturing:demo`). **Not built (MVP items still open):** the schedule board per line and the shortage list at release, `MFG.RUL.01`, `02`, `03`, `05` and `06`; the deferred rows are listed in `apps/manufacturing/README.md` and `docs/progress/f7-manufacturing.md` (invoice already issued, calibration certificates, signed checklists `WRK.CHK.01`, scanner or import entry, server-side price dispute lines). **Machines in code but not in the spec:** `ProductionReport` (README). See [STATUS.md](STATUS.md) and [apps/manufacturing/README.md](../../apps/manufacturing/README.md).
 
 ## 1. Summary
 
@@ -307,6 +309,10 @@ are scoped to a warehouse location. Sales, procurement and accounts are usually 
 | `PLT.ENT.01` | Legal entities: several trade licences and TRNs in one deployment; issuer on every document | shared | wl-kernel | MVP |
 | `PLT.IMP.01` | Data import and migration: Excel templates per entity, validation, dry run, rollback | shared | wl-kernel | MVP |
 | `PLT.SRC.01` | Global search across records, including Arabic names | shared | wl-kernel + Renox search | MVP |
+| `PLT.REL.01` | Related records of any record, in a panel and as a tool ([decision 0006](../decisions/0006-search-and-ai-agents.md)) | shared | wl-kernel | MVP |
+| `PLT.AGT.01` | AI assistant connection (MCP): search, read, summarise, reports | shared | wl-kernel + Renox (R26, R27) | Later |
+| `PLT.AGT.02` | AI assistant actions: transitions and drafts, with preview and confirm | shared | wl-kernel + Renox (R28) | Later |
+| `PLT.AGT.03` | AI assistant inbox and messages | shared | wl-kernel + wl-notify | Later |
 | `PLT.NOT.01` | Notes, comments and @mentions on any record, with an activity timeline | shared | wl-kernel | MVP |
 | `PLT.SSO.01` | Staff single sign-on with Microsoft 365 or Google Workspace | shared | Renox OAuth (renox-oauth) | Later |
 | `RPT.LIB.01` | Report library: filtered reports with export to Excel, CSV and PDF | shared | wl-kernel | MVP |
@@ -804,7 +810,7 @@ stock holds, returns to suppliers).
 - **Specific to this vertical:** work orders and shop-floor reporting, the schedule board,
   QC plans, NCRs, certificates, traceability, standard costing, ICV data, conformity
   register, downtime, returns, production reports.
-- **Estimated reuse:** 67 of 79 capabilities (85%) come from shared modules or Renox.
+- **Estimated reuse:** 71 of 83 capabilities (86%) come from shared modules or Renox.
 
 ## 12. MVP scope
 

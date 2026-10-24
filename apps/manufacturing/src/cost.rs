@@ -110,12 +110,16 @@ pub fn scrap_value(issued: i64, returned: i64, good_milli: i64, std_material_cos
 }
 
 /// Labour and overhead from `started` to `stopped` at `rate` fils an hour; 0
-/// when the work order never started.
+/// when the work order never started. The time is counted in whole minutes,
+/// rounded to the nearest: a shift of 4 h 59 min 59 s is 5 hours, not 4 h 59
+/// min (the clocks of the two moments are read a few milliseconds apart, so
+/// a cut would bill a minute less for the same shift on some runs).
 pub fn labour_cost(rate: i64, started: Option<DateTime>, stopped: DateTime) -> i64 {
     let Some(started) = started else {
         return 0;
     };
-    let minutes = (stopped - started).num_minutes().max(0);
+    let seconds = (stopped - started).num_seconds().max(0);
+    let minutes = (seconds + 30) / 60;
     let value = i128::from(rate) * i128::from(minutes);
     i64::try_from((2 * value + 60) / 120).unwrap_or(0)
 }
@@ -203,6 +207,19 @@ mod tests {
         assert_eq!(labour_cost(12_000, None, stop), 0);
         assert_eq!(loss(240_000 + 60_000, 50_000, 2_400), 180_000);
         assert_eq!(loss(100_000, 50_000, 2_400), -20_000);
+    }
+
+    #[test]
+    fn the_hours_are_counted_in_minutes_rounded_to_the_nearest() {
+        let start = renox::db::now();
+        let at = |seconds: i64| start + renox::chrono::Duration::seconds(seconds);
+        // A shift read a second short of 5 hours is still 5 hours.
+        assert_eq!(labour_cost(12_000, Some(start), at(5 * 3_600 - 1)), 60_000);
+        assert_eq!(labour_cost(12_000, Some(start), at(5 * 3_600 + 29)), 60_000);
+        // From half a minute on, the next minute counts; a clock set back counts 0.
+        assert_eq!(labour_cost(12_000, Some(start), at(5 * 3_600 + 30)), 60_200);
+        assert_eq!(labour_cost(12_000, Some(start), at(29)), 0);
+        assert_eq!(labour_cost(12_000, Some(start), at(-3_600)), 0);
     }
 
     #[test]

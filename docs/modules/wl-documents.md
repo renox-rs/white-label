@@ -1,6 +1,8 @@
 # wl-documents
 
-> Status: draft · Last updated: 2026-10-16
+> Status: specification, partly built; the build ledger is [crates/wl-documents/README.md](../../crates/wl-documents/README.md) · Last updated: 2026-10-24
+
+**Build status (2026-10-24):** Built: document kinds and their blocks, documents and versions, expiry and renewal tasks with reminders, flags, block overrides and the guard (`DocumentGuard`), the SOP library with readers, translations and acknowledgements (code also has the transitions `use`, `unuse`, `accept_sop`, `archive_sop`, `reject_sop` on the override and SOP machines). Not built (later): Document template and Generation (§5.3, `DOC.GEN.01`), Signature request and Signature (§4.2, §5.4, `DOC.SIG.01`: send, sign, decline, remind, expire), Access log of sensitive documents and Retention hold (§5.5). Where a section below describes one of these, it is a specification, not behaviour. List screens use the standard Renox grid (`renox::grid::Grid`).
 
 ## 1. Purpose
 
@@ -53,12 +55,12 @@ What the verticals use them for:
 | Document kind | A catalogue entry that says how a type of document behaves. Seeded per vertical, extended per client | key, names EN/AR, allowed subject types, required for (subject type + condition), has expiry, has number, reminder offsets (days), sensitivity class, retention rule, allowed file types, max size, portal upload allowed, needs review (always on for kinds with `blocks`, `DOC.ACL.03`), `blocks` (list of guarded `<entity>.<transition>` entries, each with mode `block` or `flag` and an optional condition on the guarded record; §5.6), override mode (`never` / `with_approval`), legal block (locked by the platform), look-ahead days, compliance-critical, responsible role (the role whose holders are the kind's *responsible staff*, §5.2) |
 | Document | One logical document attached to a record | subject (`subject_type`, `subject_id`), kind, title, number (e.g. passport no.), issue date, expiry date, issuing authority, current version, status, uploaded by, source (`upload` / `generated` / `signed`) |
 | Document version | One file of a document | document, version no., file (storage key), file name, mime type, size, checksum (SHA-256), uploaded by, uploaded at, note |
-| Document template | A layout used to generate a document | key, document kind, language mode (`en`, `ar`, `bilingual`), body, paper size, version, active |
-| Generation | The record of one generated document | template + version, subject, data snapshot hash, number assigned, resulting document |
-| Signature request | A request for one or more parties to sign or accept a document | document version, signers (party or user, order, method), message, expiry date, status |
-| Signature | The evidence of one signer's act | request, signer, method (`drawn`, `typed`, `click-to-accept`, `otp`), signature image (if drawn), name typed, timestamp, IP, user agent, OTP channel, document checksum signed |
-| Access log | Each view or download of a sensitive document | document, version, user, action (`view`/`download`), timestamp, reason (optional) |
-| Retention hold | Prevents deletion after the retention period | subject or document, reason, placed by, until |
+| Document template (not built) | A layout used to generate a document | key, document kind, language mode (`en`, `ar`, `bilingual`), body, paper size, version, active |
+| Generation (not built) | The record of one generated document | template + version, subject, data snapshot hash, number assigned, resulting document |
+| Signature request (not built) | A request for one or more parties to sign or accept a document | document version, signers (party or user, order, method), message, expiry date, status |
+| Signature (not built) | The evidence of one signer's act | request, signer, method (`drawn`, `typed`, `click-to-accept`, `otp`), signature image (if drawn), name typed, timestamp, IP, user agent, OTP channel, document checksum signed |
+| Access log (not built) | Each view or download of a sensitive document | document, version, user, action (`view`/`download`), timestamp, reason (optional) |
+| Retention hold (not built) | Prevents deletion after the retention period | subject or document, reason, placed by, until |
 | Block override | A one-off permission to run one guarded transition on one record although a required document is expired or missing (`DOC.ACL.02`) | document kind, subject, guarded entry (`<entity>.<transition>`), record, reason, requested by, approved by, valid until, used at |
 | SOP | A standard operating procedure the staff must follow (`HRM.ONB.01`). Its versions are documents of kind *SOP* attached to it; translations are documents of kind *SOP translation* linked to a version | code, title EN/AR, category, legal entity (readers are employees of that entity; empty = every entity), owner role, required readers (job roles or trades with scopes, or *all staff*), review interval (months), acknowledgement due days, current version (the accepted document), status (derived: `draft` before the first accepted version, `active`, `withdrawn` when the current version is archived) |
 | Acknowledgement | One reader's confirmation that they read one SOP version | SOP, document version, reader (employee), requested at, due date, acknowledged at, language and checksum of the file the reader opened (the version or a translation), evidence (method `click-to-accept` in the reader's session or `drawn` in person; timestamp, IP, user agent, document checksum, witness for in person; as a Signature), in-person notice sent (to the reader's own channel), reminders sent, status (§4.3) |
@@ -174,6 +176,8 @@ stateDiagram-v2
 | All | Generated and signed documents are created directly as `accepted`, with source `generated` or `signed` |
 
 ### 4.2 Signature request
+
+**Build status (2026-10-24):** Not built (later): no signature table or machine exists.
 
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
@@ -306,6 +310,8 @@ button).
 
 ### 5.3 Generate a document (`DOC.GEN.01`)
 
+**Build status (2026-10-24):** Not built (later): no template or generation table exists.
+
 1. A transition or a user action asks for a document from a template, a subject and a
    language mode.
 2. The module collects the data from the subject through the template's data provider (each
@@ -322,6 +328,8 @@ button).
 
 ### 5.4 Request a signature (`DOC.SIG.01`)
 
+**Build status (2026-10-24):** Not built (later).
+
 1. Staff, or a transition such as `send_estimate`, create a signature request for a final
    document version with one or more signers.
 2. Signers receive a link. External signers without a portal account confirm a one-time code
@@ -334,6 +342,8 @@ button).
    return `approve`, job card approval.
 
 ### 5.5 Sensitive documents and retention
+
+**Build status (2026-10-24):** Not built (later): no access log or retention hold exists.
 
 1. Viewing or downloading a document of a sensitive class requires the class permission and
    is written to the access log (`PLT.ACL.06`). Lists show only the kind and the expiry status.

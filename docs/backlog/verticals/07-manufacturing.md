@@ -1,6 +1,6 @@
 # Epic: 07 Manufacturing — negative flows
 
-> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
+> Status: in use (F1–F10 built; open items in [README](../README.md) §7) · Last updated: 2026-10-24
 
 This epic builds the negative flows that belong to the
 [07 Manufacturing](../../verticals/07-manufacturing.md) vertical itself: the work order's `abort`
@@ -738,6 +738,8 @@ treats it as *lot uncertain*).
 - [ ] Given cartons K (not lot-tracked), an issue without a lot is accepted.
 - [ ] Given 10 kg of resin R (lot R3) at the store, an issue of 25 kg R to WO-600 with lot R3 for 10 kg posts 10 kg from R3 and a pending issue of 15 kg with no lot; an issue of 10 kg R without a lot is refused.
 
+_Deferred points of this issue: see [docs/progress/f7-manufacturing.md](../../progress/f7-manufacturing.md) and the "Deferred in F7" table of `apps/manufacturing/README.md`._
+
 #### Out of scope
 The recall trace (BL-STK-15, BL-MFG-10).
 
@@ -1031,6 +1033,8 @@ quality dispute links an NCR; `FIN.RUL.15` escalates after 14 days.
 - [ ] Given reason *price*, no NCR is created and no line selection is shown.
 - [ ] B sees the ticket status and not the NCR.
 
+_Deferred points of this issue: see [docs/progress/f7-manufacturing.md](../../progress/f7-manufacturing.md) and the "Deferred in F7" table of `apps/manufacturing/README.md`._
+
 #### Out of scope
 Dispute flag, reminders pause and escalation (BL-INV-04, BL-INV-05).
 
@@ -1180,6 +1184,8 @@ Onboarding runs on the minimal employee record (`HRM.EMP.01`, MVP since 2026-10-
       *Other certification* and *Trademark registration* with responsible role QC inspector, and
       general manager / owner for the trademark; a trademark registration expiring in 90 days
       notifies the general manager / owner.
+
+_Deferred points of this issue: see [docs/progress/f7-manufacturing.md](../../progress/f7-manufacturing.md) and the "Deferred in F7" table of `apps/manufacturing/README.md`._
 
 #### Out of scope
 The mechanisms themselves (module epics listed in Depends on).

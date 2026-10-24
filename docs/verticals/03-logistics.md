@@ -1,6 +1,8 @@
 # 03 — Logistics & Freight Forwarding
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
+> Spec: accepted · Reviewed: 2026-10-15 · Spec text last changed: 2026-10-16
+
+**Build status (2026-10-24):** Built in F3 (#498), merged. **Built:** the Shipment, COD remittance and Freight job machines of §7.1 with all listed negative flows (void, cancel, partial pickup and delivery, re-weigh, hold, reversal, loss, COD difference, netting, returned transfer, statement dispute), the runs, driver PWA and cash custody of wl-delivery, freight documents, free time and reopening, the Logistics demo (`logistics:demo`). **Partly built:** rate cards: wl-invoicing has them, but logistics still prices from its own stand-in `ClientRate` rows; vehicles: only the document kinds (registration, insurance, permit) exist. **Not built (MVP items still open):** vehicle register with services, daily checks, fines and tolls, odometer CSV import, the public tracking link and recipient SMS flow, `LOG.RUL.04` (at hub for 24 hours) and `LOG.RUL.05` (open cash handover at 21:00), the per-client switch for freight forwarding (today it is only the `freight.*` permissions). **Machines in code but not in the spec:** `AdjustmentLine`, `AccountChange` (README). See [STATUS.md](STATUS.md) and [apps/logistics/README.md](../../apps/logistics/README.md).
 
 ## 1. Summary
 
@@ -313,6 +315,10 @@ permission (for example in a depot with a single operations manager); the reques
 | `PLT.ENT.01` | Legal entities: several trade licences and TRNs in one deployment; issuer on every document | shared | wl-kernel | MVP |
 | `PLT.IMP.01` | Data import and migration: Excel templates per entity, validation, dry run, rollback | shared | wl-kernel | MVP |
 | `PLT.SRC.01` | Global search across records, including Arabic names | shared | wl-kernel + Renox search | MVP |
+| `PLT.REL.01` | Related records of any record, in a panel and as a tool ([decision 0006](../decisions/0006-search-and-ai-agents.md)) | shared | wl-kernel | MVP |
+| `PLT.AGT.01` | AI assistant connection (MCP): search, read, summarise, reports | shared | wl-kernel + Renox (R26, R27) | Later |
+| `PLT.AGT.02` | AI assistant actions: transitions and drafts, with preview and confirm | shared | wl-kernel + Renox (R28) | Later |
+| `PLT.AGT.03` | AI assistant inbox and messages | shared | wl-kernel + wl-notify | Later |
 | `PLT.NOT.01` | Notes, comments and @mentions on any record, with an activity timeline | shared | wl-kernel | MVP |
 | `PLT.SSO.01` | Staff single sign-on with Microsoft 365 or Google Workspace | shared | Renox OAuth (renox-oauth) | Later |
 | `RPT.LIB.01` | Report library: filtered reports with export to Excel, CSV and PDF | shared | wl-kernel | MVP |
@@ -845,7 +851,7 @@ written on the run sheet and entered later with the late-entry flag (§4.1).
   tracking timeline, delivery attempts, COD and remittances, rate cards, freight jobs,
   customs documentation, fleet details, fines and tolls, claims, subcontracted carriers,
   operations reports.
-- **Estimated reuse:** 61 of 76 capabilities (80%) come from shared modules or Renox. Among
+- **Estimated reuse:** 65 of 80 capabilities (81%) come from shared modules or Renox. Among
   them are 12 shared capabilities first needed here: multi-currency, SMS, proof of
   delivery, dispatch, employee records, leads, usage billing, rate cards, cash custody,
   disbursements, barcode scanning and the client API.
