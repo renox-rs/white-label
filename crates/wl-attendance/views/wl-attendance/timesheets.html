@@ -1,6 +1,6 @@
 {#- wl-attendance: the timesheets (09 Manpower MPW.ACL.09), a renox::grid
-    (filters by standing and kind, search on the reason, the sum of the
-    minutes) that fills the screen. The client and the month narrow the list
+    (search on the worker, client, work and reason; filters by standing and
+    kind; the sum of the minutes) that fills the screen. The client and the month narrow the list
     from the header. Replace it with
     resources/views/wl-attendance/timesheets.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['title']">
@@ -15,10 +15,7 @@
     </form>
   </rx-page-header>
   <rx-grid :page="rows">
-    <template rx-if="column.key == 'worker'"><a href="{{ row.url }}">{{ row.worker }}</a></template>
-    <template rx-elif="column.key == 'client'">{{ row.client }}</template>
-    <template rx-elif="column.key == 'work'">{{ row.work }}</template>
-    <template rx-elif="column.key == 'period'">{{ row.period }}</template>
+    <template rx-if="column.key == 'period'">{{ row.period }}</template>
     <template rx-elif="column.key == 'hours'">{{ row.hours }}</template>
   </rx-grid>
 </rx-page>

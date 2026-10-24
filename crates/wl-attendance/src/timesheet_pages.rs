@@ -258,11 +258,48 @@ fn standing_sql() -> String {
     )
 }
 
-/// The timesheets grid: filters by standing and kind, the hours drawn by the
-/// template; the worker, client and work come from the directory and the
-/// app (`custom`). The client and the month are page filters that feed the
-/// query.
-pub(crate) fn sheets_grid(lang: &Lang) -> Grid {
+/// `text` as a quoted SQL literal: quotes doubled; no `?` (a placeholder) and
+/// no backslash, at most 200 characters.
+fn literal(text: &str) -> String {
+    let clean: String = text
+        .chars()
+        .filter(|c| !matches!(c, '?' | '\\'))
+        .take(200)
+        .collect();
+    format!("'{}'", clean.replace('\'', "''"))
+}
+
+/// The SQL of a text column whose words are worked out in Rust for each
+/// timesheet (`words`: the id to the words), empty for the others: what lets
+/// the grid search, sort, filter and export the names that live in another
+/// module (the worker in the directory, the client and work in the app).
+fn worded_sql(words: &BTreeMap<i64, String>) -> String {
+    if words.is_empty() {
+        return "''".to_owned();
+    }
+    let arms = words
+        .iter()
+        .map(|(id, text)| format!("WHEN {id} THEN {}", literal(text)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("(CASE {{T}}.\"id\" {arms} ELSE '' END)")
+}
+
+/// The words of the worker, client and work of the listed timesheets, as the
+/// SQL of their columns (see [`worded_sql`]).
+pub(crate) struct Names {
+    worker: String,
+    client: String,
+    work: String,
+}
+
+/// The timesheets grid: the worker (a link to the sheet), client and work in
+/// words (`names`, from the directory and the app) searched, sorted and
+/// exported like any text; filters by standing, kind and the dates of the
+/// period; the hours drawn by the template. The client and the month of the
+/// header are page filters that feed the query (they stay in the address,
+/// BL-MPW-27). Exported by who submits or approves timesheets.
+pub(crate) fn sheets_grid(lang: &Lang, names: &Names, can_export: bool) -> Grid {
     let t = |key: &str| text(lang, key);
     let standings: Vec<(String, String)> = STANDINGS
         .iter()
@@ -272,14 +309,30 @@ pub(crate) fn sheets_grid(lang: &Lang) -> Grid {
         ("regular".to_owned(), t("fact.kind_regular")),
         ("adjustment".to_owned(), t("adjustment_tag")),
     ];
-    Grid::new("attendance-timesheets")
+    let grid = Grid::new("attendance-timesheets")
         .title(&t("title"))
         .per_page(25)
         .remember()
         .advanced_filter()
-        .column(Column::custom("worker", &t("worker")).frozen().mobile())
-        .column(Column::custom("client", &t("client")).mobile())
-        .column(Column::custom("work", &t("work")))
+        .column(
+            Column::text("worker", &t("worker"))
+                .computed(&names.worker)
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/timesheets/{id}"),
+        )
+        .column(
+            Column::text("client", &t("client"))
+                .computed(&names.client)
+                .mobile()
+                .searchable(),
+        )
+        .column(
+            Column::text("work", &t("work"))
+                .computed(&names.work)
+                .searchable(),
+        )
         .column(Column::date("period_from", &t("period_from")).hidden())
         .column(Column::date("period_to", &t("period_to")).hidden())
         .column(Column::custom("period", &t("period")).mobile())
@@ -315,7 +368,8 @@ pub(crate) fn sheets_grid(lang: &Lang) -> Grid {
         .sort_by("-period_from")
         .row_url("/timesheets/{id}")
         .cards_on_mobile()
-        .empty_state(&t("empty"), Some(&t("empty_text")))
+        .empty_state(&t("empty"), Some(&t("empty_text")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// `GET /timesheets`: the timesheets in the person's reach, as a page or JSON.
@@ -380,8 +434,10 @@ async fn list(
         }
         kept.push((sheet, info, now));
     }
-    // A grid refresh (htmx) wants the page too.
-    let wants_page = wants_html(&headers) || headers.contains_key("hx-request");
+    // A grid refresh (htmx) and an export want the page too.
+    let wants_page = wants_html(&headers)
+        || headers.contains_key("hx-request")
+        || request.param("export").is_some();
     if !wants_page {
         let ids: Vec<i64> = kept.iter().map(|(sheet, _, _)| sheet.id).collect();
         let entries = TimesheetEntry::query()
@@ -411,10 +467,47 @@ async fn list(
         return Ok(Json(renox::serde_json::to_value(&rows)?).into_response());
     }
     let ids: Vec<i64> = kept.iter().map(|(sheet, _, _)| sheet.id).collect();
+    // The names of every listed sheet, so that the grid searches and sorts
+    // them all, not only the rows of the page.
+    let mut workers: BTreeMap<i64, String> = BTreeMap::new();
+    let mut clients_of: BTreeMap<i64, String> = BTreeMap::new();
+    let mut works: BTreeMap<i64, String> = BTreeMap::new();
+    let mut owners: BTreeMap<i64, String> = BTreeMap::new();
+    for (sheet, info, _) in &kept {
+        let worker = match owners.get(&sheet.owner_employee_id) {
+            Some(name) => name.clone(),
+            None => {
+                let name = name_of(&state, &lang, sheet.owner()).await;
+                owners.insert(sheet.owner_employee_id, name.clone());
+                name
+            }
+        };
+        workers.insert(sheet.id, worker);
+        clients_of.insert(sheet.id, client_text(info.as_ref()));
+        works.insert(
+            sheet.id,
+            info.as_ref()
+                .map_or_else(|| "-".to_owned(), |info| info.label.clone()),
+        );
+    }
+    let names = Names {
+        worker: worded_sql(&workers),
+        client: worded_sql(&clients_of),
+        work: worded_sql(&works),
+    };
+    let can_export = user.has_permission_anywhere(permissions::TIMESHEETS_SUBMIT)
+        || user.has_permission_anywhere(permissions::TIMESHEETS_APPROVE);
+    let grid = sheets_grid(&lang, &names, can_export);
     let query =
         Timesheet::query().where_(Timesheet::ID.is_in(if ids.is_empty() { vec![-1] } else { ids }));
-    let page = sheets_grid(&lang).page(query, &request).await?;
-    // The worker, client, work and hours of the page's rows.
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    // The period and hours of the page's rows.
     let on_page: Vec<i64> = page.items().iter().map(|sheet| sheet.id).collect();
     let entries = TimesheetEntry::query()
         .where_in("timesheet_id", on_page)
@@ -422,10 +515,6 @@ async fn list(
         .await?;
     let mut extra: BTreeMap<i64, renox::serde_json::Value> = BTreeMap::new();
     for sheet in page.items() {
-        let info = kept
-            .iter()
-            .find(|(kept, _, _)| kept.id == sheet.id)
-            .and_then(|(_, info, _)| info.as_ref());
         let own: Vec<&TimesheetEntry> = entries
             .iter()
             .filter(|entry| entry.timesheet_id == sheet.id)
@@ -433,9 +522,6 @@ async fn list(
         extra.insert(
             sheet.id,
             renox::serde_json::json!({
-                "worker": name_of(&state, &lang, sheet.owner()).await,
-                "client": client_text(info),
-                "work": info.map_or_else(|| "-".to_owned(), |info| info.label.clone()),
                 "period": period_text(sheet),
                 "hours": hours_text(minutes_of(&own)),
                 "url": url(sheet.id),
