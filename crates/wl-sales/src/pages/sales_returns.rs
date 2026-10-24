@@ -8,6 +8,11 @@
 //! | `POST /sales-returns/{id}/receive` | `wl_sales.sales_return_receive` | `returns.handle` |
 //! | `POST /sales-returns/{id}/resolve` | `wl_sales.sales_return_resolve` | `returns.handle` |
 //! | `POST /sales-returns/{id}/transitions/{name}` | `wl_sales.sales_return_transitions.` | `returns.handle` (`reject`, `reverse`) |
+//!
+//! A refund after completion (BL-SAL-14) is raised from the completed order
+//! (`POST /sales-orders/{id}/refund`, `wl_sales.sales_order_refund`, needs
+//! `returns.request`); above the limit of the settings the manager decides it
+//! under "Needs your action" (`returns.approve`), never the recorder.
 
 use std::collections::BTreeMap;
 
@@ -18,12 +23,14 @@ use serde::Serialize;
 use wl_kernel::Subject;
 use wl_kernel::sales::{COUNTER_SALE_SUBJECT_TYPE, SALES_ORDER_SUBJECT_TYPE};
 
+use crate::config::config_of;
 use crate::notices::aed;
 use crate::pages::counter_sales::parse_milli;
 use crate::sales_return::{ReturnKind, ReturnResolution, ReturnStatus, SalesReturn};
-use crate::sales_return_machine::{RECEIVE, RESOLVE, ResolveInput};
-use crate::sales_returns::{self, NewReturn};
+use crate::sales_return_machine::{RECEIVE, RESOLVE, REVERSE, ResolveInput};
+use crate::sales_returns::{self, NewReturn, ResolveOutcome};
 use crate::{permissions, texts};
+use wl_kernel::approvals::ApprovalRequest;
 
 /// The texts a template reads as `tx['returns.title']`.
 type Texts = BTreeMap<&'static str, String>;
@@ -158,6 +165,21 @@ pub(crate) struct ShowPage {
     actions: Vec<Available>,
     can_receive: bool,
     can_resolve: bool,
+    category_label: String,
+    party_label: String,
+    waiting_alert: String,
+    reverse_hint: String,
+    resolution_options: Vec<[String; 2]>,
+    category_options: Vec<[String; 2]>,
+    party_options: Vec<[String; 2]>,
+}
+
+/// The options of a select: the stored name and its words.
+pub(crate) fn options(lang: &Lang, prefix: &str, names: &[String]) -> Vec<[String; 2]> {
+    names
+        .iter()
+        .map(|n| [n.clone(), text(lang, &format!("{prefix}.{n}"))])
+        .collect()
 }
 
 /// `GET /sales-returns/{id}`: the return and what the viewer may do.
@@ -168,12 +190,17 @@ async fn show(
     Found(r): Found<SalesReturn>,
 ) -> Result<View> {
     let handles = user.has_permission(permissions::RETURNS_HANDLE);
-    // Receiving and resolving have their own sheets (they take input).
+    let config = config_of(&state);
+    let waiting = ApprovalRequest::pending_about(&state.db, &r.subject()).await?;
+    let by_channel = r.resolution == Some(ReturnResolution::RefundedByChannel);
+    // Receiving and resolving have their own sheets (they take input); only a
+    // refund made by the channel is reversed, so `reverse` is offered for that
+    // one and the page says why it is not offered for the others.
     let actions = r
         .available(&user, &state.db)
         .await?
         .into_iter()
-        .filter(|a| a.name != RECEIVE && a.name != RESOLVE)
+        .filter(|a| a.name != RECEIVE && a.name != RESOLVE && (a.name != REVERSE || by_channel))
         .collect();
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
@@ -190,8 +217,45 @@ async fn show(
         actions,
         can_receive: handles && r.status == ReturnStatus::Requested && r.kind == ReturnKind::Goods,
         can_resolve: handles
+            && waiting.is_empty()
             && (r.status == ReturnStatus::Received
                 || (r.status == ReturnStatus::Requested && r.kind == ReturnKind::NoGoods)),
+        category_label: r
+            .complaint_category
+            .as_deref()
+            .map(|c| text(&lang, &format!("returns.category.{c}")))
+            .unwrap_or_default(),
+        party_label: r
+            .responsible_party
+            .as_deref()
+            .map(|c| text(&lang, &format!("returns.party.{c}")))
+            .unwrap_or_default(),
+        waiting_alert: if waiting.is_empty() {
+            String::new()
+        } else {
+            text(&lang, "returns.waiting_alert")
+        },
+        reverse_hint: if r.status == ReturnStatus::Resolved && !by_channel && handles {
+            text(&lang, "returns.reverse_hint")
+        } else {
+            String::new()
+        },
+        resolution_options: [
+            "credit_note",
+            "refund",
+            "replacement",
+            "refunded_by_channel",
+        ]
+        .iter()
+        .map(|n| {
+            [
+                (*n).to_owned(),
+                text(&lang, &format!("returns.resolution.{n}")),
+            ]
+        })
+        .collect(),
+        category_options: options(&lang, "returns.category", &config.complaint_categories),
+        party_options: options(&lang, "returns.party", &config.responsible_parties),
         sales_return: r,
     }))
 }
@@ -317,11 +381,11 @@ async fn resolve(
         inspected: matches!(get("inspected"), "1" | "on"),
         complaint_category: optional("complaint_category"),
         responsible_party: optional("responsible_party"),
+        ..ResolveInput::default()
     };
-    sales_returns::resolve(&state, &user, r.id, input).await?;
-    Ok((
-        Toast::success(text(&lang, "returns.resolved")),
-        Redirect::route("wl_sales.sales_return", &[&r.id])?,
-    )
-        .into_response())
+    let toast = match sales_returns::resolve(&state, &user, r.id, input).await? {
+        ResolveOutcome::Done(_) => Toast::success(text(&lang, "returns.resolved")),
+        ResolveOutcome::Waiting(_) => Toast::info(text(&lang, "returns.refund_waiting")),
+    };
+    Ok((toast, Redirect::route("wl_sales.sales_return", &[&r.id])?).into_response())
 }

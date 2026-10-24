@@ -132,7 +132,7 @@ fn grid_with(t: Text<'_>) -> Grid {
         .column(
             Column::text("holder", &t("cash.holder"))
                 .computed(
-                    "(SELECT \"users\".\"name\" FROM \"users\" WHERE \"users\".\"id\" = {T}.\"holder_user_id\")",
+                    "COALESCE({T}.\"holder_till\", (SELECT \"users\".\"name\" FROM \"users\" WHERE \"users\".\"id\" = {T}.\"holder_user_id\"))",
                 )
                 .mobile()
                 .searchable(),
@@ -247,6 +247,7 @@ pub(crate) struct ShowPage {
     status_label: String,
     status_kind: &'static str,
     holder_name: String,
+    responsible_name: String,
     kind_label: String,
     period: String,
     source_label: String,
@@ -407,7 +408,15 @@ async fn show(
         title: format!("{} #{}", t("cash.heading"), handover.id),
         status_label: t(&format!("cash.status.{}", handover.status.as_str())),
         status_kind: status_kind(handover.status),
-        holder_name: user_name(&db, handover.holder_user_id).await?,
+        holder_name: match &handover.holder_till {
+            Some(till) => till.clone(),
+            None => user_name(&db, handover.holder_user_id).await?,
+        },
+        responsible_name: if handover.holder_till.is_some() {
+            user_name(&db, handover.responsible_user_id).await?
+        } else {
+            String::new()
+        },
         kind_label: t(&format!("cash.kind_label.{}", handover.kind.as_str())),
         period: period_text(&handover),
         source_label,

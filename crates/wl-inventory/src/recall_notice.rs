@@ -283,6 +283,19 @@ pub async fn waive(
     if !user.has_permission(permissions::RECALLS_MANAGE) {
         return Err(Error::Forbidden);
     }
+    waive_by(state, user.id, line_id, reason).await
+}
+
+/// Waives line `line_id` as user `by`, whose right to decide the vertical
+/// checked (06: the owner decides the public notice for sales without a known
+/// customer, through the kernel's
+/// [`LotTrace::waive`](wl_kernel::inventory::LotTrace::waive)).
+///
+/// # Errors
+///
+/// 422 without a reason, for a recall that is not `traced` or a line that is
+/// not `pending`; `NotFound`.
+pub async fn waive_by(state: &AppState, by: i64, line_id: i64, reason: &str) -> Result<RecallLine> {
     let line = RecallLine::find_or_404(&state.db, line_id).await?;
     let recall = Recall::find_or_404(&state.db, line.recall_id).await?;
     let refused = |message: String| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message);
@@ -304,7 +317,7 @@ pub async fn waive(
             &[
                 ("notice_status", &NoticeStatus::Waived.as_str().to_owned()),
                 ("waive_reason", &Some(reason)),
-                ("waived_by", &Some(user.id)),
+                ("waived_by", &Some(by)),
                 ("waived_at", &Some(now)),
                 ("updated_at", &now),
             ],

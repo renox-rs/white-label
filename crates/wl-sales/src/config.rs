@@ -69,6 +69,67 @@ pub const DEFAULT_LOST_REASONS: &[&str] = &[
     "other",
 ];
 
+/// The minutes an online-paid order waits for the gateway before it is
+/// cancelled as *payment failed* (§7 *Online payment window*: 15).
+pub const DEFAULT_ONLINE_PAYMENT_WINDOW_MINUTES: i64 = 15;
+
+/// The channels whose orders are changed on the channel's own system, so
+/// `amend` is not offered (§7 *Amendments allowed per channel*: on, except
+/// aggregator channels).
+pub const DEFAULT_AGGREGATOR_CHANNELS: &[&str] = &[
+    "aggregator",
+    "talabat",
+    "deliveroo",
+    "noon",
+    "careem",
+    "zomato",
+];
+
+/// The manual discount, as a share of the line before the discount, above
+/// which a change needs a manager, in basis points (`SAL.ACL.02`: 10%).
+pub const DEFAULT_MANUAL_DISCOUNT_LIMIT_BPS: i64 = 1000;
+
+/// The hours the payment link of an increase on a prepaid order lasts on a
+/// channel other than the website and the portal (§4.2: 24).
+pub const DEFAULT_AMEND_LINK_HOURS: i64 = 24;
+
+/// The VAT category a cancellation fee takes until the accountant answers
+/// A-04 (§10): standard-rated.
+pub const DEFAULT_CANCELLATION_FEE_VAT: &str = "standard";
+
+/// A paid order worth more than this (fils) needs a manager to cancel it
+/// (`SAL.ACL.01`; F&B: AED 50).
+pub const DEFAULT_CANCEL_APPROVAL_LIMIT: i64 = 5_000;
+
+/// A refund or credit after completion with nothing returned worth more than
+/// this (fils) needs a manager (`SAL.ACL.06`: AED 50).
+pub const DEFAULT_REFUND_APPROVAL_LIMIT: i64 = 5_000;
+
+/// The complaint categories of a *no goods* return (§7 *Refund after
+/// completion*).
+pub const DEFAULT_COMPLAINT_CATEGORIES: &[&str] = &[
+    "cold",
+    "late",
+    "missing_item",
+    "wrong_item",
+    "quality",
+    "service_not_delivered",
+    "other",
+];
+
+/// The responsible parties of a *no goods* return (§7).
+pub const DEFAULT_RESPONSIBLE_PARTIES: &[&str] = &[
+    "business",
+    "driver_or_rider",
+    "aggregator",
+    "supplier",
+    "customer",
+];
+
+/// The outcomes a cancellation after fulfilment started may choose from,
+/// before the vertical narrows them (§7).
+pub const DEFAULT_CANCEL_OUTCOMES: &[&str] = &["return_to_stock", "finish_to_stock", "scrap"];
+
 /// The settings of the sales module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SalesConfig {
@@ -139,6 +200,53 @@ pub struct SalesConfig {
     /// The order channels whose lines without stock are back-ordered
     /// (§7 *Back-orders allowed per channel*). Empty: none.
     pub back_order_channels: Vec<String>,
+    /// Whether an external order number may be used once per channel (§7
+    /// *Unique external order number per channel*, BL-SAL-01: on).
+    pub unique_external_order_number: bool,
+    /// The minutes an order paid online waits in `awaiting_payment`
+    /// (§7 *Online payment window*, BL-SAL-03: 15).
+    pub online_payment_window_minutes: i64,
+    /// The role told of a payment refunded as late (`SAL.RUL.06`: the outlet
+    /// or sales manager); the company admin when empty.
+    pub order_manager_role: String,
+    /// The channels whose orders `amend` is not offered on.
+    pub aggregator_channels: Vec<String>,
+    /// The manual discount above which a change needs a manager, in basis
+    /// points of the line before the discount (`SAL.ACL.02`).
+    pub manual_discount_limit_bps: i64,
+    /// The hours a payment link of an increase lasts outside the website and
+    /// the portal.
+    pub amend_link_hours: i64,
+    /// The role told when an order goes on credit hold (`SAL.RUL.01`); the
+    /// company admin when empty.
+    pub accountant_role: String,
+    /// The role that owns the orders of the channels that are not website or
+    /// portal (the sales rep); the company admin when empty.
+    pub sales_rep_role: String,
+    /// The outcomes offered when a started line is cancelled, already
+    /// narrowed to what the vertical can do (06: return to stock, scrap;
+    /// 08: return to stock). Stored names.
+    pub cancel_outcomes: Vec<String>,
+    /// The default cancellation fee on a started line, in basis points of
+    /// the line value with VAT (§7: 0). Used when the amount is 0.
+    pub cancellation_fee_bps: i64,
+    /// The default cancellation fee on a started line as an amount in fils,
+    /// when it is not a percentage (§7: 0).
+    pub cancellation_fee_amount: i64,
+    /// The VAT category of a cancellation fee line: `standard`,
+    /// `zero_rated` or `exempt` (§10, open item A-04).
+    pub cancellation_fee_vat: String,
+    /// A paid order above this value, in fils, needs a manager to cancel it
+    /// (`SAL.ACL.01`, §7: AED 50).
+    pub cancel_approval_limit: i64,
+    /// A refund or credit after completion with nothing returned above this
+    /// value, in fils, needs a manager who is not the recorder
+    /// (`SAL.ACL.06`, §7: AED 50).
+    pub refund_approval_limit: i64,
+    /// The complaint categories a *no goods* return can name (stored names).
+    pub complaint_categories: Vec<String>,
+    /// The responsible parties a *no goods* return can name (stored names).
+    pub responsible_parties: Vec<String>,
 }
 
 impl Default for SalesConfig {
@@ -176,6 +284,34 @@ impl Default for SalesConfig {
             programme_notice_days: DEFAULT_PROGRAMME_NOTICE_DAYS,
             programme_closing_days: DEFAULT_PROGRAMME_CLOSING_DAYS,
             back_order_channels: Vec::new(),
+            unique_external_order_number: true,
+            online_payment_window_minutes: DEFAULT_ONLINE_PAYMENT_WINDOW_MINUTES,
+            order_manager_role: String::new(),
+            aggregator_channels: DEFAULT_AGGREGATOR_CHANNELS
+                .iter()
+                .map(|c| (*c).to_owned())
+                .collect(),
+            manual_discount_limit_bps: DEFAULT_MANUAL_DISCOUNT_LIMIT_BPS,
+            amend_link_hours: DEFAULT_AMEND_LINK_HOURS,
+            accountant_role: String::new(),
+            sales_rep_role: String::new(),
+            cancel_outcomes: DEFAULT_CANCEL_OUTCOMES
+                .iter()
+                .map(|o| (*o).to_owned())
+                .collect(),
+            cancellation_fee_bps: 0,
+            cancellation_fee_amount: 0,
+            cancellation_fee_vat: DEFAULT_CANCELLATION_FEE_VAT.to_owned(),
+            cancel_approval_limit: DEFAULT_CANCEL_APPROVAL_LIMIT,
+            refund_approval_limit: DEFAULT_REFUND_APPROVAL_LIMIT,
+            complaint_categories: DEFAULT_COMPLAINT_CATEGORIES
+                .iter()
+                .map(|c| (*c).to_owned())
+                .collect(),
+            responsible_parties: DEFAULT_RESPONSIBLE_PARTIES
+                .iter()
+                .map(|c| (*c).to_owned())
+                .collect(),
         }
     }
 }
@@ -192,6 +328,35 @@ impl SalesConfig {
     /// Whether a lead or first sale with the source `code` needs a campaign.
     pub fn campaign_required_for(&self, code: &str) -> bool {
         self.campaign_required_sources.iter().any(|c| c == code)
+    }
+
+    /// Whether `amend` is offered on orders of `channel`.
+    pub fn amendments_allowed(&self, channel: &str) -> bool {
+        !self
+            .aggregator_channels
+            .iter()
+            .any(|c| c.eq_ignore_ascii_case(channel.trim()))
+    }
+
+    /// Whether the orders of `channel` come from an aggregator that can
+    /// refund its customer itself (*refunded by the channel*, BL-SAL-14).
+    pub fn is_aggregator_channel(&self, channel: &str) -> bool {
+        !self.amendments_allowed(channel)
+    }
+
+    /// Whether `outcome` (a stored name) is offered when a started line is
+    /// cancelled.
+    pub fn offers_outcome(&self, outcome: &str) -> bool {
+        self.cancel_outcomes.iter().any(|o| o == outcome)
+    }
+
+    /// The VAT category of a cancellation fee line.
+    pub fn cancellation_fee_category(&self) -> wl_kernel::invoicing::VatCategory {
+        match self.cancellation_fee_vat.as_str() {
+            "zero_rated" => wl_kernel::invoicing::VatCategory::ZeroRated,
+            "exempt" => wl_kernel::invoicing::VatCategory::Exempt,
+            _ => wl_kernel::invoicing::VatCategory::Standard,
+        }
     }
 
     /// Whether the item `code` is a clinical service a segment may not use.
@@ -219,6 +384,20 @@ impl SalesConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn aggregator_orders_are_not_amended_here_and_the_fee_defaults_to_nothing() {
+        let config = SalesConfig::default();
+        assert!(!config.amendments_allowed("Talabat"));
+        assert!(config.amendments_allowed("phone"));
+        assert!(config.offers_outcome("scrap"));
+        assert!(!config.offers_outcome("burn"));
+        assert_eq!(
+            (config.cancellation_fee_bps, config.cancellation_fee_amount),
+            (0, 0)
+        );
+        assert_eq!(config.manual_discount_limit_bps, 1000);
+    }
 
     #[test]
     fn the_defaults_need_no_campaign_and_keep_the_two_always_there_reasons() {

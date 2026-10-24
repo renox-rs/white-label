@@ -43,15 +43,17 @@ use wl_kernel::backorders::{
     StockArrived, provide_back_orders, stock_reservations,
 };
 use wl_kernel::inventory::LOCATION_SUBJECT_TYPE;
+use wl_kernel::machines::APPROVED_SUFFIX;
 use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRequest};
-use wl_kernel::sales::{FulfilOrder, SALES_ORDER_SUBJECT_TYPE};
+use wl_kernel::sales::{
+    FulfilOrder, SALES_ORDER_SUBJECT_TYPE, SalesOrderAmended, SalesOrderLineCancelled,
+};
 
 use crate::config::config_of;
 use crate::sale_line::{KIND_ITEM, SaleLine};
 use crate::sales_order::{SalesOrder, SalesOrderStatus};
 use crate::sales_order_machine::{
-    ACCEPT, CANCEL, CANCEL_LINE, CANCEL_LINE_PARTLY, CONFIRM_PAYMENT, CancelLineInput, FULFIL,
-    FULFIL_LAST, REJECT, SUBMIT,
+    ACCEPT, CANCEL, CONFIRM_PAYMENT, FULFIL, FULFIL_LAST, REJECT, SUBMIT,
 };
 use crate::texts::english;
 
@@ -462,6 +464,35 @@ pub async fn on_ended(state: &AppState, order_id: i64) -> Result {
     Ok(())
 }
 
+/// An order was amended: each cut line gives back the cut, back-order first;
+/// an order that holds stock (`confirmed`, `partially_fulfilled`) reserves or
+/// back-orders what the amendment added.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn on_amended(state: &AppState, event: &SalesOrderAmended) -> Result {
+    for line in &event.lines {
+        let cut = line.quantity_before_milli - line.quantity_after_milli;
+        if cut > 0 {
+            reduce(state, line.line, cut, true).await?;
+        }
+    }
+    if event
+        .lines
+        .iter()
+        .any(|l| l.quantity_after_milli > l.quantity_before_milli)
+        && let Some(order) = SalesOrder::find(&state.db, event.order.0).await?
+        && matches!(
+            order.status,
+            SalesOrderStatus::Confirmed | SalesOrderStatus::PartiallyFulfilled
+        )
+    {
+        on_confirmed(state, order.id).await?;
+    }
+    Ok(())
+}
+
 /// The open back-ordered quantity per item and location, over the orders
 /// that are `confirmed`, `partially_fulfilled` or on `credit_hold`.
 ///
@@ -516,7 +547,12 @@ pub(crate) fn register(app: &mut Registry) {
     provide_back_orders(app, Demand);
     app.listen(
         |event: Transitioned<SalesOrder>, state: AppState| async move {
-            match event.transition.as_str() {
+            // The twin the kernel runs after an approval has the same effect.
+            let name = event
+                .transition
+                .strip_suffix(APPROVED_SUFFIX)
+                .unwrap_or(&event.transition);
+            match name {
                 SUBMIT | ACCEPT | CONFIRM_PAYMENT => on_confirmed(&state, event.key).await,
                 CANCEL | REJECT => on_ended(&state, event.key).await,
                 FULFIL | FULFIL_LAST => {
@@ -530,18 +566,26 @@ pub(crate) fn register(app: &mut Registry) {
                     }
                     Ok(())
                 }
-                CANCEL_LINE | CANCEL_LINE_PARTLY => {
-                    let Ok(input) =
-                        renox::serde_json::from_value::<CancelLineInput>(event.meta.clone())
-                    else {
-                        return Ok(());
-                    };
-                    reduce(&state, input.line, input.quantity_milli, true).await
-                }
                 _ => Ok(()),
             }
         },
     );
+    // A line cancelled (`cancel_line`, `cancel_remaining`, a vertical's
+    // cancellation, BL-SAL-08/09) takes its quantity off the back-order
+    // first, then off the reservation, so the demand and the stock held for
+    // it are released with the cancellation, whatever the outcome of the
+    // started goods.
+    app.listen(
+        |event: SalesOrderLineCancelled, state: AppState| async move {
+            reduce(&state, event.line, event.quantity_milli, true).await
+        },
+    );
+    // An amendment (BL-SAL-05): a quantity cut gives its part of the
+    // back-order and the reservation back; an increase of a confirmed order
+    // is reserved or back-ordered like the first quantity.
+    app.listen(|event: SalesOrderAmended, state: AppState| async move {
+        on_amended(&state, &event).await
+    });
     app.listen(|event: StockArrived, state: AppState| async move {
         for line in &event.lines {
             serve(&state, &event.location, &line.item_code, &event.source).await?;

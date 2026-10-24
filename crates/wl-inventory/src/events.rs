@@ -301,6 +301,8 @@ pub(crate) fn register(app: &mut Registry) {
             let receipt = GoodsReceipt::find_or_404(&state.db, event.key).await?;
             let lines = lines_of(&state.db, receipt.id).await?;
             state.emit(received_event(&receipt, &lines)).await?;
+            // The negative quantity it covered: the price variance (BL-STK-19).
+            crate::price_variance::announce(&state, receipt.id).await?;
             // What was accepted joins an open hold on the location.
             crate::arrival::on_receipt(&state, &receipt, &lines).await?;
             // The oldest back-orders of the location are served from it.

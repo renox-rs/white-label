@@ -338,6 +338,16 @@ async fn a_missed_run_alerts_the_owner_from_the_03_00_check() {
             .count()
     };
 
+    // 01:00: the test may run in the small hours, when the rule's 02:00 run of
+    // *today* is planned after the rule was watched and is missed by now. It
+    // is settled here, so that only what the 02:30 check adds is looked at.
+    go_to(&t, dubai(&tomorrow.to_string(), 1, 0));
+    t.app
+        .at_travelled_time(check_missed(t.state()))
+        .await
+        .unwrap();
+    let told_before = t.messages.sent().len();
+
     // 02:30: only 30 minutes late.
     go_to(&t, dubai(&tomorrow.to_string(), 2, 30));
     t.app
@@ -349,6 +359,7 @@ async fn a_missed_run_alerts_the_owner_from_the_03_00_check() {
         !t.messages
             .sent()
             .iter()
+            .skip(told_before)
             .any(|r| r.type_key == NOTIFICATION_TYPE && users(r).contains(&owner.id)),
         "the owner is not told at 02:30"
     );

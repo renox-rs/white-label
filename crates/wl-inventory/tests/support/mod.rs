@@ -599,9 +599,42 @@ impl wl_kernel::backorders::BackOrderDemand for BackOrderDesk {
     }
 }
 
+/// The vertical's recipe: what the sale lines the test names are made of
+/// (`SaleLineStockSource`).
+#[derive(Clone, Default)]
+pub struct SaleLineDesk {
+    lines: Arc<Mutex<Vec<(i64, wl_kernel::inventory::SaleLineStock)>>>,
+}
+
+impl SaleLineDesk {
+    /// The sale line `line` is made of `stock`.
+    pub fn set(&self, line: i64, stock: wl_kernel::inventory::SaleLineStock) {
+        self.lines.lock().unwrap().push((line, stock));
+    }
+}
+
+impl wl_kernel::inventory::SaleLineStockSource for SaleLineDesk {
+    fn of_line<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _order: &'a Subject,
+        line: i64,
+    ) -> wl_kernel::inventory::StockFuture<'a, Option<wl_kernel::inventory::SaleLineStock>> {
+        let found = self
+            .lines
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(id, _)| *id == line)
+            .map(|(_, stock)| stock.clone());
+        Box::pin(async move { Ok(found) })
+    }
+}
+
 /// Records the events and stands in for ticketing and cost entries.
 struct Fakes {
     back_orders: BackOrderDesk,
+    sale_lines: SaleLineDesk,
     revised: Arc<Mutex<Vec<PurchaseOrderRevised>>>,
     allocated: Arc<Mutex<Vec<LandedCostAllocated>>>,
     adjusted: Arc<Mutex<Vec<LandedCostAdjusted>>>,
@@ -668,6 +701,7 @@ impl Module for Fakes {
         wl_kernel::inventory::provide_trace_party_resolver(app, self.trace_parties.clone());
         wl_kernel::tickets::provide_task_creator(app, self.tickets.clone());
         wl_kernel::invoicing::provide_cost_poster(app, self.costs.clone());
+        wl_kernel::inventory::provide_sale_line_stock(app, self.sale_lines.clone());
         wl_kernel::notify::provide_notifier(app, self.notices.clone());
         wl_kernel::backorders::provide_back_orders(app, self.back_orders.clone());
     }
@@ -707,6 +741,8 @@ pub struct Booted {
     pub tickets: TicketDesk,
     /// The cost posted (wastage).
     pub costs: CostDesk,
+    /// What the sale lines are made of (the vertical's recipe).
+    pub sale_lines: SaleLineDesk,
     /// The notifications asked for.
     pub notices: Recording,
     /// Every `StockHoldPlaced`.
@@ -825,6 +861,11 @@ impl Booted {
     /// A user who sends and receives transfers and issues stock everywhere.
     pub async fn mover(&self, name: &str) -> User {
         self.user_with(name, "stock_mover").await
+    }
+
+    /// A dispatcher (`dispatch.manage`) everywhere.
+    pub async fn dispatcher(&self, name: &str) -> User {
+        self.user_with(name, "dispatcher").await
     }
 
     /// A user who places stock holds everywhere.
@@ -1708,6 +1749,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     let credited = Arc::new(Mutex::new(Vec::new()));
     let tickets = TicketDesk::default();
     let costs = CostDesk::default();
+    let sale_lines = SaleLineDesk::default();
     let notices = Recording::default();
     let holds = Arc::new(Mutex::new(Vec::new()));
     let lots_held = Arc::new(Mutex::new(Vec::new()));
@@ -1764,6 +1806,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         credited: credited.clone(),
         tickets: tickets.clone(),
         costs: costs.clone(),
+        sale_lines: sale_lines.clone(),
         notices: notices.clone(),
         holds: holds.clone(),
         lots_held: lots_held.clone(),
@@ -1868,6 +1911,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     permissions::define_role(app.db(), "stock_clerk", &[perm::STOCK_ADJUST])
         .await
         .unwrap();
+    permissions::define_role(app.db(), "dispatcher", &[perm::DISPATCH_MANAGE])
+        .await
+        .unwrap();
     permissions::define_role(app.db(), "recall_manager", &[perm::RECALLS_MANAGE])
         .await
         .unwrap();
@@ -1891,6 +1937,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         credited: Recorded(credited),
         tickets,
         costs,
+        sale_lines,
         notices,
         holds: Recorded(holds),
         lots_held: Recorded(lots_held),

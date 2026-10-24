@@ -1,0 +1,56 @@
+# The demo client of F6 (06 F&B): a Dubai and Sharjah cloud-kitchen group. Data
+# is fictional. Boot it with CLIENT_CONFIG=clients/demo-fnb/client.toml;
+# `fnb:demo` (and `db:seed` in local) fills it with the demo company.
+
+[client]
+name    = "Zaatar & Co. Kitchens LLC"
+app     = "fnb"
+domain  = "demo.zaatarkitchens.example"
+locales = ["en", "ar"]
+
+[branding]
+accent       = "#166534"
+second       = "#B45309"
+display_font = "Poppins"
+
+[modules]
+enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "sales", "hr", "inventory", "delivery", "portal"]
+
+[roles]
+# `PLT.RUL.04`: a compliance-critical rule that fails alerts the operations
+# director (this vertical's owner role) and the company admin.
+owner = "operations_director"
+
+# Two legal entities, each with its own TRN and numbering (DEMO-DATA.md §06).
+[[legal_entities]]
+code      = "ZCD"
+name_en   = "Zaatar & Co. Kitchens LLC"
+emirate   = "dubai"
+licensing_authority = "Dubai Department of Economy and Tourism"
+trade_licence_no = "8765432"
+trn       = "100000000000003"
+address_en = "Unit 3, Marina Cloud Kitchens, Dubai Marina, Dubai"
+default   = true
+
+[[legal_entities]]
+code      = "ZCS"
+name_en   = "Zaatar & Co. Kitchens (Sharjah) LLC"
+emirate   = "sharjah"
+licensing_authority = "Sharjah Economic Development Department"
+trade_licence_no = "1122334"
+trn       = "100000000000011"
+address_en = "Kitchen 2, Al Khan Industrial Area, Sharjah"
+
+# The UAE public holidays the business-day counts skip. Fixed dates are
+# listed; the moon-sighted ones follow the official announcement and are
+# amended here each year.
+[calendar]
+holidays = [
+  "2026-01-01",
+  "2026-03-20", "2026-03-21", "2026-03-22",
+  "2026-05-26", "2026-05-27", "2026-05-28", "2026-05-29",
+  "2026-06-16",
+  "2026-08-25",
+  "2026-12-02", "2026-12-03",
+  "2027-01-01",
+]

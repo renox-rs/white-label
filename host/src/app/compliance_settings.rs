@@ -355,6 +355,9 @@ async fn show(State(state): State<AppState>) -> Result<Response> {
     // The 03 client has its own table (BL-LOG-25).
     let rows = if settings.client_app == super::logistics_seed::LOGISTICS {
         super::logistics_settings::compliance_rows(&settings.owner_role)
+    } else if settings.client_app == super::fnb_seed::FNB {
+        // The 06 client has its own table (BL-FNB-17).
+        super::fnb_settings::compliance_rows(&settings.owner_role)
     } else if settings.client_app == super::edtech_seed::EDTECH {
         // The 10 client has its own table too (BL-EDU-17).
         super::edtech_settings::rows(&settings.owner_role)

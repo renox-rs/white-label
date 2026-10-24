@@ -21,6 +21,7 @@ pub mod cash_notices;
 pub mod cash_pages;
 pub mod cash_recovery;
 pub mod cash_settle;
+pub mod cash_till;
 pub mod chargeback;
 pub mod chargeback_close;
 pub mod chargeback_pages;
@@ -816,6 +817,8 @@ impl Module for WlPayments {
         cash_cheques::register(app);
         // `RunHandedOver`: the cash moves between the drivers' handovers.
         cash_hand_over::register(app);
+        // BL-PAY-19: a closed till session creates and counts the till's handover.
+        cash_till::register(app);
         // The write-off approval (`FIN.ACL.06`) and `CashShortageSettled`.
         cash_settle::register(app, self.config.cash_write_off_limit);
         // The salary deduction approval (`FIN.ACL.19`).

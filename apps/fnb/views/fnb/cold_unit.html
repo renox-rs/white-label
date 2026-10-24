@@ -1,0 +1,63 @@
+{#- fnb: a cold unit: its range and stock location, its readings, and, while it
+    is on temperature hold, the lines of the hold with the sheet where the chef
+    decides each one (release, discard or return to the supplier) and records
+    the reading and the minutes the food was out of range. A discard above AED
+    200 waits for the kitchen manager. Held food is never sold.
+    Replace it with resources/views/fnb/cold_unit.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="unit.name">
+  <rx-stack>
+    <rx-page-header :title="unit.name" :subtitle="unit.code ~ ' / ' ~ kind_label" :back="route('fnb.cold_units')" :back-label="tx['cold.title']"
+                    :badge="tx['cold.on_hold'] if on_hold else tx['cold.in_use']" :badge-kind="'warning' if on_hold else 'success'">
+      <rx-action-sheet rx-if="can_log" :id="'reading-' ~ unit.id" :label="tx['cold.record']" :action="route('fnb.cold_unit_reading', unit.id)"
+                       :title="tx['cold.record_title']" :description="tx['cold.record_description']" :submit-label="tx['cold.record']" icon="thermometer">
+        <rx-input name="temperature" :label="tx['cold.temperature']" :hint="tx['cold.temperature_hint']" :id="'reading-temperature-' ~ unit.id" required/>
+        <rx-textarea name="note" :label="tx['note']" :id="'reading-note-' ~ unit.id"/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-card rx-if="notes" :title="tx['notes']">
+      <rx-stack>
+        <p rx-for="note in notes">{{ note }}</p>
+      </rx-stack>
+    </rx-card>
+    <rx-card :title="tx['cold.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['cold.code']" :value="unit.code" copyable/>
+        <rx-entry :label="tx['cold.kind']" :value="kind_label"/>
+        <rx-entry :label="tx['cold.range']" :value="range"/>
+        <rx-entry :label="tx['cold.hold']" :value="hold_number" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['cold.ticket']" :value="unit.ticket_number" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['cold.out_since']" rx-if="out_since" :value="out_since"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card rx-if="lines" :title="tx['cold.lines']">
+      <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['cold.lines']">
+        <rx-column :label="tx['cold.item']">{{ line.item }}</rx-column>
+        <rx-column :label="tx['cold.quantity']" align="num">{{ line.quantity }}</rx-column>
+        <rx-column :label="tx['cold.value']" align="num" hide-narrow>{{ line.value | money(currency='AED') }}</rx-column>
+        <rx-column :label="tx['cold.recorded']" hide-narrow>
+          <span rx-if="line.reading">{{ line.reading }} / {{ line.minutes }} {{ tx['cold.minutes_unit'] }}</span>
+          <span rx-if="line.waiting" class="rx-subtitle">{{ tx['cold.waiting'] }}</span>
+        </rx-column>
+        <rx-column :label="tx['state']"><rx-badge :kind="line.status_kind" :text="line.status"/></rx-column>
+        <rx-row-actions>
+          <rx-action-sheet rx-if="line.undecided and can_decide and hold_open and not line.waiting" :id="'decide-' ~ line.id" :label="tx['cold.decide']"
+                           :action="route('fnb.cold_unit_decide', unit.id, line.id)"
+                           :title="tx['cold.decide_title']" :description="tx['cold.decide_description']" :submit-label="tx['cold.decide']" icon="clipboard-check">
+            <rx-select name="decision" :label="tx['cold.decision']" :id="'decide-decision-' ~ line.id" :options="decisions" :selected="'discard'"/>
+            <rx-input name="reading" :label="tx['cold.reading']" :hint="tx['cold.temperature_hint']" :id="'decide-reading-' ~ line.id" required/>
+            <rx-input name="minutes" type="number" :label="tx['cold.minutes_out']" :hint="tx['cold.minutes_hint']" :id="'decide-minutes-' ~ line.id" required/>
+          </rx-action-sheet>
+        </rx-row-actions>
+        <rx-slot name="empty"><rx-empty :title="tx['cold.no_lines']" icon="thermometer"/></rx-slot>
+      </rx-table>
+    </rx-card>
+    <rx-card :title="tx['cold.readings']">
+      <rx-table :rows="readings" as="reading" :key="reading.at ~ reading.tenths" :caption="tx['cold.readings']">
+        <rx-column :label="tx['cold.read_at']">{{ reading.at }}</rx-column>
+        <rx-column :label="tx['cold.reading']" align="num"><rx-badge :kind="reading.kind" :text="reading.tenths"/></rx-column>
+        <rx-column :label="tx['note']" hide-narrow>{{ reading.note }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['cold.no_readings']" :message="tx['cold.no_readings_text']" icon="thermometer"/></rx-slot>
+      </rx-table>
+    </rx-card>
+  </rx-stack>
+</rx-page>

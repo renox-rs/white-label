@@ -1,0 +1,10 @@
+DROP TABLE "wl_sales_order_payments";
+DROP INDEX "wl_sales_sales_orders_payment_due";
+DROP INDEX "wl_sales_sales_orders_external";
+ALTER TABLE "wl_sales_sales_orders" DROP COLUMN promo_code_id;
+ALTER TABLE "wl_sales_sales_orders" DROP COLUMN payment_link;
+ALTER TABLE "wl_sales_sales_orders" DROP COLUMN payment_link_id;
+ALTER TABLE "wl_sales_sales_orders" DROP COLUMN payment_due_at;
+ALTER TABLE "wl_sales_sales_orders" DROP COLUMN payment_status;
+ALTER TABLE "wl_sales_sales_orders" DROP COLUMN external_key;
+ALTER TABLE "wl_sales_sales_orders" DROP COLUMN external_number;

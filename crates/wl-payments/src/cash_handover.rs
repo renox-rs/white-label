@@ -125,6 +125,10 @@ pub struct CashHandover {
     pub holder_user_id: i64,
     /// The person recoveries are taken from.
     pub responsible_user_id: i64,
+    /// The till that holds the cash, in till session mode (BL-PAY-19): the
+    /// holder is the till; `holder_user_id` is then the session's cashier,
+    /// the person the platform can notify.
+    pub holder_till: Option<String>,
     /// Run, shift, day or till session.
     pub period_kind: PeriodKind,
     /// The type of the record that is the period (a run).

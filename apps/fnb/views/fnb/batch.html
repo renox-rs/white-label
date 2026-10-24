@@ -1,0 +1,67 @@
+{#- fnb: a production batch: its recipe, the ingredient lots it used (the
+    genealogy a recall follows), the lot it made with its status and what is
+    left, the wastage entry of a discarded batch and the buttons: start (pick
+    the ingredient lots; a lot on hold is refused), finish (yield and expiry),
+    discard (reason) and cancel while it is planned. A batch on hold shows why
+    it cannot be discarded here.
+    Replace it with resources/views/fnb/batch.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="batch.number">
+  <rx-stack>
+    <rx-page-header :title="batch.number" :subtitle="recipe" :back="route('fnb.batches')" :back-label="tx['batch.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-action-sheet rx-if="can_start" :id="'start-' ~ batch.id" :label="tx['batch.start']" :action="route('fnb.batch_start', batch.id)"
+                       :title="tx['batch.start_title']" :description="tx['batch.start_description']" :submit-label="tx['batch.start']" icon="play">
+        <rx-select rx-for="proposal in proposals" :name="'lot_' ~ proposal.line_id" :label="proposal.item ~ ' (' ~ proposal.needed ~ ')'"
+                   :id="'start-lot-' ~ proposal.line_id" :options="proposal.options" :selected="proposal.selected" :placeholder="tx['batch.no_lot']"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_finish" :id="'finish-' ~ batch.id" :label="tx['batch.finish']" :action="route('fnb.batch_finish', batch.id)"
+                       :title="tx['batch.finish_title']" :description="tx['batch.finish_description']" :submit-label="tx['batch.finish']" icon="check">
+        <rx-input name="actual_yield" :label="tx['batch.actual']" :hint="tx['batch.planned_hint']" :value="planned" :id="'finish-yield-' ~ batch.id" required/>
+        <rx-input name="expiry" type="date" :label="tx['batch.expiry']" :hint="tx['batch.expiry_hint']" :id="'finish-expiry-' ~ batch.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_discard" :id="'discard-' ~ batch.id" :label="tx['batch.discard']" :action="route('fnb.batch_discard', batch.id)"
+                       :title="tx['batch.discard_title']" :description="tx['batch.discard_description']" :submit-label="tx['batch.discard']" icon="trash-2" variant="danger" danger>
+        <rx-textarea name="reason" :label="tx['reason']" :id="'discard-reason-' ~ batch.id" required/>
+      </rx-action-sheet>
+      <rx-confirm rx-if="can_cancel" :id="'cancel-' ~ batch.id" :label="tx['batch.cancel']" :action="route('fnb.batch_cancel', batch.id)" method="POST"
+                  :title="tx['batch.cancel_title']" :message="tx['batch.cancel_message']" :confirm-label="tx['batch.cancel']"/>
+    </rx-page-header>
+    <rx-card rx-if="notes" :title="tx['notes']">
+      <rx-stack>
+        <p rx-for="note in notes">{{ note }}</p>
+      </rx-stack>
+    </rx-card>
+    <rx-card :title="tx['batch.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['batch.number']" :value="batch.number" copyable/>
+        <rx-entry :label="tx['batch.recipe']" :value="recipe"/>
+        <rx-entry :label="tx['batch.planned']" :value="planned"/>
+        <rx-entry :label="tx['batch.actual']" :value="actual" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['batch.expiry']" :value="batch.expiry_date" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['batch.lot']" :value="lot_number" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['batch.lot_status']" :value="lot_status" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['batch.lot_left']" :value="lot_left" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['batch.hold_reason']" rx-if="batch.hold_reason" :value="batch.hold_reason" span="full"/>
+        <rx-entry :label="tx['batch.discard_reason']" rx-if="batch.discard_reason" :value="batch.discard_reason" span="full"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['batch.inputs']">
+      <rx-table :rows="inputs" as="input" :key="input.lot ~ input.item" :caption="tx['batch.inputs']">
+        <rx-column :label="tx['batch.ingredient']">{{ input.item }}</rx-column>
+        <rx-column :label="tx['batch.lot']">{{ input.lot }}</rx-column>
+        <rx-column :label="tx['batch.quantity']" align="num">{{ input.quantity }}</rx-column>
+        <rx-column :label="tx['batch.expiry']" hide-narrow>{{ input.expiry }}</rx-column>
+        <rx-column :label="tx['state']"><rx-badge :kind="input.status_kind" :text="input.status"/></rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['batch.no_inputs']" :message="tx['batch.no_inputs_text']" icon="package"/></rx-slot>
+      </rx-table>
+    </rx-card>
+    <rx-card rx-if="wastage" :title="tx['batch.wastage']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['batch.quantity']" :value="wastage.quantity"/>
+        <rx-entry :label="tx['batch.value']" :value="wastage.value" format="money"/>
+        <rx-entry :label="tx['reason']" :value="wastage.reason" span="full"/>
+        <rx-entry :label="tx['batch.posted_by']" :value="wastage.posted_by"/>
+      </rx-infolist>
+    </rx-card>
+  </rx-stack>
+</rx-page>

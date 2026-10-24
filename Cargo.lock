@@ -751,6 +751,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "fnb"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-delivery",
+ "wl-inventory",
+ "wl-kernel",
+ "wl-parties",
+ "wl-payments",
+ "wl-sales",
+ "wl-ticketing",
+]
+
+[[package]]
 name = "foldhash"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -983,6 +999,7 @@ dependencies = [
  "clinics",
  "construction",
  "edtech",
+ "fnb",
  "http-body-util",
  "logistics",
  "manpower",
@@ -990,6 +1007,7 @@ dependencies = [
  "renox",
  "serde",
  "sha2 0.11.1",
+ "tempfile",
  "tower",
  "wl-attendance",
  "wl-delivery",

@@ -51,6 +51,7 @@
     <rx-card :title="tx['cash.sections.details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['cash.holder']" :value="holder_name"/>
+        <rx-entry :label="tx['cash.responsible']" rx-if="responsible_name" :value="responsible_name"/>
         <rx-entry :label="tx['cash.period']" :value="period"/>
         <rx-entry :label="tx['cash.kind']" :value="kind_label"/>
         <rx-entry :label="tx['cash.source']" rx-if="source_label" :value="source_label"/>

@@ -336,6 +336,8 @@ pub(crate) struct ReceiptPage {
     location: String,
     delivery_note: String,
     lines: Vec<LineView>,
+    /// The warning that a unit the lines go to is on hold (empty when none).
+    warning: String,
     can_edit: bool,
     can_post: bool,
     can_reverse: bool,
@@ -368,9 +370,19 @@ async fn receipt(
         None => Vec::new(),
     };
     let mut lines = Vec::new();
+    let mut item_ids = Vec::new();
     for line in receipt_lines(&state.db, receipt.id).await? {
+        item_ids.push(line.item_id);
         lines.push(line_view(&state, &lang, &line, &order_lines).await?);
     }
+    // A receipt into a unit on temperature hold says so, as a transfer does.
+    let warning = if receipt.status == GoodsReceiptStatus::Draft {
+        crate::hold_service::warnings_for(&state.db, receipt.location_id, &item_ids)
+            .await?
+            .join(" ")
+    } else {
+        String::new()
+    };
     let pending = approvals::pending_for(&state.db, &receipt.subject()).await?;
     let mut cards = Vec::new();
     for request in &pending {
@@ -396,6 +408,7 @@ async fn receipt(
         location: location_name(&location),
         delivery_note: receipt.delivery_note.clone().unwrap_or_default(),
         lines,
+        warning,
         can_edit: draft && poster && pending.is_empty(),
         can_post: draft && poster && pending.is_empty(),
         can_reverse: receipt.status == GoodsReceiptStatus::Posted && reverser,

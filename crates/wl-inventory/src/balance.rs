@@ -135,7 +135,7 @@ pub async fn lot_locations<'c>(db: impl Executor<'c>, lot_id: i64) -> Result<Vec
     Ok(places.into_iter().filter(|(_, qty)| *qty > 0).collect())
 }
 
-/// What draft returns to supplier set aside of `item_id` at `location_id`
+/// What draft returns to supplier and picked dispatches set aside of `item_id` at `location_id`
 /// (of `lot_id` when given), in thousandths, and, when no lot is named, what
 /// sales orders set aside.
 ///
@@ -163,6 +163,25 @@ pub async fn reserved_at<'c>(
         reserved += lines
             .iter()
             .filter(|line| line.origin == ReturnOrigin::FromStock && line.item_id == item_id)
+            .filter(|line| lot_id.is_none() || line.lot_id == lot_id)
+            .map(|line| line.quantity_milli)
+            .sum::<i64>();
+    }
+    // A picked dispatch keeps its goods reserved until it is dispatched or
+    // cancelled (wl-inventory §4 *Dispatch* `pick`).
+    let picked = crate::dispatch::Dispatch::query()
+        .where_(crate::dispatch::Dispatch::STATUS.eq(crate::dispatch::DispatchStatus::Picked))
+        .where_(crate::dispatch::Dispatch::LOCATION_ID.eq(location_id))
+        .get(conn.reborrow())
+        .await?;
+    for dispatch in picked {
+        let lines = crate::dispatch::DispatchLine::query()
+            .where_(crate::dispatch::DispatchLine::DISPATCH_ID.eq(dispatch.id))
+            .where_(crate::dispatch::DispatchLine::ITEM_ID.eq(item_id))
+            .get(conn.reborrow())
+            .await?;
+        reserved += lines
+            .iter()
             .filter(|line| lot_id.is_none() || line.lot_id == lot_id)
             .map(|line| line.quantity_milli)
             .sum::<i64>();

@@ -67,6 +67,19 @@ pub struct SaleLine {
     /// The quantity of the open part that could not be reserved and waits
     /// for stock, in thousandths.
     pub backordered_milli: i64,
+    /// The added quantity that waits for its payment link to be paid, in
+    /// thousandths: reserved but not handed over (BL-SAL-06).
+    pub held_milli: i64,
+    /// What happens to the started goods of the cancelled quantity:
+    /// `return_to_stock`, `finish_to_stock` or `scrap` (BL-SAL-07 to
+    /// BL-SAL-09); `None` when the line was not started.
+    pub cancel_outcome: Option<String>,
+    /// The cancellation fee on the line, in fils (0 when none or waived).
+    pub cancel_fee: i64,
+    /// Whether the manager waived the fee.
+    pub fee_waived: bool,
+    /// Why the quantity was cancelled.
+    pub cancel_reason: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -253,6 +266,35 @@ impl SaleLine {
     /// cancelled.
     pub fn open_milli(&self) -> i64 {
         self.quantity_milli - self.fulfilled_milli - self.cancelled_milli
+    }
+
+    /// The open quantity that may be handed over now: open, less what waits
+    /// for the payment link of an increase (BL-SAL-06).
+    pub fn fulfillable_milli(&self) -> i64 {
+        (self.open_milli() - self.held_milli).max(0)
+    }
+
+    /// The prepaid share of `quantity_milli` of the line: the line with VAT
+    /// times the quantity over the line's quantity, rounded half up, in fils
+    /// (BL-SAL-08).
+    pub fn share_of(&self, quantity_milli: i64) -> i64 {
+        ratio_half_up(self.gross(), quantity_milli, self.quantity_milli)
+    }
+
+    /// The line as the invoice carries it once the order is complete: the
+    /// quantity not cancelled, with the discount in proportion; `None` when
+    /// nothing is left.
+    pub fn billable_draft_line(&self) -> Option<DraftLine> {
+        let kept = self.quantity_milli - self.cancelled_milli;
+        if kept <= 0 {
+            return None;
+        }
+        let discount = ratio_half_up(self.discount, kept, self.quantity_milli);
+        Some(
+            DraftLine::new(&self.description, self.unit_price, self.vat_category)
+                .quantity_milli(kept)
+                .discount(discount),
+        )
     }
 }
 

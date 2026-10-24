@@ -704,6 +704,17 @@ pub async fn open(state: &AppState, user: &AuthUser, new: NewRecall) -> Result<R
     if !user.has_permission(permissions::RECALLS_MANAGE) {
         return Err(Error::Forbidden);
     }
+    open_for(state, Some(user.id), new).await
+}
+
+/// Opens `new` for the user `by` (`None`: the system, the way a seed or an
+/// automation opens one). The caller has checked who may.
+///
+/// # Errors
+///
+/// 422 without a reason, with an empty scope or an entry with no number, or
+/// when the scope matches no lot; a database error.
+pub async fn open_for(state: &AppState, by: Option<i64>, new: NewRecall) -> Result<Recall> {
     let reason = new.reason.trim().to_owned();
     if reason.is_empty() {
         return Err(refused(said("wl_inventory.recall.no_reason", &[])));
@@ -765,7 +776,7 @@ pub async fn open(state: &AppState, user: &AuthUser, new: NewRecall) -> Result<R
         reason: reason.clone(),
         supplier_party_id: new.supplier_party_id,
         status: RecallStatus::Open,
-        opened_by: Some(user.id),
+        opened_by: by,
         opened_at: Some(renox::db::now()),
         ..Recall::default()
     };
@@ -805,7 +816,7 @@ pub async fn open(state: &AppState, user: &AuthUser, new: NewRecall) -> Result<R
                 lots: lot_ids.iter().copied().collect(),
                 items: whole_items.iter().copied().collect(),
             },
-            by: Some(user.id),
+            by,
         },
         true,
     )

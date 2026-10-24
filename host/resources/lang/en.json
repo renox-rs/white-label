@@ -8,6 +8,7 @@
     "activity": "Activity",
     "menu": "Menu",
     "legal_entities": "Legal entities",
+    "integrations": "Integrations",
     "parties": "Parties",
     "invoices": "Invoices",
     "credit_notes": "Credit notes",
@@ -33,6 +34,7 @@
     "bank_statements": "Bank statements",
     "campaigns": "Campaigns",
     "counter_sales": "Counter sales",
+    "till_sessions": "Till sessions",
     "sales_orders": "Sales orders",
     "sales_returns": "Sales returns",
     "loyalty": "Loyalty",
@@ -46,6 +48,7 @@
     "stock_holds": "Stock holds",
     "pending_issues": "Pending issues",
     "recalls": "Recalls",
+    "dispatches": "Dispatches",
     "my_leave": "My leave",
     "leave_queue": "Leave to decide",
     "projects": "Projects",
@@ -120,7 +123,18 @@
     "log_in": "Log in",
     "log_out": "Log out",
     "sections": "Sections",
-    "export_sales": "Export sales"
+    "export_sales": "Export sales",
+    "orders": "Orders",
+    "kitchen": "Kitchen",
+    "cod_customers": "Customers without cash on delivery",
+    "payouts": "Payout statements",
+    "refunds_report": "Refunds after completion",
+    "failed_report": "Failed deliveries",
+    "rider_faults": "Rider faults",
+    "batches": "Production batches",
+    "cold_units": "Fridges and freezers",
+    "outlet_channels": "Outlet channels",
+    "closings": "Daily closings"
   },
   "patterns": {
     "art": {

@@ -197,6 +197,16 @@ pub struct DeliveryRequest {
     /// it per record (03: a shipment of several parcels may be, a single
     /// parcel may not); `None` takes the setting of the source type.
     pub partial_acceptance: Option<bool>,
+    /// When the source was placed (06: the order's placed time); the start
+    /// of the perishable hand-over window (BL-DLV-10). `None` takes the time
+    /// the delivery is requested.
+    #[serde(default)]
+    pub placed_at: Option<DateTime>,
+    /// The source's delivery promise in minutes (06: the brand's promise):
+    /// the length of the perishable hand-over window (BL-DLV-10). `None`
+    /// takes the module's setting for the source type.
+    #[serde(default)]
+    pub promise_minutes: Option<i64>,
 }
 
 impl DeliveryRequest {
@@ -218,7 +228,17 @@ impl DeliveryRequest {
             pod_methods: Vec::new(),
             perishable: false,
             partial_acceptance: None,
+            placed_at: None,
+            promise_minutes: None,
         }
+    }
+
+    /// The source was placed at `placed_at` and promises delivery within
+    /// `minutes` (the perishable hand-over window, BL-DLV-10).
+    pub fn promise(mut self, placed_at: DateTime, minutes: i64) -> Self {
+        self.placed_at = Some(placed_at);
+        self.promise_minutes = Some(minutes);
+        self
     }
 
     /// Adds an item.
@@ -672,6 +692,125 @@ pub struct DeliveryAttemptFailed {
 }
 
 impl Event for DeliveryAttemptFailed {}
+
+/// A failed delivery was brought back to the origin (`return`, `WRK.RUL.08`
+/// after the last attempt, `WRK.RUL.16` with the policy *return*).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeliveryReturned {
+    /// The delivery.
+    pub delivery: DeliveryId,
+    /// The record the delivery was requested for.
+    pub source: Subject,
+    /// Why: the last failure reason's code.
+    pub reason: String,
+}
+
+impl Event for DeliveryReturned {}
+
+/// Perishable goods were destroyed after a failed attempt (`discard`,
+/// `WRK.RUL.16`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeliveryDiscarded {
+    /// The delivery.
+    pub delivery: DeliveryId,
+    /// The record the delivery was requested for.
+    pub source: Subject,
+    /// The reason the driver gave.
+    pub reason: String,
+    /// The photo of the discarded goods.
+    pub photo: Option<String>,
+    /// The wastage record the inventory made, when it made one (a source
+    /// whose own module records it, such as a dispatch note, leaves none).
+    pub wastage: Option<Subject>,
+    /// The value of the wastage, in fils; 0 when none was recorded.
+    pub value: i64,
+    /// The source line references of the delivery's lines.
+    #[serde(default)]
+    pub lines: Vec<Subject>,
+}
+
+impl Event for DeliveryDiscarded {}
+
+/// One line of a discarded delivery.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiscardLine {
+    /// The source line the delivery line was copied from.
+    pub source_line: Option<Subject>,
+    /// What it is.
+    pub description: String,
+    /// The quantity, in thousandths.
+    pub quantity_milli: i64,
+}
+
+/// The goods of a delivery that are discarded, for the wastage record
+/// (wl-inventory §5.2 step 3, `STK.ACL.02`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiscardWastage {
+    /// The delivery.
+    pub delivery: DeliveryId,
+    /// The record the delivery was requested for: the wastage's reference.
+    pub source: Subject,
+    /// Why they are discarded.
+    pub reason: String,
+    /// The photo of the discarded goods.
+    pub photo: Option<String>,
+    /// The lines.
+    pub lines: Vec<DiscardLine>,
+}
+
+/// The wastage the inventory recorded for a discard.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WastageRecorded {
+    /// The wastage record (a stock movement).
+    pub reference: Option<Subject>,
+    /// Its value, in fils.
+    pub value: i64,
+}
+
+/// How a discarded delivery's goods reach the stock books. `wl-inventory`
+/// provides it for the sources whose lines have a recipe; the default records
+/// nothing (a dispatch note's own `discard` does it, BL-STK-23).
+pub trait DeliveryWastage: Send + Sync + 'static {
+    /// What the goods are worth at cost, in fils, for the approval limit
+    /// (`STK.ACL.02`); 0 when unknown.
+    fn estimate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: &'a DiscardWastage,
+    ) -> DeliveryFuture<'a, i64> {
+        Box::pin(async { Ok(0) })
+    }
+
+    /// Records the wastage with the source as reference.
+    fn record<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: &'a DiscardWastage,
+    ) -> DeliveryFuture<'a, Option<WastageRecorded>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The wastage service when nothing provides one: nothing is recorded.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoDeliveryWastage;
+
+impl DeliveryWastage for NoDeliveryWastage {}
+
+/// Makes `wastage` the app's [`DeliveryWastage`]; `wl-inventory` calls it in
+/// `register`.
+pub fn provide_delivery_wastage(app: &mut Registry, wastage: impl DeliveryWastage) {
+    let wastage: Arc<dyn DeliveryWastage> = Arc::new(wastage);
+    app.provide(wastage);
+}
+
+/// The app's [`DeliveryWastage`], or [`NoDeliveryWastage`].
+pub fn delivery_wastage(state: &AppState) -> Arc<dyn DeliveryWastage> {
+    match state.provided::<Arc<dyn DeliveryWastage>>() {
+        Some(wastage) => Arc::clone(&wastage),
+        None => Arc::new(NoDeliveryWastage),
+    }
+}
 
 /// A run left the depot (`dispatch`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -12,6 +12,7 @@
 //! | `count_short` | open | short | counted less |
 //! | `recount` | short | counted | the recount reaches the expected amount |
 //! | `recount_short` | short | short | the recount is still short (the difference is updated) |
+//! | `count_till`, `count_till_short` | open | counted, short | by the system from `TillSessionClosed` ([`crate::cash_till`]): the session's own close and review counted it |
 //!
 //! [`count`] and [`recount`] choose the transition by the amounts. A recount
 //! records whether the holder was present or notified, or that the count was
@@ -47,6 +48,11 @@ pub const COUNT_SHORT: &str = "count_short";
 pub const RECOUNT: &str = "recount";
 /// `recount` that is still short: short → short.
 pub const RECOUNT_SHORT: &str = "recount_short";
+
+/// `count` of a till session by the system: open → counted (BL-PAY-19).
+pub const COUNT_TILL: &str = "count_till";
+/// `count` of a till session by the system, short: open → short.
+pub const COUNT_TILL_SHORT: &str = "count_till_short";
 
 /// What a count carries to its guards and effect.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -130,6 +136,18 @@ fn counting(
     from: HandoverStatus,
     to: HandoverStatus,
 ) -> Transition<CashHandover> {
+    counting_by(name, label, from, to, false)
+}
+
+/// One of the count transitions; `system` makes it the system's (a till
+/// session counted by its own close, `count_till*`).
+fn counting_by(
+    name: &'static str,
+    label: &'static str,
+    from: HandoverStatus,
+    to: HandoverStatus,
+    system: bool,
+) -> Transition<CashHandover> {
     let recount = from == HandoverStatus::Short;
     let short = to == HandoverStatus::Short;
     let kind = if recount {
@@ -137,11 +155,13 @@ fn counting(
     } else {
         CountKind::Count
     };
-    Transition::new(name)
-        .label(label)
-        .from([from])
-        .to(to)
-        .permission(permissions::CASH_COUNT)
+    let transition = Transition::new(name).label(label).from([from]).to(to);
+    let transition = if system {
+        transition.system()
+    } else {
+        transition.permission(permissions::CASH_COUNT)
+    };
+    transition
         .guard("counter_and_amount", move |handover: &CashHandover, ctx| {
             let problem = count_problem(
                 handover,
@@ -173,7 +193,7 @@ fn counting(
                 };
                 row.insert(&mut *tx).await?;
                 let now = Some(renox::db::now());
-                let by = Some(actor);
+                let by = if system { None } else { Some(actor) };
                 let query = CashHandover::query().where_(CashHandover::ID.eq(id));
                 if recount {
                     query
@@ -232,6 +252,14 @@ pub(crate) fn transitions() -> Vec<Transition<CashHandover>> {
         counting(COUNT_SHORT, "Count (short)", Open, Short),
         counting(RECOUNT, "Recount", Short, Counted),
         counting(RECOUNT_SHORT, "Recount (still short)", Short, Short),
+        counting_by(COUNT_TILL, "Count (till session)", Open, Counted, true),
+        counting_by(
+            COUNT_TILL_SHORT,
+            "Count (till session, short)",
+            Open,
+            Short,
+            true,
+        ),
     ]
 }
 
@@ -394,7 +422,16 @@ async fn reload(
 /// emits `CashHandoverCounted` and, when the handover is `short`,
 /// `CashShortage` and the notice to the holder and the manager.
 async fn after_count(state: &AppState, event: &Transitioned<CashHandover>) -> Result {
-    if ![COUNT, COUNT_SHORT, RECOUNT, RECOUNT_SHORT].contains(&event.transition.as_str()) {
+    if ![
+        COUNT,
+        COUNT_SHORT,
+        RECOUNT,
+        RECOUNT_SHORT,
+        COUNT_TILL,
+        COUNT_TILL_SHORT,
+    ]
+    .contains(&event.transition.as_str())
+    {
         return Ok(());
     }
     let handover = CashHandover::find_or_404(&state.db, event.key).await?;
@@ -430,7 +467,8 @@ pub(crate) fn shortage_event(handover: &CashHandover) -> CashShortage {
         responsible_user: handover.responsible_user_id,
         period_kind: handover.period_kind,
         period: handover.period_subject(),
-        till_session: None,
+        till_session: handover.holder_till.as_ref().and(handover.period_subject()),
+        holder_till: handover.holder_till.clone(),
         difference: handover.difference,
         missing_cheques: Vec::new(),
         source: handover.source(),

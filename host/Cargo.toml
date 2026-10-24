@@ -20,6 +20,7 @@ clinics = { path = "../apps/clinics" }
 edtech = { path = "../apps/edtech" }
 auto = { path = "../apps/auto" }
 logistics = { path = "../apps/logistics" }
+fnb = { path = "../apps/fnb" }
 wl-parties = { path = "../crates/wl-parties" }
 wl-documents = { path = "../crates/wl-documents" }
 wl-notify = { path = "../crates/wl-notify" }
@@ -33,3 +34,7 @@ wl-attendance = { path = "../crates/wl-attendance" }
 wl-inventory = { path = "../crates/wl-inventory" }
 wl-portal = { path = "../crates/wl-portal" }
 wl-scheduling = { path = "../crates/wl-scheduling" }
+
+[dev-dependencies]
+# The F&B test world (apps/fnb/tests/support) runs the 06 settings of the host.
+tempfile = "3"
