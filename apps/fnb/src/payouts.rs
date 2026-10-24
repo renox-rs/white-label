@@ -291,6 +291,7 @@ pub async fn import_as(
         )
         .await?;
     }
+    wl_kernel::search::index_in(&mut tx, &statement.subject()).await?;
     tx.commit().await?;
     unmatched_task(state, statement.id).await?;
     PayoutStatement::find_or_404(&state.db, statement.id).await

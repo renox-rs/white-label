@@ -160,6 +160,7 @@ pub async fn plan(state: &AppState, user: &AuthUser, ask: &PlanAsk) -> Result<Pr
     batch
         .insert_in_state(&mut tx, BatchStatus::Planned, &history)
         .await?;
+    wl_kernel::search::index_in(&mut tx, &batch.subject()).await?;
     tx.commit().await?;
     ProductionBatch::find_or_404(&state.db, batch.id).await
 }
@@ -175,10 +176,13 @@ pub async fn cancel(state: &AppState, user: &AuthUser, id: i64) -> Result {
     if batch.status != BatchStatus::Planned {
         return Err(refused(english("fnb.batch.problem.not_planned", &[])));
     }
+    let mut tx = state.db.begin().await?;
     ProductionBatch::query()
         .where_(ProductionBatch::ID.eq(id))
-        .delete(&state.db)
+        .delete(&mut tx)
         .await?;
+    wl_kernel::search::remove_in(&mut tx, &batch.subject()).await?;
+    tx.commit().await?;
     Ok(())
 }
 

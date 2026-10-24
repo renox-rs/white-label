@@ -188,5 +188,6 @@
       <rx-column :label="tx['state']">{{ row.to }}</rx-column>
       <rx-column :label="tx['reason']" hide-narrow>{{ row.reason }}</rx-column>
     </rx-table>
+    <div id="related-panel" hx-get="/related/fnb.order:{{ order.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

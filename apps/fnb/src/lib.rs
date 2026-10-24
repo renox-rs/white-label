@@ -53,6 +53,7 @@ pub mod reports;
 pub mod reversal;
 pub mod rounds;
 mod screen_texts;
+pub mod search;
 pub mod seed;
 pub mod settings;
 mod texts;
@@ -273,6 +274,9 @@ impl Module for Fnb {
     }
 
     fn register(&self, app: &mut Registry) {
+        // The records in the global search and the Related panel (BL-AGT-13).
+        search::register();
+        search::listen(app);
         // A page that names an order (a delivery's source, a ticket's subject)
         // says its number.
         wl_kernel::documents::register_subject_label(order::SUBJECT_TYPE, |db, id| {

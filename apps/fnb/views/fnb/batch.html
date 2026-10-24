@@ -63,5 +63,6 @@
         <rx-entry :label="tx['batch.posted_by']" :value="wastage.posted_by"/>
       </rx-infolist>
     </rx-card>
+    <div id="related-panel" hx-get="/related/fnb.batch:{{ batch.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

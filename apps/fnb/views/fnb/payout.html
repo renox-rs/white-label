@@ -104,5 +104,6 @@
         <rx-slot name="empty"><rx-empty :title="tx['payout.no_lines']" icon="file-spreadsheet"/></rx-slot>
       </rx-table>
     </rx-card>
+    <div id="related-panel" hx-get="/related/fnb.payout_statement:{{ statement.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

@@ -132,6 +132,7 @@ pub async fn open(
     order
         .insert_in_state(&mut tx, status, &english("fnb.placing.created", &[]))
         .await?;
+    wl_kernel::search::index_in(&mut tx, &order.subject()).await?;
     tx.commit().await?;
     Ok(Some(order))
 }
