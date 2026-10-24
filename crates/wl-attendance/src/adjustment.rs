@@ -212,6 +212,8 @@ pub(crate) async fn create_in(
         },
     )
     .await?;
+    // Found from now on (BL-AGT-11).
+    crate::search::index_timesheet_in(tx, adjustment.id).await?;
     for new in &input.entries {
         let mut row = TimesheetEntry {
             timesheet_id: adjustment.id,

@@ -30,6 +30,7 @@ pub mod proposal;
 pub mod reconcile;
 pub mod record;
 pub mod review;
+pub mod search;
 pub mod service;
 pub mod submit;
 mod texts;
@@ -200,6 +201,9 @@ impl Module for WlAttendance {
     }
 
     fn register(&self, app: &mut Registry) {
+        // Timesheets and work locations in the search index and the Related
+        // panel (BL-AGT-11).
+        search::register();
         app.view_data::<crew::CrewPage>()
             .view_data::<crew::CrewForm>()
             .view_data::<timesheet_pages::ListPage>()

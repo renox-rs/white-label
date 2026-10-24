@@ -108,5 +108,6 @@
         </rx-table>
       </rx-tab>
     </rx-tabs>
+    <div id="timesheet-related" hx-get="/related/attendance.timesheet:{{ id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

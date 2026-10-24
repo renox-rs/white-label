@@ -361,7 +361,7 @@ impl StateMachine for Timesheet {
             .state(Locked)
             .tone("success")
             .terminal()
-            .transition(
+            .transition(crate::search::reindex_timesheet(
                 Transition::new(LOCK)
                     .label("Lock")
                     .system()
@@ -401,8 +401,8 @@ impl StateMachine for Timesheet {
                             Ok(())
                         })
                     }),
-            )
-            .transition(
+            ))
+            .transition(crate::search::reindex_timesheet(
                 Transition::new(REOPEN)
                     .label("Reopen")
                     .permission(crate::permissions::TIMESHEETS_REOPEN)
@@ -422,10 +422,12 @@ impl StateMachine for Timesheet {
                             }
                         })
                     }),
-            );
+            ));
         crate::submit::transitions()
             .into_iter()
             .chain(crate::approval::transitions())
+            // Each transition writes the timesheet's search document (BL-AGT-11).
+            .map(crate::search::reindex_timesheet)
             .fold(machine, Machine::transition)
     }
 }
