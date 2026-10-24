@@ -249,3 +249,8 @@ a.app-card:hover .app-card__icon { transform: scale(1.06); }
   .app-card, .app-card__icon { transition: none; }
   a.app-card:hover, a.app-card:hover .app-card__icon { transform: none; }
 }
+
+/* A page title with no spaces (a notification type key such as
+   documents.sop_ack_requested_in_person) wraps instead of widening the page. */
+.rx-page-header__text { min-width: 0; }
+.rx-page-header__text > * { overflow-wrap: anywhere; }
