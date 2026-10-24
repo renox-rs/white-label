@@ -186,7 +186,7 @@ pub(crate) async fn contracts(
     let clients = grid_lookup::party_options(
         state,
         &lang.locale,
-        visible.iter().map(|contract| contract.client_party_id),
+        visible.iter().map(|contract| contract.client_party_id).collect::<Vec<i64>>(),
     )
     .await;
     let term = grid_lookup::searched(&request, session, "manpower-contracts");
@@ -518,7 +518,7 @@ async fn deployment_lookups(
         filters.clients = grid_lookup::party_options(
             state,
             &lang.locale,
-            shown.iter().map(|deployment| deployment.client_party_id),
+            shown.iter().map(|deployment| deployment.client_party_id).collect::<Vec<i64>>(),
         )
         .await;
         let mut request_ids: Vec<i64> = shown.iter().filter_map(|d| d.request_id).collect();
