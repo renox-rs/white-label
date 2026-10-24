@@ -20,7 +20,9 @@
 //!
 //! The buttons post to the routes of [`crate::recall_pages`].
 
+use renox::grid::{Column, Grid, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::Serialize;
 use wl_kernel::Subject;
 use wl_kernel::documents::dubai_text;
@@ -35,7 +37,9 @@ use crate::recall_line::{LineKind, NoticeStatus, RecallLine, lines_of};
 use crate::recall_notice::TEMPLATES;
 use crate::recall_trace::holds_of;
 use crate::stock_hold::{HoldLineStatus, HoldStatus, lines_of as hold_lines};
-use crate::stock_screens::{Texts, amount, item_name, label, location_name, tr, tx, word};
+use crate::stock_screens::{
+    Texts, amount, exported, item_name, label, location_name, options, tr, tx, word,
+};
 
 /// The templates, compiled in.
 pub(crate) const VIEWS: &[(&str, &str)] = &[
@@ -74,28 +78,12 @@ fn status_kind(status: RecallStatus) -> &'static str {
     }
 }
 
-/// One recall in the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct RecallRow {
-    id: i64,
-    number: String,
-    source: String,
-    reason: String,
-    lots: String,
-    status: String,
-    status_kind: &'static str,
-    opened: String,
-    affected: i64,
-    told: i64,
-    to_tell: i64,
-}
-
 /// What the list needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-inventory/recalls.html")]
 pub(crate) struct RecallsPage {
     tx: Texts,
-    rows: Vec<RecallRow>,
+    rows: renox::grid::GridPage<Recall>,
 }
 
 async fn lot_numbers(state: &AppState, recall: i64) -> Result<Vec<Lot>> {
@@ -108,48 +96,102 @@ async fn lot_numbers(state: &AppState, recall: i64) -> Result<Vec<Lot>> {
     Ok(lots)
 }
 
+/// The recalls grid: search on the number and the reason, filters by source
+/// and status. How many lines were told of how many affected comes from the
+/// recall's lines; the lots are listed by the template (`custom`).
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let lines = "SELECT COUNT(*) FROM \"wl_inventory_recall_lines\" WHERE \"recall_id\" = {T}.\"id\"";
+    let grid = Grid::new("inventory-recalls")
+        .title(&tr(lang, "recalls.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &tr(lang, "recalls.number"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/recalls/{id}"),
+        )
+        .column(
+            Column::text("reason", &tr(lang, "recalls.reason"))
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::select(
+            "source",
+            &tr(lang, "recalls.source"),
+            options(
+                lang,
+                "recall_source",
+                &["supplier", "authority", "internal", "complaint"],
+            ),
+        ))
+        .column(Column::custom("lots", &tr(lang, "recalls.lots")))
+        .column(
+            Column::select(
+                "status",
+                &tr(lang, "fields.status"),
+                options(lang, "recall", &["open", "traced", "closed"]),
+            )
+            .badges(&[("open", "error"), ("traced", "warning"), ("closed", "success")])
+            .mobile(),
+        )
+        .column(Column::datetime("opened_at", &tr(lang, "recalls.opened")))
+        .column(
+            Column::number("affected", &tr(lang, "recalls.affected_lines"))
+                .computed(&format!("({lines})"))
+                .hidden(),
+        )
+        .column(
+            Column::number("told", &tr(lang, "recalls.told_lines"))
+                .computed(&format!(
+                    "({lines} AND \"notice_status\" IN ('sent', 'waived'))"
+                ))
+                .hidden(),
+        )
+        .column(Column::custom("progress", &tr(lang, "recalls.affected")).mobile())
+        .sort_by("-id")
+        .row_url("/recalls/{id}")
+        .cards_on_mobile()
+        .empty_state(&tr(lang, "recalls.empty"), Some(&tr(lang, "recalls.empty_hint")));
+    if can_export { grid.exports() } else { grid }
+}
+
 /// `GET /recalls`: the recalls, newest first, with how far each is.
-async fn recalls(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn recalls(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if !may_see(&user) {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
-    for recall in Recall::query()
-        .order_by_desc(Recall::ID)
-        .limit(100)
-        .get(&state.db)
-        .await?
-    {
-        let lines = lines_of(&state.db, recall.id).await?;
-        let count = |status: NoticeStatus| {
-            lines
-                .iter()
-                .filter(|line| line.notice_status == status)
-                .count() as i64
-        };
-        rows.push(RecallRow {
-            id: recall.id,
-            number: recall.number.clone().unwrap_or_default(),
-            source: word(&lang, "recall_source", recall.source.as_str()),
-            reason: recall.reason.clone(),
-            lots: lot_numbers(&state, recall.id)
-                .await?
-                .iter()
-                .map(|lot| lot.number.clone())
-                .collect::<Vec<_>>()
-                .join(", "),
-            status: word(&lang, "recall", recall.status.as_str()),
-            status_kind: status_kind(recall.status),
-            opened: recall.opened_at.map(dubai_text).unwrap_or_default(),
-            affected: lines.len() as i64,
-            told: count(NoticeStatus::Sent) + count(NoticeStatus::Waived),
-            to_tell: count(NoticeStatus::Pending),
-        });
+    let can_export = user.allows(permissions::RECALLS_MANAGE)
+        || user.has_permission_anywhere(permissions::RECALLS_MANAGE);
+    let grid = grid(&lang, can_export);
+    let query = Recall::query();
+    if let Some(file) = exported(&grid, &query, &request, can_export).await? {
+        return Ok(file);
     }
+    let page = grid.page(query, &request).await?;
+    let mut extra = std::collections::HashMap::new();
+    for recall in page.items() {
+        let lots = lot_numbers(&state, recall.id)
+            .await?
+            .iter()
+            .map(|lot| lot.number.clone())
+            .collect::<Vec<_>>()
+            .join(", ");
+        extra.insert(recall.id, json!({ "lots": lots }));
+    }
+    let page = page.extend(|recall| extra.get(&recall.id).cloned().unwrap_or_else(|| json!({})));
     Ok(View::typed(RecallsPage {
         tx: tx(&lang),
-        rows,
-    }))
+        rows: page,
+    })
+    .into_response())
 }
 
 /// One lot of the recall.

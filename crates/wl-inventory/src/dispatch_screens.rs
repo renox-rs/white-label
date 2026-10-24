@@ -14,16 +14,16 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::state_machine::TransitionError;
 use serde::{Deserialize, Serialize};
-use wl_kernel::documents::dubai_text;
 
 use crate::dispatch::{DISPATCH_SUBJECT_TYPE, Dispatch, DispatchStatus, cancel, lines_of, pick};
 use crate::item::Item;
-use crate::location::Location;
 use crate::permissions;
-use crate::stock_screens::{amount, item_name, label, location_name};
+use crate::stock_screens::{amount, exported, item_name, label};
 use crate::texts::t;
 
 /// The templates, compiled in.
@@ -46,6 +46,13 @@ pub(crate) const DISPATCH_TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.dispatch.status", "Status"),
     ("wl_inventory.dispatch.note", "Note"),
     ("wl_inventory.dispatch.empty", "No dispatch yet"),
+    (
+        "wl_inventory.dispatch.empty_hint",
+        "A dispatch appears when goods are picked for a sales order.",
+    ),
+    ("wl_inventory.dispatch.source_type", "Source type"),
+    ("wl_inventory.dispatch.when", "Created"),
+    ("wl_inventory.dispatch.actions", "Actions"),
     ("wl_inventory.dispatch.pick", "Pick"),
     (
         "wl_inventory.dispatch.pick_description",
@@ -120,18 +127,6 @@ fn tr(lang: &Lang, key: &str) -> String {
     t(lang, &format!("{PREFIX}{key}"))
 }
 
-fn status_kind(status: DispatchStatus) -> &'static str {
-    match status {
-        DispatchStatus::Draft => "info",
-        DispatchStatus::Picked | DispatchStatus::Dispatched => "warning",
-        DispatchStatus::Delivered => "success",
-        DispatchStatus::Returned
-        | DispatchStatus::Discarded
-        | DispatchStatus::Lost
-        | DispatchStatus::Cancelled => "error",
-    }
-}
-
 /// The routes of the dispatch screen.
 pub fn routes() -> Routes {
     Routes::new()
@@ -144,47 +139,109 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
-/// One dispatch.
-#[derive(Serialize, Debug, Clone)]
-pub struct DispatchRow {
-    id: i64,
-    number: String,
-    source: String,
-    location: String,
-    lines: String,
-    status: String,
-    status_kind: &'static str,
-    note: String,
-    can_pick: bool,
-    can_cancel: bool,
-    /// Why the buttons are off, as text on the page.
-    disabled_reason: String,
-    when: String,
-}
-
 /// What the dispatches page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-inventory/dispatches.html")]
 pub(crate) struct DispatchesPage {
     tx: Texts,
-    rows: Vec<DispatchRow>,
+    rows: renox::grid::GridPage<Dispatch>,
+    /// The dispatches the person may pick or cancel (a sheet each).
+    sheets: Vec<DispatchSheet>,
+}
+
+/// The sheets of the buttons of one dispatch.
+#[derive(Serialize, Debug, Clone)]
+pub struct DispatchSheet {
+    id: i64,
+    can_pick: bool,
+    can_cancel: bool,
+}
+
+/// The dispatches grid: search on the store, the source and the note, filters
+/// by status. The lines, the number and the buttons are drawn by the template
+/// (`custom`).
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let statuses: Vec<(String, String)> = [
+        "draft",
+        "picked",
+        "dispatched",
+        "delivered",
+        "returned",
+        "discarded",
+        "lost",
+        "cancelled",
+    ]
+    .iter()
+    .map(|status| ((*status).to_owned(), tr(lang, &format!("status_{status}"))))
+    .collect();
+    let grid = Grid::new("inventory-dispatches")
+        .title(&tr(lang, "title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(Column::custom("number", &tr(lang, "number")).frozen().mobile())
+        .column(Column::custom("source", &tr(lang, "source")).mobile())
+        .column(
+            Column::text("source_type", &tr(lang, "source_type"))
+                .hidden()
+                .searchable(),
+        )
+        .column(
+            Column::related(
+                "location",
+                &tr(lang, "location"),
+                "wl_inventory_locations",
+                "location_id",
+                "name_en",
+            )
+            .searchable(),
+        )
+        .column(Column::custom("lines", &tr(lang, "lines")))
+        .column(
+            Column::select("status", &tr(lang, "status"), statuses)
+                .badges(&[
+                    ("draft", "info"),
+                    ("picked", "warning"),
+                    ("dispatched", "warning"),
+                    ("delivered", "success"),
+                    ("returned", "error"),
+                    ("discarded", "error"),
+                    ("lost", "error"),
+                    ("cancelled", "error"),
+                ])
+                .mobile(),
+        )
+        .column(Column::text("cancel_reason", &tr(lang, "note")).searchable())
+        .column(Column::datetime("created_at", &tr(lang, "when")).hidden())
+        .column(Column::custom("actions", &tr(lang, "actions")))
+        .sort_by("-id")
+        .cards_on_mobile()
+        .empty_state(&tr(lang, "empty"), Some(&tr(lang, "empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// `GET /dispatches`.
-async fn dispatches(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn dispatches(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if !user.has_permission_anywhere(permissions::DISPATCH_MANAGE)
         && !user.has_permission_anywhere(permissions::STOCK_VIEW)
     {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
-    for dispatch in Dispatch::query()
-        .order_by_desc(Dispatch::ID)
-        .limit(100)
-        .get(&state.db)
-        .await?
-    {
-        let location = Location::find_or_404(&state.db, dispatch.location_id).await?;
+    let can_export = user.has_permission_anywhere(permissions::DISPATCH_MANAGE);
+    let grid = grid(&lang, can_export);
+    let query = Dispatch::query();
+    if let Some(file) = exported(&grid, &query, &request, can_export).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut extra = std::collections::HashMap::new();
+    let mut sheets = Vec::new();
+    for dispatch in page.items() {
         let mut lines = Vec::new();
         for line in lines_of(&state.db, dispatch.id).await? {
             let item = Item::find_or_404(&state.db, line.item_id).await?;
@@ -197,6 +254,7 @@ async fn dispatches(State(state): State<AppState>, user: AuthUser, lang: Lang) -
         let allowed = user.has_permission_in(permissions::DISPATCH_MANAGE, &dispatch.scope());
         let can_pick = allowed && dispatch.status == DispatchStatus::Draft;
         let can_cancel = allowed && dispatch.status.in_store();
+        // Why the buttons are off, as text.
         let disabled_reason = if !allowed {
             tr(&lang, "no_permission")
         } else if !dispatch.status.in_store() {
@@ -205,33 +263,40 @@ async fn dispatches(State(state): State<AppState>, user: AuthUser, lang: Lang) -
             String::new()
         };
         let source = label(&state, &dispatch.source()).await;
-        rows.push(DispatchRow {
-            id: dispatch.id,
-            number: dispatch.number(),
-            source: if source.is_empty() {
-                format!("{}:{}", dispatch.source_type, dispatch.source_id)
-            } else {
-                source
-            },
-            location: location_name(&location),
-            lines: if lines.is_empty() {
-                "-".to_owned()
-            } else {
-                lines.join(", ")
-            },
-            status: tr(&lang, &format!("status_{}", dispatch.status.as_str())),
-            status_kind: status_kind(dispatch.status),
-            note: dispatch.cancel_reason.clone().unwrap_or_default(),
-            can_pick,
-            can_cancel,
-            disabled_reason,
-            when: dispatch.created_at.map(dubai_text).unwrap_or_default(),
-        });
+        if can_pick || can_cancel {
+            sheets.push(DispatchSheet {
+                id: dispatch.id,
+                can_pick,
+                can_cancel,
+            });
+        }
+        extra.insert(
+            dispatch.id,
+            json!({
+                "number": dispatch.number(),
+                "source": if source.is_empty() {
+                    format!("{}:{}", dispatch.source_type, dispatch.source_id)
+                } else {
+                    source
+                },
+                "lines": if lines.is_empty() { "-".to_owned() } else { lines.join(", ") },
+                "cancel_reason": dispatch
+                    .cancel_reason
+                    .clone()
+                    .filter(|reason| !reason.is_empty())
+                    .unwrap_or(disabled_reason),
+                "can_pick": can_pick,
+                "can_cancel": can_cancel,
+            }),
+        );
     }
+    let page = page.extend(|dispatch| extra.get(&dispatch.id).cloned().unwrap_or_else(|| json!({})));
     Ok(View::typed(DispatchesPage {
         tx: tx(&lang),
-        rows,
-    }))
+        rows: page,
+        sheets,
+    })
+    .into_response())
 }
 
 fn refused(message: impl Into<String>) -> Error {

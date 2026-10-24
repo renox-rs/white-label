@@ -45,9 +45,13 @@ async fn the_stock_page_lists_the_items_and_lots_of_a_store() {
         .assert_ok()
         .assert_see("Jumeirah store")
         .assert_see("GLOVES")
-        .assert_see("40 kg")
+        .assert_see("40.000 kg");
+    // The lots are the other view of the same page.
+    t.browse(&viewer, "/stock?view=lots")
+        .await
+        .assert_ok()
         .assert_see("L-77")
-        .assert_see("12.5 box");
+        .assert_see("12.500 box");
     t.browse(&nobody, "/stock").await.assert_forbidden();
 }
 
@@ -116,7 +120,7 @@ async fn a_lot_is_held_from_its_page_and_released_from_the_holds_page() {
         .assert_see("HLD-")
         .assert_see("Quality")
         .assert_see("L-A2288")
-        .assert_dont_see("Discard");
+        .assert_dont_see("written off as wastage");
     t.browse(&releaser, "/stock/holds")
         .await
         .assert_see("Release")
@@ -129,7 +133,7 @@ async fn a_lot_is_held_from_its_page_and_released_from_the_holds_page() {
     t.browse(&releaser, "/stock/holds")
         .await
         .assert_see("Closed")
-        .assert_dont_see("Discard");
+        .assert_dont_see("written off as wastage");
 }
 
 /// A recall hold waits for a second person: the page shows the line as
@@ -162,7 +166,7 @@ async fn a_release_that_waits_for_approval_shows_its_card() {
         .await
         .assert_ok()
         .assert_see("Waiting for approval")
-        .assert_dont_see("Discard");
+        .assert_dont_see("written off as wastage");
 }
 
 /// The pending issues are a page for a browser and JSON for the rest; the
@@ -183,7 +187,7 @@ async fn pending_issues_are_a_page_and_are_cleared_with_a_reason() {
         .assert_ok()
         .assert_see("Pending issues")
         .assert_see("CART")
-        .assert_see("2 kg")
+        .assert_see("2.000 kg")
         .assert_see("L-A2301");
     t.app.acting_as(&clerk);
     t.app

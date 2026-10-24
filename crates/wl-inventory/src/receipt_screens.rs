@@ -17,11 +17,12 @@
 //! approval card.
 
 use renox::chrono::NaiveDate;
+use renox::grid::{Column, Grid, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::approvals::{self, ApprovalCard};
-use wl_kernel::documents::dubai_text;
 
 use crate::goods_receipt::{
     DraftLine, DraftReceipt, GoodsReceipt, GoodsReceiptLine, GoodsReceiptStatus, create_draft,
@@ -32,7 +33,9 @@ use crate::location::Location;
 use crate::permissions;
 use crate::purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus, lines_of};
 use crate::screens::quantity_text;
-use crate::stock_screens::{Texts, amount, item_name, location_name, tr, tx, word};
+use crate::stock_screens::{
+    Texts, amount, exported, ids_or_none, item_name, location_name, options, tr, tx, word,
+};
 
 /// The routes of the receive-stock screens.
 pub fn routes() -> Routes {
@@ -69,19 +72,10 @@ async fn supplier_name(state: &AppState, lang: &Lang, id: i64) -> String {
         .unwrap_or_default()
 }
 
-/// One purchase order waiting for goods.
+/// The sheet that starts the receipt of one order.
 #[derive(Serialize, Debug, Clone)]
-pub struct OrderRow {
+pub struct ReceiveSheet {
     id: i64,
-    number: String,
-    supplier: String,
-    location: String,
-    expected: String,
-    status: String,
-    status_kind: &'static str,
-    outstanding: String,
-    can_receive: bool,
-    draft: String,
 }
 
 /// What the orders page needs.
@@ -89,25 +83,81 @@ pub struct OrderRow {
 #[view(template = "wl-inventory/orders.html")]
 pub(crate) struct OrdersPage {
     tx: Texts,
-    rows: Vec<OrderRow>,
+    rows: renox::grid::GridPage<PurchaseOrder>,
+    /// The orders the person may start a receipt for (a sheet each).
+    sheets: Vec<ReceiveSheet>,
+}
+
+/// The orders grid: search on the number and store. What is still
+/// to come on an order is a list of items with their units, drawn by the
+/// template (`custom`), as is the button that starts or opens a receipt.
+pub(crate) fn orders_grid(lang: &Lang, can_export: bool) -> Grid {
+    let grid = Grid::new("inventory-orders")
+        .title(&tr(lang, "orders.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &tr(lang, "orders.number"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable(),
+        )
+        .column(Column::custom("supplier", &tr(lang, "orders.supplier")).mobile())
+        .column(
+            Column::related(
+                "location",
+                &tr(lang, "stock.store"),
+                "wl_inventory_locations",
+                "location_id",
+                "name_en",
+            )
+            .searchable(),
+        )
+        .column(Column::date("expected_date", &tr(lang, "orders.expected")).mobile())
+        .column(Column::custom("outstanding", &tr(lang, "orders.outstanding")).mobile())
+        .column(
+            Column::select(
+                "status",
+                &tr(lang, "fields.status"),
+                options(lang, "order", &["issued", "partially_received"]),
+            )
+            .badges(&[("issued", "info"), ("partially_received", "warning")])
+            .mobile(),
+        )
+        .column(Column::custom("actions", &tr(lang, "stock.actions")))
+        .sort_by("-id")
+        .cards_on_mobile()
+        .empty_state(&tr(lang, "orders.empty"), Some(&tr(lang, "orders.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// `GET /purchase-orders`: the orders open for receiving, with what is still
 /// to come on each.
-async fn orders(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn orders(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if !may_see(&user) {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
-    for order in PurchaseOrder::query()
-        .order_by_desc(PurchaseOrder::ID)
-        .limit(100)
-        .get(&state.db)
-        .await?
-    {
-        if !order.is_open_for_receiving() {
-            continue;
-        }
+    let can_export = user.has_permission_anywhere(permissions::GOODS_RECEIPTS_POST);
+    let grid = orders_grid(&lang, can_export);
+    let query = PurchaseOrder::query().where_(PurchaseOrder::STATUS.is_in([
+        PurchaseOrderStatus::Issued,
+        PurchaseOrderStatus::PartiallyReceived,
+    ]));
+    if let Some(file) = exported(&grid, &query, &request, can_export).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut extra = std::collections::HashMap::new();
+    let mut sheets = Vec::new();
+    for order in page.items() {
+        let supplier = supplier_name(&state, &lang, order.supplier_party_id).await;
         let location = Location::find_or_404(&state.db, order.location_id).await?;
         let mut outstanding = Vec::new();
         for line in lines_of(&state.db, order.id).await? {
@@ -129,31 +179,28 @@ async fn orders(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Re
             .await?
             .map(|receipt| format!("/goods-receipts/{}", receipt.id))
             .unwrap_or_default();
-        let draft_is_none = draft.is_empty();
-        rows.push(OrderRow {
-            id: order.id,
-            draft,
-            number: order.number.clone().unwrap_or_default(),
-            supplier: supplier_name(&state, &lang, order.supplier_party_id).await,
-            location: location_name(&location),
-            expected: order
-                .expected_date
-                .map(|day| day.to_string())
-                .unwrap_or_default(),
-            status: word(&lang, "order", order.status.as_str()),
-            status_kind: match order.status {
-                PurchaseOrderStatus::PartiallyReceived => "warning",
-                _ => "info",
-            },
-            outstanding: outstanding.join(", "),
-            can_receive: draft_is_none
-                && user.has_permission_in(permissions::GOODS_RECEIPTS_POST, &location.scope()),
-        });
+        let can_receive = draft.is_empty()
+            && user.has_permission_in(permissions::GOODS_RECEIPTS_POST, &location.scope());
+        if can_receive {
+            sheets.push(ReceiveSheet { id: order.id });
+        }
+        extra.insert(
+            order.id,
+            json!({
+                "supplier": supplier,
+                "outstanding": outstanding.join(", "),
+                "draft": draft,
+                "can_receive": can_receive,
+            }),
+        );
     }
+    let page = page.extend(|order| extra.get(&order.id).cloned().unwrap_or_else(|| json!({})));
     Ok(View::typed(OrdersPage {
         tx: tx(&lang),
-        rows,
-    }))
+        rows: page,
+        sheets,
+    })
+    .into_response())
 }
 
 /// What the storekeeper enters to start a receipt.
@@ -214,18 +261,12 @@ async fn start_receipt(
         .into_response())
 }
 
-/// One goods receipt in the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct ReceiptRow {
-    id: i64,
-    title: String,
-    order: String,
-    supplier: String,
-    location: String,
-    delivery_note: String,
-    status: String,
-    status_kind: &'static str,
-    when: String,
+fn receipt_status(status: GoodsReceiptStatus) -> &'static str {
+    match status {
+        GoodsReceiptStatus::Draft => "warning",
+        GoodsReceiptStatus::Posted => "success",
+        GoodsReceiptStatus::Reversed => "error",
+    }
 }
 
 /// What the receipts page needs.
@@ -233,15 +274,69 @@ pub struct ReceiptRow {
 #[view(template = "wl-inventory/receipts.html")]
 pub(crate) struct ReceiptsPage {
     tx: Texts,
-    rows: Vec<ReceiptRow>,
+    rows: renox::grid::GridPage<GoodsReceipt>,
 }
 
-fn receipt_status(status: GoodsReceiptStatus) -> &'static str {
-    match status {
-        GoodsReceiptStatus::Draft => "warning",
-        GoodsReceiptStatus::Posted => "success",
-        GoodsReceiptStatus::Reversed => "error",
-    }
+/// The receipts grid: search on the number, order, store and
+/// delivery note, filters by status.
+pub(crate) fn receipts_grid(lang: &Lang, can_export: bool) -> Grid {
+    let grid = Grid::new("inventory-receipts")
+        .title(&tr(lang, "receipts.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &tr(lang, "receipts.receipt"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/goods-receipts/{id}"),
+        )
+        .column(
+            Column::related(
+                "order",
+                &tr(lang, "orders.number"),
+                "wl_inventory_purchase_orders",
+                "purchase_order_id",
+                "number",
+            )
+            .searchable(),
+        )
+        .column(Column::custom("supplier", &tr(lang, "orders.supplier")).mobile())
+        .column(
+            Column::related(
+                "location",
+                &tr(lang, "stock.store"),
+                "wl_inventory_locations",
+                "location_id",
+                "name_en",
+            )
+            .searchable(),
+        )
+        .column(
+            Column::text("delivery_note", &tr(lang, "receipts.delivery_note"))
+                .hidden()
+                .searchable(),
+        )
+        .column(
+            Column::select(
+                "status",
+                &tr(lang, "fields.status"),
+                options(lang, "receipt", &["draft", "posted", "reversed"]),
+            )
+            .badges(&[("draft", "warning"), ("posted", "success"), ("reversed", "error")])
+            .mobile(),
+        )
+        .column(
+            Column::datetime("when", &tr(lang, "transfers.when"))
+                .computed("COALESCE({T}.\"posted_at\", {T}.\"created_at\")")
+                .mobile(),
+        )
+        .sort_by("-id")
+        .row_url("/goods-receipts/{id}")
+        .cards_on_mobile()
+        .empty_state(&tr(lang, "receipts.empty"), Some(&tr(lang, "receipts.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// The title of a receipt: its number, or "Draft receipt" until it is posted.
@@ -252,53 +347,51 @@ fn receipt_title(lang: &Lang, receipt: &GoodsReceipt) -> String {
     }
 }
 
-/// `GET /goods-receipts`: the receipts, drafts first, at the stores the user
-/// may receive at.
-async fn receipts(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+/// `GET /goods-receipts`: the receipts at the stores the user may receive
+/// at or see.
+async fn receipts(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if !may_see(&user) {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
-    for receipt in GoodsReceipt::query()
-        .order_by_desc(GoodsReceipt::ID)
-        .limit(100)
-        .get(&state.db)
-        .await?
-    {
+    let mut ids = Vec::new();
+    for receipt in GoodsReceipt::query().get(&state.db).await? {
         let seen = user.has_permission_in(permissions::GOODS_RECEIPTS_POST, &receipt.scope())
             || user.has_permission_in(permissions::STOCK_VIEW, &receipt.scope());
-        if !seen {
-            continue;
+        if seen {
+            ids.push(receipt.id);
         }
-        let location = Location::find_or_404(&state.db, receipt.location_id).await?;
-        let order = match receipt.purchase_order_id {
-            Some(id) => PurchaseOrder::find(&state.db, id)
-                .await?
-                .and_then(|order| order.number)
-                .unwrap_or_default(),
-            None => String::new(),
-        };
-        rows.push(ReceiptRow {
-            id: receipt.id,
-            title: receipt_title(&lang, &receipt),
-            order,
-            supplier: supplier_name(&state, &lang, receipt.supplier_party_id).await,
-            location: location_name(&location),
-            delivery_note: receipt.delivery_note.clone().unwrap_or_default(),
-            status: word(&lang, "receipt", receipt.status.as_str()),
-            status_kind: receipt_status(receipt.status),
-            when: receipt
-                .posted_at
-                .or(receipt.created_at)
-                .map(dubai_text)
-                .unwrap_or_default(),
-        });
     }
-    rows.sort_by_key(|row| row.status_kind != "warning");
+    let can_export = user.has_permission_anywhere(permissions::GOODS_RECEIPTS_POST);
+    let grid = receipts_grid(&lang, can_export);
+    let query = GoodsReceipt::query().where_(GoodsReceipt::ID.is_in(ids_or_none(ids)));
+    if let Some(file) = exported(&grid, &query, &request, can_export).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut suppliers = std::collections::HashMap::new();
+    for receipt in page.items() {
+        suppliers.insert(
+            receipt.id,
+            supplier_name(&state, &lang, receipt.supplier_party_id).await,
+        );
+    }
+    // A draft has no number yet: the grid names it "Draft receipt".
+    let page = page.extend(|receipt| {
+        json!({
+            "number": receipt_title(&lang, receipt),
+            "supplier": suppliers.get(&receipt.id),
+        })
+    });
     Ok(View::typed(ReceiptsPage {
         tx: tx(&lang),
-        rows,
-    }))
+        rows: page,
+    })
+    .into_response())
 }
 
 /// One line of a receipt.

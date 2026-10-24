@@ -22,7 +22,9 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::Serialize;
 use wl_kernel::Subject;
 use wl_kernel::approvals::{self, ApprovalCard};
@@ -191,34 +193,16 @@ fn expiry_of(lot: &Lot, lang: &Lang) -> (String, &'static str) {
     }
 }
 
-/// One item of a store.
-#[derive(Serialize, Debug, Clone)]
-pub struct ItemRow {
-    name: String,
-    code: String,
-    on_hand: String,
-    held: String,
-    available: String,
-    reorder: String,
-    low: bool,
+/// The grid the stock page shows: the items of the store or its lots.
+#[derive(Serialize)]
+#[serde(untagged)]
+pub(crate) enum StockRows {
+    Items(renox::grid::GridPage<Item>),
+    Lots(renox::grid::GridPage<Lot>),
 }
 
-/// One lot of a store.
-#[derive(Serialize, Debug, Clone)]
-pub struct LotRow {
-    id: i64,
-    item: String,
-    number: String,
-    supplier_lot: String,
-    expiry: String,
-    expiry_kind: &'static str,
-    status: String,
-    status_kind: &'static str,
-    here: String,
-    held: String,
-}
-
-/// What the stock page needs.
+/// What the stock page needs: the store picker, the switches between the
+/// items and the lots, and the grid.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-inventory/stock.html")]
 pub(crate) struct StockPage {
@@ -226,25 +210,182 @@ pub(crate) struct StockPage {
     locations: Vec<(String, String)>,
     location: String,
     location_name: String,
-    items: Vec<ItemRow>,
-    lots: Vec<LotRow>,
-    nothing: bool,
+    items_url: String,
+    lots_url: String,
+    low_url: String,
+    lots_view: bool,
+    low_only: bool,
+    rows: StockRows,
 }
 
 #[derive(serde::Deserialize, Default)]
 struct StockQuery {
     #[serde(default)]
     location: String,
+    #[serde(default)]
+    view: String,
+    #[serde(default)]
+    level: String,
 }
 
-/// `GET /stock`: the items and the lots of one store, the first the user may
-/// see unless `?location=` names another.
+/// The options of a select column: `values` with their words from `group`.
+pub(crate) fn options(lang: &Lang, group: &str, values: &[&str]) -> Vec<(String, String)> {
+    values
+        .iter()
+        .map(|value| ((*value).to_owned(), word(lang, group, value)))
+        .collect()
+}
+
+/// The export file when the request asks for one; refused for a person who
+/// may not export.
+pub(crate) async fn exported<M: Model + Serialize>(
+    grid: &renox::grid::Grid,
+    query: &renox::db::Query<M>,
+    request: &renox::grid::GridRequest,
+    can_export: bool,
+) -> Result<Option<Response>> {
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    grid.export(query.clone(), request).await
+}
+
+/// `ids`, or `-1` when none: a query on no row.
+pub(crate) fn ids_or_none(mut ids: Vec<i64>) -> Vec<i64> {
+    if ids.is_empty() {
+        ids.push(-1);
+    }
+    ids
+}
+
+/// The items grid of the stock page: search on the code and the name,
+/// quantities in the item's unit. The figures of the store are worked out per
+/// item and added to the rows, so they are not sorted or filtered by the grid.
+pub(crate) fn items_grid(lang: &Lang) -> Grid {
+    let quantity = |key: &str, label: &str| {
+        Column::quantity(key, label)
+            .scale(3)
+            .unit_from("base_unit")
+            .sortable(false)
+            .filterable(false)
+    };
+    Grid::new("inventory-stock")
+        .title(&tr(lang, "stock.items"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("code", &tr(lang, "stock.code"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable(),
+        )
+        .column(
+            Column::text("name_en", &tr(lang, "stock.item"))
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::text("name_ar", &tr(lang, "stock.item_ar")).hidden().searchable())
+        .column(quantity("on_hand_milli", &tr(lang, "stock.on_hand")).mobile())
+        .column(quantity("held_milli", &tr(lang, "stock.held")).hidden())
+        .column(quantity("available_milli", &tr(lang, "stock.available")).mobile())
+        .column(
+            Column::quantity("reorder_point_milli", &tr(lang, "stock.reorder"))
+                .scale(3)
+                .unit_from("base_unit")
+                .hidden(),
+        )
+        .column(Column::custom("level", &tr(lang, "stock.level")).mobile())
+        .sort_by("name_en")
+        .cards_on_mobile()
+        .empty_state(&tr(lang, "stock.empty"), Some(&tr(lang, "stock.empty_hint")))
+}
+
+/// The lots grid of the stock page: the lots of lot-tracked items with stock
+/// in the store, by expiry and status.
+pub(crate) fn lots_grid(lang: &Lang) -> Grid {
+    let quantity = |key: &str, label: &str| {
+        Column::quantity(key, label)
+            .scale(3)
+            .unit_from("unit")
+            .sortable(false)
+            .filterable(false)
+    };
+    Grid::new("inventory-stock-lots")
+        .title(&tr(lang, "stock.lots"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &tr(lang, "stock.lot"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/stock/lots/{id}"),
+        )
+        .column(
+            Column::related(
+                "item",
+                &tr(lang, "stock.item"),
+                "wl_inventory_items",
+                "item_id",
+                "name_en",
+            )
+            .mobile()
+            .searchable(),
+        )
+        .column(
+            Column::text("supplier_lot", &tr(lang, "stock.supplier_lot"))
+                .hidden()
+                .searchable(),
+        )
+        .column(Column::date("expiry_date", &tr(lang, "stock.expiry_date")).hidden())
+        .column(Column::custom("expiry", &tr(lang, "stock.expiry")).mobile())
+        .column(quantity("here_milli", &tr(lang, "stock.here")).mobile())
+        .column(quantity("held_milli", &tr(lang, "stock.held")).hidden())
+        .column(
+            Column::select(
+                "status",
+                &tr(lang, "fields.status"),
+                options(
+                    lang,
+                    "lot",
+                    &[
+                        "quarantine",
+                        "released",
+                        "on_hold",
+                        "expired",
+                        "rejected",
+                        "depleted",
+                    ],
+                ),
+            )
+            .badges(&[
+                ("released", "success"),
+                ("quarantine", "warning"),
+                ("on_hold", "error"),
+                ("expired", "error"),
+                ("rejected", "error"),
+                ("depleted", "info"),
+            ])
+            .mobile(),
+        )
+        .sort_by("expiry_date")
+        .cards_on_mobile()
+        .empty_state(&tr(lang, "stock.no_lots"), Some(&tr(lang, "stock.no_lots_hint")))
+}
+
+/// `GET /stock`: the items of one store (`?view=lots` for its lots,
+/// `?level=low` for the items at or below their reorder point), the first
+/// store the user may see unless `?location=` names another.
 async fn stock(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Query(query): Query<StockQuery>,
-) -> Result<View> {
+    request: renox::grid::GridRequest,
+) -> Result<Response> {
     if !user.has_permission_anywhere(permissions::STOCK_VIEW) {
         return Err(Error::Forbidden);
     }
@@ -254,82 +395,101 @@ async fn stock(
         .and_then(|id| visible.iter().find(|location| location.id == id))
         .or_else(|| visible.first())
         .cloned();
-    let mut items = Vec::new();
-    let mut lots = Vec::new();
-    let all_items = Item::query()
-        .order_by(Item::NAME_EN)
-        .limit(500)
-        .get(&state.db)
-        .await?;
-    let Some(chosen) = chosen else {
-        return Ok(View::typed(StockPage {
-            tx: tx(&lang),
-            locations: Vec::new(),
-            location: String::new(),
-            location_name: String::new(),
-            items,
-            lots,
-            nothing: true,
-        }));
+    let lots_view = query.view == "lots";
+    let low_only = query.level == "low" && !lots_view;
+    let here = match &chosen {
+        Some(location) => format!("/stock?location={}", location.id),
+        None => "/stock".to_owned(),
     };
-    for item in &all_items {
-        let figures = balance::balance(&state.db, item.id, chosen.id, None).await?;
-        if figures.on_hand_milli == 0 && item.reorder_point_milli == 0 {
-            continue;
-        }
-        items.push(ItemRow {
-            name: item_name(item, &lang),
-            code: item.code.clone(),
-            on_hand: amount(figures.on_hand_milli, &item.base_unit),
-            held: amount(figures.held_milli, &item.base_unit),
-            available: amount(figures.available_milli(), &item.base_unit),
-            reorder: if item.reorder_point_milli > 0 {
-                amount(item.reorder_point_milli, &item.base_unit)
-            } else {
-                tr(&lang, "none")
-            },
-            low: item.reorder_point_milli > 0 && figures.on_hand_milli <= item.reorder_point_milli,
-        });
-        if !item.lot_tracked {
-            continue;
-        }
-        for lot in Lot::query()
-            .where_(Lot::ITEM_ID.eq(item.id))
-            .order_by(Lot::EXPIRY_DATE)
-            .get(&state.db)
-            .await?
-        {
-            let here = balance::balance(&state.db, item.id, chosen.id, Some(lot.id)).await?;
-            if here.on_hand_milli <= 0 {
-                continue;
-            }
-            let (expiry, expiry_kind) = expiry_of(&lot, &lang);
-            lots.push(LotRow {
-                id: lot.id,
-                item: item_name(item, &lang),
-                number: lot.number.clone(),
-                supplier_lot: lot.supplier_lot.clone().unwrap_or_default(),
-                expiry,
-                expiry_kind,
-                status: word(&lang, "lot", lot.status.as_str()),
-                status_kind: lot_kind(lot.status),
-                here: amount(here.on_hand_milli, &item.base_unit),
-                held: amount(here.held_milli, &item.base_unit),
-            });
-        }
-    }
-    Ok(View::typed(StockPage {
+    let separator = if here.contains('?') { '&' } else { '?' };
+    let page_of = |rows: StockRows| StockPage {
         tx: tx(&lang),
         locations: visible
             .iter()
             .map(|location| (location.id.to_string(), location_name(location)))
             .collect(),
-        location: chosen.id.to_string(),
-        location_name: location_name(&chosen),
-        nothing: items.is_empty(),
-        items,
-        lots,
-    }))
+        location: chosen
+            .as_ref()
+            .map(|location| location.id.to_string())
+            .unwrap_or_default(),
+        location_name: chosen.as_ref().map(location_name).unwrap_or_default(),
+        items_url: here.clone(),
+        lots_url: format!("{here}{separator}view=lots"),
+        low_url: format!("{here}{separator}level=low"),
+        lots_view,
+        low_only,
+        rows,
+    };
+    let all_items = Item::query().order_by(Item::NAME_EN).get(&state.db).await?;
+    if lots_view {
+        let mut ids = Vec::new();
+        let mut figures = std::collections::HashMap::new();
+        if let Some(chosen) = &chosen {
+            for item in all_items.iter().filter(|item| item.lot_tracked) {
+                for lot in Lot::query()
+                    .where_(Lot::ITEM_ID.eq(item.id))
+                    .get(&state.db)
+                    .await?
+                {
+                    let found =
+                        balance::balance(&state.db, item.id, chosen.id, Some(lot.id)).await?;
+                    if found.on_hand_milli <= 0 {
+                        continue;
+                    }
+                    ids.push(lot.id);
+                    figures.insert(lot.id, (found, item.clone()));
+                }
+            }
+        }
+        let grid = lots_grid(&lang);
+        let query = Lot::query().where_(Lot::ID.is_in(ids_or_none(ids)));
+        let page = grid.page(query, &request).await?.extend(|lot| {
+            let Some((found, item)) = figures.get(&lot.id) else {
+                return json!({});
+            };
+            let (expiry, expiry_kind) = expiry_of(lot, &lang);
+            json!({
+                "here_milli": found.on_hand_milli,
+                "held_milli": found.held_milli,
+                "unit": item.base_unit,
+                "item": item_name(item, &lang),
+                "expiry": expiry,
+                "expiry_kind": expiry_kind,
+            })
+        });
+        return Ok(View::typed(page_of(StockRows::Lots(page))).into_response());
+    }
+    let mut ids = Vec::new();
+    let mut figures = std::collections::HashMap::new();
+    if let Some(chosen) = &chosen {
+        for item in &all_items {
+            let found = balance::balance(&state.db, item.id, chosen.id, None).await?;
+            if found.on_hand_milli == 0 && item.reorder_point_milli == 0 {
+                continue;
+            }
+            let low = item.reorder_point_milli > 0 && found.on_hand_milli <= item.reorder_point_milli;
+            if low_only && !low {
+                continue;
+            }
+            ids.push(item.id);
+            figures.insert(item.id, (found, low));
+        }
+    }
+    let grid = items_grid(&lang);
+    let query = Item::query().where_(Item::ID.is_in(ids_or_none(ids)));
+    let page = grid.page(query, &request).await?.extend(|item| {
+        let Some((found, low)) = figures.get(&item.id) else {
+            return json!({});
+        };
+        json!({
+            "name_en": item_name(item, &lang),
+            "on_hand_milli": found.on_hand_milli,
+            "held_milli": found.held_milli,
+            "available_milli": found.available_milli(),
+            "low": low,
+        })
+    });
+    Ok(View::typed(page_of(StockRows::Items(page))).into_response())
 }
 
 /// One place a lot is at.
@@ -530,33 +690,123 @@ async fn move_row(
     })
 }
 
-/// One line of a hold.
-#[derive(Serialize, Debug, Clone)]
-pub struct LineRow {
-    id: i64,
-    item: String,
-    lot_url: String,
-    lot: String,
-    location: String,
-    quantity: String,
-    status: String,
-    status_kind: &'static str,
-    waiting: bool,
-    can_decide: bool,
-}
-
-/// One hold with its lines.
-#[derive(Serialize, Debug, Clone)]
-pub struct HoldRow {
-    id: i64,
-    number: String,
-    reason: String,
-    reference: String,
-    placed: String,
-    status: String,
-    status_kind: &'static str,
-    lines: Vec<LineRow>,
-    can_cancel: bool,
+/// The holds grid: one row per line of a hold, with the hold's number, reason
+/// and status beside it. Filter or group by reason; the decision buttons are
+/// drawn by the template (`custom`).
+pub(crate) fn holds_grid(lang: &Lang, can_export: bool) -> Grid {
+    let of_hold = |column: &str| {
+        format!(
+            "(SELECT \"{column}\" FROM \"wl_inventory_stock_holds\" WHERE \"id\" = {{T}}.\"stock_hold_id\")"
+        )
+    };
+    let grid = Grid::new("inventory-holds")
+        .title(&tr(lang, "holds.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::related(
+                "hold",
+                &tr(lang, "hold.number"),
+                "wl_inventory_stock_holds",
+                "stock_hold_id",
+                "number",
+            )
+            .frozen()
+            .mobile()
+            .searchable(),
+        )
+        .column(
+            Column::select("reason", &tr(lang, "hold.reason"), options(lang, "reason", &REASONS))
+                .computed(&of_hold("reason"))
+                .mobile(),
+        )
+        .column(
+            Column::select(
+                "hold_status",
+                &tr(lang, "holds.hold_status"),
+                options(lang, "hold", &["open", "closed", "cancelled"]),
+            )
+            .computed(&of_hold("status"))
+            .badges(&[("open", "warning"), ("closed", "success"), ("cancelled", "info")])
+            .hidden(),
+        )
+        .column(Column::datetime("placed_at", &tr(lang, "holds.placed")).computed(&of_hold("placed_at")).hidden())
+        .column(Column::custom("reference", &tr(lang, "holds.reference")).hidden())
+        .column(
+            Column::related(
+                "item",
+                &tr(lang, "stock.item"),
+                "wl_inventory_items",
+                "item_id",
+                "name_en",
+            )
+            .mobile()
+            .searchable(),
+        )
+        .column(Column::custom("lot", &tr(lang, "stock.lot")))
+        .column(
+            Column::related(
+                "lot_number",
+                &tr(lang, "holds.lot_number"),
+                "wl_inventory_lots",
+                "lot_id",
+                "number",
+            )
+            .hidden()
+            .searchable(),
+        )
+        .column(
+            Column::related(
+                "location",
+                &tr(lang, "stock.store"),
+                "wl_inventory_locations",
+                "location_id",
+                "name_en",
+            )
+            .searchable(),
+        )
+        .column(
+            Column::quantity("quantity_milli", &tr(lang, "holds.quantity"))
+                .scale(3)
+                .unit_from("unit")
+                .mobile(),
+        )
+        .column(
+            Column::related(
+                "unit",
+                &tr(lang, "stock.unit"),
+                "wl_inventory_items",
+                "item_id",
+                "base_unit",
+            )
+            .hidden(),
+        )
+        .column(
+            Column::select(
+                "status",
+                &tr(lang, "fields.status"),
+                options(
+                    lang,
+                    "line",
+                    &["undecided", "released", "discarded", "returned_to_supplier"],
+                ),
+            )
+            .badges(&[
+                ("undecided", "warning"),
+                ("released", "success"),
+                ("discarded", "error"),
+                ("returned_to_supplier", "info"),
+            ])
+            .mobile(),
+        )
+        .column(Column::custom("waiting", &tr(lang, "holds.waiting")))
+        .column(Column::custom("actions", &tr(lang, "holds.decision")))
+        .groups(&["reason", "hold_status"])
+        .sort_by("-id")
+        .cards_on_mobile()
+        .empty_state(&tr(lang, "holds.empty"), Some(&tr(lang, "holds.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the holds page needs.
@@ -564,96 +814,96 @@ pub struct HoldRow {
 #[view(template = "wl-inventory/holds.html")]
 pub(crate) struct HoldsPage {
     tx: Texts,
-    holds: Vec<HoldRow>,
+    rows: renox::grid::GridPage<StockHoldLine>,
     approvals: Vec<ApprovalCard>,
     can_hold: bool,
     locations: Vec<(String, String)>,
     reasons: Vec<(String, String)>,
+    /// The lines the person may decide (a sheet each).
+    deciding: Vec<i64>,
+    /// The holds the person may cancel (a sheet each).
+    cancellable: Vec<i64>,
 }
 
-/// `GET /stock/holds`: the open holds first, each with its lines and the
-/// buttons of the decision the user may take; a decision that waits for a
-/// second person shows its approval card.
-async fn holds(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+/// `GET /stock/holds`: the lines of every hold with the buttons of the
+/// decision the user may take; a decision that waits for a second person
+/// shows its approval card.
+async fn holds(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: renox::grid::GridRequest,
+) -> Result<Response> {
     let decider = user.has_permission_anywhere(permissions::LOTS_RELEASE);
     let placer = user.has_permission_anywhere(permissions::STOCK_HOLD);
     if !decider && !placer {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
+    let grid = holds_grid(&lang, true);
+    let query = StockHoldLine::query();
+    if let Some(file) = exported(&grid, &query, &request, true).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
     let mut cards = Vec::new();
-    for hold in StockHold::query()
-        .order_by_desc(StockHold::ID)
-        .limit(100)
-        .get(&state.db)
-        .await?
-    {
-        let mut lines = Vec::new();
-        let raw = lines_of(&state.db, hold.id).await?;
-        let all_undecided = raw
-            .iter()
-            .all(|line| line.status == HoldLineStatus::Undecided);
-        for line in raw {
-            let item = Item::find_or_404(&state.db, line.item_id).await?;
-            let location = Location::find_or_404(&state.db, line.location_id).await?;
-            let lot = match line.lot_id {
-                Some(id) => Lot::find(&state.db, id).await?,
-                None => None,
-            };
-            let pending = approvals::pending_for(&state.db, &line.subject()).await?;
-            for request in &pending {
-                cards.push(approvals::card(&state.db, request, &user, &lang).await?);
-            }
-            let (status, status_kind) = match line.status {
-                HoldLineStatus::Undecided => (word(&lang, "line", "undecided"), "warning"),
-                HoldLineStatus::Released => (word(&lang, "line", "released"), "success"),
-                HoldLineStatus::Discarded => (word(&lang, "line", "discarded"), "error"),
-                HoldLineStatus::ReturnedToSupplier => {
-                    (word(&lang, "line", "returned_to_supplier"), "info")
-                }
-            };
-            lines.push(LineRow {
-                id: line.id,
-                item: item_name(&item, &lang),
-                lot_url: lot
-                    .as_ref()
-                    .map(|lot| format!("/stock/lots/{}", lot.id))
-                    .unwrap_or_default(),
-                lot: lot.map(|lot| lot.number).unwrap_or_default(),
-                location: location_name(&location),
-                quantity: amount(line.quantity_milli, &item.base_unit),
-                status,
-                status_kind,
-                waiting: !pending.is_empty(),
-                can_decide: hold.status == HoldStatus::Open
-                    && line.status == HoldLineStatus::Undecided
-                    && pending.is_empty()
-                    && user.has_permission_in(permissions::LOTS_RELEASE, &line.scope()),
-            });
+    let mut extra: std::collections::HashMap<i64, renox::serde_json::Value> =
+        std::collections::HashMap::new();
+    let mut deciding = Vec::new();
+    let mut cancellable: Vec<i64> = Vec::new();
+    let mut holds: std::collections::HashMap<i64, (StockHold, bool)> =
+        std::collections::HashMap::new();
+    for line in page.items() {
+        if !holds.contains_key(&line.stock_hold_id) {
+            let hold = StockHold::find_or_404(&state.db, line.stock_hold_id).await?;
+            let all_undecided = lines_of(&state.db, hold.id)
+                .await?
+                .iter()
+                .all(|other| other.status == HoldLineStatus::Undecided);
+            holds.insert(hold.id, (hold, all_undecided));
         }
-        let (status, status_kind) = hold_status(&lang, hold.status);
+        let (hold, all_undecided) = &holds[&line.stock_hold_id];
+        let item = Item::find_or_404(&state.db, line.item_id).await?;
+        let lot = match line.lot_id {
+            Some(id) => Lot::find(&state.db, id).await?,
+            None => None,
+        };
+        let pending = approvals::pending_for(&state.db, &line.subject()).await?;
+        for request in &pending {
+            cards.push(approvals::card(&state.db, request, &user, &lang).await?);
+        }
+        let can_decide = hold.status == HoldStatus::Open
+            && line.status == HoldLineStatus::Undecided
+            && pending.is_empty()
+            && user.has_permission_in(permissions::LOTS_RELEASE, &line.scope());
+        let can_cancel = hold.status == HoldStatus::Open
+            && hold.reason != "recall"
+            && *all_undecided
+            && user.has_permission_in(permissions::LOTS_RELEASE, &hold.scope());
+        if can_decide {
+            deciding.push(line.id);
+        }
+        if can_cancel && !cancellable.contains(&hold.id) {
+            cancellable.push(hold.id);
+        }
         let reference = match hold.reference() {
             Some(subject) => label(&state, &subject).await,
             None => String::new(),
         };
-        let can_cancel = hold.status == HoldStatus::Open
-            && hold.reason != "recall"
-            && all_undecided
-            && user.has_permission_in(permissions::LOTS_RELEASE, &hold.scope());
-        rows.push(HoldRow {
-            id: hold.id,
-            number: hold.number.clone().unwrap_or_default(),
-            reason: word(&lang, "reason", &hold.reason),
-            reference,
-            placed: hold.placed_at.map(dubai_text).unwrap_or_default(),
-            status,
-            status_kind,
-            lines,
-            can_cancel,
-        });
+        extra.insert(
+            line.id,
+            json!({
+                "item": item_name(&item, &lang),
+                "lot_url": lot.as_ref().map(|lot| format!("/stock/lots/{}", lot.id)),
+                "lot_number": lot.map(|lot| lot.number),
+                "waiting": !pending.is_empty(),
+                "can_decide": can_decide,
+                "can_cancel": can_cancel,
+                "hold_id": hold.id,
+                "reference": reference,
+            }),
+        );
     }
-    // The open holds lead.
-    rows.sort_by_key(|row| row.status_kind != "warning");
+    let page = page.extend(|line| extra.get(&line.id).cloned().unwrap_or_else(|| json!({})));
     let locations = locations_with(&state, &user, permissions::STOCK_HOLD)
         .await?
         .iter()
@@ -661,27 +911,83 @@ async fn holds(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .collect::<Vec<_>>();
     Ok(View::typed(HoldsPage {
         tx: tx(&lang),
-        holds: rows,
+        rows: page,
         approvals: cards,
         can_hold: !locations.is_empty(),
         locations,
         reasons: hold_reasons(&lang),
-    }))
+        deciding,
+        cancellable,
+    })
+    .into_response())
 }
 
-/// One open pending issue.
+/// The sheet that clears one pending issue.
 #[derive(Serialize, Debug, Clone)]
-pub struct PendingScreenRow {
+pub struct PendingSheet {
     id: i64,
-    item: String,
-    location: String,
-    quantity: String,
-    source: String,
-    recorded: String,
     lot_tracked: bool,
     lots: Vec<(String, String)>,
-    waiting: bool,
-    can_clear: bool,
+}
+
+/// The pending issues grid: search on the item, the store and the source.
+pub(crate) fn pending_grid(lang: &Lang, can_export: bool) -> Grid {
+    let grid = Grid::new("inventory-pending")
+        .title(&tr(lang, "pending.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::related(
+                "item",
+                &tr(lang, "stock.item"),
+                "wl_inventory_items",
+                "item_id",
+                "name_en",
+            )
+            .frozen()
+            .mobile()
+            .searchable(),
+        )
+        .column(
+            Column::related(
+                "location",
+                &tr(lang, "stock.store"),
+                "wl_inventory_locations",
+                "location_id",
+                "name_en",
+            )
+            .mobile()
+            .searchable(),
+        )
+        .column(
+            Column::quantity("quantity_milli", &tr(lang, "pending.short"))
+                .scale(3)
+                .unit_from("unit")
+                .mobile(),
+        )
+        .column(
+            Column::related(
+                "unit",
+                &tr(lang, "stock.unit"),
+                "wl_inventory_items",
+                "item_id",
+                "base_unit",
+            )
+            .hidden(),
+        )
+        .column(Column::custom("source", &tr(lang, "pending.source")))
+        .column(Column::text("source_type", &tr(lang, "pending.source_type")).hidden().searchable())
+        .column(Column::datetime("recorded_at", &tr(lang, "pending.recorded")))
+        .column(Column::custom("state", &tr(lang, "fields.status")).mobile())
+        .column(Column::custom("actions", &tr(lang, "stock.actions")))
+        .sort_by("recorded_at")
+        .cards_on_mobile()
+        .empty_state(
+            &tr(lang, "pending.empty"),
+            Some(&tr(lang, "pending.empty_text")),
+        );
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the pending issues page needs.
@@ -689,8 +995,10 @@ pub struct PendingScreenRow {
 #[view(template = "wl-inventory/pending.html")]
 pub(crate) struct PendingPage {
     tx: Texts,
-    rows: Vec<PendingScreenRow>,
+    rows: renox::grid::GridPage<PendingIssue>,
     approvals: Vec<ApprovalCard>,
+    /// The pending issues the person may clear (a sheet each).
+    clearing: Vec<PendingSheet>,
 }
 
 /// The pending issues page: the open ones at the locations where the user may
@@ -700,32 +1008,48 @@ pub(crate) async fn pending_page(
     state: &AppState,
     user: &AuthUser,
     lang: &Lang,
+    request: renox::grid::GridRequest,
 ) -> Result<Response> {
-    let mut rows = Vec::new();
-    let mut cards = Vec::new();
+    let mut ids = Vec::new();
     for pending in pending_issue::open_of(&state.db).await? {
-        if !user.has_permission_in(permissions::STOCK_ADJUST, &pending.scope()) {
-            continue;
+        if user.has_permission_in(permissions::STOCK_ADJUST, &pending.scope()) {
+            ids.push(pending.id);
         }
-        rows.push(pending_row(state, user, lang, &pending, &mut cards).await?);
     }
+    let grid = pending_grid(lang, true);
+    let query = PendingIssue::query().where_(PendingIssue::ID.is_in(ids_or_none(ids)));
+    if let Some(file) = exported(&grid, &query, &request, true).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut cards = Vec::new();
+    let mut clearing = Vec::new();
+    let mut extra = std::collections::HashMap::new();
+    for pending in page.items() {
+        let (value, sheet) = pending_row(state, user, lang, pending, &mut cards).await?;
+        extra.insert(pending.id, value);
+        clearing.extend(sheet);
+    }
+    let page = page.extend(|pending| extra.get(&pending.id).cloned().unwrap_or_else(|| json!({})));
     Ok(View::typed(PendingPage {
         tx: tx(lang),
-        rows,
+        rows: page,
         approvals: cards,
+        clearing,
     })
     .into_response())
 }
 
+/// What the grid shows beyond the columns of a pending issue, and the sheet
+/// that clears it when the person may.
 async fn pending_row(
     state: &AppState,
     user: &AuthUser,
     lang: &Lang,
     pending: &PendingIssue,
     cards: &mut Vec<ApprovalCard>,
-) -> Result<PendingScreenRow> {
+) -> Result<(renox::serde_json::Value, Option<PendingSheet>)> {
     let item = Item::find_or_404(&state.db, pending.item_id).await?;
-    let location = Location::find_or_404(&state.db, pending.location_id).await?;
     let mut lots = Vec::new();
     if item.lot_tracked {
         for lot in Lot::query()
@@ -748,19 +1072,21 @@ async fn pending_row(
     for request in &requests {
         cards.push(approvals::card(&state.db, request, user, lang).await?);
     }
-    Ok(PendingScreenRow {
+    let can_clear = requests.is_empty();
+    let value = json!({
+        "item": item_name(&item, lang),
+        "source": label(state, &pending.source()).await,
+        "waiting": !requests.is_empty(),
+        "can_clear": can_clear,
+    });
+    let sheet = can_clear.then(|| PendingSheet {
         id: pending.id,
-        item: item_name(&item, lang),
-        location: location_name(&location),
-        quantity: amount(pending.quantity_milli, &item.base_unit),
-        source: label(state, &pending.source()).await,
-        recorded: dubai_text(pending.recorded_at),
         lot_tracked: item.lot_tracked,
         lots,
-        waiting: !requests.is_empty(),
-        can_clear: requests.is_empty(),
-    })
+    });
+    Ok((value, sheet))
 }
+
 
 /// The routes of the stock screens.
 pub fn routes() -> Routes {

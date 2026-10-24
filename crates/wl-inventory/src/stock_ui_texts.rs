@@ -416,4 +416,46 @@ pub(crate) const STOCK_TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.stock.notice.pending", "Not told"),
     ("wl_inventory.stock.notice.sent", "Sent"),
     ("wl_inventory.stock.notice.waived", "Waived"),
+    ("wl_inventory.stock.stock.actions", "Actions"),
+    ("wl_inventory.stock.stock.code", "Code"),
+    ("wl_inventory.stock.stock.item_ar", "Item (Arabic)"),
+    ("wl_inventory.stock.stock.unit", "Unit"),
+    ("wl_inventory.stock.stock.low_only", "Low stock only"),
+    ("wl_inventory.stock.stock.expiry_date", "Expiry date"),
+    (
+        "wl_inventory.stock.stock.empty_hint",
+        "Items appear here once stock is received or a reorder point is set.",
+    ),
+    (
+        "wl_inventory.stock.stock.no_lots_hint",
+        "Lots of lot-tracked items appear here once they have stock in this store.",
+    ),
+    ("wl_inventory.stock.holds.hold_status", "Hold status"),
+    ("wl_inventory.stock.holds.reference", "Reference"),
+    ("wl_inventory.stock.holds.placed", "Placed"),
+    ("wl_inventory.stock.holds.lot_number", "Lot number"),
+    ("wl_inventory.stock.holds.decision", "Decision"),
+    (
+        "wl_inventory.stock.holds.empty_hint",
+        "Hold a lot from its page, or a whole store from here, to block its stock.",
+    ),
+    ("wl_inventory.stock.pending.source_type", "Source type"),
+    (
+        "wl_inventory.stock.transfers.empty_hint",
+        "Use New transfer to move stock between stores.",
+    ),
+    (
+        "wl_inventory.stock.orders.empty_hint",
+        "Issued purchase orders waiting for goods appear here.",
+    ),
+    (
+        "wl_inventory.stock.receipts.empty_hint",
+        "Start a receipt from a purchase order waiting for goods.",
+    ),
+    ("wl_inventory.stock.recalls.affected_lines", "Lines affected"),
+    ("wl_inventory.stock.recalls.told_lines", "Lines told"),
+    (
+        "wl_inventory.stock.recalls.empty_hint",
+        "A recall opens when a supplier, an authority or a complaint names lots.",
+    ),
 ];

@@ -1,30 +1,26 @@
-{#- wl-inventory: the dispatches of goods picked for a sales order: their lines,
-    source and status, with the buttons that pick a draft and cancel a draft or
-    picked one. The reason a button is off is shown as text. Replace it with
+{#- wl-inventory: the dispatches of goods picked for a sales order, a
+    renox::grid (search on the store, source and note; filters by status):
+    their lines, source and status, with the buttons that pick a draft and
+    cancel a draft or picked one. The reason a button is off is shown as text
+    in the note. The sheets follow the grid. Replace it with
     resources/views/wl-inventory/dispatches.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['title']">
-  <rx-stack>
-    <rx-page-header :title="tx['title']" :subtitle="tx['subtitle']"/>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['title']" card>
-      <rx-column :label="tx['number']">{{ row.number }}</rx-column>
-      <rx-column :label="tx['source']">{{ row.source }}</rx-column>
-      <rx-column :label="tx['location']" hide-narrow>{{ row.location }}</rx-column>
-      <rx-column :label="tx['lines']" hide-narrow>{{ row.lines }}</rx-column>
-      <rx-column :label="tx['status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
-      <rx-column :label="tx['note']" hide-narrow>{{ row.note or row.disabled_reason }}</rx-column>
-      <rx-row-actions>
-        <template rx-if="row.can_pick">
-          <rx-action-sheet :id="'pick-' ~ row.id" :label="tx['pick']" :action="route('wl_inventory.dispatch_pick', row.id)"
-                           :title="tx['pick']" :description="tx['pick_description']" :submit-label="tx['pick']" icon="check"/>
-        </template>
-        <template rx-if="row.can_cancel">
-          <rx-action-sheet :id="'cancel-' ~ row.id" :label="tx['cancel']" :action="route('wl_inventory.dispatch_cancel', row.id)"
-                           :title="tx['cancel']" :description="tx['cancel_description']" :submit-label="tx['cancel']" icon="x">
-            <rx-textarea name="reason" :label="tx['reason']" :id="'cancel-reason-' ~ row.id" required/>
-          </rx-action-sheet>
-        </template>
-      </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['empty']" icon="truck"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['title']" :subtitle="tx['subtitle']"/>
+  <rx-grid :page="rows">
+    <template rx-if="column.key == 'number'">{{ row.number }}</template>
+    <template rx-elif="column.key == 'source'">{{ row.source }}</template>
+    <template rx-elif="column.key == 'lines'">{{ row.lines }}</template>
+    <template rx-elif="column.key == 'actions'">
+      <rx-open-button rx-if="row.can_pick" id="pick-{{ row.id }}" label="{{ tx['pick'] }}" size="small"/>
+      <rx-open-button rx-if="row.can_cancel" id="cancel-{{ row.id }}" label="{{ tx['cancel'] }}" size="small"/>
+    </template>
+  </rx-grid>
+  <template rx-for="sheet in sheets">
+    <rx-action-sheet rx-if="sheet.can_pick" :button="false" :id="'pick-' ~ sheet.id" :label="tx['pick']" :action="route('wl_inventory.dispatch_pick', sheet.id)"
+                     :title="tx['pick']" :description="tx['pick_description']" :submit-label="tx['pick']" icon="check"/>
+    <rx-action-sheet rx-if="sheet.can_cancel" :button="false" :id="'cancel-' ~ sheet.id" :label="tx['cancel']" :action="route('wl_inventory.dispatch_cancel', sheet.id)"
+                     :title="tx['cancel']" :description="tx['cancel_description']" :submit-label="tx['cancel']" icon="x">
+      <rx-textarea name="reason" :label="tx['reason']" :id="'cancel-reason-' ~ sheet.id" required/>
+    </rx-action-sheet>
+  </template>
 </rx-page>
