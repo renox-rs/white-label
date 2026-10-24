@@ -79,6 +79,30 @@ rnx tailwind --watch                                   # rebuild public/css/app.
 - `rnx view:data` writes `.vscode/renox-components.json` (VS Code autocomplete for the kit's tags;
   git-ignored, refreshed by `rnx serve`). Don't edit it by hand.
 
+## How this host is white-label wired
+
+This host is not a single app: one binary serves every vertical, chosen by the client's config.
+
+- **`client.toml` picks the app.** The path comes from `CLIENT_CONFIG` (unset outside production it
+  falls back to `clients/demo-properties/client.toml`). `host::app_for(config)` in `src/lib.rs`
+  (`app_for_tuned` with a `Tuning` for code-side module settings) reads `[client] app`, checks it
+  against `VERTICALS`, mounts the enabled `wl-*` modules from the manifest, then mounts the
+  vertical's app crate last in `mount_vertical` (one arm per app: property, construction,
+  logistics, accounting, clinics, fnb, manufacturing, auto, manpower, edtech).
+- **Vertical glue is flat files in `src/app/`**, named `<vertical>_seed.rs` (the `<vertical>:install`
+  command and its defaults), `<vertical>_settings.rs` (the settings groups and integrations),
+  `<vertical>_demo` (the `<vertical>:demo` command, a file or a directory), plus money, portal and
+  rules files where a vertical needs them (`auto_money.rs`, `manpower_portal.rs` ...). Add new
+  vertical glue next to them, not in a new nested module tree.
+- **`host/migrations/` is empty** (only `.gitkeep`): the tables belong to the `wl-*` crates and to
+  `apps/*`, which bring their own migrations. Do not add host migrations for a vertical.
+- **Demo commands.** `DEMO_COMMANDS` in `src/lib.rs` lists `migrate:fresh`, `db:seed` and the nine
+  `<vertical>:demo` commands (property, construction, logistics, manpower, clinics, fnb, edtech,
+  auto, manufacturing; accounting has none). `main.rs` refuses them when `APP_ENV` is production.
+  A new demo command must be added to that list.
+- **Install commands.** `wl:install` first, then the client's `<vertical>:install` and the
+  `<module>:install` of the enabled modules; all are idempotent.
+
 ## The starter kit's pages
 
 This app was made with `rnx new --starter`. Its pages are built from the UI kit plus a few page
@@ -112,7 +136,7 @@ in files under `public/` (no inline scripts or `style=` attributes: they break u
 
 ## Things that trip agents up
 
-- **Write pages with `rx-*` tags** (`<rx-input>`, `<rx-card>`, `<rx-table>`…; every tag and prop is
+- **Write pages with `rx-*` tags** (`<rx-input>`, `<rx-card>`, `<rx-grid>` for lists…; every tag and prop is
   in docs/ui.md and the framework's `components/contracts.rs`). Don't write
   template statements (`if`, `for`, `set`, `extends`, `block`, `call`, `from … import`): the tags
   have a way for each (`rx-if`/`rx-elif`/`rx-else`/`rx-for` on an element or on `<template>`,
@@ -320,7 +344,7 @@ in files under `public/` (no inline scripts or `style=` attributes: they break u
 - Pages are built from the UI kit (`renox/ui.html`, docs/ui.md), not from your own markup and
   CSS, as tags: `<rx-navbar>`/`<rx-nav-link>` (or `<rx-sidebar>` in `<rx-shell fill>` for a dashboard app),
   `<rx-page-header>`, `<rx-card>`, the fields (`<rx-input>`, `<rx-select>`, `<rx-toolbar>` for
-  filters), `<rx-button>`/`<rx-link-button>`, `<rx-table>` + `<rx-row-actions>`, `<rx-list>`,
+  filters), `<rx-button>`/`<rx-link-button>`, `<rx-grid>` for every list (`<rx-table>` + `<rx-row-actions>` only for a few lines inside a detail page, never a list screen), `<rx-list>`,
   `<rx-card-grid>` + `<rx-media-card>`, `<rx-link-tabs>`, `<rx-sheet>`/`<rx-action-sheet>`/
   `<rx-confirm>`, `<rx-menu>`, `<rx-badge>`, `<rx-alert>`, `<rx-empty>`, `<rx-progress>`, and
   `toasts()`.
