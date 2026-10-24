@@ -694,6 +694,7 @@ pub struct LineRow {
 /// the reference in words and whether it can be cancelled.
 struct HoldExtra {
     reference: String,
+    placed: String,
     lines: Vec<LineRow>,
     can_cancel: bool,
 }
@@ -736,7 +737,11 @@ fn holds_grid(lang: &Lang) -> Grid {
                 .sortable(false)
                 .filterable(false),
         )
-        .column(Column::datetime("placed_at", &t["holds.placed"]))
+        .column(
+            Column::text("placed_at", &t["holds.placed"])
+                .computed("{T}.\"placed_at\"")
+                .filterable(false),
+        )
         .column(
             Column::select(
                 "status",
@@ -841,6 +846,7 @@ async fn holds(
             hold.id,
             HoldExtra {
                 reference,
+                placed: hold.placed_at.map(dubai_text).unwrap_or_default(),
                 lines,
                 can_cancel,
             },
@@ -849,6 +855,7 @@ async fn holds(
     let holds = page.extend(|hold| match extras.get(&hold.id) {
         Some(extra) => renox::serde_json::json!({
             "reference": extra.reference,
+            "placed_at": extra.placed,
             "lines": extra.lines,
             "can_cancel": extra.can_cancel,
         }),

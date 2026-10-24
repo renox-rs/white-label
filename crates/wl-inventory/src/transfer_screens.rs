@@ -26,6 +26,7 @@ use crate::item::Item;
 use crate::location::{Location, LocationType};
 use crate::lot::{Lot, LotStatus};
 use crate::permissions;
+use crate::screens::dubai_text;
 use crate::stock_screens::{Texts, amount, item_name, location_name, locations_with, tr, tx, word};
 use crate::transfer::{
     NewTransfer, NewTransferLine, Transfer, TransferStatus, create_draft, lines_of,
@@ -93,8 +94,9 @@ fn grid(lang: &Lang) -> Grid {
             .mobile(),
         )
         .column(
-            Column::datetime("moved_at", &t["transfers.when"])
-                .computed("COALESCE({T}.\"received_at\", {T}.\"sent_at\", {T}.\"created_at\")"),
+            Column::text("moved_at", &t["transfers.when"])
+                .computed("COALESCE({T}.\"received_at\", {T}.\"sent_at\", {T}.\"created_at\")")
+                .filterable(false),
         )
         .column(Column::custom("actions", "").frozen_right().mobile())
         .sort_by("-id")
@@ -106,6 +108,7 @@ fn grid(lang: &Lang) -> Grid {
 /// warning of a receipt into a store on hold.
 struct Extra {
     lines: String,
+    moved_at: String,
     can_send: bool,
     can_receive: bool,
     warning: String,
@@ -151,6 +154,12 @@ async fn transfers(
             transfer.id,
             Extra {
                 lines: lines.join(", "),
+                moved_at: transfer
+                    .received_at
+                    .or(transfer.sent_at)
+                    .or(transfer.created_at)
+                    .map(dubai_text)
+                    .unwrap_or_default(),
                 can_send: transfer.status == TransferStatus::Draft
                     && user.has_permission_in(permissions::STOCK_TRANSFER, &transfer.from_scope()),
                 can_receive,
@@ -161,6 +170,7 @@ async fn transfers(
     let transfers = page.extend(|transfer| match extras.get(&transfer.id) {
         Some(extra) => renox::serde_json::json!({
             "lines": extra.lines,
+            "moved_at": extra.moved_at,
             "can_send": extra.can_send,
             "can_receive": extra.can_receive,
             "warning": extra.warning,

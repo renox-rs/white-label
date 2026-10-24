@@ -205,7 +205,11 @@ fn grid(lang: &Lang) -> Grid {
             ])
             .mobile(),
         )
-        .column(Column::datetime("updated_at", &t["when"]))
+        .column(
+            Column::text("when", &t["when"])
+                .computed("{T}.\"updated_at\"")
+                .filterable(false),
+        )
         .sort_by("-id")
         .row_url("/dispatches/{id}")
         .cards_on_mobile()
@@ -281,7 +285,11 @@ async fn list(
         shown.insert(dispatch.id, row_of(&state, &lang, dispatch).await?);
     }
     let dispatches = page.extend(|dispatch| match shown.get(&dispatch.id) {
-        Some(row) => renox::serde_json::json!({ "source": row.source, "lines": row.lines }),
+        Some(row) => renox::serde_json::json!({
+            "source": row.source,
+            "lines": row.lines,
+            "when": row.when,
+        }),
         None => renox::serde_json::json!({}),
     });
     Ok(View::typed(DispatchesPage {

@@ -130,7 +130,8 @@ async fn the_bom_pages_open_for_the_roles_of_the_plant() {
         let page = browse(&app, user, "/boms").await;
         page.assert_ok();
         page.assert_see("Bills of materials");
-        page.assert_see("rx-table-wrap");
+        // The list is a grid: its rows are cards on a phone.
+        page.assert_see("rx-grid--cards");
         browse(&app, user, &format!("/boms/{bom}"))
             .await
             .assert_ok();

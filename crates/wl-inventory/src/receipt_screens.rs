@@ -33,6 +33,7 @@ use crate::item::Item;
 use crate::location::Location;
 use crate::permissions;
 use crate::purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus, lines_of};
+use crate::screens::dubai_text;
 use crate::screens::quantity_text;
 use crate::stock_screens::{Texts, amount, item_name, location_name, tr, tx, word};
 
@@ -343,8 +344,9 @@ fn receipts_grid(lang: &Lang) -> Grid {
             .mobile(),
         )
         .column(
-            Column::datetime("happened_at", &t["transfers.when"])
-                .computed("COALESCE({T}.\"posted_at\", {T}.\"created_at\")"),
+            Column::text("happened_at", &t["transfers.when"])
+                .computed("COALESCE({T}.\"posted_at\", {T}.\"created_at\")")
+                .filterable(false),
         )
         .sort_by("status,-id")
         .row_url("/goods-receipts/{id}")
@@ -384,6 +386,11 @@ async fn receipts(
         renox::serde_json::json!({
             "number": receipt_title(&lang, receipt),
             "supplier": suppliers.get(&receipt.id),
+            "happened_at": receipt
+                .posted_at
+                .or(receipt.created_at)
+                .map(dubai_text)
+                .unwrap_or_default(),
         })
     });
     Ok(View::typed(ReceiptsPage {

@@ -94,7 +94,19 @@ fn no_bare_ids(html: &str, url: &str) {
 
 /// A bare `None` (an empty value printed as a word) is never read on a page.
 fn no_none(html: &str, url: &str) {
-    let text = visible(html);
+    // A grid's column menu offers "Freeze: None" in a select of its own; that
+    // is the grid's word for the choice, not an empty value.
+    let mut cleaned = String::new();
+    let mut rest = html;
+    while let Some(at) = rest.find("data-grid-pin=") {
+        let start = rest[..at].rfind("<select").unwrap_or(at);
+        cleaned.push_str(&rest[..start]);
+        rest = rest[at..]
+            .find("</select>")
+            .map_or("", |end| &rest[at + end + "</select>".len()..]);
+    }
+    cleaned.push_str(rest);
+    let text = visible(&cleaned);
     let bare = text
         .split(|c: char| !c.is_alphanumeric())
         .any(|word| word == "None");
