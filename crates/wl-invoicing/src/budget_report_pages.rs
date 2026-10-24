@@ -10,8 +10,11 @@
 //! `budgets.view` (a global role grants all of them); a requested entity
 //! outside the scope is 403. Without `drawings.approve` the drawings show
 //! their total only; with it, the lines, the payees and the *self-approved*
-//! flag are listed too. The template is compiled in and can be replaced by the
-//! app (`resources/views/wl-invoicing/budget_report.html`).
+//! flag are listed too. `?sort=variance` (`-variance` for the largest first;
+//! also `category`, `budget`, `actual`, `percent`) orders the categories
+//! inside each section, and `?export=csv` downloads the table as shown
+//! ([`crate::report_table`], #525). The template is compiled in and can be
+//! replaced by the app (`resources/views/wl-invoicing/budget_report.html`).
 
 use std::collections::BTreeMap;
 
@@ -28,6 +31,7 @@ use crate::budget_lines::parse_month;
 use crate::budget_report::{self, Report, ReportQuery, Row, percent_bp, unfavourable};
 use crate::config_of;
 use crate::permissions;
+use crate::report_table::{self, Sort, SortKey};
 use crate::texts;
 
 /// The texts a template reads as `tx['budget.title']`.
@@ -50,6 +54,37 @@ pub(crate) struct Filter {
     month: Option<String>,
     /// Ticked: the year to date.
     ytd: Option<String>,
+    /// The column the categories are sorted by, `-` first for descending.
+    sort: Option<String>,
+    /// `csv`: the table as a file.
+    export: Option<String>,
+}
+
+/// The columns the categories can be sorted by.
+const SORT_KEYS: [&str; 5] = ["category", "budget", "actual", "variance", "percent"];
+
+/// The value of `row` that the column `key` sorts by.
+fn sort_key(row: &Row, key: &str) -> SortKey {
+    match key {
+        "category" => SortKey::text(&row.name),
+        "budget" => SortKey::Number(row.budget),
+        "actual" => SortKey::Number(row.actual),
+        "variance" => SortKey::Number(row.actual - row.budget),
+        // A category with no budget has no percentage: it comes first.
+        _ => SortKey::Number(
+            percent_bp(row.actual - row.budget, row.budget).unwrap_or(i64::MIN),
+        ),
+    }
+}
+
+/// `report` with the categories of each section in the order of `sort`.
+pub(crate) fn sorted(mut report: Report, sort: Option<&Sort>) -> Report {
+    if let Some(sort) = sort {
+        sort.apply(&mut report.income, sort_key);
+        sort.apply(&mut report.expense, sort_key);
+        sort.apply(&mut report.drawings, sort_key);
+    }
+    report
 }
 
 impl Filter {
@@ -71,6 +106,11 @@ impl Filter {
         self.ytd
             .as_deref()
             .is_some_and(|v| !v.is_empty() && v != "0" && v != "false")
+    }
+
+    /// The order asked for, if any.
+    fn sort(&self) -> Option<Sort> {
+        Sort::parse(self.sort.as_deref(), &SORT_KEYS)
     }
 }
 
@@ -260,15 +300,22 @@ pub(crate) struct IndexPage {
     mapping_changed: Option<String>,
     drawings_detail: bool,
     drawings: Vec<DrawingView>,
+    /// The orders the sort select offers, and the one chosen (`""`: the
+    /// report's own).
+    sorts: Vec<(String, String)>,
+    sort: String,
+    /// The link of the CSV export, with the page's filters.
+    export_url: String,
 }
 
-/// `GET /budget-report`: the budget, the actual and the variance.
+/// `GET /budget-report`: the budget, the actual and the variance, or the
+/// table as a CSV file (`?export=csv`).
 async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Query(filter): Query<Filter>,
-) -> Result<View> {
+) -> Result<Response> {
     let t = |key: &str| texts::t(&lang, &format!("wl_invoicing.{key}"));
     if !user.has_permission_anywhere(permissions::BUDGETS_VIEW) {
         return Err(Error::Forbidden);
@@ -305,6 +352,8 @@ async fn index(
         },
     )
     .await?;
+    let sort = filter.sort();
+    let report = sorted(report, sort.as_ref());
     let rows = table(&report, drawings_detail, &t);
     let directory = wl_kernel::parties::directory(&state);
     let mut drawings = Vec::with_capacity(report.drawings_items.len());
@@ -348,14 +397,60 @@ async fn index(
     ]
     .iter()
     .map(|key| t(key))
-    .collect();
+    .collect::<Vec<String>>();
+    if report_table::wants_csv(filter.export.as_deref()) {
+        let flag = t("budget.report.unfavourable");
+        let lines: Vec<Vec<String>> = rows
+            .iter()
+            .map(|row| {
+                vec![
+                    row.name.clone(),
+                    row.budget.clone(),
+                    row.actual.clone(),
+                    row.variance.clone(),
+                    row.percent.clone(),
+                    if row.unfavourable { flag.clone() } else { String::new() },
+                ]
+            })
+            .collect();
+        return Ok(report_table::csv("budget-vs-actual", &head, &lines).into_response());
+    }
+    let sort_columns: Vec<(&str, String)> = SORT_KEYS
+        .iter()
+        .zip([
+            "budget.report.category",
+            "budget.report.budget",
+            "budget.report.actual",
+            "budget.report.variance",
+            "budget.report.percent",
+        ])
+        .map(|(key, label)| (*key, t(label)))
+        .collect();
+    let sorts = report_table::sort_options(
+        &sort_columns,
+        &t("report.own_order"),
+        &t("report.up"),
+        &t("report.down"),
+    );
+    let entity_param = requested.map(|e| e.to_string()).unwrap_or_default();
+    let month_param = month.format("%Y-%m").to_string();
+    let sort_param = sort.as_ref().map(Sort::param).unwrap_or_default();
+    let export_url = report_table::export_link(
+        "/budget-report",
+        &[
+            ("entity", entity_param.clone()),
+            ("month", month_param.clone()),
+            ("ytd", if filter.ytd() { "1".to_owned() } else { String::new() }),
+            ("sort", sort_param.clone()),
+        ],
+    );
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         head,
         rows,
         entities,
-        entity: requested.map(|e| e.to_string()).unwrap_or_default(),
-        month: month.format("%Y-%m").to_string(),
+        entity: entity_param,
+        month: month_param,
         ytd: filter.ytd(),
         without_budget,
         mapping_changed: report
@@ -363,7 +458,11 @@ async fn index(
             .map(|d| d.format("%Y-%m-%d").to_string()),
         drawings_detail,
         drawings,
-    }))
+        sorts,
+        sort: sort_param,
+        export_url,
+    })
+    .into_response())
 }
 
 #[cfg(test)]
@@ -395,6 +494,7 @@ mod tests {
             entity: Some("3".into()),
             month: Some("2027-03".into()),
             ytd: Some("1".into()),
+            ..Filter::default()
         };
         assert_eq!(filter.entity_id(), Some(3));
         assert_eq!(filter.month(day(2027, 8, 9)), day(2027, 3, 1));
@@ -407,10 +507,54 @@ mod tests {
             ytd: Some("0".into()),
             entity: Some(String::new()),
             month: Some("March".into()),
+            ..Filter::default()
         };
         assert!(!off.ytd());
         assert_eq!(off.entity_id(), None);
         assert_eq!(off.month(day(2027, 8, 9)), day(2027, 8, 1));
+    }
+
+    #[test]
+    fn the_categories_sort_inside_their_section() {
+        let row = |budget, actual, name: &str| Row {
+            category_id: Some(1),
+            name: name.to_owned(),
+            kind: BudgetKind::Expense,
+            budget,
+            actual,
+        };
+        let report = Report {
+            month: day(2027, 3, 1),
+            ytd: false,
+            entities: vec![1],
+            without_budget: Vec::new(),
+            income: Vec::new(),
+            expense: vec![
+                row(1_000_000, 1_050_000, "Marketing"),
+                row(500_000, 900_000, "Rent"),
+                row(0, 10_000, "Fuel"),
+            ],
+            drawings: Vec::new(),
+            drawings_items: Vec::new(),
+            mapping_changed: None,
+        };
+        let names = |report: &Report| -> Vec<String> {
+            report.expense.iter().map(|r| r.name.clone()).collect()
+        };
+        let by = |key: &str| sorted(report.clone(), Sort::parse(Some(key), &SORT_KEYS).as_ref());
+        let by_variance = by("-variance");
+        assert_eq!(names(&by_variance), ["Rent", "Marketing", "Fuel"]);
+        let by_name = by("category");
+        assert_eq!(names(&by_name), ["Fuel", "Marketing", "Rent"]);
+        // No budget, no percentage: first when ascending.
+        let by_percent = by("percent");
+        assert_eq!(names(&by_percent), ["Fuel", "Marketing", "Rent"]);
+        assert_eq!(names(&sorted(report.clone(), None)), names(&report));
+        // The table keeps its headings and totals around the sorted lines.
+        let lines = table(&by_variance, false, &english_text);
+        let rent = lines.iter().position(|r| r.name == "Rent").unwrap();
+        let marketing = lines.iter().position(|r| r.name == "Marketing").unwrap();
+        assert!(rent < marketing);
     }
 
     #[test]

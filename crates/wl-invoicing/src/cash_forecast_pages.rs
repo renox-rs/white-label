@@ -17,9 +17,11 @@
 //! user holds `drawings.approve` (`FIN.ACL.22`). A row per budget category
 //! shows the budget fill (`side=fill:<category code>` opens its lines); the
 //! receipts moved beyond the last week by *adjust by days late* are listed
-//! under the grid as *after week 13* (`side=after`). The Excel export of the grid
-//! as a sensitive report export is not built yet. The templates are compiled
-//! in and an app can replace them.
+//! under the grid as *after week 13* (`side=after`). `?export=csv` downloads
+//! the weeks and the rows as the page shows them (#525: the matrix stays a
+//! table, see `cash_forecast.html`, and gets the export only); the Excel
+//! export as a sensitive report export is not built yet. The templates are
+//! compiled in and an app can replace them.
 
 use std::collections::BTreeMap;
 
@@ -120,6 +122,8 @@ pub(crate) struct Filter {
     week: Option<usize>,
     /// `in`, `out` or a memo code (the cell page).
     side: Option<String>,
+    /// `csv`: the weeks and the rows as a file (the forecast page).
+    export: Option<String>,
 }
 
 impl Filter {
@@ -217,6 +221,8 @@ pub(crate) struct IndexPage {
     later: Vec<LineView>,
     later_total: String,
     later_caption: String,
+    /// The link of the CSV export, with the entity chosen.
+    export_url: String,
 }
 
 fn kind_text(t: &dyn Fn(&str) -> String, kind: MemoKind) -> String {
@@ -408,13 +414,14 @@ pub(crate) fn rows_of(forecast: &Forecast, entity: &str, t: &dyn Fn(&str) -> Str
     rows
 }
 
-/// `GET /cash-forecast`: the 13-week grid.
+/// `GET /cash-forecast`: the 13-week grid, or its weeks and rows as a CSV
+/// file (`?export=csv`), with the amounts as the user sees them.
 async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Query(filter): Query<Filter>,
-) -> Result<View> {
+) -> Result<Response> {
     let t = |key: &str| texts::t(&lang, &format!("wl_invoicing.{key}"));
     let requested = filter.entity_id();
     let (all, chosen) = entities_for(&state, &user, permissions::CASHFLOW_VIEW, requested).await?;
@@ -439,7 +446,25 @@ async fn index(
                 w.end.format("%d %b")
             )
         }))
-        .collect();
+        .collect::<Vec<String>>();
+    if crate::report_table::wants_csv(filter.export.as_deref()) {
+        let lines: Vec<Vec<String>> = rows
+            .iter()
+            .map(|row| {
+                std::iter::once(row.name.clone())
+                    .chain(row.cells.iter().map(|c| c.text.clone()))
+                    .collect()
+            })
+            .collect();
+        let mut head = head;
+        if let Some(first) = head.first_mut() {
+            *first = t("cash.cell.line");
+        }
+        let file = crate::report_table::csv("cash-flow-forecast", &head, &lines);
+        return Ok(file.into_response());
+    }
+    let export_url =
+        crate::report_table::export_link("/cash-forecast", &[("entity", entity.clone())]);
     let openings = forecast
         .openings
         .iter()
@@ -529,7 +554,9 @@ async fn index(
             t("cash.after"),
             forecast.weeks.last().map_or(0, |w| w.number)
         ),
-    }))
+        export_url,
+    })
+    .into_response())
 }
 
 /// One line behind a cell.

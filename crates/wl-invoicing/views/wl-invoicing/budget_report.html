@@ -2,19 +2,25 @@
     for one legal entity or for all of the user's entities: budget, actual,
     variance in AED and %, marked when unfavourable; the operating result; the
     owner drawings below it (their total only, unless the user holds
-    drawings.approve); the result after drawings. Replace it with
+    drawings.approve); the result after drawings. The categories sort by any
+    column inside their section (`?sort=`), and the table downloads as CSV
+    (`?export=csv`). Replace it with
     resources/views/wl-invoicing/budget_report.html in the app.
     Left as a table on purpose (#525): the rows are computed in Rust and carry
     headings, subtotals and the result, not records of a model, so the
-    standard grid cannot draw it. -#}
+    standard grid cannot draw it; the table sits in a panel that fills the
+    screen. -#}
 <rx-page layout="layouts/app.html" :title="tx['budget.report.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['budget.report.title']" :subtitle="tx['budget.report.subtitle']"/>
+  <rx-page-header :title="tx['budget.report.title']" :subtitle="tx['budget.report.subtitle']">
+    <rx-link-button :href="export_url" :label="tx['report.export']" variant="secondary" icon="download"/>
+  </rx-page-header>
+  <section class="rx-pane rx-fill">
     <rx-form method="GET" action="{{ route('wl_invoicing.budget_report') }}">
       <rx-row>
         <rx-select name="entity" :label="tx['budget.report.entity']" :options="entities" :selected="entity" id="budget-report-entity"/>
         <rx-input name="month" type="month" :label="tx['budget.report.month']" :value="month" id="budget-report-month"/>
         <rx-checkbox name="ytd" :label="tx['budget.report.ytd']" :checked="ytd" id="budget-report-ytd"/>
+        <rx-select name="sort" :label="tx['report.sort']" :options="sorts" :selected="sort" id="budget-report-sort"/>
         <rx-button type="submit" :label="tx['budget.report.show']"/>
       </rx-row>
     </rx-form>
@@ -38,5 +44,5 @@
       <rx-column :label="tx['budget.report.self_approved']"><rx-badge rx-if="item.self_approved" kind="warning" :text="tx['budget.report.self_approved']"/></rx-column>
       <rx-column label=""><a rx-if="item.link" href="{{ item.link }}">{{ tx['budget.report.open'] }}</a></rx-column>
     </rx-table>
-  </rx-stack>
+  </section>
 </rx-page>

@@ -588,3 +588,54 @@ async fn a_paid_payroll_run_counts_in_salaries_and_staff_costs() {
     let other = report(&t, &[&e1], 3, false, false).await;
     assert!(other.expense.iter().all(|r| r.actual == 0));
 }
+
+/// The categories sort by a column inside their section (`?sort=`), and the
+/// table downloads as CSV with the page's filters (`?export=csv`, #525).
+#[renox::test]
+async fn the_report_sorts_by_column_and_exports_as_csv() {
+    let t = boot().await;
+    let e1 = t.entity("PGP").await;
+    t.approved_budget("PGP", 2027, &[("marketing", 3, 1_000_000)])
+        .await;
+    t.approved_bill(
+        &e1,
+        "SB-1",
+        day(3, 10),
+        &[("Diesel", 80_000, "fuel", VatCategory::Exempt)],
+    )
+    .await;
+    let viewer = t.helper("Vera", &[perm::BUDGETS_VIEW]).await;
+    t.app.acting_as(&viewer);
+
+    let at = |html: &str, text: &str| html.find(text).unwrap_or(usize::MAX);
+    // Fuel is AED 800 over (no budget), Marketing AED 10,000 under.
+    let largest = t
+        .app
+        .get("/budget-report?month=2027-03&sort=-variance")
+        .await;
+    largest.assert_ok();
+    let html = largest.text();
+    assert!(at(&html, "Transport and fuel") < at(&html, ">Marketing<"));
+    let smallest = t
+        .app
+        .get("/budget-report?month=2027-03&sort=variance")
+        .await
+        .text();
+    assert!(at(&smallest, ">Marketing<") < at(&smallest, "Transport and fuel"));
+    // The export link carries the filters.
+    assert!(html.contains("/budget-report?month=2027-03&amp;sort=-variance&amp;export=csv"));
+
+    let file = t
+        .app
+        .get("/budget-report?month=2027-03&sort=-variance&export=csv")
+        .await;
+    file.assert_ok();
+    assert!(
+        file.header("content-type")
+            .is_some_and(|c| c.starts_with("text/csv"))
+    );
+    let csv = file.text();
+    assert!(csv.contains("Category,Budget,Actual,Variance"));
+    assert!(csv.contains("Transport and fuel,0.00,800.00,+800.00"));
+    assert!(at(&csv, "Transport and fuel") < at(&csv, "Marketing"));
+}

@@ -739,6 +739,24 @@ async fn a_user_sees_the_entities_of_the_scope() {
         .get(&format!("/cash-forecast?entity={}", e2.id))
         .await
         .assert_forbidden();
+    // The matrix stays a table and downloads as CSV with the same scope (#525).
+    t.app
+        .get("/cash-forecast")
+        .await
+        .assert_see("/cash-forecast?export=csv");
+    let file = t.app.get("/cash-forecast?export=csv").await;
+    file.assert_ok();
+    assert!(
+        file.header("content-type")
+            .is_some_and(|c| c.starts_with("text/csv"))
+    );
+    let csv = file.text();
+    assert!(csv.contains("Line,Week 1"));
+    assert!(csv.contains("Projected balance"));
+    t.app
+        .get(&format!("/cash-forecast?entity={}&export=csv", e2.id))
+        .await
+        .assert_forbidden();
 
     let nobody = t.helper("Nobody", &[perm::VIEW]).await;
     t.app.acting_as(&nobody);

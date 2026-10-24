@@ -112,6 +112,7 @@ pub mod recovery;
 pub mod refund;
 pub mod reminders;
 pub mod reopen_notices;
+mod report_table;
 pub mod restore;
 pub mod reversal;
 pub mod seed;

@@ -1,24 +1,31 @@
 {#- wl-invoicing: the receivables ageing: per party the open balance by days
-    past due, the disputed part and the total, with a legal entity filter.
-    Replace it with resources/views/wl-invoicing/ageing.html in the app.
-    Left as cards on purpose (#525): the rows are computed in Rust per party
-    and currency, not records of a model, so the standard grid cannot draw it. -#}
+    past due, the disputed part and the total, with a legal entity filter, a
+    sort by any column (`?sort=`) and a CSV export (`?export=csv`). Replace it
+    with resources/views/wl-invoicing/ageing.html in the app.
+    Left as a table on purpose (#525): the rows are computed in Rust per party
+    and currency as at today, not records of a model, so the standard grid
+    cannot draw it; the table sits in a panel that fills the screen. -#}
 <rx-page layout="layouts/app.html" :title="tx['ageing.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['ageing.title']" :subtitle="tx['ageing.as_of'] ~ ' ' ~ on ~ '. ' ~ tx['ageing.days_past_due'] ~ ': ' ~ legend"/>
+  <rx-page-header :title="tx['ageing.title']" :subtitle="tx['ageing.as_of'] ~ ' ' ~ on ~ '. ' ~ tx['ageing.days_past_due'] ~ ': ' ~ legend">
+    <rx-link-button :href="export_url" :label="tx['report.export']" variant="secondary" icon="download"/>
+  </rx-page-header>
+  <section class="rx-pane rx-fill">
     <rx-form method="GET" action="{{ route('wl_invoicing.ageing') }}">
       <rx-row>
         <rx-select name="entity" :label="tx['ageing.entity']" :options="entities" :selected="entity" id="ageing-entity"/>
+        <rx-select name="sort" :label="tx['report.sort']" :options="sorts" :selected="sort" id="ageing-sort"/>
         <rx-button type="submit" :label="tx['ageing.filter']"/>
       </rx-row>
     </rx-form>
-    <rx-card rx-for="row in rows" :title="row.party ~ ' (' ~ row.currency ~ ')'">
-      <rx-infolist columns="3">
-        <rx-entry rx-for="cell in row.cells" :label="cell.label" :value="cell.amount"/>
-        <rx-entry :label="tx['ageing.disputed']" :value="row.disputed"/>
-        <rx-entry :label="tx['ageing.total']" :value="row.total"/>
-      </rx-infolist>
-    </rx-card>
+    <rx-simple-table rx-if="rows" :head="head" :caption="tx['ageing.title']">
+      <tr rx-for="row in rows">
+        <td>{{ row.party }}</td>
+        <td>{{ row.currency }}</td>
+        <td rx-for="cell in row.cells">{{ cell.amount }}</td>
+        <td>{{ row.disputed }}</td>
+        <td>{{ row.total }}</td>
+      </tr>
+    </rx-simple-table>
     <rx-empty rx-if="not rows" :title="tx['ageing.empty']" icon="list"/>
-  </rx-stack>
+  </section>
 </rx-page>

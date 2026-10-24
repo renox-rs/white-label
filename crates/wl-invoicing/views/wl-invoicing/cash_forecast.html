@@ -6,10 +6,13 @@
     with resources/views/wl-invoicing/cash_forecast.html in the app.
     Left as a table on purpose (#525): a matrix of weeks across with computed
     cells and sections, not a list of records, so the standard grid (a model
-    query with rows, sort and export) cannot draw it. -#}
+    query with rows, sort and export) cannot draw it. It gets the export only:
+    "Export CSV" downloads the weeks and the rows as shown (`?export=csv`). -#}
 <rx-page layout="layouts/app.html" :title="tx['cash.title']">
   <rx-stack>
-    <rx-page-header :title="tx['cash.title']" :subtitle="tx['cash.subtitle']"/>
+    <rx-page-header :title="tx['cash.title']" :subtitle="tx['cash.subtitle']">
+      <rx-link-button :href="export_url" :label="tx['report.export']" variant="secondary" icon="download"/>
+    </rx-page-header>
     <rx-form method="GET" action="{{ route('wl_invoicing.cash_forecast') }}">
       <rx-row>
         <rx-select name="entity" :label="tx['cash.entity']" :options="entities" :selected="entity" id="cash-forecast-entity"/>

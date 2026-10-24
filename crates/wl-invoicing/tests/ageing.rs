@@ -57,6 +57,23 @@ async fn the_disputed_column_holds_the_disputed_part_of_the_balance() {
         .assert_see("AED 1,200.00")
         .assert_see("AED 3,800.00")
         .assert_see("AED 5,000.00");
+    // The rows sort by a column and download as CSV (#525).
+    let sorted = t.app.get("/receivables/ageing?sort=-bucket2").await;
+    sorted.assert_ok().assert_see("AED 3,800.00");
+    assert!(
+        sorted
+            .text()
+            .contains("/receivables/ageing?sort=-bucket2&amp;export=csv")
+    );
+    let file = t.app.get("/receivables/ageing?export=csv").await;
+    file.assert_ok();
+    assert!(
+        file.header("content-type")
+            .is_some_and(|c| c.starts_with("text/csv"))
+    );
+    let csv = file.text();
+    assert!(csv.contains("Party,Currency,0-30,31-60,61-90,90+,Disputed,Balance"));
+    assert!(csv.contains(",AED,AED 0.00,\"AED 3,800.00\",AED 0.00,AED 0.00,\"AED 1,200.00\",\"AED 5,000.00\""));
 
     t.pay(&invoice, 1, 450_000).await;
     let report = ageing::report(t.db(), &EDGES, None, t.day(0))
