@@ -262,7 +262,12 @@ pub(crate) fn grid(t: lists::Text<'_>, id: &str, see_customer: bool) -> Grid {
         .iter()
         .map(|status| (status.as_str(), grid_tone(*status)))
         .collect();
-    let mut grid = Grid::new(id)
+    let hint = if id == "auto-technician" {
+        t("jobs.my_empty_hint")
+    } else {
+        t("jobs.empty_hint")
+    };
+    let mut grid = lists::baseline(Grid::new(id))
         .title(&t("jobs.title"))
         .column(
             Column::text("number", &t("jobs.number"))
@@ -306,7 +311,7 @@ pub(crate) fn grid(t: lists::Text<'_>, id: &str, see_customer: bool) -> Grid {
     .sort_by("-id")
     .row_url("/auto/job-cards/{id}")
     .cards_on_mobile()
-    .empty_state(&t("jobs.empty"), None)
+    .empty_state(&t("jobs.empty"), Some(&hint))
 }
 
 /// The page of cards with the customers' names and the currency.
@@ -341,7 +346,7 @@ async fn index(
     user: AuthUser,
     lang: Lang,
     request: GridRequest,
-) -> Result<View> {
+) -> Result<Response> {
     if !(user.has_permission(permissions::JOB_CARDS_VIEW)
         || user.has_permission(permissions::JOB_CARDS_WORK))
     {
@@ -352,9 +357,17 @@ async fn index(
     if !sees_all {
         query = query.where_(JobCard::TECHNICIAN_USER_ID.eq(Some(user.id)));
     }
-    let cards = grid(&lists::texts_in(&lang), "auto-job-cards", sees_all)
-        .page(query, &request)
-        .await?;
+    // Who sees every job card may export them; the customer is a custom
+    // column, so no export carries a name or contact.
+    let can_export = sees_all;
+    let grid = lists::exporting(
+        grid(&lists::texts_in(&lang), "auto-job-cards", sees_all),
+        can_export,
+    );
+    if let Some(file) = lists::export_file(&grid, can_export, query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let cards = grid.page(query, &request).await?;
     let cards = with_customers(&state, &lang, cards).await;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
@@ -367,12 +380,18 @@ async fn index(
         )
         .await,
         can_check_in: user.has_permission(permissions::JOB_CARDS_ADVISE),
-    }))
+    })
+    .into_response())
 }
 
 /// `GET /auto/technician`: the technician's own open job cards.
 async fn technician(user: AuthUser, lang: Lang, request: GridRequest) -> Result<View> {
     require(&user, permissions::JOB_CARDS_WORK)?;
+    // The technician's own list has no export (`AUT.ACL.08`: nothing of the
+    // customer may leave it); a hand-made `?export=` is refused.
+    if request.param("export").is_some() {
+        return Err(Error::Forbidden);
+    }
     let open: Vec<String> = JobCardStatus::ALL
         .iter()
         .filter(|status| status.is_open())

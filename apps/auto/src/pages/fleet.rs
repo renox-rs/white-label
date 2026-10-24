@@ -153,7 +153,7 @@ pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
         .iter()
         .map(|status| (status.as_str(), grid_tone(*status)))
         .collect();
-    Grid::new("auto-fleet-contracts")
+    lists::baseline(Grid::new("auto-fleet-contracts"))
         .title(&t("fleet.title"))
         .column(
             Column::text("number", &t("fleet.number"))
@@ -187,7 +187,7 @@ pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
         .sort_by("-id")
         .row_url("/auto/fleet/{id}")
         .cards_on_mobile()
-        .empty_state(&t("fleet.empty"), None)
+        .empty_state(&t("fleet.empty"), Some(&t("fleet.empty_hint")))
 }
 
 /// What the list page needs.
@@ -205,13 +205,16 @@ async fn index(
     user: AuthUser,
     lang: Lang,
     request: GridRequest,
-) -> Result<View> {
+) -> Result<Response> {
     if !may_view(&user) {
         return Err(Error::Forbidden);
     }
-    let page = grid(&lists::texts_in(&lang))
-        .page(FleetContract::query(), &request)
-        .await?;
+    let can_export = user.has_permission(permissions::FLEET_CONTRACTS_MANAGE);
+    let grid = lists::exporting(grid(&lists::texts_in(&lang)), can_export);
+    if let Some(file) = lists::export_file(&grid, can_export, FleetContract::query(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(FleetContract::query(), &request).await?;
     let ids: Vec<i64> = page
         .items()
         .iter()
@@ -226,7 +229,8 @@ async fn index(
         tx: texts::all(&lang),
         contracts,
         can_create: user.has_permission(permissions::FLEET_CONTRACTS_MANAGE),
-    }))
+    })
+    .into_response())
 }
 
 /// `GET /auto/fleet-vehicle-options`: the vehicles the picker offers.

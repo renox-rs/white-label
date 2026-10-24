@@ -80,6 +80,7 @@ mod texts_claim_stops;
 mod texts_claims;
 mod texts_export;
 mod texts_fleet;
+mod texts_grids;
 mod texts_incidents;
 mod texts_jobs;
 mod texts_notices;

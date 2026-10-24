@@ -7,7 +7,7 @@
 //! the words, so a test builds the same grid with the English texts and the
 //! page with those of the user's language.
 
-use renox::grid::{Column, GridPage};
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use std::collections::HashMap;
 
@@ -127,6 +127,42 @@ pub(crate) fn vehicle_sql(fk: &str) -> String {
          ELSE ' ' || CAST(\"auto_vehicles\".\"model_year\" AS TEXT) END \
          FROM \"auto_vehicles\" WHERE \"auto_vehicles\".\"id\" = {{T}}.\"{fk}\")"
     )
+}
+
+/// The baseline every list of the app shares (#523, #557): 25 rows a page,
+/// the user's search, filters, sort and page size remembered, and the
+/// advanced filter. The export menu is added by the page, for the roles that
+/// may export ([`exporting`]).
+pub(crate) fn baseline(grid: Grid) -> Grid {
+    grid.per_page(25).remember().advanced_filter()
+}
+
+/// `grid` with its export menu when `can_export`.
+pub(crate) fn exporting(grid: Grid, can_export: bool) -> Grid {
+    if can_export { grid.exports() } else { grid }
+}
+
+/// The file of the export the request asks for (`?export=csv`), if any. A
+/// user who may not export gets 403: [`Grid::export`] answers any request
+/// that names a format, whether the menu is shown or not. Custom columns
+/// (the party names) are never exported.
+///
+/// # Errors
+///
+/// 403 for a user who may not export; the database's errors.
+pub(crate) async fn export_file<M: Model + Serialize>(
+    grid: &Grid,
+    can_export: bool,
+    query: renox::db::Query<M>,
+    request: &GridRequest,
+) -> Result<Option<Response>> {
+    if request.param("export").is_none() {
+        return Ok(None);
+    }
+    if !can_export {
+        return Err(Error::Forbidden);
+    }
+    grid.export(query, request).await
 }
 
 /// The options of a select column: each stored value with the words `key`

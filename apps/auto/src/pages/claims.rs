@@ -28,7 +28,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use renox::grid::{Column, Grid, GridPage, GridRequest};
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
@@ -173,7 +173,7 @@ pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
         .iter()
         .map(|status| (status.as_str(), grid_tone(*status)))
         .collect();
-    Grid::new("auto-claims")
+    lists::baseline(Grid::new("auto-claims"))
         .title(&t("claims.title"))
         .column(
             Column::text("number", &t("claims.number"))
@@ -206,11 +206,15 @@ pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
                 .searchable(),
         )
         .column(Column::date("accident_date", &t("claims.accident")))
-        .column(lists::money("approved_amount", &t("claims.approved")).mobile())
+        .column(
+            lists::money("approved_amount", &t("claims.approved"))
+                .mobile()
+                .summary(Summary::Sum),
+        )
         .sort_by("-id")
         .row_url("/auto/claims/{id}")
         .cards_on_mobile()
-        .empty_state(&t("claims.empty"), None)
+        .empty_state(&t("claims.empty"), Some(&t("claims.empty_hint")))
 }
 
 /// What the list page needs.
@@ -230,13 +234,16 @@ async fn index(
     user: AuthUser,
     lang: Lang,
     request: GridRequest,
-) -> Result<View> {
+) -> Result<Response> {
     if !may_view(&user) {
         return Err(Error::Forbidden);
     }
-    let page = grid(&lists::texts_in(&lang))
-        .page(InsuranceClaim::query(), &request)
-        .await?;
+    let can_export = user.has_permission(permissions::INSURANCE_MANAGE);
+    let grid = lists::exporting(grid(&lists::texts_in(&lang)), can_export);
+    if let Some(file) = lists::export_file(&grid, can_export, InsuranceClaim::query(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(InsuranceClaim::query(), &request).await?;
     let insurer_ids: Vec<i64> = page.items().iter().map(|claim| claim.insurer_id).collect();
     let mut party_of_insurer = HashMap::new();
     for insurer_id in insurer_ids {
@@ -262,7 +269,8 @@ async fn index(
         can_register: user.has_permission(permissions::INSURANCE_MANAGE),
         insurer_options: insurer_options(&state, &lang).await?,
         repair_options: repair_options(&lang),
-    }))
+    })
+    .into_response())
 }
 
 /// `GET /auto/claim-vehicle-options`: the vehicles the picker offers.

@@ -56,7 +56,7 @@ pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
         ("active".to_owned(), t("insurers.active")),
         ("stopped".to_owned(), t("insurers.stopped")),
     ];
-    Grid::new("auto-insurers")
+    lists::baseline(Grid::new("auto-insurers"))
         .title(&t("insurers.title"))
         .column(
             Column::custom("name", &t("insurers.name"))
@@ -79,7 +79,7 @@ pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
         .sort_by("-id")
         .row_url("/auto/insurers/{id}")
         .cards_on_mobile()
-        .empty_state(&t("insurers.empty"), None)
+        .empty_state(&t("insurers.empty"), Some(&t("insurers.empty_hint")))
 }
 
 /// What the list page needs.
@@ -96,11 +96,14 @@ async fn index(
     user: AuthUser,
     lang: Lang,
     request: GridRequest,
-) -> Result<View> {
+) -> Result<Response> {
     require(&user, permissions::INSURANCE_MANAGE)?;
-    let page = grid(&lists::texts_in(&lang))
-        .page(Insurer::query(), &request)
-        .await?;
+    let can_export = true;
+    let grid = lists::exporting(grid(&lists::texts_in(&lang)), can_export);
+    if let Some(file) = lists::export_file(&grid, can_export, Insurer::query(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(Insurer::query(), &request).await?;
     let ids: Vec<i64> = page
         .items()
         .iter()
@@ -114,7 +117,8 @@ async fn index(
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         insurers,
-    }))
+    })
+    .into_response())
 }
 
 /// The form that records or changes an insurer.

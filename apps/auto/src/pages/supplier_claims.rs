@@ -16,7 +16,7 @@
 //! warranty ticket is named by its number among the warranty tickets of the
 //! job card.
 
-use renox::grid::{Column, Grid, GridPage, GridRequest};
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
@@ -121,7 +121,7 @@ pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
         "supplier.answer",
         SupplierAnswer::ALL.iter().map(|answer| answer.as_str()),
     );
-    Grid::new("auto-supplier-claims")
+    lists::baseline(Grid::new("auto-supplier-claims"))
         .title(&t("supplier.title"))
         .column(
             Column::text("number", &t("supplier.number"))
@@ -144,7 +144,11 @@ pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
                 .searchable()
                 .mobile(),
         )
-        .column(lists::money("claim_amount", &t("supplier.claimed")).mobile())
+        .column(
+            lists::money("claim_amount", &t("supplier.claimed"))
+                .mobile()
+                .summary(Summary::Sum),
+        )
         .column(Column::select(
             "supplier_answer",
             &t("supplier.answer"),
@@ -153,7 +157,7 @@ pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
         .sort_by("-id")
         .row_url("/auto/supplier-claims/{id}")
         .cards_on_mobile()
-        .empty_state(&t("supplier.empty"), None)
+        .empty_state(&t("supplier.empty"), Some(&t("supplier.empty_hint")))
 }
 
 /// What the list page needs.
@@ -170,13 +174,16 @@ async fn index(
     user: AuthUser,
     lang: Lang,
     request: GridRequest,
-) -> Result<View> {
+) -> Result<Response> {
     if !may_view(&user) {
         return Err(Error::Forbidden);
     }
-    let page = grid(&lists::texts_in(&lang))
-        .page(SupplierClaim::query(), &request)
-        .await?;
+    let can_export = user.has_permission(permissions::SUPPLIER_CLAIMS_MANAGE);
+    let grid = lists::exporting(grid(&lists::texts_in(&lang)), can_export);
+    if let Some(file) = lists::export_file(&grid, can_export, SupplierClaim::query(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(SupplierClaim::query(), &request).await?;
     let ids: Vec<i64> = page
         .items()
         .iter()
@@ -190,7 +197,8 @@ async fn index(
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         claims,
-    }))
+    })
+    .into_response())
 }
 
 /// `GET /auto/supplier-claim-job-options`: the job cards the picker offers.

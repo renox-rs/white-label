@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 
 use renox::chrono::NaiveDate;
-use renox::grid::{Column, Grid, GridPage, GridRequest};
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
@@ -56,7 +56,7 @@ const STANDINGS: [&str; 5] = ["waiting", "missing", "vat_due", "vat_due_late", "
 /// attached; searched by invoice number.
 pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
     let standings = lists::options(t, "export.status", STANDINGS);
-    Grid::new("auto-export-sales")
+    lists::baseline(Grid::new("auto-export-sales"))
         .title(&t("export.title"))
         .column(
             Column::text("invoice_number", &t("export.invoice"))
@@ -71,7 +71,8 @@ pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
         .column(
             Column::money("gross_total", &t("export.total"))
                 .currency_from("currency")
-                .mobile(),
+                .mobile()
+                .summary(Summary::Sum),
         )
         .column(
             Column::select("standing", &t("fields.status"), standings)
@@ -90,7 +91,7 @@ pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
         .column(Column::custom("attach", "").frozen_right())
         .sort_by("-supply_date")
         .cards_on_mobile()
-        .empty_state(&t("export.empty"), None)
+        .empty_state(&t("export.empty"), Some(&t("export.empty_hint")))
 }
 
 /// What the page needs.
@@ -113,12 +114,15 @@ async fn index(
     user: AuthUser,
     lang: Lang,
     request: GridRequest,
-) -> Result<View> {
+) -> Result<Response> {
     require(&user, permissions::EXPORT_SALES_VIEW)?;
     let today = wl_kernel::documents::today();
-    let page = grid(&lists::texts_in(&lang))
-        .page(ExportSale::query(), &request)
-        .await?;
+    let can_export = user.has_permission(permissions::EXPORT_SALES_MANAGE);
+    let grid = lists::exporting(grid(&lists::texts_in(&lang)), can_export);
+    if let Some(file) = lists::export_file(&grid, can_export, ExportSale::query(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(ExportSale::query(), &request).await?;
     let items: Vec<ExportSale> = page.items().to_vec();
     let mut evidence = HashMap::new();
     for sale in &items {
@@ -167,7 +171,8 @@ async fn index(
             })
             .collect(),
         today: today.to_string(),
-    }))
+    })
+    .into_response())
 }
 
 /// The form that registers an export sale.

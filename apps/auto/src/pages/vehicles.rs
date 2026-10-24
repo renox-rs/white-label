@@ -72,7 +72,7 @@ pub(crate) fn vehicle_text(vehicle: &Vehicle) -> String {
 /// searched by plate, VIN, make or model.
 pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
     let kinds = lists::options(t, "vehicles.kind", ["fleet", "private"]);
-    Grid::new("auto-vehicles")
+    lists::baseline(Grid::new("auto-vehicles"))
         .title(&t("vehicles.title"))
         .column(
             Column::text("plate", &t("vehicles.plate"))
@@ -109,7 +109,7 @@ pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
         .sort_by("plate")
         .row_url("/auto/vehicles/{id}")
         .cards_on_mobile()
-        .empty_state(&t("vehicles.empty"), None)
+        .empty_state(&t("vehicles.empty"), Some(&t("vehicles.empty_hint")))
 }
 
 /// What the list page needs.
@@ -128,11 +128,14 @@ async fn index(
     user: AuthUser,
     lang: Lang,
     request: GridRequest,
-) -> Result<View> {
+) -> Result<Response> {
     require(&user, permissions::VEHICLES_VIEW)?;
-    let page = grid(&lists::texts_in(&lang))
-        .page(Vehicle::query(), &request)
-        .await?;
+    let can_export = user.has_permission(permissions::VEHICLES_MANAGE);
+    let grid = lists::exporting(grid(&lists::texts_in(&lang)), can_export);
+    if let Some(file) = lists::export_file(&grid, can_export, Vehicle::query(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(Vehicle::query(), &request).await?;
     let ids: Vec<i64> = page.items().iter().map(|v| v.owner_party_id).collect();
     let names = lists::party_names(&state, &lang, ids).await;
     let vehicles = page.extend(|vehicle| {
@@ -143,7 +146,8 @@ async fn index(
         vehicles,
         emirate_options: emirate_options(),
         can_manage: user.has_permission(permissions::VEHICLES_MANAGE),
-    }))
+    })
+    .into_response())
 }
 
 /// `GET /auto/parties/options`: the parties the picker offers as the person

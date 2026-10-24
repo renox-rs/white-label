@@ -49,7 +49,7 @@ pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
         ("on".to_owned(), t("labour.on")),
         ("off".to_owned(), t("labour.off")),
     ];
-    Grid::new("auto-labour-menu")
+    lists::baseline(Grid::new("auto-labour-menu"))
         .title(&t("labour.title"))
         .column(
             Column::text("code", &t("labour.code"))
@@ -78,7 +78,7 @@ pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
         .column(Column::custom("actions", "").frozen_right())
         .sort_by("code")
         .cards_on_mobile()
-        .empty_state(&t("labour.empty"), None)
+        .empty_state(&t("labour.empty"), Some(&t("labour.empty_hint")))
 }
 
 /// What the page needs.
@@ -95,15 +95,18 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /auto/labour-menu`.
-async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<View> {
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
     if !(user.has_permission(permissions::LABOUR_MENU_MANAGE)
         || user.has_permission(permissions::JOB_CARDS_VIEW))
     {
         return Err(Error::Forbidden);
     }
-    let operations = grid(&lists::texts_in(&lang))
-        .page(LabourOperation::query(), &request)
-        .await?;
+    let can_export = user.has_permission(permissions::LABOUR_MENU_MANAGE);
+    let grid = lists::exporting(grid(&lists::texts_in(&lang)), can_export);
+    if let Some(file) = lists::export_file(&grid, can_export, LabourOperation::query(), &request).await? {
+        return Ok(file);
+    }
+    let operations = grid.page(LabourOperation::query(), &request).await?;
     let sheets = operations
         .items()
         .iter()
@@ -123,7 +126,8 @@ async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<View>
             })
             .collect(),
         can_manage: user.has_permission(permissions::LABOUR_MENU_MANAGE),
-    }))
+    })
+    .into_response())
 }
 
 /// The form of an operation.
