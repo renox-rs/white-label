@@ -436,8 +436,8 @@ async fn a_party_disputes_only_when_the_portal_allows_it_and_only_its_own() {
 }
 
 /// AC13: an owner who no longer holds `invoices.issue` does not get the
-/// ticket: it goes to the receivables role (the first holder of the
-/// permission) and every holder is told. With
+/// ticket: it opens without a user, for ticketing to route to the
+/// receivables role (BL-TKT-12), and every holder is told. With
 /// ticketing off the dispute is flagged without a ticket and resolving works.
 #[renox::test]
 async fn without_an_owner_the_ticket_is_unassigned_and_without_ticketing_there_is_none() {
@@ -458,7 +458,7 @@ async fn without_an_owner_the_ticket_is_unassigned_and_without_ticketing_there_i
         .unwrap();
     assert_eq!(stored(&t, id).await.ticket_id, Some(1));
     let opened = t.tickets.opened();
-    assert_eq!(opened[0].assignee, Some(Assignee::user(b.id)));
+    assert_eq!(opened[0].assignee, None, "routed to the role, not to a user");
     let unassigned = t.notices.of_type(UNASSIGNED);
     assert_eq!(unassigned.len(), 1);
     let to: Vec<i64> = unassigned[0]
@@ -497,9 +497,10 @@ async fn without_an_owner_the_ticket_is_unassigned_and_without_ticketing_there_i
     assert_eq!(stored(&t, id).await.outcome, Some(DisputeOutcome::Upheld));
 }
 
-/// #156 point 5: an invoice the system issued (no owner) opens the dispute
-/// ticket assigned to the receivables role, the lowest-id holder of
-/// `invoices.issue` in the invoice's scope, and every holder is told.
+/// #156 point 5, BL-TKT-12: an invoice the system issued (no owner) opens
+/// the dispute ticket without a user, for ticketing to route to the
+/// receivables role (the holders of `invoices.issue` in the invoice's
+/// scope), and every holder is told.
 #[renox::test]
 async fn a_system_issued_invoice_is_assigned_to_the_receivables_role() {
     let t = boot().await;
@@ -516,11 +517,10 @@ async fn a_system_issued_invoice_is_assigned_to_the_receivables_role() {
     dispute::raise(t.state(), request(&invoice, by(&amal)).amount(1_000))
         .await
         .unwrap();
-    let first = amal.id.min(bilal.id);
     assert_eq!(
         t.tickets.opened()[0].assignee,
-        Some(Assignee::user(first)),
-        "assigned, not left unassigned"
+        None,
+        "never the lowest user id as a stand-in for the role"
     );
     let told: Vec<i64> = t.notices.of_type(UNASSIGNED)[0]
         .recipients
@@ -550,8 +550,8 @@ async fn a_removed_owner_hands_the_ticket_to_the_receivables_role() {
         .unwrap();
     assert_eq!(
         t.tickets.opened()[0].assignee,
-        Some(Assignee::user(b.id)),
-        "the only holder left"
+        None,
+        "the receivables role, routed by ticketing"
     );
     assert_eq!(t.notices.of_type(UNASSIGNED).len(), 1);
 }

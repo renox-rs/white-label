@@ -19,9 +19,10 @@
 //! 4. After the commit: the `billing_dispute` ticket ([`TaskCreator`]),
 //!    assigned to the invoice owner when that user still holds
 //!    `invoices.issue`, else (issued by the system, or the owner is gone) to
-//!    the receivables role: the first holder of `invoices.issue` in the
-//!    invoice's scope, with a notice to every holder; unassigned only when
-//!    nobody holds it; the party's
+//!    the receivables role: the holders of `invoices.issue` in the
+//!    invoice's scope, whose queue it waits in until one takes it
+//!    ([`DisputeRouter`], BL-TKT-12), with a notice to every holder; `open`
+//!    (and the company admins told) only when nobody holds it; the party's
 //!    acknowledgement; and `InvoiceDisputed`.
 //!
 //! The ticket is opened after the commit, not inside the transaction: the
@@ -432,6 +433,54 @@ pub async fn raise(state: &AppState, request: DisputeRequest) -> Result<i64> {
     Ok(dispute.id)
 }
 
+/// The receivables role (wl-invoicing §3 *Invoice owner*): the holders of
+/// `invoices.issue` in the invoice's scope.
+pub const RECEIVABLES_ROLE: &str = "receivables";
+
+/// Routes a billing dispute ticket opened without an assignee (BL-TKT-12):
+/// to the role the client's vertical names for disputes when someone holds
+/// it for the invoice's entity, else to the receivables role in the
+/// invoice's scope. A ticket about something other than an invoice stays
+/// `open`.
+pub struct DisputeRouter;
+
+impl wl_kernel::ticket_routing::TicketRouter for DisputeRouter {
+    fn route<'a>(
+        &'a self,
+        state: &'a AppState,
+        ticket: &'a OpenTicket,
+    ) -> wl_kernel::ticket_routing::RouteFuture<'a, Option<wl_kernel::ticket_routing::RoleAssignee>>
+    {
+        use wl_kernel::ticket_routing::{RoleAssignee, role_label};
+        Box::pin(async move {
+            if ticket.subject.subject_type != wl_kernel::invoicing::INVOICE_SUBJECT_TYPE {
+                return Ok(None);
+            }
+            let Some(invoice) = Invoice::find(&state.db, ticket.subject.subject_id).await? else {
+                return Ok(None);
+            };
+            if let Some(role) = &config_of(state).dispute_ticket_role
+                && !owner::finance_managers(&state.db, role, &invoice)
+                    .await?
+                    .is_empty()
+            {
+                return Ok(Some(RoleAssignee::role(
+                    role,
+                    &role_label(role),
+                    &owner::entity_scope(&invoice),
+                )));
+            }
+            let scope = wl_kernel::scopes::scope_of(&state.db, &invoice.subject()).await?;
+            Ok(Some(RoleAssignee::by_permission(
+                RECEIVABLES_ROLE,
+                "Receivables",
+                permissions::ISSUE,
+                &scope,
+            )))
+        })
+    }
+}
+
 /// Opens the ticket, tells the people concerned and emits the event.
 async fn after_commit(
     state: &AppState,
@@ -459,9 +508,14 @@ async fn after_commit(
             owners = holders;
         }
     }
-    // The owner, else the first holder of the receivables role (the lowest
-    // user id; the ticket has one assignee, every holder gets the notice).
-    let owner = owners.first().map(|user| user.id);
+    // The owner when a user owns the invoice. Otherwise the ticket opens
+    // without an assignee and ticketing routes it to the receivables role
+    // in the invoice's scope ([`DisputeRouter`], BL-TKT-12): never to the
+    // lowest user id as a stand-in for the role.
+    let owner = match owner_role {
+        OwnerRole::Owner => owners.first().map(|user| user.id),
+        OwnerRole::Receivables => None,
+    };
     let mut open = OpenTicket::new(
         invoice.subject(),
         TICKET_CATEGORY,

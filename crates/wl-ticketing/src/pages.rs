@@ -81,6 +81,12 @@ pub fn routes() -> Routes {
                 .name("wl_ticketing.show"),
             permissions::VIEW,
         ))
+        .merge(wl_kernel::scopes::anywhere(
+            Routes::new()
+                .post("/tickets/{id}/take", store_take)
+                .name("wl_ticketing.take"),
+            permissions::VIEW,
+        ))
         .merge(
             Routes::new()
                 .post("/tickets/{id}/hold", store_hold)
@@ -188,7 +194,8 @@ fn grid_with(t: Text<'_>, can_export: bool) -> Grid {
             Column::text("assignee", &t("fields.assignee"))
                 .computed(
                     "COALESCE((SELECT \"users\".\"name\" FROM \"users\" WHERE \"users\".\"id\" = {T}.\"assignee_user_id\"), \
-                     (SELECT \"wl_parties_parties\".\"display_name\" FROM \"wl_parties_parties\" WHERE \"wl_parties_parties\".\"id\" = {T}.\"assignee_party_id\"))",
+                     (SELECT \"wl_parties_parties\".\"display_name\" FROM \"wl_parties_parties\" WHERE \"wl_parties_parties\".\"id\" = {T}.\"assignee_party_id\"), \
+                     {T}.\"assignee_role_display\")",
                 )
                 .searchable(),
         )
@@ -236,13 +243,18 @@ async fn index(
 ) -> Result<Response> {
     // The tickets about the buildings (their units, leases) of the user's scope.
     let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
+    // A role ticket only for the holders of its role there (BL-TKT-12);
+    // `?queue=mine` lists only the role tickets the user may take.
+    let allowed = crate::role_queue::allowed_keys(&state.db, user.id).await?;
+    let mut visible = visibility::without_other_queues(
+        visibility::visible_to(Ticket::query(), &user),
+        allowed.clone(),
+    );
+    if request.param("queue") == Some("mine") {
+        visible = visible.where_(Ticket::ASSIGNEE_ROLE_KEY.is_in(allowed));
+    }
     let query = reach
-        .apply(
-            &state.db,
-            visibility::visible_to(Ticket::query(), &user),
-            "subject_type",
-            "subject_id",
-        )
+        .apply(&state.db, visible, "subject_type", "subject_id")
         .await?;
     let can_export = user.has_permission(permissions::MANAGE);
     let grid = grid(&lang, can_export);
@@ -482,6 +494,9 @@ pub(crate) struct ShowPage {
     no_show: Option<String>,
     /// Whether "New time" is offered: there is such a no-show.
     can_new_time: bool,
+    /// Whether "Take" is offered: a role owns the ticket and the user holds
+    /// it in the ticket's scope (BL-TKT-12).
+    can_take: bool,
     /// The reassignment reason the assign sheet starts on.
     reason_selected: String,
 }
@@ -762,6 +777,7 @@ async fn show(
     Found(ticket): Found<Ticket>,
 ) -> Result<View> {
     visibility::ensure_visible(&ticket, &user)?;
+    visibility::ensure_role_visible(&state.db, &ticket, &user).await?;
     let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
     if !reach.contains(&state.db, &ticket.subject()).await? {
         return Err(Error::Forbidden);
@@ -776,8 +792,14 @@ async fn show(
     };
     let assignee = match ticket.assignee() {
         Some(a) => Some(assignee_name(&state, a).await?),
-        None => None,
+        // A role owns it: "Receivables (ACME Properties LLC)".
+        None => ticket.assignee_role_display.clone(),
     };
+    let can_take = ticket.status == TicketStatus::Assigned
+        && match ticket.role_assignee() {
+            Some(role) => role.is_held_by(&db, user.id).await?,
+            None => false,
+        };
     let requester = match ticket.requester() {
         Some(r) => Some(requester_name(&state, r).await?),
         None => None,
@@ -901,6 +923,7 @@ async fn show(
         proposed_party_code,
         contract,
         can_new_time: no_show_row.is_some(),
+        can_take,
         no_show,
         reason_selected,
         tx: texts::all(&lang),
@@ -923,6 +946,21 @@ async fn show(
         timeline,
         ticket,
     }))
+}
+
+/// `POST /tickets/{id}/take`: a holder of the role that owns the ticket
+/// takes it (BL-TKT-12): a reassignment to them, reason *taken from queue*.
+async fn store_take(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Found(ticket): Found<Ticket>,
+) -> Result<Response> {
+    visibility::ensure_visible(&ticket, &user)?;
+    visibility::ensure_role_visible(&state.db, &ticket, &user).await?;
+    crate::role_queue::take(&state, &user, &ticket, renox::db::now())
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok(Redirect::to(&format!("/tickets/{}", ticket.id)).into_response())
 }
 
 /// The assign sheet's form.

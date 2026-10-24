@@ -167,7 +167,10 @@ pub(crate) fn register(app: &mut Registry) {
     }
     crate::job_cancel::register(app);
     app.listen(|event: Transitioned<Ticket>, state: AppState| async move {
-        if event.transition != ASSIGN && event.transition != AUTO_ASSIGN {
+        if event.transition != ASSIGN
+            && event.transition != AUTO_ASSIGN
+            && event.transition != crate::role_queue::TAKE
+        {
             return Ok(());
         }
         let Ok(meta) = serde_json::from_value::<AssignMeta>(event.meta.clone()) else {

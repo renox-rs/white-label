@@ -97,6 +97,7 @@ impl Tickets {
         let number = TICKET_SERIES
             .next_allowing_gaps(&state.db, None, None, on)
             .await?;
+        let routing = request.clone();
         let (requester_user_id, requester_party_id) = match request.requester {
             Some(Requester::User { id }) => (Some(id), None),
             Some(Requester::Party { id }) => (None, Some(id.0)),
@@ -142,6 +143,10 @@ impl Tickets {
                 ticket.delete(&state.db).await?;
                 return Err(unprocessable(error.to_string()));
             }
+        } else {
+            // No assignee: the category's role in the subject's scope, if
+            // it has one and someone holds it (BL-TKT-12).
+            crate::role_queue::route_new(state, &ticket, &category, &routing, at).await?;
         }
         Ok(ticket.reference())
     }

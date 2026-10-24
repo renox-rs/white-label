@@ -47,6 +47,33 @@ pub fn visible_to(query: Query<Ticket>, user: &AuthUser) -> Query<Ticket> {
     })
 }
 
+/// `query` without the role tickets (BL-TKT-12) of queues not in `allowed`
+/// ([`crate::role_queue::allowed_keys`]): a ticket owned by a role shows only
+/// to the holders of the role in its scope.
+pub fn without_other_queues(query: Query<Ticket>, allowed: Vec<String>) -> Query<Ticket> {
+    query.where_any(|q| {
+        q.where_(Ticket::ASSIGNEE_ROLE_KEY.is_null())
+            .where_(Ticket::ASSIGNEE_ROLE_KEY.is_in(allowed))
+    })
+}
+
+/// `NotFound` when `ticket` is owned by a role (BL-TKT-12) that `user` does
+/// not hold in its scope, unless they asked for it.
+///
+/// # Errors
+///
+/// `NotFound`; the database's errors.
+pub async fn ensure_role_visible(db: &Db, ticket: &Ticket, user: &AuthUser) -> Result {
+    let Some(role) = ticket.role_assignee() else {
+        return Ok(());
+    };
+    if ticket.requester_user_id == Some(user.id) || role.is_held_by(db, user.id).await? {
+        Ok(())
+    } else {
+        Err(Error::NotFound)
+    }
+}
+
 /// Records that `user` viewed `ticket`, when it is confidential.
 ///
 /// # Errors

@@ -27,6 +27,7 @@ pub mod pages;
 pub mod plans;
 pub mod priority;
 pub mod reasons;
+pub mod role_queue;
 pub mod seed;
 pub mod sla;
 mod texts;
@@ -437,6 +438,8 @@ impl Module for WlTicketing {
         flags::register_events(app);
         // `TicketAssigned` and the notices after an `assign` commits.
         notices::register(app);
+        // BL-TKT-12: the notice that a ticket found nobody in its role.
+        role_queue::register();
         // A ticket's scope is its subject's (the approvals and wl-notify find
         // the people responsible through it).
         ticket::register_scope();

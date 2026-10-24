@@ -421,6 +421,9 @@ const TEXTS: &[(&str, &str)] = &[
         "{{ vendor }} has not started the visit scheduled for {{ scheduled }}. Reassign the ticket or set a new time.",
     ),
     ("wl_ticketing.no_show.new_time", "New time"),
+    ("wl_ticketing.take.action", "Take"),
+    ("wl_ticketing.take.title", "Take this ticket"),
+    ("wl_ticketing.take.description", "The ticket waits in a role queue. Taking it assigns it to you; the service level due times do not change."),
     (
         "wl_ticketing.no_show.new_time_title",
         "Set a new visit time",

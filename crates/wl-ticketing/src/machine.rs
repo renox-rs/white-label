@@ -47,6 +47,8 @@ impl StateMachine for Ticket {
         [
             crate::assign::transition(),
             crate::assign::auto_transition(),
+            crate::role_queue::route_transition(),
+            crate::role_queue::take_transition(),
         ]
         .into_iter()
         .chain(crate::work::transitions())
@@ -87,6 +89,8 @@ mod tests {
         let expected = [
             ("assign", vec!["open", "assigned"], "assigned", false),
             ("auto_assign", vec!["open", "assigned"], "assigned", true),
+            ("route_to_role", vec!["open"], "assigned", true),
+            ("take", vec!["open", "assigned"], "assigned", false),
             ("start", vec!["assigned"], "in_progress", false),
             ("hold", vec!["in_progress"], "on_hold", false),
             ("resume", vec!["on_hold"], "in_progress", false),
@@ -158,6 +162,8 @@ mod tests {
             guards("auto_assign"),
             ["input", "triage", "change", "reason"]
         );
+        assert_eq!(guards("route_to_role"), ["input"]);
+        assert_eq!(guards("take"), ["input", "triage", "change", "reason"]);
         assert_eq!(guards("start"), ["input", "by_assignee"]);
         assert_eq!(guards("hold"), ["input", "by_assignee", "hold_reason"]);
         assert_eq!(guards("resume"), ["input", "by_assignee"]);

@@ -136,6 +136,21 @@ pub struct Ticket {
     /// The key its opener finds it by while it is open, e.g.
     /// `notify.give_up:…`.
     pub source_key: Option<String>,
+    /// The role that owns the ticket until a holder takes it (BL-TKT-12),
+    /// e.g. `receivables`; `None` for a ticket of a user, a vendor or nobody.
+    pub assignee_role: Option<String>,
+    /// The role's name for people, e.g. `Receivables`.
+    pub assignee_role_label: Option<String>,
+    /// The permission that defines the role's holders, when it is one.
+    pub assignee_role_permission: Option<String>,
+    /// The role's scope: its kind (empty for global).
+    pub assignee_scope_type: Option<String>,
+    /// The role's scope: its key.
+    pub assignee_scope_id: Option<String>,
+    /// The role queue the ticket is in: `role|scope kind|scope id`.
+    pub assignee_role_key: Option<String>,
+    /// The role and scope for people: `Receivables (ACME Properties LLC)`.
+    pub assignee_role_display: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -180,6 +195,21 @@ impl Ticket {
             (None, Some(id)) => Some(Assignee::Party { id: PartyId(id) }),
             (None, None) => None,
         }
+    }
+
+    /// The role that owns it until a holder takes it, if a role does.
+    pub fn role_assignee(&self) -> Option<wl_kernel::ticket_routing::RoleAssignee> {
+        let role = self.assignee_role.clone()?;
+        Some(wl_kernel::ticket_routing::RoleAssignee {
+            label: self
+                .assignee_role_label
+                .clone()
+                .unwrap_or_else(|| wl_kernel::ticket_routing::role_label(&role)),
+            role,
+            permission: self.assignee_role_permission.clone(),
+            scope_kind: self.assignee_scope_type.clone().unwrap_or_default(),
+            scope_id: self.assignee_scope_id.clone().unwrap_or_default(),
+        })
     }
 
     /// The party an invoice for the ticket is addressed to: the one named

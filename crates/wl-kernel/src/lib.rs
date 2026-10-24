@@ -70,6 +70,7 @@ mod texts;
 pub fn money_label(label: &str) -> String {
     format!("{label} (AED)")
 }
+pub mod ticket_routing;
 pub mod tickets;
 pub mod timesheets;
 pub mod usage;

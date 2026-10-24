@@ -1347,6 +1347,12 @@ impl Module for WlInvoicing {
         bad_debt_relief::schedule(app, &self.config);
         // `invoicing.dispute_acknowledged` and `invoicing.dispute_unassigned`.
         dispute::register_types();
+        // BL-TKT-12: a billing dispute without an owner goes to the
+        // receivables role in the invoice's scope.
+        wl_kernel::ticket_routing::register_ticket_router(
+            dispute::TICKET_CATEGORY,
+            dispute::DisputeRouter,
+        );
         // `invoicing.dispute_resolved`, and the listener that resolves the
         // ticket and tells the party after `InvoiceDisputeResolved`.
         dispute_resolve::register_types();

@@ -8,6 +8,8 @@
     <rx-page-header :title="title" :subtitle="ticket.title" :back="route('wl_ticketing.index')" :back-label="tx['title']"
                     :badge="status_label" :badge-kind="status_kind">
       <template rx-if="can_assign"><rx-include template="wl-ticketing/_assign_sheet.html"/></template>
+      <rx-action-sheet rx-if="can_take" :id="'take-ticket-' ~ ticket.id" :label="tx['take.action']" :action="route('wl_ticketing.take', ticket.id)"
+                       :title="tx['take.title']" :description="tx['take.description']" :submit-label="tx['take.action']" icon="user" variant="primary"/>
       <template rx-for="item in actions">
         <rx-confirm :id="'ticket-' ~ item.name ~ '-' ~ ticket.id" :label="item.label" :action="'/tickets/' ~ ticket.id ~ '/actions/' ~ item.name" method="POST"
                     :title="tx['action.confirm_title']" :message="item.label" :confirm-label="item.label"/>

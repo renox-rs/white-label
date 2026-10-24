@@ -126,7 +126,7 @@ fn of_columns(user: Option<i64>, party: Option<i64>) -> Option<Assignee> {
 }
 
 /// An assignee as the user and party columns.
-fn columns(assignee: Option<Assignee>) -> (Option<i64>, Option<i64>) {
+pub(crate) fn columns(assignee: Option<Assignee>) -> (Option<i64>, Option<i64>) {
     match assignee {
         Some(Assignee::User { id }) => (Some(id), None),
         Some(Assignee::Party { id }) => (None, Some(id.0)),
@@ -253,8 +253,9 @@ pub(crate) fn auto_transition() -> Transition<Ticket> {
     )
 }
 
-/// The states, guards and effect that `assign` and `auto_assign` share.
-fn assigning(transition: Transition<Ticket>) -> Transition<Ticket> {
+/// The states, guards and effect that `assign`, `auto_assign` and `take`
+/// share.
+pub(crate) fn assigning(transition: Transition<Ticket>) -> Transition<Ticket> {
     transition
         .from([TicketStatus::Open, TicketStatus::Assigned])
         .to(TicketStatus::Assigned)
@@ -321,11 +322,20 @@ pub(crate) async fn apply(
     let kind = classify(ticket, input.assignee, input.visit_at)
         .map_err(|message| Error::from(renox::anyhow::anyhow!(message)))?;
     let (user_id, party_id) = columns(Some(input.assignee));
+    // A user or a vendor now has it: no role owns it any more (BL-TKT-12).
+    let no_role: Option<String> = None;
     let values: Vec<(&str, &(dyn ToDbValue + Sync))> = vec![
         ("assignee_user_id", &user_id),
         ("assignee_party_id", &party_id),
         ("visit_at", &input.visit_at),
         ("priority", &input.priority),
+        ("assignee_role", &no_role),
+        ("assignee_role_label", &no_role),
+        ("assignee_role_permission", &no_role),
+        ("assignee_scope_type", &no_role),
+        ("assignee_scope_id", &no_role),
+        ("assignee_role_key", &no_role),
+        ("assignee_role_display", &no_role),
     ];
     Ticket::query()
         .where_(Ticket::ID.eq(ticket.id))
@@ -414,7 +424,7 @@ pub(crate) fn reasons_of(state: &AppState) -> ReassignReasons {
 
 /// The SLA due times a first assignment at `at` gets for `priority`: the
 /// response and resolution targets of the ticket's policy, in working time.
-async fn due_times(
+pub(crate) async fn due_times(
     state: &AppState,
     ticket: &Ticket,
     priority: Priority,
