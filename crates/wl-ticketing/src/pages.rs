@@ -46,7 +46,6 @@ use crate::comments::{Comment, CommentVisibility};
 use crate::config::{Category, HoldReason};
 use crate::contract::{ServiceContract, ServiceContracts};
 use crate::no_show::{self, NoShow};
-use crate::open::Tickets;
 use crate::permissions;
 use crate::priority::Priority;
 use crate::texts;

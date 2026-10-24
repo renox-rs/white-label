@@ -42,11 +42,11 @@ fn the_timesheets_grid_is_a_child_of_the_page() {
         .position(|line| line.trim_start().starts_with("<rx-grid"))
         .unwrap();
     assert!(lines[at].starts_with("  <rx-grid"), "a direct child");
-    let child = |line: &&str| line.starts_with("  <") && !line.starts_with("   ");
-    for line in lines[at + 1..].iter().filter(child) {
+    let child = |line: &str| line.starts_with("  <") && !line.starts_with("   ");
+    for line in lines[at + 1..].iter().filter(|line| child(line)) {
         assert!(line.starts_with("  </rx-grid"), "`{line}` is below the grid");
     }
-    for line in lines[..at].iter().filter(child) {
+    for line in lines[..at].iter().filter(|line| child(line)) {
         assert!(
             line.starts_with("  <rx-page-header") || line.starts_with("  </rx-page-header"),
             "`{line}` wraps or comes before the grid"

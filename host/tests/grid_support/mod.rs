@@ -63,8 +63,8 @@ pub fn grid_is_a_child_of_the_page(template: &str) {
         lines[at].starts_with("  <rx-grid"),
         "{template}: the grid is a direct child of <rx-page>"
     );
-    let child = |line: &&str| line.starts_with("  <") && !line.starts_with("   ");
-    for line in lines[..at].iter().filter(child) {
+    let child = |line: &str| line.starts_with("  <") && !line.starts_with("   ");
+    for line in lines[..at].iter().filter(|line| child(line)) {
         assert!(
             ["  <rx-page-header", "  <rx-include", "  </rx-page-header"]
                 .iter()
@@ -72,7 +72,7 @@ pub fn grid_is_a_child_of_the_page(template: &str) {
             "{template}: `{line}` wraps or comes before the grid"
         );
     }
-    for line in lines[at + 1..].iter().filter(child) {
+    for line in lines[at + 1..].iter().filter(|line| child(line)) {
         assert!(
             [
                 "  </rx-grid",
