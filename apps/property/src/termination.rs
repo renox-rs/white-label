@@ -44,11 +44,21 @@
 //!   tenant to use;
 //! - `LeaseTerminated` is emitted, which turns the tenant's portal read-only.
 //!
-//! A step that fails does not stop the others: the accountant gets one task
-//! that lists what to finish by hand, as for a cancellation. (The spec says
-//! "all in one transaction" and "if crediting fails for one invoice the whole
-//! `terminate` rolls back"; the kernel contracts take no transaction, so the
-//! cancellation's way is followed.)
+//! **Before the transition** ([`money_problem`], BL-PRP-33): the spec runs the
+//! money effects "all in one transaction" and rolls the whole `terminate` back
+//! when crediting one invoice fails. The kernel's money contracts cannot join
+//! the transition's transaction yet (their transaction-aware variants are
+//! BL-KRN-11), so [`terminate`] first checks every step that can be known to
+//! fail: an invoice to credit that cannot be found, a draft that straddles the
+//! cutoff, a rent line without the credit left. Such a `terminate` is refused
+//! with the reason and nothing changes: the lease stays `notice_given`, no
+//! credit note, return or deposit settlement is made, no task is opened and no
+//! `LeaseTerminated` is emitted; the user fixes the cause and runs it again.
+//!
+//! A step that still fails after the commit (a refusal the check cannot see)
+//! does not stop the others: the accountant gets one task that lists what to
+//! finish by hand, as for a cancellation. It goes away with BL-KRN-11, when
+//! the effects run inside the transition's transaction.
 //!
 //! **`PRP.RUL.13`** ([`chase_ejari`], daily 02:00 Asia/Dubai): 7 days after the
 //! lease became `terminated`, when an Ejari or Tawtheeq number is recorded and
@@ -289,6 +299,95 @@ pub(crate) async fn terminate_effects(
     Ok(())
 }
 
+/// Why the money effects of terminating `lease` with `input` would fail, if
+/// they would (BL-PRP-33): every invoice to credit must be found, a draft must
+/// not straddle the cutoff (it can be neither discarded nor credited), and the
+/// rent line of an issued invoice must have the credit left. Asked before the
+/// transition, so a refused `terminate` changes nothing, creates no task and
+/// emits no event.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn money_problem(
+    state: &AppState,
+    lease: &Lease,
+    input: &TerminateInput,
+) -> Result<Option<String>> {
+    let Some(move_out) = input.move_out else {
+        return Ok(None);
+    };
+    let cut = cutoff(move_out, input.rent_due_until.or(lease.rent_due_until));
+    let charges = lease.charges(&state.db).await?;
+    let plan: Vec<&LeaseCharge> = charges
+        .iter()
+        .filter(|c| c.status != ChargeStatus::Cancelled || c.due_date > cut)
+        .collect();
+    let ranges = periods(plan.iter().copied(), lease.end_date);
+    let contract = invoicer(state);
+    for charge in charges
+        .iter()
+        .filter(|c| c.status == ChargeStatus::Invoiced && is_recurring(c, &plan))
+    {
+        let (Some(invoice_id), Some(period)) = (charge.invoice_id, ranges.get(&charge.id)) else {
+            continue;
+        };
+        let net = credit_for(charge.amount, *period, cut);
+        if net == 0 {
+            continue;
+        }
+        let invoice = match contract.find(&state.db, InvoiceId(invoice_id)).await {
+            Ok(Some(invoice)) => invoice,
+            Ok(None) => {
+                return Ok(Some(english(
+                    "property.terminate.invoice_missing",
+                    &[("invoice", &invoice_id)],
+                )));
+            }
+            Err(error) => return Ok(Some(problem_line(&format!("invoice {invoice_id}"), &error))),
+        };
+        match invoice.status {
+            InvoiceStatus::Draft if period.0 > cut => {}
+            InvoiceStatus::Draft => {
+                return Ok(Some(english(
+                    "property.terminate.draft_blocks",
+                    &[("invoice", &invoice_id)],
+                )));
+            }
+            InvoiceStatus::Issued
+            | InvoiceStatus::PartiallyPaid
+            | InvoiceStatus::Overdue
+            | InvoiceStatus::Paid => {
+                let lines = contract.lines_of(&state.db, InvoiceId(invoice_id)).await?;
+                let Some(line) = lines.iter().find(|l| l.position == 1) else {
+                    continue;
+                };
+                let credited: i64 = contract
+                    .credit_notes_for(&state.db, InvoiceId(invoice_id))
+                    .await?
+                    .iter()
+                    .filter(|note| note.status != CreditNoteStatus::Draft)
+                    .map(|note| note.gross_total)
+                    .sum();
+                let left = line.gross - credited;
+                if net > left {
+                    let number = invoice.number.clone().unwrap_or_else(|| format!("#{invoice_id}"));
+                    return Ok(Some(english(
+                        "property.terminate.credit_too_large",
+                        &[
+                            ("invoice", &number),
+                            ("needed", &crate::money_text(net)),
+                            ("left", &crate::money_text(left.max(0))),
+                        ],
+                    )));
+                }
+            }
+            InvoiceStatus::WrittenOff | InvoiceStatus::Credited => {}
+        }
+    }
+    Ok(None)
+}
+
 /// The lease `id`, or a 404.
 async fn load(state: &AppState, id: i64) -> std::result::Result<Lease, TransitionError> {
     Lease::find(&state.db, id)
@@ -339,6 +438,15 @@ pub async fn terminate(
         keep_credit: termination.keep_credit,
         day: Some(today()),
     };
+    // The money effects are checked before anything changes (BL-PRP-33): a
+    // step that would fail refuses `terminate` with its reason.
+    if lease.status == LeaseStatus::NoticeGiven
+        && user.has_permission_in(permissions::LEASES_MANAGE, &lease.scope())
+        && problem(&lease, &input).is_none()
+        && let Some(reason) = money_problem(state, &lease, &input).await?
+    {
+        return Err(TransitionError::Guard(reason));
+    }
     let reason = english("property.terminate.history", &[]);
     let _outcome = lease
         .transition(TERMINATE)

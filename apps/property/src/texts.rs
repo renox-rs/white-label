@@ -984,6 +984,18 @@ const TEXTS: &[(&str, &str)] = &[
         "Refund :refund was asked but credit note :note was not reduced: cancel the refund or reduce the note by hand.",
     ),
     (
+        "property.terminate.invoice_missing",
+        "Invoice :invoice of the lease cannot be found: nothing was changed.",
+    ),
+    (
+        "property.terminate.draft_blocks",
+        "Invoice :invoice is a draft for a period that straddles the move-out date: issue or discard it first. Nothing was changed.",
+    ),
+    (
+        "property.terminate.credit_too_large",
+        "Invoice :invoice cannot be credited by :needed: only :left is left to credit on its rent line. Nothing was changed.",
+    ),
+    (
         "property.terminate.task_problems",
         "Finish the termination of :lease by hand",
     ),
