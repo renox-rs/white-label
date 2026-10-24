@@ -1,21 +1,14 @@
 {#- manpower: the absence cases of workers who have not turned up, open and
-    closed, for HR (`absence.manage`). Replace it with
-    resources/views/manpower/absence_cases.html in the app. -#}
+    closed, for HR (`absence.manage`), a renox::grid (search on the report
+    number, filters by status and dates, export) that fills the screen. Replace
+    it with resources/views/manpower/absence_cases.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['absence.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['absence.title']" :subtitle="tx['absence.subtitle']"/>
-    <rx-table :rows="cases" as="case" :key="case.url" :caption="tx['absence.title']" card>
-      <rx-column :label="tx['absence.worker']">
-        <rx-stack>
-          <a href="{{ case.url }}">{{ case.worker }}</a>
-          <span class="rx-subtitle">{{ case.client }}</span>
-        </rx-stack>
-      </rx-column>
-      <rx-column :label="tx['absence.days_column']" align="num">{{ case.days }}</rx-column>
-      <rx-column :label="tx['absence.contacts']" hide-narrow>{{ case.contacts }}</rx-column>
-      <rx-column :label="tx['absence.report']" hide-narrow>{{ case.report }}</rx-column>
-      <rx-column :label="tx['absence.status']"><rx-badge :kind="case.status_kind" :text="case.status"/></rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['absence.empty']" :message="tx['absence.empty_text']" icon="user"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['absence.title']" :subtitle="tx['absence.subtitle']"/>
+  <rx-grid :page="cases">
+    <template rx-if="column.key == 'worker'"><a href="{{ row.url }}">{{ row.worker }}</a></template>
+    <template rx-elif="column.key == 'client'">{{ row.client }}</template>
+    <template rx-elif="column.key == 'days'">{{ row.days }}</template>
+    <template rx-elif="column.key == 'contacts'">{{ row.contacts }}</template>
+    <template rx-elif="column.key == 'report'">{{ row.report }}</template>
+  </rx-grid>
 </rx-page>

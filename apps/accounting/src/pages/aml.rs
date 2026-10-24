@@ -15,13 +15,14 @@
 //! that a case exists. The concern a member of staff raises answers with a
 //! toast and nothing else.
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use renox::state_machine::history;
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::dubai_text;
 
-use super::{Texts, invalid, party_name, text, user_name};
-use crate::aml::{AmlCase, AmlDecision, AmlStatus};
+use super::{Texts, client_column, invalid, number_column, party_name, text, user_name};
+use crate::aml::{AmlCase, AmlDecision, AmlKind, AmlStatus};
 use crate::aml_cases;
 use crate::engagement::Engagement;
 use crate::permissions;
@@ -65,21 +66,57 @@ fn status_kind(status: AmlStatus) -> &'static str {
     }
 }
 
-/// One case of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct CaseRow {
-    /// The primary key.
-    pub id: i64,
-    /// The number.
-    pub number: String,
-    /// The client's name.
-    pub client: String,
-    /// Concern or sanctions match.
-    pub kind: String,
-    /// The status.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
+/// The AML cases grid: search on the number and client, filters by kind and
+/// status. Exports are the MLRO's, like the page.
+pub(crate) fn grid(lang: &Lang) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let kinds: Vec<(String, String)> = AmlKind::ALL
+        .iter()
+        .map(|k| {
+            (
+                k.as_str().to_owned(),
+                t(&format!("aml.kind.{}", k.as_str())),
+            )
+        })
+        .collect();
+    let statuses: Vec<(String, String)> = AmlStatus::ALL
+        .iter()
+        .map(|s| {
+            (
+                s.as_str().to_owned(),
+                t(&format!("aml.status.{}", s.as_str())),
+            )
+        })
+        .collect();
+    Grid::new("accounting-aml-cases")
+        .title(&t("aml.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(number_column(
+            &t("aml.number"),
+            "AML",
+            "/accounting/aml-cases/{id}",
+        ))
+        .column(client_column(&t("aml.client"), "client_party_id"))
+        .column(Column::select("kind", &t("aml.kind"), kinds).mobile())
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("open", "warning"),
+                    ("under_review", "warning"),
+                    ("reported", "danger"),
+                    ("closed_no_action", "info"),
+                ])
+                .mobile(),
+        )
+        .column(Column::text("goaml_reference", &t("aml.goaml_reference")).hidden())
+        .column(Column::date("goaml_date", &t("aml.goaml_date")).hidden())
+        .sort_by("-number")
+        .row_url("/accounting/aml-cases/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("aml.empty"), Some(&t("aml.empty_text")))
+        .exports()
 }
 
 /// What the list needs.
@@ -87,32 +124,22 @@ pub struct CaseRow {
 #[view(template = "accounting/aml_cases.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    cases: Vec<CaseRow>,
+    cases: GridPage<AmlCase>,
 }
 
 /// `GET /accounting/aml-cases`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
     mlro(&user)?;
-    let mut cases = Vec::new();
-    let mut found = AmlCase::query()
-        .order_by_desc(AmlCase::ID)
-        .get(&state.db)
-        .await?;
-    found.truncate(200);
-    for case in found {
-        cases.push(CaseRow {
-            id: case.id,
-            number: case.number(),
-            client: party_name(&state, &lang, case.client()).await,
-            kind: text(&lang, &format!("aml.kind.{}", case.kind.as_str())),
-            status: text(&lang, &format!("aml.status.{}", case.status.as_str())),
-            status_kind: status_kind(case.status),
-        });
+    let grid = grid(&lang);
+    let query = AmlCase::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
     }
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        cases,
-    }))
+        cases: grid.page(query, &request).await?,
+    })
+    .into_response())
 }
 
 /// A confirmed match linked to the case.

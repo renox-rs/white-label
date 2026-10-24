@@ -36,7 +36,6 @@ use wl_kernel::drawings::{
 use wl_kernel::{LegalEntity, Subject};
 
 use crate::expense_category::ExpenseCategory;
-use crate::followup::money_text;
 use crate::permissions;
 use crate::texts::english;
 
@@ -688,11 +687,6 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: OwnerDrawingDecided, state: AppState| async move {
         decided(&state, &event).await
     });
-}
-
-/// The total of `claim` as text.
-pub(crate) fn total_text(claim: &ExpenseClaim) -> String {
-    money_text("AED", claim.total)
 }
 
 #[cfg(test)]

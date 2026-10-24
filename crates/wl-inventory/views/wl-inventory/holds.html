@@ -1,50 +1,47 @@
-{#- wl-inventory: the stock holds, the open ones first, each with its lines and
-    the decision of each line: release, discard or return to the supplier. A
-    decision that waits for a second person shows its approval card. Replace it
-    with resources/views/wl-inventory/holds.html in the app. -#}
+{#- wl-inventory: the stock holds, a renox::grid with a row per line of a hold
+    (filter or group by reason), the decision of each line (release, discard
+    or return to the supplier) and the cancel of a hold nobody decided. The
+    buttons open sheets that follow the grid. A decision that waits for a
+    second person shows its approval card. Replace it with
+    resources/views/wl-inventory/holds.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['holds.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['holds.title']" :subtitle="tx['holds.subtitle']" :back="route('wl_inventory.stock')" :back-label="tx['stock.title']">
-      <template rx-if="can_hold">
-        <rx-action-sheet id="hold-store" :label="tx['holds.hold_store']" :action="route('wl_inventory.hold_screen_place')"
-                         :title="tx['holds.hold_store']" :description="tx['holds.hold_store_description']" :submit-label="tx['holds.hold_store']" icon="shield">
-          <rx-select name="location" :label="tx['stock.store']" :options="locations" :selected="''" id="hold-store-location" required/>
-          <rx-select name="reason" :label="tx['hold.reason']" :options="reasons" :selected="'temperature'" id="hold-store-reason"/>
-        </rx-action-sheet>
+  <rx-page-header :title="tx['holds.title']" :subtitle="tx['holds.subtitle']" :back="route('wl_inventory.stock')" :back-label="tx['stock.title']">
+    <template rx-if="can_hold">
+      <rx-action-sheet id="hold-store" :label="tx['holds.hold_store']" :action="route('wl_inventory.hold_screen_place')"
+                       :title="tx['holds.hold_store']" :description="tx['holds.hold_store_description']" :submit-label="tx['holds.hold_store']" icon="shield">
+        <rx-select name="location" :label="tx['stock.store']" :options="locations" :selected="''" id="hold-store-location" required/>
+        <rx-select name="reason" :label="tx['hold.reason']" :options="reasons" :selected="'temperature'" id="hold-store-reason"/>
+      </rx-action-sheet>
+    </template>
+  </rx-page-header>
+  <rx-include template="wl-kernel/approval_card.html"/>
+  <rx-grid :page="rows">
+    <template rx-if="column.key == 'lot'">
+      <a rx-if="row.lot_url" href="{{ row.lot_url }}">{{ row.lot_number }}</a>
+    </template>
+    <template rx-elif="column.key == 'reference'">{{ row.reference }}</template>
+    <template rx-elif="column.key == 'waiting'">
+      <rx-badge rx-if="row.waiting" kind="info" :text="tx['holds.waiting']"/>
+    </template>
+    <template rx-elif="column.key == 'actions'">
+      <template rx-if="row.can_decide">
+        <rx-open-button id="release-{{ row.id }}" label="{{ tx['holds.release'] }}" size="small"/>
+        <rx-open-button id="discard-{{ row.id }}" label="{{ tx['holds.discard'] }}" size="small"/>
+        <rx-open-button id="return-{{ row.id }}" label="{{ tx['holds.return'] }}" size="small"/>
       </template>
-    </rx-page-header>
-    <rx-include template="wl-kernel/approval_card.html"/>
-    <rx-empty rx-if="not holds" :title="tx['holds.empty']" icon="shield"/>
-    <rx-card rx-for="hold in holds" :title="hold.number">
-      <rx-stack>
-        <rx-row>
-          <rx-badge :kind="hold.status_kind" :text="hold.status"/>
-          <span>{{ hold.reason }}</span>
-          <span rx-if="hold.reference">{{ hold.reference }}</span>
-          <span>{{ hold.placed }}</span>
-          <rx-action-sheet rx-if="hold.can_cancel" :id="'cancel-hold-' ~ hold.id" :label="tx['holds.cancel']" :action="route('wl_inventory.hold_cancel', hold.id)"
-                           :title="tx['holds.cancel']" :description="tx['holds.cancel_description']" :submit-label="tx['holds.cancel']" icon="x">
-            <rx-textarea name="reason" :label="tx['holds.cancel_reason']" :id="'cancel-hold-reason-' ~ hold.id"/>
-          </rx-action-sheet>
-        </rx-row>
-        <rx-table :rows="hold.lines" as="line" :key="line.id" :caption="hold.number">
-          <rx-column :label="tx['stock.item']">{{ line.item }}</rx-column>
-          <rx-column :label="tx['stock.lot']" hide-narrow><a rx-if="line.lot_url" href="{{ line.lot_url }}">{{ line.lot }}</a></rx-column>
-          <rx-column :label="tx['stock.store']" hide-narrow>{{ line.location }}</rx-column>
-          <rx-column :label="tx['holds.quantity']">{{ line.quantity }}</rx-column>
-          <rx-column :label="tx['fields.status']"><rx-badge :kind="line.status_kind" :text="line.status"/> <rx-badge rx-if="line.waiting" kind="info" :text="tx['holds.waiting']"/></rx-column>
-          <rx-row-actions>
-            <template rx-if="line.can_decide">
-              <rx-action-sheet :id="'release-' ~ line.id" :label="tx['holds.release']" :action="route('wl_inventory.hold_line_release', line.id)"
-                               :title="tx['holds.release']" :description="tx['holds.release_description']" :submit-label="tx['holds.release']" icon="check"/>
-              <rx-action-sheet :id="'discard-' ~ line.id" :label="tx['holds.discard']" :action="route('wl_inventory.hold_line_discard', line.id)"
-                               :title="tx['holds.discard']" :description="tx['holds.discard_description']" :submit-label="tx['holds.discard']" icon="trash"/>
-              <rx-action-sheet :id="'return-' ~ line.id" :label="tx['holds.return']" :action="route('wl_inventory.hold_line_return', line.id)"
-                               :title="tx['holds.return']" :description="tx['holds.return_description']" :submit-label="tx['holds.return']" icon="truck"/>
-            </template>
-          </rx-row-actions>
-        </rx-table>
-      </rx-stack>
-    </rx-card>
-  </rx-stack>
+      <rx-open-button rx-if="row.can_cancel" id="cancel-hold-{{ row.hold_id }}" label="{{ tx['holds.cancel'] }}" size="small"/>
+    </template>
+  </rx-grid>
+  <template rx-for="line in deciding">
+    <rx-action-sheet :button="false" :id="'release-' ~ line" :label="tx['holds.release']" :action="route('wl_inventory.hold_line_release', line)"
+                     :title="tx['holds.release']" :description="tx['holds.release_description']" :submit-label="tx['holds.release']" icon="check"/>
+    <rx-action-sheet :button="false" :id="'discard-' ~ line" :label="tx['holds.discard']" :action="route('wl_inventory.hold_line_discard', line)"
+                     :title="tx['holds.discard']" :description="tx['holds.discard_description']" :submit-label="tx['holds.discard']" icon="trash"/>
+    <rx-action-sheet :button="false" :id="'return-' ~ line" :label="tx['holds.return']" :action="route('wl_inventory.hold_line_return', line)"
+                     :title="tx['holds.return']" :description="tx['holds.return_description']" :submit-label="tx['holds.return']" icon="truck"/>
+  </template>
+  <rx-action-sheet rx-for="hold in cancellable" :button="false" :id="'cancel-hold-' ~ hold" :label="tx['holds.cancel']" :action="route('wl_inventory.hold_cancel', hold)"
+                   :title="tx['holds.cancel']" :description="tx['holds.cancel_description']" :submit-label="tx['holds.cancel']" icon="x">
+    <rx-textarea name="reason" :label="tx['holds.cancel_reason']" :id="'cancel-hold-reason-' ~ hold"/>
+  </rx-action-sheet>
 </rx-page>

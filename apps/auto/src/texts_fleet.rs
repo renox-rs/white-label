@@ -3,6 +3,8 @@
 
 /// Every key of this part, with its English text.
 pub(crate) const TEXTS: &[(&str, &str)] = &[
+    ("auto.fleet.booked_for", "Booked for :day"),
+    ("auto.fleet.booked", "Booked"),
     ("auto.fleet.title", "Fleet contracts"),
     (
         "auto.fleet.subtitle",

@@ -11,13 +11,17 @@
 //! while its permit is valid; the guard is wl-sales' `CampaignGuard`, wired
 //! by the host.
 
+use std::collections::BTreeMap;
+
 use renox::chrono::NaiveDate;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 
-use super::{Texts, invalid, parse_date, parse_id, require, text, user_name};
+use super::{Texts, invalid, parse_date, parse_id, require, text};
 use crate::permissions;
-use crate::permits::{self, AdvertisingPermit, NewPermit};
+use crate::permits::{self, AdvertisingPermit, NewPermit, Problem};
 use crate::texts;
 use wl_kernel::documents::today;
 
@@ -31,90 +35,112 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
-/// One permit as the list shows it.
-#[derive(Serialize, Debug, Clone)]
-pub struct PermitRow {
-    /// The wl-sales campaign, by its code and name (its number when the
-    /// sales module is off).
-    pub campaign: String,
-    /// Whether the campaign promotes services, in words.
-    pub promotes: String,
-    /// The permit number, or a dash.
-    pub number: String,
-    /// The last valid day, or a dash.
-    pub valid_to: String,
-    /// Valid, lapsed or what is missing, in words.
-    pub state: String,
-    /// The badge colour of the state.
-    pub state_kind: &'static str,
-    /// Who approved it.
-    pub approved_by: String,
-}
-
 /// What the page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "clinics/permits.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    permits: Vec<PermitRow>,
+    permits: GridPage<AdvertisingPermit>,
     can_manage: bool,
     promotes_options: Vec<[String; 2]>,
     today: NaiveDate,
 }
 
+/// The permits grid: search on the permit number, filters on the validity and
+/// on what is missing. The campaign is drawn by the template (`custom`).
+pub(crate) fn grid(lang: &Lang, day: NaiveDate) -> Grid {
+    // Valid, or the first thing [`AdvertisingPermit::problem_on`] finds wrong.
+    let state = format!(
+        "CASE WHEN NOT {{T}}.\"promotes_services\" THEN 'valid' \
+         WHEN TRIM({{T}}.\"permit_number\") = '' THEN 'no_number' \
+         WHEN {{T}}.\"valid_to\" IS NULL THEN 'no_validity' \
+         WHEN {{T}}.\"valid_to\" < '{day}' THEN 'lapsed' ELSE 'valid' END"
+    );
+    Grid::new("clinics-campaign-permits")
+        .title(&text(lang, "permit.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::custom("campaign", &text(lang, "permit.campaign"))
+                .frozen()
+                .mobile(),
+        )
+        .column(Column::bool("promotes_services", &text(lang, "permit.promotes")).hidden())
+        .column(
+            Column::text("permit_number", &text(lang, "permit.number"))
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::date("valid_to", &text(lang, "permit.valid_to")).mobile())
+        .column(
+            Column::related(
+                "approved_by_name",
+                &text(lang, "permit.approved_by"),
+                "users",
+                "approved_by",
+                "name",
+            )
+            .searchable(),
+        )
+        .column(
+            Column::select(
+                "state",
+                &text(lang, "fields.status"),
+                vec![
+                    ("valid".to_owned(), text(lang, "permit.valid")),
+                    ("no_number".to_owned(), Problem::NoNumber.message()),
+                    ("no_validity".to_owned(), Problem::NoValidity.message()),
+                    ("lapsed".to_owned(), Problem::Lapsed.message()),
+                ],
+            )
+            .computed(&state)
+            .badges(&[
+                ("valid", "success"),
+                ("no_number", "danger"),
+                ("no_validity", "danger"),
+                ("lapsed", "danger"),
+            ])
+            .mobile(),
+        )
+        .sort_by("campaign_id")
+        .cards_on_mobile()
+        .empty_state(
+            &text(lang, "permit.empty"),
+            Some(&text(lang, "permit.subtitle")),
+        )
+}
+
 /// `GET /clinics/campaign-permits`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
     if !user.has_permission(permissions::PERMITS_VIEW)
         && !user.has_permission(permissions::PERMITS_MANAGE)
     {
         return Err(Error::Forbidden);
     }
     let day = today();
-    let dash = text(&lang, "none");
-    let mut rows = Vec::new();
-    for permit in AdvertisingPermit::listed(&state.db).await? {
-        let problem = permit.problem_on(day);
-        rows.push(PermitRow {
-            campaign: wl_kernel::documents::subject_label(
-                &state.db,
-                &wl_kernel::Subject::new(
-                    wl_kernel::sales::CAMPAIGN_SUBJECT_TYPE,
-                    permit.campaign_id,
-                ),
-            )
-            .await?
-            .unwrap_or_else(|| format!("#{}", permit.campaign_id)),
-            promotes: text(
-                &lang,
-                if permit.promotes_services {
-                    "permit.promotes_yes"
-                } else {
-                    "permit.promotes_no"
-                },
-            ),
-            number: if permit.permit_number.is_empty() {
-                dash.clone()
-            } else {
-                permit.permit_number.clone()
-            },
-            valid_to: permit
-                .valid_to
-                .map_or_else(|| dash.clone(), |d| d.to_string()),
-            state: problem.map_or_else(|| text(&lang, "permit.valid"), |p| p.message()),
-            state_kind: if problem.is_some() {
-                "error"
-            } else {
-                "success"
-            },
-            approved_by: match permit.approved_by {
-                Some(id) => user_name(&state.db, id).await,
-                None => dash.clone(),
-            },
-        });
+    let page = grid(&lang, day)
+        .page(AdvertisingPermit::query(), &request)
+        .await?;
+    let mut campaigns = BTreeMap::new();
+    for permit in page.items() {
+        let label = wl_kernel::documents::subject_label(
+            &state.db,
+            &wl_kernel::Subject::new(wl_kernel::sales::CAMPAIGN_SUBJECT_TYPE, permit.campaign_id),
+        )
+        .await?
+        .unwrap_or_else(|| format!("#{}", permit.campaign_id));
+        campaigns.insert(permit.id, label);
     }
+    let page = page.extend(|permit| json!({ "campaign": campaigns.get(&permit.id) }));
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        permits: rows,
+        permits: page,
         can_manage: user.has_permission(permissions::PERMITS_MANAGE),
         promotes_options: vec![
             ["yes".to_owned(), text(&lang, "permit.promotes_yes")],

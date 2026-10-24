@@ -310,6 +310,12 @@
     "save": "Save"
   },
   "settings": {
+    "search": "Search the settings",
+    "group_filter": "Group",
+    "all_groups": "All groups",
+    "show": "Search",
+    "none": "No setting matches",
+    "none_text": "Change the search or choose another group.",
     "negative_flow": {
       "title": "Money settings",
       "subtitle": "The values of the shared modules for this client: write-offs, disputes, cheques, deposits, supplier bills, party blocks, the cash-flow alert and the budget.",
@@ -367,6 +373,19 @@
     "pay_reason_hint": "Say why the account is not accepted.",
     "pay_cancel": "Cancel"
   },
+  "roles": {
+    "accountant": "accountant",
+    "branch_manager": "branch manager",
+    "counter_sales": "counter sales",
+    "fleet_account_manager": "fleet account manager",
+    "insurance_coordinator": "insurance coordinator",
+    "owner": "owner",
+    "procurement": "purchaser",
+    "service_advisor": "service advisor",
+    "storekeeper": "storekeeper",
+    "technician": "technician",
+    "workshop_manager": "workshop manager"
+  },
   "activity": {
     "title": "Activity",
     "subtitle": "Logins, account changes and role changes.",
@@ -399,6 +418,12 @@
       "fleet_contract": "Fleet contract",
       "job_card": "Job card",
       "insurance_claim": "Insurance claim"
+    },
+    "approvals": {
+      "action_auto_supplier_claim_write_off": "Write off a supplier warranty claim",
+      "action_auto_fleet_terminate": "End a fleet contract early",
+      "action_auto_job_card_cancel": "Cancel a job card at a lower bill",
+      "action_auto_insurance_claim_void": "Void an insurance claim"
     }
   }
 }

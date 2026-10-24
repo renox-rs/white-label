@@ -13,8 +13,8 @@
 //! | `POST /payer-bills/{id}/transfer` | `wl_invoicing.payer_bill_transfer` | `payer_bills.write_off` |
 //! | `POST /payer-bills/{id}/transitions/{name}` | `wl_invoicing.payer_bill_transitions.*` | `payer_bills.view` and the transition's permission |
 //!
-//! The list shows each payer bill's number, payer, customer, source, state
-//! and open amount, newest first. A bill's page shows its terms, its lines
+//! The list is a `renox::grid` (`?export=` also `payer_bills.issue`) with each
+//! payer bill's number, payer, customer, source, state and open amount, newest first. A bill's page shows its terms, its lines
 //! with what the payer paid and denied, the errors the submission channel
 //! gave per attempt and the actions the user may run. `issue` and `resubmit`
 //! have their own routes because their guards read the input the module
@@ -26,7 +26,9 @@
 use std::collections::BTreeMap;
 
 use renox::chrono::NaiveDate;
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::state_machine::TransitionError;
 use serde::Serialize;
 use wl_kernel::approvals::{self, ApprovalCard};
@@ -190,26 +192,103 @@ fn number_text(lang: &Lang, bill: &PayerBill) -> String {
         .unwrap_or_else(|| text(lang, "payer_bill.draft_number"))
 }
 
-/// One row of the list.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct Row {
-    id: i64,
-    number: String,
-    payer: String,
-    customer: String,
-    source: String,
-    status: String,
-    claimed: String,
-    open: String,
-    link: String,
-}
-
 /// What the list page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-invoicing/payer_bills.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    rows: Vec<Row>,
+    rows: GridPage<PayerBill>,
+}
+
+/// The payer bills grid: search on the number, filters by state, sums of the
+/// claimed and open amounts, in each bill's currency. The payer, customer
+/// and source record are drawn by the template (`custom`).
+pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let statuses: Vec<(String, String)> = PayerBillStatus::ALL
+        .iter()
+        .map(|s| {
+            (
+                s.as_str().to_owned(),
+                text(lang, &format!("payer_bill.status.{}", s.as_str())),
+            )
+        })
+        .collect();
+    // A draft has no number yet: it shows the draft text.
+    let draft = text(lang, "payer_bill.draft_number").replace('\'', "''");
+    let grid = Grid::new("wl-invoicing-payer-bills")
+        .title(&text(lang, "payer_bill.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &text(lang, "payer_bill.fields.number"))
+                .computed(&format!("COALESCE({{T}}.\"number\", '{draft}')"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable()
+                .link("/payer-bills/{id}"),
+        )
+        // The names come from the party directory, which this crate reads
+        // through the kernel and not from a table: the template draws them.
+        .column(Column::custom("payer", &text(lang, "payer_bill.fields.payer")).mobile())
+        .column(Column::custom(
+            "customer",
+            &text(lang, "payer_bill.fields.customer"),
+        ))
+        .column(Column::custom(
+            "source",
+            &text(lang, "payer_bill.fields.source"),
+        ))
+        .column(
+            Column::select("status", &text(lang, "payer_bill.fields.status"), statuses)
+                .badges(&[
+                    ("draft", "info"),
+                    ("issued", "info"),
+                    ("partially_paid", "warning"),
+                    ("denied", "danger"),
+                    ("paid", "success"),
+                    ("closed", "info"),
+                    ("voided", "info"),
+                ])
+                .mobile(),
+        )
+        .column(
+            Column::money("claimed_total", &text(lang, "payer_bill.fields.claimed"))
+                .currency_from("currency")
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("balance", &text(lang, "payer_bill.fields.open"))
+                .currency_from("currency")
+                .summary(Summary::Sum)
+                .mobile(),
+        )
+        .column(
+            Column::money("paid_total", &text(lang, "payer_bill.fields.paid"))
+                .currency_from("currency")
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("denied_total", &text(lang, "payer_bill.fields.denied"))
+                .currency_from("currency")
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::date(
+                "service_date",
+                &text(lang, "payer_bill.fields.service_date"),
+            )
+            .hidden(),
+        )
+        .column(Column::datetime("created_at", &text(lang, "fields.created_at")).hidden())
+        .sort_by("-id")
+        .row_url("/payer-bills/{id}")
+        .cards_on_mobile()
+        .empty_state(&text(lang, "payer_bill.empty"), None);
+    if can_export { grid.exports() } else { grid }
 }
 
 /// The record a bill comes from, named for people (`VIS-0009`) when its module
@@ -221,34 +300,44 @@ async fn source_label(state: &AppState, bill: &PayerBill) -> Result<String> {
         .unwrap_or_else(|| source.to_string()))
 }
 
-/// `GET /payer-bills`: every payer bill, newest first.
-async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
-    let all = PayerBill::query()
-        .order_by_desc(PayerBill::ID)
-        .limit(200)
-        .get(&state.db)
-        .await?;
-    let mut rows = Vec::with_capacity(all.len());
-    for bill in all {
-        rows.push(Row {
-            id: bill.id,
-            number: number_text(&lang, &bill),
-            payer: party_name(&state, bill.payer()).await?,
-            customer: party_name(&state, bill.customer()).await?,
-            source: source_label(&state, &bill).await?,
-            status: text(
-                &lang,
-                &format!("payer_bill.status.{}", bill.status.as_str()),
-            ),
-            claimed: amount_text(&bill.currency, bill.claimed_total),
-            open: amount_text(&bill.currency, bill.balance),
-            link: format!("/payer-bills/{}", bill.id),
-        });
+/// `GET /payer-bills`: the grid, or its export (`?export=csv|xlsx|print`,
+/// with `payer_bills.issue`).
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
+    let can_export = crate::may_export(&user, permissions::PAYER_BILLS_ISSUE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
     }
+    if let Some(file) = grid.export(PayerBill::query(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(PayerBill::query(), &request).await?;
+    // The source record of each bill on the page, named for people.
+    let mut names = BTreeMap::new();
+    for bill in page.items() {
+        names.insert(
+            bill.id,
+            (
+                party_name(&state, bill.payer()).await?,
+                party_name(&state, bill.customer()).await?,
+                source_label(&state, bill).await?,
+            ),
+        );
+    }
+    let rows = page.extend(|bill| {
+        let (payer, customer, source) = names.get(&bill.id).cloned().unwrap_or_default();
+        json!({ "payer": payer, "customer": customer, "source": source })
+    });
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         rows,
-    }))
+    })
+    .into_response())
 }
 
 /// One line of a bill.

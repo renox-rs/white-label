@@ -58,6 +58,14 @@ pub mod segments;
 pub mod subject;
 pub mod subscriptions;
 mod texts;
+
+/// A money column label with the currency code appended, e.g. `Contract value (AED)`.
+///
+/// Grid money cells without `currency_from` render a bare number, so the code
+/// goes in the label (amounts are fils in AED by design in the demo clients).
+pub fn money_label(label: &str) -> String {
+    format!("{label} (AED)")
+}
 pub mod tickets;
 pub mod timesheets;
 pub mod usage;
@@ -380,7 +388,35 @@ pub fn apply(app: App, config: ClientConfig) -> Result<App, ConfigError> {
 #[view(template = "wl-kernel/legal_entities.html")]
 struct LegalEntitiesPage {
     heading: String,
-    entities: Vec<LegalEntity>,
+    entities: renox::grid::GridPage<LegalEntity>,
+}
+
+/// The legal entities grid: search on the code, name and TRN, the default
+/// entity first. Two or three rows in most deployments, so it is the
+/// standard grid for consistency.
+fn legal_entities_grid(heading: &str) -> renox::grid::Grid {
+    use renox::grid::{Column, Grid};
+    Grid::new("kernel-legal-entities")
+        .title(heading)
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("code", "Code")
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable(),
+        )
+        .column(Column::text("name_en", "Legal name").mobile().searchable())
+        .column(Column::text("trn", "TRN").mobile().searchable())
+        .column(Column::bool("is_default", "Default").mobile())
+        .column(Column::text("status", "Status").hidden())
+        .column(Column::text("emirate", "Emirate").hidden())
+        .column(Column::bool("vat_registered", "VAT registered").hidden())
+        .sort_by("-is_default,code")
+        .cards_on_mobile()
+        .empty_state(heading, None)
 }
 
 impl Module for WlKernel {
@@ -485,14 +521,10 @@ impl Module for WlKernel {
     }
 }
 
-async fn legal_entities(State(db): State<Db>, lang: Lang) -> Result<View> {
-    let entities = LegalEntity::query()
-        .order_by_desc(LegalEntity::IS_DEFAULT)
-        .order_by(LegalEntity::CODE)
-        .get(&db)
+async fn legal_entities(lang: Lang, request: renox::grid::GridRequest) -> Result<View> {
+    let heading = texts::t(&lang, "wl_kernel.legal_entities");
+    let entities = legal_entities_grid(&heading)
+        .page(LegalEntity::query(), &request)
         .await?;
-    Ok(View::typed(LegalEntitiesPage {
-        heading: texts::t(&lang, "wl_kernel.legal_entities"),
-        entities,
-    }))
+    Ok(View::typed(LegalEntitiesPage { heading, entities }))
 }

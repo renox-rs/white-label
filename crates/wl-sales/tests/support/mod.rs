@@ -136,7 +136,29 @@ pub async fn boot_pair(sales: WlSales, first: impl Module, second: impl Module) 
         .call("sales:install", Vec::<String>::new())
         .await
         .expect("sales:install runs");
+    stand_in_parties(&app).await;
     Booted { app, _views: views }
+}
+
+/// The grids read the names of parties from wl-parties' table, which this
+/// app does not have (the crate does not depend on wl-parties): a stand-in
+/// with the parties 1 to 300, named as the test directory names them
+/// ("Party N").
+pub async fn stand_in_parties(app: &TestApp) {
+    renox::db::sql(
+        r#"CREATE TABLE IF NOT EXISTS "wl_parties_parties" (id INTEGER PRIMARY KEY, display_name TEXT NOT NULL)"#,
+    )
+    .execute(app.db())
+    .await
+    .expect("the stand-in table");
+    let rows: Vec<String> = (1..=300).map(|n| format!("({n}, 'Party {n}')")).collect();
+    renox::db::sql(format!(
+        r#"INSERT OR IGNORE INTO "wl_parties_parties" (id, display_name) VALUES {}"#,
+        rows.join(", ")
+    ))
+    .execute(app.db())
+    .await
+    .expect("the stand-in rows");
 }
 
 /// The lead and acquisition events a test saw, recorded by a module that

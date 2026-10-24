@@ -103,9 +103,9 @@ impl Module for Manpower {
     }
 
     fn register(&self, app: &mut Registry) {
-        app.view_data::<pages::ContractsPage>()
-            .view_data::<pages::RequestsPage>()
-            .view_data::<pages::DeploymentsPage>()
+        app.view_data::<screens::lists::ContractsPage>()
+            .view_data::<screens::lists::RequestsPage>()
+            .view_data::<screens::lists::DeploymentsPage>()
             .view_data::<screens::contract_page::ContractPage>()
             .view_data::<screens::request_page::RequestPage>()
             .view_data::<screens::deployment_page::DeploymentPage>()

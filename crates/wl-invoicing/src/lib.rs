@@ -344,6 +344,12 @@ pub(crate) fn config_of(state: &AppState) -> Arc<InvoicingConfig> {
         .unwrap_or_else(|| Arc::new(InvoicingConfig::default()))
 }
 
+/// Whether `user` holds `permission` globally or in any scope. Lists use it
+/// to decide who gets the export menu of their grid.
+pub(crate) fn may_export(user: &AuthUser, permission: &str) -> bool {
+    user.has_permission(permission) || user.has_permission_anywhere(permission)
+}
+
 /// The module's permissions (wl-invoicing §6).
 pub mod permissions {
     /// See invoices and credit notes.

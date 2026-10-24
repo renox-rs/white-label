@@ -18,6 +18,7 @@ use property::seed::{
     self, CATEGORIES, CERTIFY, CIVIL_DEFENCE_APPROVAL, COMPLIANCE_CATEGORIES, CRITICAL_RULES,
     KINDS, LEAD_SOURCES, ONBOARDING, REASSIGN_REASONS, SOPS,
 };
+use renox::grid::GridRequest;
 use renox::nav::NavLink;
 use renox::prelude::*;
 use serde::Serialize;
@@ -348,7 +349,34 @@ impl Module for ComplianceSettings {
     }
 }
 
-async fn show(State(state): State<AppState>) -> Result<Response> {
+/// The rows that match the page's search (`?q=`) and group (`?group=`), with
+/// the group choices (value, label) and what was asked, for the filter bar.
+/// The rows come from code, not a table, so they are narrowed here.
+pub(crate) fn narrow<T>(
+    rows: Vec<T>,
+    request: &GridRequest,
+    group_of: impl Fn(&T) -> &str,
+    text_of: impl Fn(&T) -> String,
+) -> (Vec<T>, Vec<(String, String)>, String, String) {
+    let q = request.param("q").unwrap_or_default().trim().to_owned();
+    let group = request.param("group").unwrap_or_default().to_owned();
+    let mut groups: Vec<(String, String)> = Vec::new();
+    for row in &rows {
+        let name = group_of(row);
+        if !groups.iter().any(|(value, _)| value == name) {
+            groups.push((name.to_owned(), name.to_owned()));
+        }
+    }
+    let needle = q.to_lowercase();
+    let rows = rows
+        .into_iter()
+        .filter(|row| group.is_empty() || group_of(row) == group)
+        .filter(|row| needle.is_empty() || text_of(row).to_lowercase().contains(&needle))
+        .collect();
+    (rows, groups, q, group)
+}
+
+async fn show(State(state): State<AppState>, request: GridRequest) -> Result<Response> {
     let settings = state
         .provided::<ComplianceSettings>()
         .ok_or(Error::NotFound)?;
@@ -372,7 +400,28 @@ async fn show(State(state): State<AppState>) -> Result<Response> {
     } else {
         rows(&settings.client_app, &settings.owner_role)
     };
-    Ok(view("settings/compliance.html", context! { rows }).into_response())
+    let (rows, groups, q, group) = narrow(
+        rows,
+        &request,
+        |row| &row.group,
+        |row| {
+            [
+                &row.number,
+                &row.setting,
+                &row.value,
+                &row.source,
+                &row.reference,
+                &row.open,
+            ]
+            .map(String::as_str)
+            .join(" ")
+        },
+    );
+    Ok(view(
+        "settings/compliance.html",
+        context! { rows, groups, q, group },
+    )
+    .into_response())
 }
 
 #[cfg(test)]

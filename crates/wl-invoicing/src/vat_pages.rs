@@ -155,12 +155,12 @@ pub(crate) fn recovery_effect(
 }
 
 /// The VAT summaries grid: filters by entity and status.
-pub fn grid(lang: &Lang) -> Grid {
-    grid_with(&texts_in(lang))
+pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+    grid_with(&texts_in(lang), can_export)
 }
 
 /// [`grid`] with the texts of `t`.
-fn grid_with(t: Text<'_>) -> Grid {
+fn grid_with(t: Text<'_>, can_export: bool) -> Grid {
     let statuses: Vec<(String, String)> = VatSummaryStatus::ALL
         .iter()
         .map(|s| {
@@ -170,8 +170,11 @@ fn grid_with(t: Text<'_>) -> Grid {
             )
         })
         .collect();
-    Grid::new("wl-invoicing-vat-summaries")
+    let grid = Grid::new("wl-invoicing-vat-summaries")
         .title(&t("vat.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::related(
                 "entity",
@@ -203,7 +206,8 @@ fn grid_with(t: Text<'_>) -> Grid {
         .sort_by("-period_start")
         .row_url("/vat-summaries/{id}")
         .cards_on_mobile()
-        .empty_state(&t("vat.empty"), Some(&t("vat.empty_hint")))
+        .empty_state(&t("vat.empty"), Some(&t("vat.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list page needs.
@@ -215,12 +219,21 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /vat-summaries`: the grid.
-async fn index(lang: Lang, request: GridRequest) -> Result<View> {
-    let summaries = grid(&lang).page(VatSummary::query(), &request).await?;
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
+    let can_export = crate::may_export(&user, permissions::VAT_PREPARE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(VatSummary::query(), &request).await? {
+        return Ok(file);
+    }
+    let summaries = grid.page(VatSummary::query(), &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         summaries,
-    }))
+    })
+    .into_response())
 }
 
 /// One adjustment as the summary page shows it.
@@ -456,7 +469,7 @@ mod tests {
 
     #[test]
     fn the_grid_lists_the_summary_columns_and_statuses() {
-        let grid = grid_with(&english_text);
+        let grid = grid_with(&english_text, false);
         let keys: Vec<&str> = grid.columns().iter().map(Column::key).collect();
         assert_eq!(
             keys,

@@ -9,10 +9,11 @@
 //! maintenance coordinator and the company admin all. Leasing is not blocked
 //! by anything listed here.
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use serde::Serialize;
 
-use super::{Texts, buildings_with, text};
+use super::{Texts, building_name_sql, buildings_with, text};
 use crate::building::Building;
 use crate::compliance::{BuildingFlag, non_compliant};
 use crate::permissions;
@@ -26,17 +27,49 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
-/// A row of the list: building, cause, since.
-#[derive(Serialize, Debug, Clone)]
-pub struct FlagRow {
-    /// The building's name.
-    pub building: String,
-    /// The cause in the page's language.
-    pub cause: String,
-    /// The category or the certificate kind.
-    pub category: String,
-    /// The day it was raised.
-    pub since: String,
+/// The causes of a flag.
+const CAUSES: [&str; 4] = [
+    "visit_missed",
+    "no_contract",
+    "vendor_document_expired",
+    "certificate_expired",
+];
+
+/// The compliance grid: search on the building and the category, filter by
+/// cause, the oldest flag first.
+pub(crate) fn grid(lang: &Lang) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let causes: Vec<(String, String)> = CAUSES
+        .iter()
+        .map(|cause| ((*cause).to_owned(), t(&format!("compliance.cause_{cause}"))))
+        .collect();
+    Grid::new("property-compliance")
+        .title(&t("compliance.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("building", &t("compliance.building"))
+                .computed(&format!(
+                    "(SELECT {} FROM \"property_buildings\" \
+                     WHERE \"property_buildings\".\"id\" = {{T}}.\"building_id\")",
+                    building_name_sql(lang, "\"property_buildings\"")
+                ))
+                .frozen()
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::select("cause", &t("compliance.cause"), causes).mobile())
+        .column(
+            Column::text("category", &t("compliance.category"))
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::date("raised_on", &t("compliance.since")).mobile())
+        .sort_by("raised_on")
+        .cards_on_mobile()
+        .empty_state(&t("compliance.empty"), Some(&t("compliance.empty_hint")))
+        .exports()
 }
 
 /// What the page needs.
@@ -45,7 +78,7 @@ pub struct FlagRow {
 pub(crate) struct IndexPage {
     tx: Texts,
     count: usize,
-    flags: Vec<FlagRow>,
+    flags: GridPage<BuildingFlag>,
 }
 
 /// How many of the buildings `user` sees are non-compliant.
@@ -62,30 +95,35 @@ pub(crate) async fn count_for(state: &AppState, user: &AuthUser) -> Result<usize
 }
 
 /// `GET /property/compliance`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     let scopes = buildings_with(&user, permissions::COMPLIANCE_VIEW)?;
-    let mut rows = Vec::new();
-    for flag in BuildingFlag::open(&state.db).await? {
-        if !scopes.contains(&flag.building_id) {
-            continue;
-        }
-        let Some(building) = Building::find(&state.db, flag.building_id).await? else {
-            continue;
-        };
-        rows.push(FlagRow {
-            building: building.display_name(&lang.locale),
-            cause: text(&lang, &format!("compliance.cause_{}", flag.cause)),
-            category: flag.category.clone(),
-            since: flag.raised_on.to_string(),
-        });
+    // The open flags of the buildings the user sees.
+    let query = scopes.apply(
+        BuildingFlag::query().where_(BuildingFlag::CLEARED_ON.is_null()),
+        &["building_id"],
+    );
+    let grid = grid(&lang);
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
     }
-    let mut buildings: Vec<&str> = rows.iter().map(|r| r.building.as_str()).collect();
+    let mut buildings: Vec<i64> = query
+        .clone()
+        .get(&state.db)
+        .await?
+        .iter()
+        .map(|flag| flag.building_id)
+        .collect();
     buildings.sort_unstable();
     buildings.dedup();
-    let count = buildings.len();
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        count,
-        flags: rows,
-    }))
+        count: buildings.len(),
+        flags: grid.page(query, &request).await?,
+    })
+    .into_response())
 }

@@ -129,7 +129,7 @@
         <rx-entry :label="tx['jobs.promised_for']" :value="promised"/>
         <rx-entry :label="tx['jobs.warranty']" :value="warranty"/>
         <rx-entry rx-if="delivered" :label="tx['jobs.delivered_to']" :value="delivered"/>
-        <rx-entry rx-if="invoice" :label="tx['jobs.invoice_ref']" :value="invoice"/>
+        <rx-entry rx-if="invoice" :label="tx['jobs.invoice_ref']" :value="invoice" :url="invoice_url or none"/>
       </rx-infolist>
       <rx-toolbar>
         <rx-action-sheet rx-if="can_intake" :id="'job-intake-' ~ id" :label="tx['jobs.intake']" :action="route('auto.job_card_intake', id)"
@@ -197,7 +197,7 @@
     <rx-card :title="tx['jobs.parts']">
       <rx-table :rows="parts" as="part" :key="part.id" :caption="tx['jobs.parts']">
         <rx-column :label="tx['jobs.description']">{{ part.description }} <rx-badge rx-if="part.special" kind="info" :text="part.special"/></rx-column>
-        <rx-column :label="tx['jobs.part_condition']" hide-narrow>{{ part.condition }}</rx-column>
+        <rx-column :label="tx['jobs.part_condition']" hide-narrow>{{ part.condition | capitalize }}</rx-column>
         <rx-column :label="tx['jobs.quantity']" align="num" hide-narrow>{{ part.quantity }}</rx-column>
         <rx-column :label="tx['jobs.unit_price']" align="num" hide-narrow>{{ part.unit_price }}</rx-column>
         <rx-column :label="tx['jobs.price']" align="num">{{ part.price }}</rx-column>

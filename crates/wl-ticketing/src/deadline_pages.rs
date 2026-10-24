@@ -28,6 +28,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use renox::axum::extract::Query;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use serde::{Deserialize, Serialize};
@@ -178,6 +179,72 @@ async fn row(
     })
 }
 
+/// The deadline tasks grid: search on the title, agreement and owner,
+/// filters by status, due date and owner, by due date. The waiting label of
+/// the client's settings replaces "Waiting".
+pub fn grid(state: &AppState, lang: &Lang, can_export: bool) -> Grid {
+    let statuses: Vec<(String, String)> = DeadlineTaskStatus::ALL
+        .iter()
+        .map(|status| {
+            let label = match (&deadlines::settings(state).waiting_label, status) {
+                (Some(label), DeadlineTaskStatus::Waiting) => label.clone(),
+                _ => text(lang, &format!("deadline.status.{}", status.as_str())),
+            };
+            (status.as_str().to_owned(), label)
+        })
+        .collect();
+    let tones: Vec<(&str, &str)> = DeadlineTaskStatus::ALL
+        .iter()
+        .map(|status| {
+            (
+                status.as_str(),
+                match status_kind(*status) {
+                    "error" => "danger",
+                    other => other,
+                },
+            )
+        })
+        .collect();
+    let grid = Grid::new("wl-ticketing-deadline-tasks")
+        .title(&text(lang, "deadline.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("title", &text(lang, "deadline.fields.title"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/deadline-tasks/{id}"),
+        )
+        .column(Column::text("task_type", &text(lang, "deadline.fields.type")).searchable().hidden())
+        .column(
+            Column::text("source", &text(lang, "deadline.fields.source"))
+                .computed("{T}.\"subject_type\" || ' #' || CAST({T}.\"subject_id\" AS TEXT)")
+                .searchable(),
+        )
+        .column(Column::date("due_date", &text(lang, "deadline.fields.due")).mobile())
+        .column(Column::date("start_date", &text(lang, "deadline.fields.start")).hidden())
+        .column(
+            Column::select("status", &text(lang, "deadline.fields.status"), statuses)
+                .badges(&tones)
+                .mobile(),
+        )
+        .column(Column::bool("held", &text(lang, "task.held")))
+        .column(Column::bool("late", &text(lang, "deadline.late")))
+        .column(
+            Column::text("owner", &text(lang, "deadline.fields.owner"))
+                .computed("COALESCE((SELECT \"name\" FROM \"users\" WHERE \"id\" = {T}.\"owner_user_id\"), {T}.\"owner_role\", '')")
+                .searchable()
+                .mobile(),
+        )
+        .sort_by("due_date,id")
+        .row_url("/deadline-tasks/{id}")
+        .cards_on_mobile()
+        .empty_state(&text(lang, "deadline.empty"), None);
+    if can_export { grid.exports() } else { grid }
+}
+
 /// What the list needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-ticketing/deadline_tasks.html")]
@@ -185,17 +252,18 @@ pub(crate) struct TasksPage {
     tx: Texts,
     /// The page's subtitle: what the list is filtered on.
     subtitle: String,
-    tasks: Vec<TaskRow>,
+    tasks: GridPage<DeadlineTask>,
 }
 
 /// `GET /deadline-tasks`: the tasks of an agreement or an owner by due
-/// date, or the open ones.
+/// date, or the open ones (or the export, with `tasks.manage`).
 async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Query(query): Query<TaskQuery>,
-) -> Result<View> {
+    request: GridRequest,
+) -> Result<Response> {
     let mut found = DeadlineTask::query();
     let mut filtered = false;
     let mut subtitle = text(&lang, "deadline.subtitle_open");
@@ -223,21 +291,20 @@ async fn index(
     if !filtered {
         found = found.where_(DeadlineTask::STATUS.is_in(OPEN));
     }
-    let tasks = found
-        .order_by(DeadlineTask::DUE_DATE)
-        .order_by(DeadlineTask::ID)
-        .get(&state.db)
-        .await?;
-    let mut names = HashMap::new();
-    let mut rows = Vec::with_capacity(tasks.len());
-    for task in &tasks {
-        rows.push(row(&state, &lang, &mut names, task).await?);
+    let can_export = user.has_permission(permissions::TASKS_MANAGE);
+    let grid = grid(&state, &lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(found.clone(), &request).await? {
+        return Ok(file);
     }
     Ok(View::typed(TasksPage {
         tx: texts::all(&lang),
         subtitle,
-        tasks: rows,
-    }))
+        tasks: grid.page(found, &request).await?,
+    })
+    .into_response())
 }
 
 /// An action without input of its own, as a button.

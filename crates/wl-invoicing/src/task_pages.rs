@@ -67,6 +67,9 @@ pub fn grid(lang: &Lang) -> Grid {
     .collect();
     Grid::new("wl-invoicing-tasks")
         .title(&text(lang, "tasks.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::related(
                 "invoice",

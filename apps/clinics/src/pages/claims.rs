@@ -23,7 +23,9 @@
 
 use renox::chrono::NaiveDate;
 use renox::db::now;
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::state_machine::TransitionError;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -153,36 +155,6 @@ pub(crate) fn parse_errors(text: &str) -> Vec<ClaimError> {
         .collect()
 }
 
-/// One claim of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct ClaimRow {
-    /// The primary key.
-    pub id: i64,
-    /// `CLM-0101`.
-    pub number: String,
-    /// The patient's name.
-    pub patient: String,
-    /// The payer's name.
-    pub payer: String,
-    /// The day of the visit.
-    pub visit_date: String,
-    /// What is claimed.
-    pub claimed: String,
-    /// What the payer paid.
-    pub paid: String,
-    /// What is denied and open.
-    pub denied: String,
-    /// The last day to send it, or a dash.
-    pub deadline: String,
-    /// The status.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
-    /// How it was closed, or a dash: `Written off AED 600.00, not submitted
-    /// in time`.
-    pub closed: String,
-}
-
 /// The filter of the list.
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct IndexFilter {
@@ -192,12 +164,88 @@ pub struct IndexFilter {
     pub closed: String,
 }
 
+/// The claims grid: filters by status and visit day, sums of what is claimed,
+/// paid and denied. The names, the deadline and how a claim was closed are
+/// drawn by the template (`custom`); the closing text and the denied amount
+/// start hidden.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let statuses: Vec<(String, String)> = ClaimStatus::ALL
+        .iter()
+        .map(|status| (status.as_str().to_owned(), status_text(lang, *status)))
+        .collect();
+    let grid = Grid::new("clinics-claims")
+        .title(&text(lang, "claim.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::custom("number", &text(lang, "claim.number"))
+                .frozen()
+                .mobile(),
+        )
+        .column(Column::custom("patient", &text(lang, "policies.patient")).mobile())
+        .column(Column::custom("payer", &text(lang, "policies.payer")))
+        .column(Column::date("visit_date", &text(lang, "claim.visit_date")))
+        .column(
+            Column::money("claimed", &wl_kernel::money_label(&text(lang, "claim.claimed")))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(Column::money("paid", &wl_kernel::money_label(&text(lang, "claim.paid"))).summary(Summary::Sum))
+        .column(
+            Column::money("denied", &wl_kernel::money_label(&text(lang, "claim.denied")))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(Column::custom("deadline", &text(lang, "claim.deadline")))
+        .column(
+            Column::select("status", &text(lang, "fields.status"), statuses)
+                .badges(&[
+                    ("draft", "info"),
+                    ("ready", "info"),
+                    ("submitted", "info"),
+                    ("resubmitted", "info"),
+                    ("written_off", "info"),
+                    ("voided", "info"),
+                    ("paid", "success"),
+                    ("partially_paid", "warning"),
+                    ("denied", "danger"),
+                ])
+                .mobile(),
+        )
+        .column(Column::custom("closed", &text(lang, "claim.closed")).hidden())
+        // Search: the claim number and the payer's and channel's references
+        // (the names are in the parties module, so they are not searched).
+        .column(
+            Column::text("lookup", &text(lang, "claim.number"))
+                .computed(
+                    "'CLM-' || CASE WHEN {T}.\"id\" < 10 THEN '000' WHEN {T}.\"id\" < 100 THEN '00' \
+                     WHEN {T}.\"id\" < 1000 THEN '0' ELSE '' END || CAST({T}.\"id\" AS TEXT) \
+                     || ' ' || COALESCE({T}.\"payer_reference\", '') \
+                     || ' ' || COALESCE({T}.\"submission_reference\", '') \
+                     || ' ' || COALESCE({T}.\"last_remittance_reference\", '')",
+                )
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
+        )
+        .sort_by("-id")
+        .row_url("/clinics/claims/{id}")
+        .cards_on_mobile()
+        .empty_state(
+            &text(lang, "claim.empty"),
+            Some(&text(lang, "claim.subtitle")),
+        );
+    if can_export { grid.exports() } else { grid }
+}
+
 /// What the list page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "clinics/claims.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    claims: Vec<ClaimRow>,
+    claims: GridPage<Claim>,
     kpi: String,
     integration_banner: Option<renox::serde_json::Value>,
 }
@@ -219,22 +267,24 @@ fn closed_text(lang: &Lang, claim: &Claim) -> Option<String> {
 }
 
 /// `GET /clinics/claims` (`?closed=not_submitted_in_time` lists the claims
-/// closed after the payer's window).
+/// closed after the payer's window; `?export=` needs `claims.manage` too).
 async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Query(filter): Query<IndexFilter>,
-) -> Result<View> {
+    request: GridRequest,
+) -> Result<Response> {
     require(&user, permissions::CLAIMS_MANAGE)?;
-    let only_missed = filter.closed == "not_submitted_in_time";
-    let mut all = Claim::query()
-        .order_by_desc(Claim::ID)
-        .get(&state.db)
-        .await?;
-    if only_missed {
-        all.retain(|claim| claim.not_submitted_in_time);
+    let grid = grid(&lang, true);
+    let mut query = Claim::query();
+    if filter.closed == "not_submitted_in_time" {
+        query = query.where_(Claim::NOT_SUBMITTED_IN_TIME.eq(true));
     }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
     let missed = claim_closing::not_submitted_in_time(&state.db, None, None).await?;
     let kpi = text_with(
         &lang,
@@ -245,38 +295,50 @@ async fn index(
         ],
     );
     let dash = text(&lang, "none");
-    let mut rows = Vec::with_capacity(all.len());
-    for claim in &all {
-        let contract = match claim.contract_id {
-            Some(id) => PayerContract::find(&state.db, id).await?,
-            None => None,
-        };
+    // The contracts of the claims on this page, for their deadlines.
+    let contract_ids: Vec<i64> = page.items().iter().filter_map(|c| c.contract_id).collect();
+    let contracts: BTreeMap<i64, PayerContract> = if contract_ids.is_empty() {
+        BTreeMap::new()
+    } else {
+        PayerContract::query()
+            .where_(PayerContract::ID.is_in(contract_ids))
+            .get(&state.db)
+            .await?
+            .into_iter()
+            .map(|contract| (contract.id, contract))
+            .collect()
+    };
+    let mut names = BTreeMap::new();
+    for claim in page.items() {
+        for party in [claim.patient(), claim.payer()] {
+            if let std::collections::btree_map::Entry::Vacant(slot) = names.entry(party.0) {
+                slot.insert(party_name(&state, &lang, party).await);
+            }
+        }
+    }
+    let page = page.extend(|claim| {
+        let contract = claim.contract_id.and_then(|id| contracts.get(&id));
         let deadline = if claim.status.is_editable() {
-            attempt_deadline(claim, contract.as_ref())
+            attempt_deadline(claim, contract)
         } else {
             None
         };
-        rows.push(ClaimRow {
-            id: claim.id,
-            number: claim.number(),
-            patient: party_name(&state, &lang, claim.patient()).await,
-            payer: party_name(&state, &lang, claim.payer()).await,
-            visit_date: claim.visit_date.to_string(),
-            claimed: money_text(claim.claimed),
-            paid: money_text(claim.paid),
-            denied: money_text(claim.denied),
-            deadline: deadline.map_or_else(|| dash.clone(), |d| d.to_string()),
-            status: status_text(&lang, claim.status),
-            status_kind: status_kind(claim.status),
-            closed: closed_text(&lang, claim).unwrap_or_else(|| dash.clone()),
-        });
-    }
+        json!({
+            "number": claim.number(),
+            "url": format!("/clinics/claims/{}", claim.id),
+            "patient": names.get(&claim.patient_party_id),
+            "payer": names.get(&claim.payer_party_id),
+            "deadline": deadline.map_or_else(|| dash.clone(), |d| d.to_string()),
+            "closed": closed_text(&lang, claim).unwrap_or_else(|| dash.clone()),
+        })
+    });
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        claims: rows,
+        claims: page,
         kpi,
         integration_banner: banner_for(&state.db, CLAIMS_SCREEN, &lang).await?,
-    }))
+    })
+    .into_response())
 }
 
 /// One line of the claim.

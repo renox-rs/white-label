@@ -9,7 +9,12 @@
 //! The list shows the plan, the member id and the dates; the card image is
 //! not here (`CLN.ACL.12`).
 
+use std::collections::BTreeMap;
+
+use renox::chrono::NaiveDate;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
@@ -33,29 +38,56 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
-/// One policy of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct PolicyRow {
-    /// The primary key.
-    pub id: i64,
-    /// The patient's name.
-    pub patient: String,
-    /// The payer's name.
-    pub payer: String,
-    /// The plan.
-    pub plan: String,
-    /// The member id.
-    pub member_id: String,
-    /// The first day of cover.
-    pub valid_from: String,
-    /// The last day of cover, or a dash.
-    pub valid_to: String,
-    /// The last day the card is valid, or a dash.
-    pub card_valid_to: String,
-    /// *Valid* or *Expired* today, in the page's language.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
+/// The policies grid: search on the plan and the member id, filters on the
+/// dates and on whether the policy is valid today. The names are drawn by the
+/// template (`custom`). The card image is not here (`CLN.ACL.12`).
+pub(crate) fn grid(lang: &Lang, day: NaiveDate, can_export: bool) -> Grid {
+    let state = format!(
+        "CASE WHEN {{T}}.\"valid_from\" <= '{day}' \
+         AND ({{T}}.\"valid_to\" IS NULL OR {{T}}.\"valid_to\" >= '{day}') \
+         AND ({{T}}.\"card_valid_to\" IS NULL OR {{T}}.\"card_valid_to\" >= '{day}') \
+         THEN 'valid' ELSE 'expired' END"
+    );
+    let grid = Grid::new("clinics-policies")
+        .title(&text(lang, "policies.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::custom("patient", &text(lang, "policies.patient"))
+                .frozen()
+                .mobile(),
+        )
+        .column(Column::custom("payer", &text(lang, "policies.payer")))
+        .column(
+            Column::text("plan", &text(lang, "policies.plan"))
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::text("member_id", &text(lang, "policies.member_id")).searchable())
+        .column(Column::date("valid_from", &text(lang, "policies.valid_from")).hidden())
+        .column(Column::date("valid_to", &text(lang, "policies.valid_to")).mobile())
+        .column(Column::date("card_valid_to", &text(lang, "policies.card_valid_to")).hidden())
+        .column(
+            Column::select(
+                "state",
+                &text(lang, "fields.status"),
+                vec![
+                    ("valid", text(lang, "policies.valid_today")),
+                    ("expired", text(lang, "policies.expired")),
+                ],
+            )
+            .computed(&state)
+            .badges(&[("valid", "success"), ("expired", "warning")])
+            .mobile(),
+        )
+        .sort_by("-id")
+        .cards_on_mobile()
+        .empty_state(
+            &text(lang, "policies.empty"),
+            Some(&text(lang, "policies.subtitle")),
+        );
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list page needs.
@@ -63,53 +95,51 @@ pub struct PolicyRow {
 #[view(template = "clinics/policies.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    policies: Vec<PolicyRow>,
+    policies: GridPage<InsurancePolicy>,
     can_manage: bool,
     today: String,
 }
 
-/// `GET /clinics/policies`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+/// `GET /clinics/policies` (`?export=` needs `insurance_policies.manage`).
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     require(&user, permissions::POLICIES_VIEW)?;
-    let all = InsurancePolicy::query()
-        .order_by_desc(InsurancePolicy::ID)
-        .get(&state.db)
-        .await?;
-    let dash = text(&lang, "none");
     let day = today();
-    let mut rows = Vec::with_capacity(all.len());
-    for policy in &all {
-        let valid = policy.is_valid_on(day);
-        rows.push(PolicyRow {
-            id: policy.id,
-            patient: party_name(&state, &lang, policy.patient()).await,
-            payer: party_name(&state, &lang, policy.payer()).await,
-            plan: policy.plan.clone(),
-            member_id: policy.member_id.clone(),
-            valid_from: policy.valid_from.to_string(),
-            valid_to: policy
-                .valid_to
-                .map_or_else(|| dash.clone(), |d| d.to_string()),
-            card_valid_to: policy
-                .card_valid_to
-                .map_or_else(|| dash.clone(), |d| d.to_string()),
-            status: text(
-                &lang,
-                if valid {
-                    "policies.valid_today"
-                } else {
-                    "policies.expired"
-                },
-            ),
-            status_kind: if valid { "success" } else { "warning" },
-        });
+    let can_manage = user.has_permission(permissions::POLICIES_MANAGE);
+    let grid = grid(&lang, day, can_manage);
+    if request.param("export").is_some() && !can_manage {
+        return Err(Error::Forbidden);
     }
+    let query = InsurancePolicy::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut names = BTreeMap::new();
+    for policy in page.items() {
+        for party in [policy.patient(), policy.payer()] {
+            if let std::collections::btree_map::Entry::Vacant(slot) = names.entry(party.0) {
+                slot.insert(party_name(&state, &lang, party).await);
+            }
+        }
+    }
+    let page = page.extend(|policy| {
+        json!({
+            "patient": names.get(&policy.patient_party_id),
+            "payer": names.get(&policy.payer_party_id),
+        })
+    });
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        policies: rows,
-        can_manage: user.has_permission(permissions::POLICIES_MANAGE),
+        policies: page,
+        can_manage,
         today: day.to_string(),
-    }))
+    })
+    .into_response())
 }
 
 /// The form that records a policy.

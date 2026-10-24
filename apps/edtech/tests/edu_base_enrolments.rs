@@ -720,7 +720,7 @@ async fn edu_base_the_enrolment_pages_show_and_enrol() {
         .assert_ok()
         .assert_see("Sara Ali")
         .assert_see("Waiting for payment")
-        .assert_see("AED 2,520.00");
+        .assert_see("2,520.00");
     t.app
         .get(&format!("/edtech/enrolments/{}", e.id))
         .await

@@ -3,9 +3,10 @@
       words, with Approve, Reject and Return for changes (the kernel's decide
       routes), and the person's own requests with who they wait for. A row is
       a card, so on a phone its buttons have the width of the screen. -#}
-  <rx-stack>
-    <rx-page-header title="{{ t('approvals.title') }}" subtitle="{{ t('approvals.subtitle') }}"/>
-    <rx-form-errors/>
+  <rx-page-header title="{{ t('approvals.title') }}" subtitle="{{ t('approvals.subtitle') }}"/>
+  <rx-form-errors/>
+  {#- One pane that takes the height left and scrolls by itself; the tabs sit inside it. -#}
+  <section class="rx-pane rx-fill">
     <rx-tabs id="approvals-tabs">
       <rx-tab key="waiting" :label="t('approvals.tab_waiting') ~ ' (' ~ waiting | length ~ ')'">
         <rx-stack>
@@ -55,5 +56,5 @@
         </rx-stack>
       </rx-tab>
     </rx-tabs>
-  </rx-stack>
+  </section>
 </rx-page>

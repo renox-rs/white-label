@@ -6,8 +6,9 @@
 //! | `POST /einvoices/{id}/resubmit` | `wl_invoicing.einvoice_resubmit` | `einvoices.manage` |
 //! | `POST /invoices/{id}/replaces` | `wl_invoicing.invoice_replaces` | `invoices.create` |
 //!
-//! The board lists the transmissions per legal entity and state (`?entity=`,
-//! `?status=`), with the document, the recipient identifier, the attempt, the
+//! The board is a `renox::grid` of the transmissions with filters by legal
+//! entity and state (`?in.legal_entity_id=`, `?in.status=`; `?export=` needs
+//! `einvoices.manage`), with the document, the recipient identifier, the attempt, the
 //! ASP's reference, the error codes of a rejection and the last error of a
 //! queued one, and a banner with the count while transmissions wait for the
 //! ASP. A rejected transmission offers *Resubmit* to a holder of
@@ -19,7 +20,9 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::state_machine::TransitionError;
 use serde::{Deserialize, Serialize};
 use wl_kernel::LegalEntity;
@@ -56,53 +59,75 @@ pub fn routes() -> Routes {
         )
 }
 
-/// The query of the board.
-#[derive(Deserialize, Default, Debug)]
-pub(crate) struct Filter {
-    /// The legal entity id; empty or missing for all.
-    entity: Option<String>,
-    /// A status code; empty or missing for all.
-    status: Option<String>,
-}
-
-/// One transmission as the board shows it.
-#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Row {
-    id: i64,
-    entity: String,
-    document: String,
-    link: String,
-    recipient: String,
-    attempt: i64,
-    status: String,
-    status_kind: &'static str,
-    reference: String,
-    problem: String,
-    can_resubmit: bool,
-}
-
 /// What the board needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-invoicing/einvoices.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    rows: Vec<Row>,
-    entities: Vec<(String, String)>,
-    entity: String,
-    statuses: Vec<(String, String)>,
-    status: String,
+    rows: GridPage<EInvoiceTransmission>,
+    /// The rejected transmissions on the page the user may resubmit: one
+    /// sheet each, after the grid.
+    resubmit: Vec<i64>,
     banner: Option<String>,
-    can_manage: bool,
 }
 
-/// The badge colour of a status.
-fn status_kind(status: TransmissionStatus) -> &'static str {
-    match status {
-        TransmissionStatus::Queued | TransmissionStatus::Superseded => "info",
-        TransmissionStatus::Submitted => "warning",
-        TransmissionStatus::Accepted => "success",
-        TransmissionStatus::Rejected => "error",
-    }
+/// The transmissions grid: search on the document, recipient and ASP
+/// reference, filters by legal entity and state. The problem and the actions
+/// are drawn by the template (`custom`).
+pub fn grid(lang: &Lang, entities: Vec<(String, String)>, can_export: bool) -> Grid {
+    let t = |key: &str| texts::t(lang, &format!("wl_invoicing.{key}"));
+    let statuses: Vec<(String, String)> = TransmissionStatus::ALL
+        .iter()
+        .map(|s| {
+            (
+                s.as_str().to_owned(),
+                t(&format!("einvoice.status.{}", s.as_str())),
+            )
+        })
+        .collect();
+    // The number of the invoice or credit note sent, else its reference.
+    let document = format!(
+        "COALESCE(CASE {{T}}.\"document_type\" \
+         WHEN '{}' THEN (SELECT \"number\" FROM \"wl_invoicing_invoices\" WHERE \"id\" = {{T}}.\"document_id\") \
+         WHEN '{}' THEN (SELECT \"number\" FROM \"wl_invoicing_credit_notes\" WHERE \"id\" = {{T}}.\"document_id\") END, \
+         {{T}}.\"document_type\" || ':' || {{T}}.\"document_id\")",
+        crate::einvoice::INVOICE,
+        crate::einvoice::CREDIT_NOTE
+    );
+    let grid = Grid::new("wl-invoicing-einvoices")
+        .title(&t("einvoice.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("document", &t("einvoice.document"))
+                .computed(&document)
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable(),
+        )
+        .column(Column::select("legal_entity_id", &t("einvoice.entity"), entities).mobile())
+        .column(Column::text("recipient_id", &t("einvoice.recipient")).searchable())
+        .column(Column::number("attempt", &t("einvoice.attempt")))
+        .column(
+            Column::select("status", &t("einvoice.status"), statuses)
+                .badges(&[
+                    ("queued", "info"),
+                    ("submitted", "warning"),
+                    ("accepted", "success"),
+                    ("rejected", "danger"),
+                    ("superseded", "info"),
+                ])
+                .mobile(),
+        )
+        .column(Column::text("asp_reference", &t("einvoice.reference")).searchable())
+        .column(Column::custom("problem", &t("einvoice.problem")).mobile())
+        .column(Column::custom("actions", ""))
+        .sort_by("-id")
+        .cards_on_mobile()
+        .empty_state(&t("einvoice.empty"), Some(&t("einvoice.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// The page of the document a transmission sends.
@@ -142,92 +167,52 @@ fn problem_of(t: &EInvoiceTransmission) -> String {
     }
 }
 
-/// `GET /einvoices`: the transmissions per entity and state.
+/// `GET /einvoices`: the transmissions, or their export (`?export=csv|xlsx|print`,
+/// with `einvoices.manage`).
 async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
-    Query(filter): Query<Filter>,
-) -> Result<View> {
+    request: GridRequest,
+) -> Result<Response> {
     let t = |key: &str| texts::t(&lang, &format!("wl_invoicing.{key}"));
-    let entities_all = LegalEntity::query()
+    let entities: Vec<(String, String)> = LegalEntity::query()
         .order_by(LegalEntity::CODE)
         .get(&state.db)
-        .await?;
-    let asked: Option<i64> = filter.entity.as_deref().and_then(|e| e.trim().parse().ok());
-    let status: Option<TransmissionStatus> = filter.status.as_deref().and_then(|s| {
-        TransmissionStatus::ALL
-            .iter()
-            .copied()
-            .find(|c| c.as_str() == s.trim())
-    });
-    let mut query = EInvoiceTransmission::query()
-        .order_by_desc(EInvoiceTransmission::ID)
-        .limit(200);
-    if let Some(id) = asked {
-        query = query.where_(EInvoiceTransmission::LEGAL_ENTITY_ID.eq(id));
-    }
-    if let Some(status) = status {
-        query = query.where_(EInvoiceTransmission::STATUS.eq(status));
-    }
-    let found = query.get(&state.db).await?;
+        .await?
+        .iter()
+        .map(|e| (e.id.to_string(), format!("{} - {}", e.code, e.name_en)))
+        .collect();
     let can_manage = user.has_permission_anywhere(permissions::EINVOICES_MANAGE);
-    let mut rows = Vec::new();
-    for item in &found {
-        let code = entities_all
-            .iter()
-            .find(|e| e.id == item.legal_entity_id)
-            .map(|e| e.code.clone())
-            .unwrap_or_default();
-        let number = match item.document_type.as_str() {
-            crate::einvoice::INVOICE => Invoice::find(&state.db, item.document_id)
-                .await?
-                .and_then(|i| i.number),
-            crate::einvoice::CREDIT_NOTE => {
-                crate::credit_note::CreditNote::find(&state.db, item.document_id)
-                    .await?
-                    .and_then(|n| n.number)
-            }
-            _ => None,
-        };
-        rows.push(Row {
-            id: item.id,
-            entity: code,
-            document: number.unwrap_or_else(|| item.document().to_string()),
-            link: document_link(item),
-            recipient: item.recipient_id.clone().unwrap_or_default(),
-            attempt: item.attempt,
-            status: t(&format!("einvoice.status.{}", item.status.as_str())),
-            status_kind: status_kind(item.status),
-            reference: item.asp_reference.clone().unwrap_or_default(),
-            problem: problem_of(item),
-            can_resubmit: can_manage && item.status == TransmissionStatus::Rejected,
-        });
+    let grid = grid(&lang, entities, can_manage);
+    if request.param("export").is_some() && !can_manage {
+        return Err(Error::Forbidden);
     }
-    let mut entities = vec![(String::new(), t("einvoice.all_entities"))];
-    entities.extend(
-        entities_all
-            .iter()
-            .map(|e| (e.id.to_string(), format!("{} - {}", e.code, e.name_en))),
-    );
-    let mut statuses = vec![(String::new(), t("einvoice.all_statuses"))];
-    statuses.extend(TransmissionStatus::ALL.iter().map(|s| {
-        (
-            s.as_str().to_owned(),
-            t(&format!("einvoice.status.{}", s.as_str())),
-        )
-    }));
+    if let Some(file) = grid.export(EInvoiceTransmission::query(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(EInvoiceTransmission::query(), &request).await?;
+    let resubmit: Vec<i64> = page
+        .items()
+        .iter()
+        .filter(|item| can_manage && item.status == TransmissionStatus::Rejected)
+        .map(|item| item.id)
+        .collect();
+    let rows = page.extend(|item| {
+        json!({
+            "problem": problem_of(item),
+            "link": document_link(item),
+            "can_resubmit": resubmit.contains(&item.id),
+        })
+    });
     let queued = queued_count_all(&state.db).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         rows,
-        entities,
-        entity: asked.map(|e| e.to_string()).unwrap_or_default(),
-        statuses,
-        status: status.map(|s| s.as_str().to_owned()).unwrap_or_default(),
+        resubmit: resubmit.clone(),
         banner: queue_banner(&t("einvoice.banner"), queued),
-        can_manage,
-    }))
+    })
+    .into_response())
 }
 
 /// The form that resubmits a rejected transmission.
@@ -335,9 +320,8 @@ mod tests {
     }
 
     #[test]
-    fn every_status_has_a_colour_and_a_text() {
+    fn every_status_has_a_text() {
         for status in TransmissionStatus::ALL {
-            assert!(!status_kind(*status).is_empty());
             let key = format!("wl_invoicing.einvoice.status.{}", status.as_str());
             assert_ne!(texts::english(&key), key);
         }

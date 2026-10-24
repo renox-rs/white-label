@@ -635,10 +635,11 @@ async fn the_contract_page_and_its_forms_are_built_to_fit_a_phone() {
         "every table scrolls inside its own box, not the page"
     );
     let list = page(&app, AMAL, "/manpower/contracts").await;
-    says(&list, &["rx-table-wrap", "rx-sheet"]);
+    // The list is the standard grid: it scrolls in its own `rx-grid__scroll`.
+    says(&list, &["rx-grid__scroll", "rx-sheet"]);
     assert_eq!(
         list.matches("<table").count(),
-        list.matches("rx-table-wrap").count()
+        list.matches("class=\"rx-grid__scroll\"").count()
     );
 }
 

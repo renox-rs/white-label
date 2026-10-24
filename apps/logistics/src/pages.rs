@@ -33,7 +33,9 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::state_machine::{StateMachine, TransitionError};
 use serde::Serialize;
 use wl_kernel::voids::{self, VoidOutcome};
@@ -174,24 +176,101 @@ fn back_to(lang: &Lang, key: &str, id: i64) -> Result<Response> {
         .into_response())
 }
 
-/// One shipment of the list.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct Row {
-    id: i64,
-    number: String,
-    client_reference: String,
-    client_party_id: i64,
-    recipient: String,
-    area: String,
-    parcels: i64,
-    cod_amount: i64,
-    status: String,
-    status_kind: &'static str,
-    /// The shipment waits for its pickup and its client is blocked: the
-    /// dispatcher sees *client on hold* (`PTY.ACL.03`); it may still be picked
-    /// up.
-    client_on_hold: bool,
-    url: String,
+/// The text `logistics.screen.{key}`.
+pub(crate) fn text(lang: &Lang, key: &str) -> String {
+    t(lang, &format!("logistics.screen.{key}"))
+}
+
+/// The shipments grid: search on the number, reference, recipient, area and
+/// client, a filter by status, the sum of the COD. The *client on hold* badge
+/// is drawn by the template (`custom`).
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    use ShipmentStatus::{
+        AtHub, Attempted, Cancelled, Created, Delivered, Disposed, Lost, OnHold, OutForDelivery,
+        PickedUp, Returned, Returning, UnderReview, Voided,
+    };
+    let statuses: Vec<(String, String)> = [
+        Created,
+        PickedUp,
+        AtHub,
+        OutForDelivery,
+        Attempted,
+        OnHold,
+        Returning,
+        Delivered,
+        UnderReview,
+        Lost,
+        Returned,
+        Disposed,
+        Cancelled,
+        Voided,
+    ]
+    .into_iter()
+    .map(|status| (status.as_str().to_owned(), status_word(lang, status)))
+    .collect();
+    let grid = Grid::new("logistics-shipments")
+        .title(&text(lang, "title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &text(lang, "number"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable()
+                .link("/shipments/{id}"),
+        )
+        .column(Column::text("client_reference", &text(lang, "reference")).searchable())
+        .column(
+            Column::text("recipient_name", &text(lang, "recipient"))
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::text("area", &text(lang, "area")).searchable())
+        .column(
+            Column::related(
+                "client",
+                &text(lang, "client"),
+                "wl_parties_parties",
+                "client_party_id",
+                "display_name",
+            )
+            .searchable()
+            .hidden(),
+        )
+        .column(Column::number("parcel_count", &text(lang, "parcels")).hidden())
+        .column(
+            Column::money("cod_amount", &wl_kernel::money_label(&text(lang, "cod")))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::select("status", &text(lang, "state"), statuses)
+                .badges(&[
+                    ("delivered", "success"),
+                    ("picked_up", "info"),
+                    ("at_hub", "info"),
+                    ("out_for_delivery", "info"),
+                    ("attempted", "warning"),
+                    ("on_hold", "warning"),
+                    ("returning", "warning"),
+                    ("under_review", "warning"),
+                    ("lost", "danger"),
+                    ("created", "info"),
+                    ("returned", "info"),
+                    ("disposed", "info"),
+                    ("cancelled", "info"),
+                    ("voided", "info"),
+                ])
+                .mobile(),
+        )
+        .column(Column::custom("hold", &text(lang, "client_on_hold")))
+        .sort_by("-number")
+        .row_url("/shipments/{id}")
+        .cards_on_mobile()
+        .empty_state(&text(lang, "empty"), Some(&text(lang, "empty_text")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list needs.
@@ -199,21 +278,32 @@ pub(crate) struct Row {
 #[view(template = "logistics/shipments.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    shipments: Vec<Row>,
+    shipments: GridPage<Shipment>,
 }
 
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<Response> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if !user.has_permission(permissions::SHIPMENTS_VIEW) {
         return Err(Error::Forbidden);
     }
-    let shipments = Shipment::query()
-        .order_by_desc(Shipment::ID)
-        .limit(200)
-        .get(&state.db)
-        .await?;
-    // Whether each client that has a shipment waiting for pickup is blocked.
+    let can_export = user.has_permission(permissions::SHIPMENTS_MANAGE);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    let grid = grid(&lang, can_export);
+    if let Some(file) = grid.export(Shipment::query(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(Shipment::query(), &request).await?;
+    // Whether each client that has a shipment waiting for pickup on this page
+    // is blocked.
     let mut on_hold: BTreeMap<i64, bool> = BTreeMap::new();
-    for s in shipments
+    for s in page
+        .items()
         .iter()
         .filter(|s| s.status == ShipmentStatus::Created)
     {
@@ -221,27 +311,15 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             slot.insert(crate::block::on_hold(&state, s.client()).await?);
         }
     }
-    let shipments = shipments
-        .iter()
-        .map(|s| Row {
-            client_on_hold: s.status == ShipmentStatus::Created
+    let page = page.extend(|s| {
+        json!({
+            "client_on_hold": s.status == ShipmentStatus::Created
                 && on_hold.get(&s.client_party_id).copied().unwrap_or(false),
-            id: s.id,
-            number: s.number.clone(),
-            client_reference: s.client_reference.clone().unwrap_or_default(),
-            client_party_id: s.client_party_id,
-            recipient: s.recipient_name.clone(),
-            area: s.area.clone(),
-            parcels: s.parcel_count,
-            cod_amount: s.cod_amount,
-            status: status_word(&lang, s.status),
-            status_kind: status_kind(s.status),
-            url: format!("/shipments/{}", s.id),
         })
-        .collect();
+    });
     Ok(View::typed(IndexPage {
         tx: tx(&lang),
-        shipments,
+        shipments: page,
     })
     .into_response())
 }

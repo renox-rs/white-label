@@ -1,16 +1,10 @@
-{#- property: the owner statements, newest period first, with their owner,
-    balance and status. Replace it with resources/views/property/statements.html
-    in the app. -#}
+{#- property: the owner statements, newest period first, a renox::grid (search
+    on the number, filter by status, sum of the balances) that fills
+    the screen. Replace it with resources/views/property/statements.html in the
+    app. -#}
 <rx-page layout="layouts/app.html" :title="tx['statements.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['statements.title']" :subtitle="tx['statements.subtitle']" :back="route('property.index')" :back-label="tx['portfolio.title']"/>
-    <rx-table :rows="statements" as="row" :key="row.id" :caption="tx['statements.title']" card>
-      <rx-column :label="tx['statements.number']"><a href="{{ route('property.statement', row.id) }}">{{ row.number }}</a></rx-column>
-      <rx-column :label="tx['statements.owner']">{{ row.owner }}</rx-column>
-      <rx-column :label="tx['statements.period']" hide-narrow>{{ row.period }}</rx-column>
-      <rx-column :label="tx['statements.balance']" align="num">{{ row.balance }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['statements.empty']" icon="receipt"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['statements.title']" :subtitle="tx['statements.subtitle']" :back="route('property.index')" :back-label="tx['portfolio.title']"/>
+  <rx-grid :page="statements">
+    <template rx-if="column.key == 'owner'">{{ row.owner }}</template>
+  </rx-grid>
 </rx-page>

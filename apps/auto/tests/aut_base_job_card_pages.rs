@@ -62,15 +62,15 @@ async fn aut_base_the_list_shows_filters_and_searches_the_job_cards() {
         .assert_see(&closed.number())
         .assert_see("Dubai A 12345")
         .assert_see("Inspecting");
-    let only_open = t.app.get("/auto/job-cards?status=open").await;
+    let only_open = t.app.get("/auto/job-cards?in.status=inspecting").await;
     only_open.assert_ok().assert_see(&open.number());
     assert!(!only_open.text().contains(&closed.number()));
-    let only_closed = t.app.get("/auto/job-cards?status=closed").await;
+    let only_closed = t.app.get("/auto/job-cards?in.status=declined").await;
     only_closed.assert_ok().assert_see(&closed.number());
     assert!(!only_closed.text().contains(&open.number()));
-    let found = t.app.get("/auto/job-cards?q=12345").await;
+    let found = t.app.get("/auto/job-cards?search=12345").await;
     found.assert_ok().assert_see(&open.number());
-    let none = t.app.get("/auto/job-cards?q=ferrari").await;
+    let none = t.app.get("/auto/job-cards?search=ferrari").await;
     assert!(!none.text().contains(&open.number()));
 
     let nobody = t.user("Nadia", &[permissions::VEHICLES_VIEW]).await;
@@ -199,7 +199,7 @@ async fn aut_base_the_customer_approves_on_the_page_without_signing_in() {
         .assert_ok()
         .assert_see("Your estimate")
         .assert_see("Brake pad set")
-        .assert_see("new")
+        .assert_see("New")
         .assert_see("AED 630.00")
         .assert_see("15 days");
     t.app.get("/auto/approve/nobody").await.assert_status(404);
@@ -383,7 +383,7 @@ async fn aut_base_the_labour_menu_lists_and_adds_operations() {
         .assert_see("BRK-PADS")
         .assert_see("Front brake pads")
         .assert_see("AED 180.00")
-        .assert_see("1.5 h");
+        .assert_see("1.5");
 
     let sami = t.advisor_user().await;
     t.app.acting_as(&sami);

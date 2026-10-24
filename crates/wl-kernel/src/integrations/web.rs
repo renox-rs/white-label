@@ -26,8 +26,9 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
-use renox::serde_json::Value;
+use renox::serde_json::{Value, json};
 use serde::{Deserialize, Serialize};
 
 use super::connection::{ConnectionStatus, IntegrationConnection};
@@ -125,33 +126,61 @@ fn page_texts(lang: &Lang, keys: &[&'static str]) -> Texts {
         .collect()
 }
 
-/// One connection in the list.
-#[derive(Debug, Clone, Serialize)]
-pub struct ConnectionRow {
-    /// The key.
-    pub key: String,
-    /// The owning module.
-    pub module: String,
-    /// The page of the connection.
-    pub url: String,
-    /// The status, in words.
-    pub status_label: String,
-    /// The badge's colour.
-    pub status_kind: &'static str,
-    /// When the failures began, or `—`.
-    pub failed_since: String,
-    /// When a call last succeeded, or `—`.
-    pub last_success: String,
-    /// How many calls are queued.
-    pub queued: i64,
-}
-
 /// What the list needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-kernel/integrations.html")]
 pub struct IntegrationsPage {
     tx: Texts,
-    connections: Vec<ConnectionRow>,
+    connections: GridPage<IntegrationConnection>,
+}
+
+/// The connections grid: search on the key and module, filter by status.
+/// The queued calls are the ones still waiting to go out.
+fn connections_grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| texts::t(lang, &format!("wl_kernel.integrations.page.{key}"));
+    let statuses: Vec<(String, String)> = ConnectionStatus::ALL
+        .iter()
+        .map(|status| (status.as_text().to_owned(), status_of(lang, *status).0))
+        .collect();
+    let grid = Grid::new("kernel-integrations")
+        .title(&t("title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("key", &t("key"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable(),
+        )
+        .column(Column::text("module", &t("module")).mobile().searchable())
+        .column(
+            Column::select("status", &t("status"), statuses)
+                .badges(&[
+                    ("up", "success"),
+                    ("degraded", "warning"),
+                    ("down", "danger"),
+                    ("disabled", "neutral"),
+                ])
+                .mobile(),
+        )
+        .column(Column::datetime("failed_since", &t("failed_since")))
+        .column(Column::datetime("last_success_at", &t("last_success")))
+        .column(
+            Column::number("queued", &t("queued"))
+                .computed(
+                    "(SELECT COUNT(*) FROM \"wl_integration_queue\" \"q\" \
+                     WHERE \"q\".\"connection_key\" = {T}.\"key\" AND \"q\".\"status\" = 'queued')",
+                )
+                .mobile(),
+        )
+        .column(Column::text("owner_role", &t("owner_role")).hidden())
+        .column(Column::custom("open", &t("open")).frozen_right())
+        .sort_by("key")
+        .cards_on_mobile()
+        .empty_state(&t("empty"), None);
+    if can_export { grid.exports() } else { grid }
 }
 
 /// One queued call on a connection's page.
@@ -254,43 +283,25 @@ pub fn routes() -> Routes {
         )
 }
 
-async fn list(State(db): State<Db>, lang: Lang) -> Result<View> {
-    let connections = IntegrationConnection::query()
-        .order_by(IntegrationConnection::KEY)
-        .get(&db)
-        .await?;
-    let mut rows = Vec::with_capacity(connections.len());
-    for connection in connections {
-        let (status_label, status_kind) = status_of(&lang, connection.status);
-        let queued = QueuedCall::waiting(&db, &connection.key).await?.len();
-        rows.push(ConnectionRow {
-            url: format!("/integrations/{}", connection.key),
-            module: connection.module.clone(),
-            status_label,
-            status_kind,
-            failed_since: when(connection.failed_since),
-            last_success: when(connection.last_success_at),
-            queued: i64::try_from(queued).unwrap_or(i64::MAX),
-            key: connection.key,
-        });
+async fn list(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
+    let can_export = user.has_permission(INTEGRATIONS_MANAGE);
+    let grid = connections_grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
     }
+    let query = IntegrationConnection::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let connections = grid
+        .page(query, &request)
+        .await?
+        .extend(|connection| json!({ "url": format!("/integrations/{}", connection.key) }));
     Ok(View::typed(IntegrationsPage {
-        tx: page_texts(
-            &lang,
-            &[
-                "title",
-                "subtitle",
-                "key",
-                "module",
-                "status",
-                "failed_since",
-                "last_success",
-                "queued",
-                "empty",
-            ],
-        ),
-        connections: rows,
-    }))
+        tx: page_texts(&lang, &["title", "subtitle", "open"]),
+        connections,
+    })
+    .into_response())
 }
 
 async fn show(

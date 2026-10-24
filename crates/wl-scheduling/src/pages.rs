@@ -24,7 +24,9 @@ use std::collections::BTreeMap;
 
 use renox::chrono::NaiveDateTime;
 use renox::db::DateTime;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::Serialize;
 use wl_kernel::calendar::BusinessCalendar;
 use wl_kernel::documents::dubai_text;
@@ -192,8 +194,76 @@ pub struct BookingRow {
 #[view(template = "wl-scheduling/bookings.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    bookings: Vec<BookingRow>,
+    bookings: GridPage<Booking>,
     can_manage: bool,
+}
+
+/// The first resource of a booking, as a scalar subquery (`{T}` is the
+/// bookings table).
+const FIRST_RESOURCE: &str = "(SELECT \"r\".\"name\" FROM \"wl_scheduling_booking_resources\" \"br\" \
+     JOIN \"wl_scheduling_resources\" \"r\" ON \"r\".\"id\" = \"br\".\"resource_id\" \
+     WHERE \"br\".\"booking_id\" = {T}.\"id\" ORDER BY \"br\".\"id\" LIMIT 1)";
+
+/// The bookings grid: search on the number and resource,
+/// filters by service, status and start. All the resources of a booking are
+/// drawn by the template (`custom`); the search and the filter read the first.
+fn bookings_grid(lang: &Lang, services: Vec<(String, String)>, can_export: bool) -> Grid {
+    let statuses: Vec<(String, String)> = BookingStatus::ALL
+        .iter()
+        .map(|status| (status.as_str().to_owned(), status_text(lang, *status)))
+        .collect();
+    let grid = Grid::new("scheduling-bookings")
+        .title(&text(lang, "bookings.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &text(lang, "bookings.number"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable()
+                .link("/scheduling/bookings/{id}"),
+        )
+        // The party's name comes from the kernel's directory (the parties module
+        // is not a dependency), so the template draws it.
+        .column(Column::custom("party", &text(lang, "bookings.party")).mobile())
+        .column(Column::number("party_id", &text(lang, "bookings.party_id")).hidden())
+        .column(
+            Column::select("service_type_id", &text(lang, "bookings.service"), services).mobile(),
+        )
+        .column(Column::datetime("starts_at", &text(lang, "bookings.when")).mobile())
+        .column(
+            Column::text("resource_name", &text(lang, "bookings.first_resource"))
+                .computed(FIRST_RESOURCE)
+                .searchable()
+                .hidden(),
+        )
+        .column(Column::custom(
+            "resources",
+            &text(lang, "bookings.resources"),
+        ))
+        .column(
+            Column::select("status", &text(lang, "fields.status"), statuses)
+                .badges(&[
+                    ("requested", "info"),
+                    ("booked", "info"),
+                    ("confirmed", "info"),
+                    ("checked_in", "info"),
+                    ("in_progress", "info"),
+                    ("completed", "success"),
+                    ("no_show", "danger"),
+                    ("cancelled", "warning"),
+                ])
+                .mobile(),
+        )
+        .column(Column::datetime("ends_at", &text(lang, "bookings.ends")).hidden())
+        .column(Column::text("source", &text(lang, "bookings.source")).hidden())
+        .sort_by("-starts_at")
+        .row_url("/scheduling/bookings/{id}")
+        .cards_on_mobile()
+        .empty_state(&text(lang, "bookings.empty"), None);
+    if can_export { grid.exports() } else { grid }
 }
 
 async fn row_of(state: &AppState, lang: &Lang, booking: &Booking) -> Result<BookingRow> {
@@ -210,22 +280,54 @@ async fn row_of(state: &AppState, lang: &Lang, booking: &Booking) -> Result<Book
     })
 }
 
-/// `GET /scheduling/bookings`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
-    let mut bookings = Vec::new();
-    for booking in Booking::query()
-        .order_by_desc(Booking::STARTS_AT)
-        .limit(200)
+/// `GET /scheduling/bookings`: every booking, newest start first, searched,
+/// filtered, sorted and paged by the grid.
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
+    let can_manage = user.has_permission(permissions::MANAGE);
+    let services = ServiceType::query()
+        .order_by(ServiceType::NAME_EN)
         .get(&state.db)
         .await?
-    {
-        bookings.push(row_of(&state, &lang, &booking).await?);
+        .iter()
+        .map(|s| (s.id.to_string(), crate::names::name_in(s, &lang.locale)))
+        .collect();
+    let grid = bookings_grid(&lang, services, can_manage);
+    if request.param("export").is_some() && !can_manage {
+        return Err(Error::Forbidden);
     }
+    let query = Booking::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut details = BTreeMap::new();
+    for booking in page.items() {
+        details.insert(
+            booking.id,
+            (
+                party_name(&state, &lang, booking.party()).await,
+                resource_names(&state, booking).await?,
+            ),
+        );
+    }
+    let bookings = page.extend(|booking| {
+        let found = details.get(&booking.id);
+        json!({
+            "party": found.map(|d| d.0.as_str()),
+            "resources": found.map(|d| d.1.as_str()),
+        })
+    });
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         bookings,
-        can_manage: user.has_permission(permissions::MANAGE),
-    }))
+        can_manage,
+    })
+    .into_response())
 }
 
 /// What the booking page needs.

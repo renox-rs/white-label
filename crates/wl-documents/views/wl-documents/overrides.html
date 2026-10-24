@@ -1,28 +1,12 @@
-{#- wl-documents: the block overrides. "Waiting for your approval" lists the
-    requests whose current step the viewer may decide; "Your requests" lists
-    the viewer's own. Each row opens the override's page, where the approval
-    card is. Replace it with resources/views/wl-documents/overrides.html in
-    the app. -#}
+{#- wl-documents: the block overrides, a renox::grid (search, filters by
+    status and list, export with documents.manage). One list: the requests
+    waiting for your approval (the viewer is among the current step's
+    approvers) and your own requests, told apart by the "List" column. Each
+    row opens the override's page, where the approval card is. Replace it with
+    resources/views/wl-documents/overrides.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['overrides.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['overrides.title']" :subtitle="tx['overrides.subtitle']">
-      <rx-link-button route="wl_documents.overrides.new" :label="tx['overrides.new']" icon="plus"/>
-    </rx-page-header>
-    <rx-table :rows="waiting" as="o" :key="o.id" :caption="tx['overrides.waiting']" card>
-      <rx-column :label="tx['fields.kind']"><a href="{{ o.url }}">{{ o.kind }}</a></rx-column>
-      <rx-column :label="tx['fields.subject']">{{ o.subject }}</rx-column>
-      <rx-column :label="tx['fields.guarded']">{{ o.guarded }} #{{ o.record }}</rx-column>
-      <rx-column :label="tx['overrides.fields.requested_by']">{{ o.requested_by }}</rx-column>
-      <rx-column :label="tx['overrides.fields.reason']" hide-narrow>{{ o.reason }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['overrides.waiting_empty']" icon="shield"/></rx-slot>
-    </rx-table>
-    <rx-table :rows="mine" as="o" :key="o.id" :caption="tx['overrides.mine']" card>
-      <rx-column :label="tx['fields.kind']"><a href="{{ o.url }}">{{ o.kind }}</a></rx-column>
-      <rx-column :label="tx['fields.subject']">{{ o.subject }}</rx-column>
-      <rx-column :label="tx['fields.guarded']">{{ o.guarded }} #{{ o.record }}</rx-column>
-      <rx-column :label="tx['overrides.fields.status']"><rx-badge :text="o.status_label" :kind="o.status_kind"/></rx-column>
-      <rx-column :label="tx['overrides.fields.valid_until']" hide-narrow>{{ o.valid_until or "—" }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['overrides.mine_empty']" icon="shield"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['overrides.title']" :subtitle="tx['overrides.subtitle']">
+    <rx-link-button route="wl_documents.overrides.new" :label="tx['overrides.new']" icon="plus"/>
+  </rx-page-header>
+  <rx-grid :page="overrides"/>
 </rx-page>

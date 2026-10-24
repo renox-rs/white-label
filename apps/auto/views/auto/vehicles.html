@@ -1,10 +1,9 @@
-{#- auto: the vehicle register: the plate, the VIN, what it is, whose it is and
-    the odometer, searched by plate, VIN, make or model and narrowed to fleet
-    or private vehicles; the action that registers a vehicle (owner from the
-    party picker). Replace it with resources/views/auto/vehicles.html in the
-    app. -#}
+{#- auto: the vehicle register, a renox::grid: the plate (frozen), what it is,
+    the VIN, whose it is, fleet or private and the odometer, searched by plate,
+    VIN, make or model and sorted and filtered by column; the action that
+    registers a vehicle (owner from the party picker). Replace it with
+    resources/views/auto/vehicles.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['vehicles.title']">
-  <rx-stack>
     <rx-page-header :title="tx['vehicles.title']" :subtitle="tx['vehicles.subtitle']">
       <template rx-if="can_manage">
         <rx-action-sheet id="vehicle-new" :label="tx['vehicles.new']" :action="route('auto.vehicle_create')"
@@ -19,27 +18,12 @@
           <rx-input name="engine" :label="tx['vehicles.engine']" id="vehicle-new-engine"/>
           <rx-input name="colour" :label="tx['vehicles.colour']" id="vehicle-new-colour"/>
           <rx-select name="owner" :label="tx['vehicles.owner']" :options="[]" :placeholder="tx['vehicles.owner_placeholder']" options-url="{{ route('auto.party_options') }}" id="vehicle-new-owner" required/>
-          <rx-input name="fleet_contract" type="number" :label="tx['vehicles.fleet_contract']" :hint="tx['vehicles.fleet_contract_hint']" id="vehicle-new-fleet"/>
+          <rx-select name="fleet_contract" :label="tx['vehicles.fleet_contract']" :hint="tx['vehicles.fleet_contract_hint']" :options="[]" :placeholder="tx['vehicles.fleet_contract_placeholder']" options-url="{{ route('auto.fleet_contract_options') }}" id="vehicle-new-fleet"/>
           <rx-input name="odometer" type="number" :label="tx['vehicles.odometer']" id="vehicle-new-odometer"/>
         </rx-action-sheet>
       </template>
     </rx-page-header>
-    <form method="get" action="{{ route('auto.vehicles') }}">
-      <input type="hidden" name="kind" value="{{ kind }}">
-      <rx-toolbar>
-        <rx-input name="q" :label="tx['vehicles.search']" :value="q" id="filter-q"/>
-        <rx-button type="submit" :label="tx['vehicles.show']" icon="search"/>
-      </rx-toolbar>
-    </form>
-    <rx-link-tabs :items="kind_tabs" :current="kind_current" :label="tx['vehicles.filter']"/>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['vehicles.title']" card>
-      <rx-column :label="tx['vehicles.plate']"><a href="{{ route('auto.vehicle', row.id) }}">{{ row.plate }}</a></rx-column>
-      <rx-column :label="tx['vehicles.make']">{{ row.vehicle }}</rx-column>
-      <rx-column :label="tx['vehicles.vin']" hide-narrow>{{ row.vin }}</rx-column>
-      <rx-column :label="tx['vehicles.owner']" hide-narrow>{{ row.owner }}</rx-column>
-      <rx-column :label="tx['vehicles.filter']" hide-narrow>{{ row.kind }}</rx-column>
-      <rx-column :label="tx['vehicles.odometer']" align="num">{{ row.odometer }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['vehicles.empty']" icon="truck"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+    <rx-grid :page="vehicles">
+      <template rx-if="column.key == 'owner'">{{ row.owner }}</template>
+    </rx-grid>
 </rx-page>

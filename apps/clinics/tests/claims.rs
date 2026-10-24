@@ -44,7 +44,7 @@ async fn a_billed_visit_makes_a_draft_claim_around_its_payer_bill() {
         .await
         .assert_ok()
         .assert_see(&claim.number())
-        .assert_see("AED 360.00");
+        .assert_see("360.00");
     b.d.get(&b.bea, &format!("/clinics/claims/{}", claim.id))
         .await
         .assert_ok()

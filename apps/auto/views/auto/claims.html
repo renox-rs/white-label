@@ -1,11 +1,10 @@
-{#- auto: the insurance repair claims, newest first, with the insurer, the
-    vehicle, the accident date, what the insurer approved and the status in
-    words; searched by number and narrowed by where they stand with link tabs;
-    the action that registers a claim (insurer from the list, vehicle and job
+{#- auto: the insurance repair claims, a renox::grid (newest first, the number
+    frozen, the insurer, the vehicle, the accident date, what the insurer
+    approved in dirhams and the status in words; searched by claim, insurer's
+    claim or policy number, filtered and sorted by column); the action that registers a claim (insurer from the list, vehicle and job
     card from the pickers). Replace it with resources/views/auto/claims.html in
     the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['claims.title']">
-  <rx-stack>
     <rx-page-header :title="tx['claims.title']" :subtitle="tx['claims.subtitle']">
       <template rx-if="can_register">
         <rx-action-sheet id="claim-new" :label="tx['claims.new']" :action="route('auto.claim_create')"
@@ -23,23 +22,7 @@
         </rx-action-sheet>
       </template>
     </rx-page-header>
-    <form method="get" action="{{ route('auto.claims') }}">
-      <input type="hidden" name="tab" value="{{ tab }}">
-      <rx-toolbar>
-        <rx-input name="q" :label="tx['claims.search']" :value="q" id="filter-q"/>
-        <rx-button type="submit" :label="tx['claims.show']" icon="search"/>
-      </rx-toolbar>
-    </form>
-    <rx-link-tabs :items="tabs" :current="tab_current" :label="tx['claims.filter']"/>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['claims.title']" card>
-      <rx-column :label="tx['claims.number']"><a href="{{ route('auto.claim', row.id) }}">{{ row.number }}</a></rx-column>
-      <rx-column :label="tx['claims.insurer']">{{ row.insurer }}</rx-column>
-      <rx-column :label="tx['claims.claim_no']" hide-narrow>{{ row.claim_no }}</rx-column>
-      <rx-column :label="tx['vehicles.plate']" hide-narrow>{{ row.plate }}</rx-column>
-      <rx-column :label="tx['claims.accident']" hide-narrow>{{ row.accident }}</rx-column>
-      <rx-column :label="tx['claims.approved']" align="num">{{ row.approved }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['claims.empty']" icon="shield-check"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-grid :page="claims">
+    <template rx-if="column.key == 'insurer'">{{ row.insurer }}</template>
+  </rx-grid>
 </rx-page>

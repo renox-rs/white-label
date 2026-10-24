@@ -1,39 +1,28 @@
-{#- wl-inventory: the stock of one store: the items with what is on hand, held
-    and available, and the lots of the lot-tracked ones with their expiry.
-    Replace it with resources/views/wl-inventory/stock.html in the app. -#}
+{#- wl-inventory: the stock of one store, a renox::grid of its items (what is
+    on hand, held and available, search on the code and name) or, with
+    ?view=lots, of the lots of the lot-tracked ones with their expiry. The
+    store picker and the switches sit in the header so the grid fills the
+    screen. Replace it with resources/views/wl-inventory/stock.html in the
+    app. -#}
 <rx-page layout="layouts/app.html" :title="tx['stock.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['stock.title']" :subtitle="location_name"/>
+  <rx-page-header :title="tx['stock.title']" :subtitle="location_name">
     <rx-form method="GET" action="{{ route('wl_inventory.stock') }}">
       <rx-row>
         <rx-select name="location" :label="tx['stock.store']" :options="locations" :selected="location" id="stock-location" required/>
+        <input type="hidden" name="view" value="{{ 'lots' if lots_view else '' }}"/>
         <rx-button type="submit" :label="tx['stock.show']"/>
       </rx-row>
     </rx-form>
-    <rx-card :title="tx['stock.items']">
-      <rx-table :rows="items" as="item" :key="item.code" :caption="tx['stock.items']">
-        <rx-column :label="tx['stock.item']"><strong>{{ item.name }}</strong> <span class="rx-subtitle">{{ item.code }}</span></rx-column>
-        <rx-column :label="tx['stock.on_hand']">{{ item.on_hand }}</rx-column>
-        <rx-column :label="tx['stock.held']" hide-narrow>{{ item.held }}</rx-column>
-        <rx-column :label="tx['stock.reserved']" hide-narrow>{{ item.reserved }}</rx-column>
-        <rx-column :label="tx['stock.available']">{{ item.available }}</rx-column>
-        <rx-column :label="tx['stock.reorder']" hide-narrow>{{ item.reorder }}</rx-column>
-        <rx-column :label="tx['stock.level']"><rx-badge rx-if="item.low" kind="warning" :text="tx['stock.low']"/></rx-column>
-        <rx-slot name="empty"><rx-empty :title="tx['stock.empty']" icon="package"/></rx-slot>
-      </rx-table>
-    </rx-card>
-    <rx-card :title="tx['stock.lots']">
-      <rx-table :rows="lots" as="lot" :key="lot.id" :caption="tx['stock.lots']">
-        <rx-column :label="tx['stock.lot']"><a href="{{ route('wl_inventory.lot', lot.id) }}">{{ lot.number }}</a></rx-column>
-        <rx-column :label="tx['stock.item']">{{ lot.item }}</rx-column>
-        <rx-column :label="tx['stock.supplier_lot']" hide-narrow>{{ lot.supplier_lot }}</rx-column>
-        <rx-column :label="tx['stock.expiry']"><rx-badge :kind="lot.expiry_kind" :text="lot.expiry"/></rx-column>
-        <rx-column :label="tx['stock.here']">{{ lot.here }}</rx-column>
-        <rx-column :label="tx['stock.held']" hide-narrow>{{ lot.held }}</rx-column>
-        <rx-column :label="tx['stock.reserved']" hide-narrow>{{ lot.reserved }}</rx-column>
-        <rx-column :label="tx['fields.status']"><rx-badge :kind="lot.status_kind" :text="lot.status"/></rx-column>
-        <rx-slot name="empty"><rx-empty :title="tx['stock.no_lots']" icon="package"/></rx-slot>
-      </rx-table>
-    </rx-card>
-  </rx-stack>
+    <rx-link-button :href="items_url" :label="tx['stock.items']" :variant="'plain' if lots_view else 'secondary'"/>
+    <rx-link-button :href="lots_url" :label="tx['stock.lots']" :variant="'secondary' if lots_view else 'plain'"/>
+    <rx-link-button rx-if="not lots_view and not low_only" :href="low_url" :label="tx['stock.low_only']" variant="plain"/>
+  </rx-page-header>
+  <rx-grid :page="rows">
+    <template rx-if="column.key == 'level'">
+      <rx-badge rx-if="row.low" kind="warning" :text="tx['stock.low']"/>
+    </template>
+    <template rx-elif="column.key == 'expiry'">
+      <rx-badge :kind="row.expiry_kind" :text="row.expiry"/>
+    </template>
+  </rx-grid>
 </rx-page>

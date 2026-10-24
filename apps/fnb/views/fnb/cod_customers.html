@@ -1,21 +1,18 @@
 {#- fnb: the customers whose cash on delivery was turned off after repeated
-    failures (`FNB.RUL.14`), with the order that turned it off and the button
-    that turns it back on. Replace it with resources/views/fnb/cod_customers.html
-    in the app. -#}
+    failures (`FNB.RUL.14`), a renox::grid with the order that turned it off
+    and the button that turns it back on (a sheet per row of the page).
+    Replace it with resources/views/fnb/cod_customers.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['cod_title']">
-  <rx-stack>
-    <rx-page-header :title="tx['cod_title']" :subtitle="tx['cod_subtitle']"/>
-    <rx-table :rows="customers" as="customer" :key="customer.party" :caption="tx['cod_title']">
-      <rx-column :label="tx['customer']">{{ customer.customer }}</rx-column>
-      <rx-column :label="tx['cod_off_at']">{{ customer.off_at }}</rx-column>
-      <rx-column :label="tx['cod_order']" hide-narrow>
-        <span rx-if="customer.order_url"><a href="{{ customer.order_url }}">{{ customer.order }}</a></span>
-      </rx-column>
-      <rx-row-actions>
-        <rx-confirm :id="'cod-on-' ~ customer.party" :label="tx['cod_turn_on']" :action="route('fnb.cod_on', customer.party)" method="POST"
-                    :title="tx['cod_turn_on_title']" :message="tx['cod_turn_on_message']" :confirm-label="tx['cod_turn_on']"/>
-      </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['cod_empty']" :message="tx['cod_empty_text']" icon="banknote"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['cod_title']" :subtitle="tx['cod_subtitle']"/>
+  <rx-grid :page="customers">
+    <template rx-if="column.key == 'order_link'">
+      <a rx-if="row.order_url" href="{{ row.order_url }}">{{ row.order_number }}</a>
+    </template>
+    <template rx-elif="column.key == 'actions'">
+      <rx-open-button :id="'cod-on-' ~ row.party_id" :label="tx['cod_turn_on']" size="small"/>
+    </template>
+  </rx-grid>
+  {#- A sheet per customer of the page: a form sent with htmx. -#}
+  <rx-action-sheet rx-for="party in sheets" :button="false" :id="'cod-on-' ~ party" :label="tx['cod_turn_on']" :action="route('fnb.cod_on', party)"
+                   :title="tx['cod_turn_on_title']" :description="tx['cod_turn_on_message']" :submit-label="tx['cod_turn_on']" icon="check"/>
 </rx-page>

@@ -2,8 +2,6 @@
     invoice; "Mark done" closes the task. Replace it with
     resources/views/wl-invoicing/tasks.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['tasks.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['tasks.title']" :subtitle="tx['tasks.subtitle']"/>
-    <rx-grid :page="tasks"/>
-  </rx-stack>
+  <rx-page-header :title="tx['tasks.title']" :subtitle="tx['tasks.subtitle']"/>
+  <rx-grid :page="tasks"/>
 </rx-page>

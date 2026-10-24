@@ -15,6 +15,8 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
         "Orders from the direct site, the phone and the aggregators appear here.",
     ),
     ("fnb.screen.number", "Order"),
+    ("fnb.screen.placed", "Placed"),
+    ("fnb.screen.actions", "Actions"),
     ("fnb.screen.channel", "Channel"),
     ("fnb.screen.customer", "Customer"),
     ("fnb.screen.phone", "Phone"),

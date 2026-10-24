@@ -42,14 +42,14 @@ async fn aut_base_the_contract_list_shows_filters_and_searches() {
         .assert_see("Al Noor Logistics")
         .assert_see("Active")
         .assert_see("Draft");
-    let in_force = t.app.get("/auto/fleet?tab=active").await;
+    let in_force = t.app.get("/auto/fleet?in.status=active").await;
     in_force.assert_ok().assert_see(&active.number());
     assert!(!in_force.text().contains(&draft.number()));
-    let drafts = t.app.get("/auto/fleet?tab=draft").await;
+    let drafts = t.app.get("/auto/fleet?in.status=draft").await;
     drafts.assert_ok().assert_see(&draft.number());
     assert!(!drafts.text().contains(&active.number()));
     t.app
-        .get(&format!("/auto/fleet?q={}", draft.number()))
+        .get(&format!("/auto/fleet?search={}", draft.number()))
         .await
         .assert_ok()
         .assert_see(&draft.number());

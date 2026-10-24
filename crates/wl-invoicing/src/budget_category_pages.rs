@@ -9,7 +9,8 @@
 //! | `GET /budget-categories/{id}/edit` | `wl_invoicing.budget_category_edit` | `budget_categories.manage` |
 //! | `POST /budget-categories/{id}` | `wl_invoicing.budget_category_update` | `budget_categories.manage` |
 //!
-//! The list shows each category with the keys it collects. A save that
+//! The list is a `renox::grid` (`?export=` also `budget_categories.manage`) of
+//! the categories with the keys each collects. A save that
 //! repeats a mapping key of another category, gives an owner drawings
 //! category no owner party, or changes the kind of a category that has a
 //! budget line answers 422 with the reason. The templates are compiled in
@@ -17,7 +18,9 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::validation::{Errors, ValidationError};
 use serde::Serialize;
 
@@ -53,61 +56,94 @@ pub fn routes() -> Routes {
         )
 }
 
-/// One category as the list shows it.
-#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CategoryRow {
-    id: i64,
-    code: String,
-    name: String,
-    kind: String,
-    parent: String,
-    owner_role: String,
-    keys: String,
-    active: bool,
-}
-
 /// What the list page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-invoicing/budget_categories.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    rows: Vec<CategoryRow>,
+    rows: GridPage<BudgetCategory>,
     can_manage: bool,
 }
 
-/// `GET /budget-categories`: the categories and what they collect.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
-    let t = |key: &str| texts::t(&lang, &format!("wl_invoicing.{key}"));
-    let categories = BudgetCategory::listed(&state.db, true).await?;
-    let mut rows = Vec::with_capacity(categories.len());
-    for category in &categories {
-        let keys = mappings_of(&state.db, category.id)
+/// The categories grid: search on the code and name, filters by kind. The
+/// mapping keys each collects and the edit link are drawn by the template
+/// (`custom`). Only a manager gets the edit link and the export.
+pub fn grid(lang: &Lang, can_manage: bool) -> Grid {
+    let t = |key: &str| texts::t(lang, &format!("wl_invoicing.{key}"));
+    let grid = Grid::new("wl-invoicing-budget-categories")
+        .title(&t("budget.category.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("code", &t("budget.category.code"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable(),
+        )
+        .column(
+            Column::text("name_en", &t("budget.fields.name"))
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::select("kind", &t("budget.category.kind"), kinds(lang)).mobile())
+        .column(Column::related(
+            "parent",
+            &t("budget.category.parent"),
+            "wl_invoicing_budget_categories",
+            "parent_id",
+            "name_en",
+        ))
+        .column(Column::text("owner_role", &t("budget.category.owner_role")).hidden())
+        .column(Column::custom("keys", &t("budget.category.keys")))
+        .column(Column::bool("active", &t("budget.category.active")).mobile())
+        .column(Column::number("position", &t("budget.category.position")).hidden())
+        .sort_by("position");
+    let grid = if can_manage {
+        grid.column(Column::custom("actions", "")).exports()
+    } else {
+        grid
+    };
+    grid.cards_on_mobile()
+        .empty_state(&t("budget.category.empty"), None)
+}
+
+/// `GET /budget-categories`: the categories and what they collect, or their
+/// export (`?export=csv|xlsx|print`, with `budget_categories.manage`).
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
+    let can_manage = crate::may_export(&user, permissions::BUDGET_CATEGORIES_MANAGE);
+    let grid = grid(&lang, can_manage);
+    if request.param("export").is_some() && !can_manage {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(BudgetCategory::query(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(BudgetCategory::query(), &request).await?;
+    // What each category on the page collects.
+    let mut keys = BTreeMap::new();
+    for category in page.items() {
+        let collected = mappings_of(&state.db, category.id)
             .await?
             .iter()
             .map(|m| format!("{}: {}", m.key_kind, m.key_value))
             .collect::<Vec<_>>()
             .join(", ");
-        let parent = categories
-            .iter()
-            .find(|c| Some(c.id) == category.parent_id)
-            .map(|c| c.name_en.clone())
-            .unwrap_or_default();
-        rows.push(CategoryRow {
-            id: category.id,
-            code: category.code.clone(),
-            name: category.name_en.clone(),
-            kind: t(&format!("budget.kind.{}", category.kind.as_str())),
-            parent,
-            owner_role: category.owner_role.clone().unwrap_or_default(),
-            keys,
-            active: category.active,
-        });
+        keys.insert(category.id, collected);
     }
+    let rows = page.extend(|category| json!({ "keys": keys.get(&category.id) }));
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         rows,
         can_manage: user.has_permission(permissions::BUDGET_CATEGORIES_MANAGE),
-    }))
+    })
+    .into_response())
 }
 
 /// What the form needs.

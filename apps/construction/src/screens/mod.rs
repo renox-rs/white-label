@@ -20,7 +20,6 @@ pub(crate) mod variations;
 use std::collections::BTreeMap;
 
 use renox::prelude::*;
-use wl_kernel::PartyId;
 
 use crate::ipa::IpaStatus;
 use crate::project::ProjectStatus;
@@ -114,16 +113,6 @@ pub(crate) fn deduction_kind(status: &str) -> &'static str {
         "contested" => "error",
         _ => "warning",
     }
-}
-
-/// The name of a party, else `#id`.
-pub(crate) async fn party_name(state: &AppState, lang: &Lang, id: i64) -> String {
-    wl_kernel::parties::directory(state)
-        .display_name(&state.db, PartyId(id), &lang.locale)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or_else(|| format!("#{id}"))
 }
 
 /// The page of an IPA.

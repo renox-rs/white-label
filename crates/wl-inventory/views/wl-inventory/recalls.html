@@ -1,18 +1,11 @@
-{#- wl-inventory: the recalls, newest first: where each comes from, why, the
-    lots, how far it is (the parties told, still to tell). Names nobody.
+{#- wl-inventory: the recalls, a renox::grid (search on the number and the
+    reason, filters by source and status): where each comes from, why, the
+    lots, how far it is (the parties told of those affected). Names nobody.
     Replace it with resources/views/wl-inventory/recalls.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['recalls.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['recalls.title']" :subtitle="tx['recalls.subtitle']"/>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['recalls.title']" card>
-      <rx-column :label="tx['recalls.number']"><a href="{{ route('wl_inventory.recall', row.id) }}">{{ row.number }}</a></rx-column>
-      <rx-column :label="tx['recalls.reason']">{{ row.reason }}</rx-column>
-      <rx-column :label="tx['recalls.source']" hide-narrow>{{ row.source }}</rx-column>
-      <rx-column :label="tx['recalls.lots']" hide-narrow>{{ row.lots }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
-      <rx-column :label="tx['recalls.opened']" hide-narrow>{{ row.opened }}</rx-column>
-      <rx-column :label="tx['recalls.affected']">{{ row.told }} / {{ row.affected }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['recalls.empty']" icon="triangle-alert"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['recalls.title']" :subtitle="tx['recalls.subtitle']"/>
+  <rx-grid :page="rows">
+    <template rx-if="column.key == 'lots'">{{ row.lots }}</template>
+    <template rx-elif="column.key == 'progress'">{{ row.told }} / {{ row.affected }}</template>
+  </rx-grid>
 </rx-page>

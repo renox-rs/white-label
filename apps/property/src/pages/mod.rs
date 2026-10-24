@@ -43,6 +43,25 @@ pub(crate) fn field_error(field: &str, message: impl Into<String>) -> Error {
     Error::Validation(renox::validation::ValidationError::new(errors))
 }
 
+/// SQL for a grid column: the integer column `column` of the row, left-padded
+/// with zeros to `width` digits (`L-000012`), the same in SQLite and Postgres.
+pub(crate) fn padded(column: &str, width: usize) -> String {
+    let zeros = "0".repeat(width);
+    let text = format!("'{zeros}' || CAST({{T}}.\"{column}\" AS TEXT)");
+    format!("substr({text}, length({text}) - {} )", width - 1)
+}
+
+/// SQL for the name of a building in the page's language: the Arabic name
+/// when the language is `ar` and the building has one. `table` is the
+/// (quoted) table or alias of the buildings.
+pub(crate) fn building_name_sql(lang: &Lang, table: &str) -> String {
+    if lang.locale == "ar" {
+        format!("COALESCE(NULLIF({table}.\"name_ar\", ''), {table}.\"name_en\")")
+    } else {
+        format!("{table}.\"name_en\"")
+    }
+}
+
 /// The package text `key` (without the `property.` prefix).
 pub(crate) fn text(lang: &Lang, key: &str) -> String {
     texts::t(lang, &format!("property.{key}"))

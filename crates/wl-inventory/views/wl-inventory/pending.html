@@ -1,29 +1,24 @@
-{#- wl-inventory: the pending issues: consumption the stock could not cover,
-    oldest first, each with the form that clears it (a reason and, for a
-    lot-tracked item, the lot the stock is entered in). They post by
-    themselves when stock arrives. Replace it with
+{#- wl-inventory: the pending issues, a renox::grid of the consumption the
+    stock could not cover, oldest first. Each has a sheet with the form that
+    clears it (a reason and, for a lot-tracked item, the lot the stock is
+    entered in). They post by themselves when stock arrives. Replace it with
     resources/views/wl-inventory/pending.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['pending.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['pending.title']" :subtitle="tx['pending.subtitle']" :back="route('wl_inventory.stock')" :back-label="tx['stock.title']"/>
-    <rx-include template="wl-kernel/approval_card.html"/>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['pending.title']" card>
-      <rx-column :label="tx['stock.item']">{{ row.item }}</rx-column>
-      <rx-column :label="tx['stock.store']">{{ row.location }}</rx-column>
-      <rx-column :label="tx['pending.short']">{{ row.quantity }}</rx-column>
-      <rx-column :label="tx['pending.source']" hide-narrow>{{ row.source }}</rx-column>
-      <rx-column :label="tx['pending.recorded']" hide-narrow>{{ row.recorded }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge rx-if="row.waiting" kind="info" :text="tx['holds.waiting']"/><rx-badge rx-else kind="warning" :text="tx['pending.open']"/></rx-column>
-      <rx-row-actions>
-        <template rx-if="row.can_clear">
-          <rx-action-sheet :id="'clear-' ~ row.id" :label="tx['pending.clear']" :action="route('wl_inventory.pending_clear', row.id)"
-                           :title="tx['pending.clear']" :description="tx['pending.clear_description']" :submit-label="tx['pending.clear']" icon="check">
-            <rx-textarea name="reason" :label="tx['pending.reason']" :id="'clear-reason-' ~ row.id" required/>
-            <rx-select rx-if="row.lot_tracked" name="lot" :label="tx['stock.lot']" :options="row.lots" :selected="''" :id="'clear-lot-' ~ row.id"/>
-          </rx-action-sheet>
-        </template>
-      </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['pending.empty']" :message="tx['pending.empty_text']" icon="check"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['pending.title']" :subtitle="tx['pending.subtitle']" :back="route('wl_inventory.stock')" :back-label="tx['stock.title']"/>
+  <rx-include template="wl-kernel/approval_card.html"/>
+  <rx-grid :page="rows">
+    <template rx-if="column.key == 'source'">{{ row.source }}</template>
+    <template rx-elif="column.key == 'state'">
+      <rx-badge rx-if="row.waiting" kind="info" :text="tx['holds.waiting']"/>
+      <rx-badge rx-else kind="warning" :text="tx['pending.open']"/>
+    </template>
+    <template rx-elif="column.key == 'actions'">
+      <rx-open-button rx-if="row.can_clear" id="clear-{{ row.id }}" label="{{ tx['pending.clear'] }}" size="small"/>
+    </template>
+  </rx-grid>
+  <rx-action-sheet rx-for="sheet in clearing" :button="false" :id="'clear-' ~ sheet.id" :label="tx['pending.clear']" :action="route('wl_inventory.pending_clear', sheet.id)"
+                   :title="tx['pending.clear']" :description="tx['pending.clear_description']" :submit-label="tx['pending.clear']" icon="check">
+    <rx-textarea name="reason" :label="tx['pending.reason']" :id="'clear-reason-' ~ sheet.id" required/>
+    <rx-select rx-if="sheet.lot_tracked" name="lot" :label="tx['stock.lot']" :options="sheet.lots" :selected="''" :id="'clear-lot-' ~ sheet.id"/>
+  </rx-action-sheet>
 </rx-page>

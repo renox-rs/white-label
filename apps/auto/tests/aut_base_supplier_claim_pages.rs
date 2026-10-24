@@ -70,16 +70,19 @@ async fn aut_base_the_supplier_claim_list_shows_filters_and_searches() {
         .assert_see("Alternator")
         .assert_see("AED 450.00")
         .assert_see("Raised");
-    let raised_tab = t.app.get("/auto/supplier-claims?tab=raised").await;
+    let raised_tab = t.app.get("/auto/supplier-claims?in.status=raised").await;
     raised_tab.assert_ok().assert_see(&claim.number());
-    let ended = t.app.get("/auto/supplier-claims?tab=ended").await;
+    let ended = t
+        .app
+        .get("/auto/supplier-claims?in.status=recovered&in.status=written_off")
+        .await;
     assert!(!ended.text().contains(&claim.number()));
     t.app
-        .get("/auto/supplier-claims?q=alternator")
+        .get("/auto/supplier-claims?search=alternator")
         .await
         .assert_ok()
         .assert_see(&claim.number());
-    let none = t.app.get("/auto/supplier-claims?q=nothing-here").await;
+    let none = t.app.get("/auto/supplier-claims?search=nothing-here").await;
     assert!(!none.text().contains(&claim.number()));
 
     sign_in(&t, "Nadia", &[permissions::VEHICLES_VIEW]).await;

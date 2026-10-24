@@ -18,7 +18,11 @@
 //! pages only read the form and call [`crate::authorisations`]. A page never
 //! shows a clinical reason: the denial reason is staff's.
 
+use std::collections::BTreeMap;
+
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
@@ -95,29 +99,6 @@ fn status_kind(status: AuthStatus) -> &'static str {
     }
 }
 
-/// One authorisation of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct AuthRow {
-    /// The primary key.
-    pub id: i64,
-    /// `PA-0007`.
-    pub number: String,
-    /// The patient's name.
-    pub patient: String,
-    /// The payer's name.
-    pub payer: String,
-    /// The service codes, comma separated.
-    pub services: String,
-    /// `left of approved`, or the units asked for while undecided.
-    pub units: String,
-    /// The last valid day, or a dash.
-    pub valid_until: String,
-    /// The status.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
-}
-
 /// One service on a payer's list.
 #[derive(Serialize, Debug, Clone)]
 pub struct RequiredRow {
@@ -134,11 +115,78 @@ pub struct RequiredRow {
 #[view(template = "clinics/authorisations.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    authorisations: Vec<AuthRow>,
+    authorisations: GridPage<PriorAuthorisation>,
     required: Vec<RequiredRow>,
     policy_options: Vec<[String; 2]>,
     policy_selected: String,
     can_manage: bool,
+}
+
+/// The authorisations grid: search on the payer's reference, filters by
+/// status, services and last valid day. The names, the number and the units
+/// left are drawn by the template (`custom`).
+pub(crate) fn grid(
+    lang: &Lang,
+    names: &std::collections::BTreeMap<String, String>,
+    can_export: bool,
+) -> Grid {
+    let statuses: Vec<(String, String)> = AuthStatus::ALL
+        .iter()
+        .map(|status| (status.as_str().to_owned(), status_text(lang, *status)))
+        .collect();
+    let services: Vec<(String, String)> = names
+        .keys()
+        .map(|code| (code.clone(), service_names::name_with_code(names, code)))
+        .collect();
+    let grid = Grid::new("clinics-authorisations")
+        .title(&text(lang, "authorisation.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::custom("number", &text(lang, "authorisation.number"))
+                .frozen()
+                .mobile(),
+        )
+        .column(Column::custom("patient", &text(lang, "policies.patient")).mobile())
+        .column(Column::custom("payer", &text(lang, "policies.payer")))
+        .column(Column::tags(
+            "services",
+            &text(lang, "authorisation.services_shown"),
+            services,
+        ))
+        .column(Column::custom("units", &text(lang, "authorisation.units")).mobile())
+        .column(
+            Column::text("reference", &text(lang, "authorisation.reference"))
+                .searchable()
+                .hidden(),
+        )
+        .column(Column::date(
+            "valid_until",
+            &text(lang, "authorisation.valid_until"),
+        ))
+        .column(
+            Column::select("status", &text(lang, "fields.status"), statuses)
+                .badges(&[
+                    ("draft", "info"),
+                    ("requested", "info"),
+                    ("expired", "info"),
+                    ("cancelled", "info"),
+                    ("approved", "success"),
+                    ("used", "success"),
+                    ("partially_approved", "warning"),
+                    ("denied", "danger"),
+                ])
+                .mobile(),
+        )
+        .sort_by("-id")
+        .row_url("/clinics/authorisations/{id}")
+        .cards_on_mobile()
+        .empty_state(
+            &text(lang, "authorisation.empty"),
+            Some(&text(lang, "authorisation.subtitle")),
+        );
+    if can_export { grid.exports() } else { grid }
 }
 
 /// The units as the list reads them.
@@ -165,31 +213,42 @@ fn services_text(names: &std::collections::BTreeMap<String, String>, codes: &[St
         .join(", ")
 }
 
-/// `GET /clinics/authorisations`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+/// `GET /clinics/authorisations` (`?export=` needs `insurance.manage`).
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     require(&user, permissions::POLICIES_VIEW)?;
-    let all = PriorAuthorisation::query()
-        .order_by_desc(PriorAuthorisation::ID)
-        .get(&state.db)
-        .await?;
-    let dash = text(&lang, "none");
     let service_names = service_names::names(&state, &lang.locale).await?;
-    let mut rows = Vec::with_capacity(all.len());
-    for a in &all {
-        rows.push(AuthRow {
-            id: a.id,
-            number: a.number(),
-            patient: party_name(&state, &lang, PartyId(a.patient_party_id)).await,
-            payer: party_name(&state, &lang, PartyId(a.payer_party_id)).await,
-            services: services_text(&service_names, &a.services.0),
-            units: units_text(&lang, a),
-            valid_until: a
-                .valid_until
-                .map_or_else(|| dash.clone(), |d| d.to_string()),
-            status: status_text(&lang, a.status),
-            status_kind: status_kind(a.status),
-        });
+    let can_manage = user.has_permission(permissions::AUTHORISATIONS_MANAGE);
+    let grid = grid(&lang, &service_names, can_manage);
+    if request.param("export").is_some() && !can_manage {
+        return Err(Error::Forbidden);
     }
+    let query = PriorAuthorisation::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut parties = BTreeMap::new();
+    for a in page.items() {
+        for id in [a.patient_party_id, a.payer_party_id] {
+            if let std::collections::btree_map::Entry::Vacant(slot) = parties.entry(id) {
+                slot.insert(party_name(&state, &lang, PartyId(id)).await);
+            }
+        }
+    }
+    let page = page.extend(|a| {
+        json!({
+            "number": a.number(),
+            "url": format!("/clinics/authorisations/{}", a.id),
+            "patient": parties.get(&a.patient_party_id),
+            "payer": parties.get(&a.payer_party_id),
+            "units": units_text(&lang, a),
+        })
+    });
     let listed = PriorAuthService::query()
         .order_by(PriorAuthService::PAYER_PARTY_ID)
         .order_by(PriorAuthService::SERVICE_CODE)
@@ -221,12 +280,13 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .unwrap_or_default();
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        authorisations: rows,
+        authorisations: page,
         required,
         policy_options,
         policy_selected,
-        can_manage: user.has_permission(permissions::AUTHORISATIONS_MANAGE),
-    }))
+        can_manage,
+    })
+    .into_response())
 }
 
 /// The form that prepares an authorisation.

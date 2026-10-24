@@ -29,6 +29,7 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::state_machine::{Available, StateMachine};
 use renox::validation::{Errors, ValidationError};
@@ -165,27 +166,113 @@ fn status_kind(status: SalesOrderStatus) -> &'static str {
     }
 }
 
-/// One order as the list shows it.
-#[derive(Serialize, Debug, Clone)]
-pub struct OrderRow {
-    /// The primary key.
-    pub id: i64,
-    /// The order number.
-    pub number: String,
-    /// The customer's party id.
-    pub customer_id: i64,
-    /// The customer's name.
-    pub customer: String,
-    /// Why the order is on credit hold, for a viewer of the credit figures.
-    pub hold_reason: String,
-    /// The channel.
-    pub channel: String,
-    /// The total, `AED 105.00`.
-    pub total: String,
-    /// The status in words.
-    pub status_label: String,
-    /// The badge colour.
-    pub status_kind: &'static str,
+/// The orders grid: search on the number, customer, channel and the
+/// channel's own number, filters by status and channel, sum of the totals.
+/// `can_export` adds the export menu. `can_see_credit` (holder of
+/// `credit.view`) adds the column with the reason of a credit hold; `held_only`
+/// is the *orders on credit hold* tab, oldest first.
+pub(crate) fn grid(
+    lang: &Lang,
+    can_export: bool,
+    awaiting: bool,
+    can_see_credit: bool,
+    held_only: bool,
+) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let statuses: Vec<(String, String)> = SalesOrderStatus::ALL
+        .iter()
+        .map(|status| {
+            (
+                status.as_str().to_owned(),
+                text(lang, &format!("orders.status.{}", status.as_str())),
+            )
+        })
+        .collect();
+    let mut grid = Grid::new("sales-orders")
+        .title(&t("orders.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &t("orders.number"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable()
+                .link("/sales-orders/{id}"),
+        )
+        .column(
+            Column::related(
+                "customer",
+                &t("orders.customer_name"),
+                "wl_parties_parties",
+                "party_id",
+                "display_name",
+            )
+            .mobile()
+            .searchable(),
+        )
+        .column(Column::text("channel", &t("orders.channel")).searchable())
+        .column(Column::text("payment_mode", &t("orders.payment_mode")).hidden())
+        .column(
+            Column::text("external_number", &t("orders.external_number"))
+                .hidden()
+                .searchable(),
+        )
+        .column(
+            Column::money("gross_total", &wl_kernel::money_label(&t("orders.total")))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("draft", "info"),
+                    ("awaiting_payment", "info"),
+                    ("pending_acceptance", "info"),
+                    ("credit_hold", "warning"),
+                    ("confirmed", "info"),
+                    ("partially_fulfilled", "info"),
+                    ("fulfilled", "success"),
+                    ("closed", "success"),
+                    ("rejected", "danger"),
+                    ("cancelled", "danger"),
+                ])
+                .mobile(),
+        )
+        .column(Column::datetime("created_at", &t("orders.created_at")).hidden())
+        .sort_by(if held_only {
+            "created_at"
+        } else {
+            "-created_at"
+        })
+        .row_url("/sales-orders/{id}")
+        .cards_on_mobile()
+        .empty_state(
+            &t(if awaiting {
+                "orders.awaiting_empty"
+            } else {
+                "orders.empty"
+            }),
+            Some(&t("orders.empty_hint")),
+        );
+    if can_see_credit {
+        let reasons: Vec<(String, String)> = ["limit", "overdue", "account_on_hold"]
+            .iter()
+            .map(|reason| {
+                (
+                    (*reason).to_owned(),
+                    crate::pages::credit::hold_reason_text(lang, Some(reason)),
+                )
+            })
+            .collect();
+        grid = grid.column(Column::select(
+            "hold_reason",
+            &t("credit.hold_reason"),
+            reasons,
+        ));
+    }
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list needs.
@@ -193,7 +280,7 @@ pub struct OrderRow {
 #[view(template = "wl-sales/sales_orders.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    orders: Vec<OrderRow>,
+    orders: GridPage<SalesOrder>,
     can_create: bool,
     awaiting: bool,
     awaiting_count: i64,
@@ -207,7 +294,7 @@ pub(crate) struct IndexPage {
     delivery_options: Vec<[String; 2]>,
 }
 
-/// `GET /sales-orders`: the latest orders, newest first. An order waiting for
+/// `GET /sales-orders`: the orders, newest first. An order waiting for
 /// its online payment is not in the list; `?awaiting=1` lists those instead
 /// (BL-SAL-02: they are invisible to fulfilment until the payment is
 /// confirmed). `?view=credit_hold` lists the orders on credit hold, oldest
@@ -216,48 +303,36 @@ async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
-    Query(query): Query<BTreeMap<String, String>>,
-) -> Result<View> {
+    request: GridRequest,
+) -> Result<Response> {
     let db = &state.db;
-    let awaiting = matches!(query.get("awaiting").map(String::as_str), Some("1"));
-    let held_only = query.get("view").is_some_and(|v| v == "credit_hold");
+    let awaiting = matches!(request.param("awaiting"), Some("1"));
+    let held_only = request.param("view") == Some("credit_hold");
     let can_see_credit = user.has_permission(permissions::CREDIT_VIEW);
-    let mut rows = SalesOrder::query()
-        .order_by_desc(SalesOrder::ID)
-        .get(db)
-        .await?;
-    let awaiting_count = rows
-        .iter()
-        .filter(|o| o.status == SalesOrderStatus::AwaitingPayment)
-        .count() as i64;
-    let held_count = rows
-        .iter()
-        .filter(|o| o.status == SalesOrderStatus::CreditHold)
-        .count() as i64;
-    if held_only {
-        rows.retain(|o| o.status == SalesOrderStatus::CreditHold);
-        rows.reverse();
+    let awaiting_count = SalesOrder::query()
+        .where_(SalesOrder::STATUS.eq(SalesOrderStatus::AwaitingPayment))
+        .count(db)
+        .await? as i64;
+    let held_count = SalesOrder::query()
+        .where_(SalesOrder::STATUS.eq(SalesOrderStatus::CreditHold))
+        .count(db)
+        .await? as i64;
+    let query = if held_only {
+        SalesOrder::query().where_(SalesOrder::STATUS.eq(SalesOrderStatus::CreditHold))
+    } else if awaiting {
+        SalesOrder::query().where_(SalesOrder::STATUS.eq(SalesOrderStatus::AwaitingPayment))
     } else {
-        rows.retain(|o| (o.status == SalesOrderStatus::AwaitingPayment) == awaiting);
+        SalesOrder::query().where_(SalesOrder::STATUS.ne(SalesOrderStatus::AwaitingPayment))
+    };
+    let can_export = user.has_permission(permissions::SALES_ORDERS_APPROVE);
+    let grid = grid(&lang, can_export, awaiting, can_see_credit, held_only);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
     }
-    let mut orders = Vec::new();
-    for order in rows.into_iter().take(50) {
-        orders.push(OrderRow {
-            id: order.id,
-            number: order.number.clone(),
-            customer_id: order.party_id,
-            customer: super::party_name(&state, &lang, order.party_id).await,
-            hold_reason: if can_see_credit && order.status == SalesOrderStatus::CreditHold {
-                crate::pages::credit::hold_reason_text(&lang, order.hold_reason.as_deref())
-            } else {
-                String::new()
-            },
-            channel: order.channel.clone(),
-            total: money(order.gross_total),
-            status_label: text(&lang, &format!("orders.status.{}", order.status.as_str())),
-            status_kind: status_kind(order.status),
-        });
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
     }
+    let orders = grid.page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         orders,
@@ -268,7 +343,8 @@ async fn index(
         held_count,
         can_see_credit,
         delivery_options: delivery_view(&lang, &SalesOrder::default()).options,
-    }))
+    })
+    .into_response())
 }
 
 /// One line as the page shows it.
