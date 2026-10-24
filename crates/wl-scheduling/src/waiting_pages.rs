@@ -244,7 +244,7 @@ fn waiting_grid(
         .sort_by("open_first,id")
         .row_url("/scheduling/waiting-list/{id}")
         .cards_on_mobile()
-        .empty_state(&t("waiting.empty"), None);
+        .empty_state(&t("waiting.empty"), Some(&t("waiting.empty_hint")));
     if can_export { grid.exports() } else { grid }
 }
 

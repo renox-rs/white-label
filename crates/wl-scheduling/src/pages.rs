@@ -262,7 +262,10 @@ fn bookings_grid(lang: &Lang, services: Vec<(String, String)>, can_export: bool)
         .sort_by("-starts_at")
         .row_url("/scheduling/bookings/{id}")
         .cards_on_mobile()
-        .empty_state(&text(lang, "bookings.empty"), None);
+        .empty_state(
+            &text(lang, "bookings.empty"),
+            Some(&text(lang, "bookings.empty_hint")),
+        );
     if can_export { grid.exports() } else { grid }
 }
 

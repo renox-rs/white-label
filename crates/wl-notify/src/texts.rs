@@ -131,6 +131,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_notify.counters.not_delivered", "Not delivered"),
     ("wl_notify.counters.suppressed", "Not sent"),
     ("wl_notify.fields.key", "Type"),
+    ("wl_notify.fields.type_key", "Key"),
     ("wl_notify.fields.module", "Module"),
     ("wl_notify.fields.category", "Category"),
     ("wl_notify.fields.urgency", "Urgency"),

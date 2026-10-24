@@ -540,6 +540,15 @@ async fn only_holders_of_integrations_view_open_the_page() {
     assert!(page.text().contains(KEY), "{}", page.text());
     let list = w.app.get("/integrations").await;
     list.assert_ok();
+    // #530: a row of the grid opens the connection's page by its number.
+    let id = w.connection().await.id;
+    assert!(list.text().contains(&format!("/integrations/{id}")), "{}", list.text());
+    let by_id = w.app.get(&format!("/integrations/{id}")).await;
+    by_id.assert_ok();
+    assert!(by_id.text().contains(KEY), "{}", by_id.text());
+    let none = w.app.get("/integrations?search=zzqqxx-nothing").await;
+    none.assert_ok();
+    assert!(!none.text().contains(&format!("/integrations/{id}\"")), "nothing found");
 }
 
 /// A call to an `up` connection is made at once and nothing is queued.

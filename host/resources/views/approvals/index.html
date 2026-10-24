@@ -4,11 +4,20 @@
       routes), and the person's own requests with who they wait for. A row is
       a card, so on a phone its buttons have the width of the screen. -#}
   <rx-page-header title="{{ t('approvals.title') }}" subtitle="{{ t('approvals.subtitle') }}"/>
+  {#- A search over the action, the record, who asked and the reason narrows
+      both tabs (?q=); each tab shows 25 cards a page. -#}
+  <form method="get">
+    <rx-toolbar>
+      <rx-input name="q" type="search" label="{{ t('approvals.search') }}" :value="q" id="approvals-q"/>
+      <input type="hidden" name="tab" value="{{ open_tab }}">
+      <rx-button type="submit" label="{{ t('approvals.show') }}" icon="search"/>
+    </rx-toolbar>
+  </form>
   <rx-form-errors/>
   {#- One pane that takes the height left and scrolls by itself; the tabs sit inside it. -#}
   <section class="rx-pane rx-fill">
-    <rx-tabs id="approvals-tabs">
-      <rx-tab key="waiting" :label="t('approvals.tab_waiting') ~ ' (' ~ waiting | length ~ ')'">
+    <rx-tabs id="approvals-tabs" :selected="open_tab">
+      <rx-tab key="waiting" :label="t('approvals.tab_waiting') ~ ' (' ~ waiting_pager.total ~ ')'">
         <rx-stack>
           <rx-card rx-for="item in waiting" :title="item.action" :subtitle="item.subject">
             <rx-stack>
@@ -35,10 +44,16 @@
               </rx-row>
             </rx-stack>
           </rx-card>
-          <rx-empty rx-if="not waiting" :title="t('approvals.empty')" :message="t('approvals.empty_text')" icon="circle-check"/>
+          <rx-empty rx-if="not waiting and not q" :title="t('approvals.empty')" :message="t('approvals.empty_text')" icon="circle-check"/>
+          <rx-empty rx-if="not waiting and q" :title="t('approvals.none_found')" :message="t('approvals.none_found_text')" icon="search"/>
+          <rx-row rx-if="waiting_pager.paged">
+            <span class="rx-subtitle">{{ waiting_pager.range }}</span>
+            <rx-link-button rx-if="waiting_pager.prev" :href="waiting_pager.prev" :label="t('approvals.previous')" variant="plain" icon="chevron-left"/>
+            <rx-link-button rx-if="waiting_pager.next" :href="waiting_pager.next" :label="t('approvals.next')" variant="plain" icon="chevron-right"/>
+          </rx-row>
         </rx-stack>
       </rx-tab>
-      <rx-tab key="mine" :label="t('approvals.tab_mine') ~ ' (' ~ mine | length ~ ')'">
+      <rx-tab key="mine" :label="t('approvals.tab_mine') ~ ' (' ~ mine_pager.total ~ ')'">
         <rx-stack>
           <rx-card rx-for="item in mine" :title="item.action" :subtitle="item.subject">
             <rx-stack>
@@ -52,7 +67,13 @@
               </rx-row>
             </rx-stack>
           </rx-card>
-          <rx-empty rx-if="not mine" :title="t('approvals.empty_mine')" :message="t('approvals.empty_mine_text')" icon="inbox"/>
+          <rx-empty rx-if="not mine and not q" :title="t('approvals.empty_mine')" :message="t('approvals.empty_mine_text')" icon="inbox"/>
+          <rx-empty rx-if="not mine and q" :title="t('approvals.none_found')" :message="t('approvals.none_found_text')" icon="search"/>
+          <rx-row rx-if="mine_pager.paged">
+            <span class="rx-subtitle">{{ mine_pager.range }}</span>
+            <rx-link-button rx-if="mine_pager.prev" :href="mine_pager.prev" :label="t('approvals.previous')" variant="plain" icon="chevron-left"/>
+            <rx-link-button rx-if="mine_pager.next" :href="mine_pager.next" :label="t('approvals.next')" variant="plain" icon="chevron-right"/>
+          </rx-row>
         </rx-stack>
       </rx-tab>
     </rx-tabs>

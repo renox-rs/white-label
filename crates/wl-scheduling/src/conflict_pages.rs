@@ -124,7 +124,7 @@ fn conflicts_grid(lang: &Lang, resources: Vec<(String, String)>, can_manage: boo
         .sort_by("starts_at")
         .row_url("/scheduling/bookings/{id}")
         .cards_on_mobile()
-        .empty_state(&t("conflicts.empty"), None);
+        .empty_state(&t("conflicts.empty"), Some(&t("conflicts.empty_hint")));
     if can_manage {
         grid.exports().bulk_action(
             Action::new(&t("conflicts.apply"), "/scheduling/conflicts/resolve")

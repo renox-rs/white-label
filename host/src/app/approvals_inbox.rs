@@ -390,11 +390,11 @@ async fn build(state: &AppState, lang: &Lang, user: &AuthUser) -> Result<(Vec<Ro
             waiting.push(pay_account_row(state, lang, &account, true).await?);
         }
     }
+    // Every pending request of the person: the page pages them (no cap).
     for request in ApprovalRequest::query()
         .where_(ApprovalRequest::REQUESTER_ID.eq(user.id))
         .where_(ApprovalRequest::STATUS.eq(ApprovalStatus::Pending))
         .order_by_desc(ApprovalRequest::ID)
-        .limit(50)
         .get(&state.db)
         .await?
     {
@@ -416,18 +416,232 @@ async fn build(state: &AppState, lang: &Lang, user: &AuthUser) -> Result<(Vec<Ro
     Ok((waiting, mine))
 }
 
-/// `GET /approvals`: the page for a browser, the rows as JSON otherwise.
+/// Rows per page of each tab.
+pub const PER_PAGE: usize = 25;
+
+/// The inbox's query: a search over the action, the record, who asked, the
+/// reason and the detail lines (`?q=`), the open tab (`?tab=mine`) and the
+/// page of each tab (`?page=`, `?mine_page=`).
+#[derive(serde::Deserialize, Debug, Default)]
+pub struct InboxQuery {
+    #[serde(default)]
+    q: String,
+    #[serde(default)]
+    tab: String,
+    #[serde(default)]
+    page: Option<usize>,
+    #[serde(default)]
+    mine_page: Option<usize>,
+}
+
+/// Whether `row` holds `needle` (lower case) in its words.
+fn matches(row: &Row, needle: &str) -> bool {
+    needle.is_empty()
+        || [
+            row.action.as_str(),
+            row.subject.as_str(),
+            row.requester.as_str(),
+            row.reason.as_str(),
+            row.state.as_str(),
+            row.status.as_str(),
+        ]
+        .into_iter()
+        .chain(row.detail.iter().map(String::as_str))
+        .any(|text| text.to_lowercase().contains(needle))
+}
+
+/// `text` for a query string.
+fn encode(text: &str) -> String {
+    text.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+/// One tab's page of rows and its links.
+#[derive(Serialize, Debug, Clone, Default)]
+struct Pager {
+    /// Rows the search matches, on every page.
+    total: usize,
+    /// More than one page.
+    paged: bool,
+    /// `1–25 of 40`.
+    range: String,
+    /// The previous page's address, if any.
+    prev: Option<String>,
+    /// The next page's address, if any.
+    next: Option<String>,
+}
+
+/// Page `page` (from 1) of `rows`, with links that keep the search, the
+/// other tab's page and the open tab (`tab`), the page itself under `param`;
+/// `range_text` words `1–25 of 40` from the first, last and total.
+fn page_of(
+    range_text: &dyn Fn(usize, usize, usize) -> String,
+    rows: Vec<Row>,
+    page: usize,
+    param: &str,
+    tab: &str,
+    keep: &[(&str, String)],
+) -> (Vec<Row>, Pager) {
+    let total = rows.len();
+    let pages = total.div_ceil(PER_PAGE).max(1);
+    let page = page.clamp(1, pages);
+    let start = (page - 1) * PER_PAGE;
+    let shown: Vec<Row> = rows.into_iter().skip(start).take(PER_PAGE).collect();
+    let link = |to: usize| {
+        let mut parts: Vec<String> = keep
+            .iter()
+            .filter(|(_, value)| !value.is_empty())
+            .map(|(name, value)| format!("{name}={}", encode(value)))
+            .collect();
+        parts.push(format!("{param}={to}"));
+        parts.push(format!("tab={tab}"));
+        format!("/approvals?{}", parts.join("&"))
+    };
+    let range = if total == 0 {
+        String::new()
+    } else {
+        range_text(start + 1, start + shown.len(), total)
+    };
+    let pager = Pager {
+        total,
+        paged: pages > 1,
+        range,
+        prev: (page > 1).then(|| link(page - 1)),
+        next: (page < pages).then(|| link(page + 1)),
+    };
+    (shown, pager)
+}
+
+/// `GET /approvals`: the page for a browser, the rows as JSON otherwise. The
+/// search (`?q=`) narrows both tabs; the page shows each tab 25 rows at a
+/// time.
+///
+/// Decision: the rows are built in code from two sources (the kernel's
+/// approval requests the person may decide, worked out per step, and the pay
+/// accounts waiting for a second user), each in words and with its own
+/// decide buttons, so they stay cards (docs/UX.md 2.1: on a phone the buttons
+/// have the width of the screen) rather than a `renox::grid` over one table;
+/// the search and the pages are done here.
 async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     headers: renox::axum::http::HeaderMap,
+    renox::axum::extract::Query(query): renox::axum::extract::Query<InboxQuery>,
 ) -> Result<Response> {
     let (waiting, mine) = build(&state, &lang, &user).await?;
+    let q = query.q.trim().to_owned();
+    let needle = q.to_lowercase();
+    let waiting: Vec<Row> = waiting.into_iter().filter(|row| matches(row, &needle)).collect();
+    let mine: Vec<Row> = mine.into_iter().filter(|row| matches(row, &needle)).collect();
     if !wl_kernel::negotiate::wants_html(&headers) {
         return Ok(
             Json(renox::serde_json::json!({ "waiting": waiting, "mine": mine })).into_response(),
         );
     }
-    Ok(view("approvals/index.html", context! { waiting, mine }).into_response())
+    let range_text = |from: usize, to: usize, total: usize| {
+        lang.t(
+            "approvals.range",
+            &[("from", &from), ("to", &to), ("total", &total)],
+        )
+    };
+    let waiting_page = query.page.unwrap_or(1);
+    let mine_page = query.mine_page.unwrap_or(1);
+    let (waiting, waiting_pager) = page_of(
+        &range_text,
+        waiting,
+        waiting_page,
+        "page",
+        "waiting",
+        &[("q", q.clone()), ("mine_page", mine_page.to_string())],
+    );
+    let (mine, mine_pager) = page_of(
+        &range_text,
+        mine,
+        mine_page,
+        "mine_page",
+        "mine",
+        &[("q", q.clone()), ("page", waiting_page.to_string())],
+    );
+    // `open_tab`, not `tab`: a view value named like a kit tag is shadowed.
+    let open_tab = if query.tab == "mine" { "mine" } else { "waiting" };
+    Ok(view(
+        "approvals/index.html",
+        context! { waiting, mine, waiting_pager, mine_pager, q, open_tab },
+    )
+    .into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(id: i64, subject: &str) -> Row {
+        Row {
+            id,
+            action: "Release a client contract from a credit hold".to_owned(),
+            subject: subject.to_owned(),
+            url: String::new(),
+            requester: "Amal Youssef".to_owned(),
+            requested: String::new(),
+            reason: String::new(),
+            status: String::new(),
+            status_kind: "warning",
+            state: String::new(),
+            can_decide: true,
+            can_withdraw: false,
+            labels: std::collections::BTreeMap::new(),
+            detail: Vec::new(),
+            pay_account: false,
+            approve_url: String::new(),
+            reject_url: String::new(),
+        }
+    }
+
+    fn words(from: usize, to: usize, total: usize) -> String {
+        format!("{from}-{to} of {total}")
+    }
+
+    /// #530: a long inbox pages 25 cards at a time and keeps the search and
+    /// the other tab's page in its links.
+    #[test]
+    fn a_long_inbox_pages_and_keeps_the_search() {
+        let rows: Vec<Row> = (1..=60).map(|id| row(id, &format!("CC-{id:03}"))).collect();
+        let keep = [("q", "al quoz".to_owned()), ("mine_page", "2".to_owned())];
+        let (first, pager) = page_of(&words, rows.clone(), 1, "page", "waiting", &keep);
+        assert_eq!(first.len(), PER_PAGE);
+        assert_eq!(first[0].id, 1);
+        assert_eq!(pager.total, 60);
+        assert!(pager.paged);
+        assert_eq!(pager.range, "1-25 of 60");
+        assert_eq!(pager.prev, None);
+        assert_eq!(
+            pager.next.as_deref(),
+            Some("/approvals?q=al%20quoz&mine_page=2&page=2&tab=waiting")
+        );
+        let (last, pager) = page_of(&words, rows.clone(), 3, "page", "waiting", &keep);
+        assert_eq!(last.iter().map(|r| r.id).collect::<Vec<_>>(), (51..=60).collect::<Vec<_>>());
+        assert_eq!(pager.range, "51-60 of 60");
+        assert_eq!(pager.next, None);
+        // A page past the end shows the last one.
+        let (past, _) = page_of(&words, rows, 9, "page", "waiting", &keep);
+        assert_eq!(past[0].id, 51);
+        let (none, pager) = page_of(&words, Vec::new(), 1, "page", "waiting", &[]);
+        assert!(none.is_empty() && !pager.paged && pager.range.is_empty());
+    }
+
+    /// The search reads the action, the record and who asked, in any case.
+    #[test]
+    fn the_search_reads_the_words_of_a_row() {
+        let release = row(1, "CC-DEMO-003, Al Quoz Logistics Park LLC");
+        assert!(matches(&release, "al quoz"));
+        assert!(matches(&release, "amal"));
+        assert!(matches(&release, "credit hold"));
+        assert!(matches(&release, ""));
+        assert!(!matches(&release, "zzqqxx"));
+    }
 }

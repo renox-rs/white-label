@@ -54,6 +54,32 @@ async fn the_types_page_shows_statutory_reaction_and_staff_role() {
     assert!(!notice.contains(">No<"), "{notice}");
     let receipt = row(support::RECEIPT);
     assert!(receipt.contains("None"), "{receipt}");
+
+    // #530: each type reads by its name, a row opens the type's form (the
+    // row link names it by its number), and the grid searches and pages.
+    assert!(html.contains(">Reminder<"), "the type in words");
+    let reminder = wl_notify::NotificationType::by_key(t.db(), REMINDER)
+        .await
+        .unwrap()
+        .expect("the reminder type");
+    assert!(html.contains(&format!("/notification-types/{}", reminder.id)));
+    t.app
+        .get(&format!("/notification-types/{}", reminder.id))
+        .await
+        .assert_ok()
+        .assert_view("wl-notify/type_edit.html")
+        .assert_see("Reminder");
+    t.app
+        .get("/notification-types?search=reminder")
+        .await
+        .assert_ok()
+        .assert_see(REMINDER)
+        .assert_dont_see(support::RECEIPT);
+    t.app
+        .get("/notification-types?per_page=1")
+        .await
+        .assert_ok()
+        .assert_see("1–1 of");
 }
 
 /// AC9: the log shows the given-up SMS as "Not delivered (gave up)" and the
@@ -94,6 +120,67 @@ async fn the_log_never_shows_a_given_up_message_as_sent() {
     let rows = &html[html.find("<tbody").expect("the rows")..];
     assert!(!rows.contains(">Delivered<"), "{rows}");
     assert!(!rows.contains(">Sent<"), "{rows}");
+}
+
+/// #530: the log pages through every message, so a message older than the
+/// 200 newest is on a later page and found by a search; it opens newest
+/// first and reads the type in words.
+#[renox::test]
+async fn the_log_reaches_a_message_older_than_the_200_newest() {
+    let t = boot().await;
+    for n in 0..230 {
+        wl_notify::Message::create(
+            t.db(),
+            wl_notify::Message {
+                type_key: REMINDER.into(),
+                subject_type: "invoicing.invoice".into(),
+                subject_id: n + 1,
+                address: Some(format!("m{n:03}@example.com")),
+                channel: wl_kernel::notify::NotifyChannel::Email,
+                rendered_body: "Reminder".into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    }
+    let viewer = t.user("Vera", &[perm::LOG_VIEW]).await;
+    t.app.acting_as(&viewer);
+    // Newest first: the first page holds the newest 25, not the oldest.
+    t.app
+        .get("/notification-log")
+        .await
+        .assert_ok()
+        .assert_see("m229@example.com")
+        .assert_see("of 230")
+        .assert_dont_see("m000@example.com");
+    // 230 messages at 25 a page: the oldest is on page 10.
+    t.app
+        .get("/notification-log?page=10")
+        .await
+        .assert_ok()
+        .assert_see("m000@example.com")
+        .assert_dont_see("m229@example.com");
+    // Another page size, and a search by recipient.
+    t.app
+        .get("/notification-log?per_page=100&page=3")
+        .await
+        .assert_ok()
+        .assert_see("m000@example.com");
+    t.app
+        .get("/notification-log?search=m000%40example")
+        .await
+        .assert_ok()
+        .assert_see("m000@example.com")
+        .assert_see("of 1")
+        .assert_dont_see("m001@example.com");
+    // Sorted oldest first, the oldest leads the first page.
+    t.app
+        .get("/notification-log?sort=id")
+        .await
+        .assert_ok()
+        .assert_see("m000@example.com")
+        .assert_dont_see("m229@example.com");
 }
 
 #[renox::test]

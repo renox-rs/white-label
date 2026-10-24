@@ -17,6 +17,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Appointments and slots, newest first.",
     ),
     ("wl_scheduling.bookings.empty", "No bookings yet"),
+    (
+        "wl_scheduling.bookings.empty_hint",
+        "A booking made here, on the portal or from a waiting-list offer shows here.",
+    ),
     ("wl_scheduling.bookings.number", "Number"),
     ("wl_scheduling.bookings.party", "Booked by"),
     ("wl_scheduling.bookings.service", "Service"),
@@ -64,6 +68,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Parties waiting for a time, in the order they joined.",
     ),
     ("wl_scheduling.waiting.empty", "Nobody is waiting"),
+    (
+        "wl_scheduling.waiting.empty_hint",
+        "Add a party to the waiting list when no slot suits them; they are offered the first one that frees.",
+    ),
     ("wl_scheduling.waiting.add", "Add to the waiting list"),
     ("wl_scheduling.waiting.party", "Waiting"),
     ("wl_scheduling.waiting.service", "Service"),
@@ -331,6 +339,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Bookings that a block or an expired licence puts at risk. Nothing is cancelled until you act.",
     ),
     ("wl_scheduling.conflicts.empty", "No bookings in conflict"),
+    (
+        "wl_scheduling.conflicts.empty_hint",
+        "A block or a lapsed licence that overlaps a booking puts it here.",
+    ),
     ("wl_scheduling.conflicts.resource", "Resource"),
     ("wl_scheduling.conflicts.causes", "Cause"),
     ("wl_scheduling.conflicts.all", "All resources"),

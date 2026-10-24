@@ -178,8 +178,9 @@ fn connections_grid(lang: &Lang, can_export: bool) -> Grid {
         .column(Column::text("owner_role", &t("owner_role")).hidden())
         .column(Column::custom("open", &t("open")).frozen_right())
         .sort_by("key")
+        .row_url("/integrations/{id}")
         .cards_on_mobile()
-        .empty_state(&t("empty"), None);
+        .empty_state(&t("empty"), Some(&t("empty_hint")));
     if can_export { grid.exports() } else { grid }
 }
 
@@ -310,9 +311,16 @@ async fn show(
     lang: Lang,
     Path(key): Path<String>,
 ) -> Result<View> {
-    let connection = IntegrationConnection::by_key(&db, &key)
-        .await?
-        .ok_or(Error::NotFound)?;
+    // The grid's row link names the connection by its number (`{id}`).
+    let connection = match IntegrationConnection::by_key(&db, &key).await? {
+        Some(connection) => connection,
+        None => match key.parse::<i64>() {
+            Ok(id) => IntegrationConnection::find(&db, id)
+                .await?
+                .ok_or(Error::NotFound)?,
+            Err(_) => return Err(Error::NotFound),
+        },
+    };
     let (status_label, status_kind) = status_of(&lang, connection.status);
     let calls = QueuedCall::waiting(&db, &connection.key).await?;
     let queue = calls

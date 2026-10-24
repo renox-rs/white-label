@@ -385,6 +385,34 @@ async fn each_kind_of_request_reads_in_its_own_words_with_its_subject_name() {
     }
 }
 
+/// #530: the inbox searches the action, the record and who asked (`?q=`) in
+/// both tabs, says so when nothing matches, and keeps the open tab.
+#[renox::test]
+async fn the_inbox_searches_the_record_and_keeps_the_tab() {
+    let app = demo().await;
+    pay_account_decided(&app).await;
+    release_asked(&app).await;
+
+    let found = page(&app, MD, "/approvals?q=al%20quoz").await;
+    says(
+        &found,
+        &[
+            "Release a client contract from a credit hold",
+            "name=\"q\"",
+            "value=\"al quoz\"",
+        ],
+    );
+    let none = page(&app, MD, "/approvals?q=zzqqxx-nothing").await;
+    assert!(!none.contains("Release a client contract from a credit hold"));
+    says(&none, &["No request matches"]);
+    no_raw_words(&none);
+
+    let amal = page(&app, AMAL, "/approvals?q=credit%20hold&tab=mine").await;
+    says(&amal, &["Waiting for the MD", "value=\"mine\""]);
+    let other = page(&app, AMAL, "/approvals?q=zzqqxx-nothing&tab=mine").await;
+    assert!(!other.contains("Waiting for the MD"));
+}
+
 /// AC7: the site supervisor has nothing to decide: the inbox says so.
 #[renox::test]
 async fn a_person_with_nothing_to_decide_is_told_so() {

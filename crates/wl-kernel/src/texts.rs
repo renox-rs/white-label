@@ -366,6 +366,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_kernel.integrations.page.empty",
         "No connections are registered.",
     ),
+    (
+        "wl_kernel.integrations.page.empty_hint",
+        "A module that talks to an outside service registers its connection here.",
+    ),
     ("wl_kernel.integrations.page.disable", "Disable"),
     (
         "wl_kernel.integrations.page.disable_title",
@@ -593,6 +597,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Optional: the number of an uploaded document that proves it.",
     ),
     ("wl_kernel.compliance.page.empty", "No open alerts."),
+    (
+        "wl_kernel.compliance.page.empty_hint",
+        "A rule that protects a legal duty raises an alert here when it fails, is stopped or misses its run.",
+    ),
     ("wl_kernel.compliance.kind.failed", "Failed"),
     ("wl_kernel.compliance.kind.stopped", "Stopped"),
     (

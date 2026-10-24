@@ -117,7 +117,7 @@ fn alerts_grid(lang: &Lang) -> Grid {
         .sort_by("created_at")
         .cards_on_mobile()
         .row_action(Action::new(&t("close"), "/compliance-alerts/{id}/close").sheet("close-alert"))
-        .empty_state(&t("empty"), None)
+        .empty_state(&t("empty"), Some(&t("empty_hint")))
 }
 
 async fn list(
@@ -143,7 +143,8 @@ async fn list(
     let alerts = alerts_grid(&lang)
         .page(query, &request)
         .await?
-        .extend(|alert| json!({ "subject": alert.subject().to_string() }));
+        // The record in words ("Lease #42"), never `property.lease:42`.
+        .extend(|alert| json!({ "subject": alert.subject().words() }));
     Ok(View::typed(ComplianceAlertsPage {
         tx: page_texts(&lang),
         alerts,

@@ -766,6 +766,9 @@ async fn the_page_shows_the_alerts_of_the_viewers_roles() {
     let page = w.app.get("/compliance-alerts").await;
     page.assert_ok();
     assert!(page.text().contains(WPS), "{}", page.text());
+    // #530: the record reads in words, never as its type and number.
+    assert!(page.text().contains("Payroll run #4"), "{}", page.text());
+    assert!(!page.text().contains("hr.payroll_run:4"), "{}", page.text());
     w.app.acting_as(&w.admin);
     assert!(w.app.get("/compliance-alerts").await.text().contains(WPS));
     w.app.acting_as(&w.clerk);

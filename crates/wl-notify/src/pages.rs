@@ -268,6 +268,35 @@ pub(crate) fn type_row(t: Text<'_>, kind: &NotificationType) -> TypeRow {
     }
 }
 
+/// A type key column in words, as SQL: each key of `keys` as its
+/// [`type_name`] ("Return approval withdrawn"), so the column reads, sorts,
+/// searches and exports as words, never as `accounting.return_approval_withdrawn`.
+/// A key missing from `keys` shows as it is stored.
+pub(crate) fn type_words_sql(column: &str, keys: &[String]) -> String {
+    let cases: String = keys
+        .iter()
+        .filter(|key| {
+            !key.is_empty()
+                && key
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
+        })
+        .map(|key| format!(" WHEN '{key}' THEN '{}'", type_name(key).replace('\'', "''")))
+        .collect();
+    if cases.is_empty() {
+        format!("{{T}}.\"{column}\"")
+    } else {
+        format!("CASE {{T}}.\"{column}\"{cases} ELSE {{T}}.\"{column}\" END")
+    }
+}
+
+/// The keys of the stored notification types.
+async fn type_keys(db: &Db) -> Result<Vec<String>> {
+    NotificationType::query()
+        .pluck::<String, _>(db, "key")
+        .await
+}
+
 /// What the types page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-notify/types.html")]
@@ -276,10 +305,11 @@ pub(crate) struct TypesPage {
     types: GridPage<NotificationType>,
 }
 
-/// The types grid: search on the key, module and give-up texts, filters by
-/// module, category, urgency and statutory. The channels, the reactions and
-/// the staff role are drawn by the template (`custom`).
-fn types_grid(lang: &Lang) -> Grid {
+/// The types grid: search on the name, key and module, filters by module,
+/// category, urgency and statutory. The name reads in words for the `keys`
+/// of the stored types; a row opens the type's form. The channels, the
+/// reactions and the staff role are drawn by the template (`custom`).
+fn types_grid(lang: &Lang, keys: &[String]) -> Grid {
     let t = texts_in(lang);
     let categories: Vec<(String, String)> = Category::ALL
         .iter()
@@ -300,12 +330,14 @@ fn types_grid(lang: &Lang) -> Grid {
         .remember()
         .advanced_filter()
         .column(
-            Column::text("key", &t("fields.key"))
+            Column::text("name", &t("fields.key"))
+                .computed(&type_words_sql("key", keys))
                 .frozen()
                 .mobile()
                 .searchable()
-                .copyable(),
+                .link("/notification-types/{id}"),
         )
+        .column(Column::text("key", &t("fields.type_key")).searchable().copyable())
         .column(
             Column::text("module", &t("fields.module"))
                 .mobile()
@@ -319,6 +351,7 @@ fn types_grid(lang: &Lang) -> Grid {
         .column(Column::custom("staff_role", &t("fields.staff_role")).hidden())
         .column(Column::custom("edit", &t("types.edit")).frozen_right())
         .sort_by("module,key")
+        .row_url("/notification-types/{id}")
         .cards_on_mobile()
         .exports()
         .empty_state(&t("types.empty"), Some(&t("types.empty_hint")))
@@ -327,10 +360,11 @@ fn types_grid(lang: &Lang) -> Grid {
 /// `GET /notification-types`: every type with its statutory flag, give-up
 /// reaction and staff role told, searched, filtered, sorted and paged by the
 /// grid.
-async fn types_index(lang: Lang, request: GridRequest) -> Result<Response> {
+async fn types_index(State(db): State<Db>, lang: Lang, request: GridRequest) -> Result<Response> {
     let t = texts_in(&lang);
     // The route needs `notifications.templates.manage`, so the export is open.
-    let grid = types_grid(&lang);
+    let keys = type_keys(&db).await?;
+    let grid = types_grid(&lang, &keys);
     let query = NotificationType::query();
     if let Some(file) = grid.export(query.clone(), &request).await? {
         return Ok(file);
@@ -381,10 +415,16 @@ pub(crate) struct TypeEditPage {
 }
 
 /// The type `key`; 404 when there is none.
+/// The grid's row link names the type by its number (`{id}`); a key always
+/// has a dot, so it is never all digits.
 async fn stored_type(db: &Db, key: &str) -> Result<NotificationType> {
-    NotificationType::by_key(db, key)
-        .await?
-        .ok_or(Error::NotFound)
+    if let Some(kind) = NotificationType::by_key(db, key).await? {
+        return Ok(kind);
+    }
+    match key.parse::<i64>() {
+        Ok(id) => NotificationType::find(db, id).await?.ok_or(Error::NotFound),
+        Err(_) => Err(Error::NotFound),
+    }
 }
 
 /// The checkboxes of `kind`, in run order.
@@ -644,7 +684,10 @@ pub(crate) struct LogPage {
 /// by channel, status and date. The query stays cheap: newest first by the
 /// primary key, no join. What a given-up message did next is drawn by the
 /// template (`custom`).
-fn log_grid(lang: &Lang) -> Grid {
+///
+/// The type reads in words for the `keys` of the stored types (the key
+/// itself is a hidden column, for support).
+fn log_grid(lang: &Lang, keys: &[String]) -> Grid {
     let t = texts_in(lang);
     let channels: Vec<(String, String)> = NotifyChannel::ALL
         .iter()
@@ -668,11 +711,17 @@ fn log_grid(lang: &Lang) -> Grid {
         .column(Column::number("id", &t("fields.id")).hidden())
         .column(Column::datetime("created_at", &t("fields.created_at")).mobile())
         .column(
-            Column::text("type_key", &t("fields.key"))
+            Column::text("type_name", &t("fields.key"))
+                .computed(&type_words_sql("type_key", keys))
                 .frozen()
                 .mobile()
+                .searchable(),
+        )
+        .column(
+            Column::text("type_key", &t("fields.type_key"))
                 .searchable()
-                .copyable(),
+                .copyable()
+                .hidden(),
         )
         .column(Column::custom("subject", &t("fields.subject")))
         .column(Column::text("subject_label", &t("fields.reference")).searchable().hidden())
@@ -723,7 +772,8 @@ fn log_grid(lang: &Lang) -> Grid {
 async fn log_index(State(db): State<Db>, lang: Lang, request: GridRequest) -> Result<Response> {
     let t = texts_in(&lang);
     // The route needs `notifications.log.view`, so the export is open.
-    let grid = log_grid(&lang);
+    let keys = type_keys(&db).await?;
+    let grid = log_grid(&lang, &keys);
     let query = Message::query();
     if let Some(file) = grid.export(query.clone(), &request).await? {
         return Ok(file);
@@ -1152,7 +1202,8 @@ pub(crate) struct BroadcastsPage {
 
 /// The broadcasts grid: search on the type, filters by status, channel and
 /// send time. Only holders of `notifications.marketing.send` export.
-fn broadcasts_grid(lang: &Lang, can_export: bool) -> Grid {
+/// The type reads in words for the `keys` of the stored types.
+fn broadcasts_grid(lang: &Lang, can_export: bool, keys: &[String]) -> Grid {
     let t = texts_in(lang);
     let statuses: Vec<(String, String)> = BroadcastStatus::ALL
         .iter()
@@ -1169,11 +1220,17 @@ fn broadcasts_grid(lang: &Lang, can_export: bool) -> Grid {
         .advanced_filter()
         .column(Column::number("id", &t("fields.id")).hidden())
         .column(
-            Column::text("type_key", &t("fields.key"))
+            Column::text("type_name", &t("fields.key"))
+                .computed(&type_words_sql("type_key", keys))
                 .frozen()
                 .mobile()
                 .searchable()
                 .link("/notify/broadcasts/{id}"),
+        )
+        .column(
+            Column::text("type_key", &t("fields.type_key"))
+                .searchable()
+                .hidden(),
         )
         .column(
             Column::select("status", &t("fields.status"), statuses)
@@ -1200,9 +1257,15 @@ fn broadcasts_grid(lang: &Lang, can_export: bool) -> Grid {
 
 /// `GET /notify/broadcasts`: newest first. A holder sees every broadcast,
 /// anyone else only the ones they asked for.
-async fn broadcasts_index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
+async fn broadcasts_index(
+    State(db): State<Db>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     let holder = user.has_permission(permissions::MARKETING_SEND);
-    let grid = broadcasts_grid(&lang, holder);
+    let keys = type_keys(&db).await?;
+    let grid = broadcasts_grid(&lang, holder, &keys);
     if request.param("export").is_some() && !holder {
         return Err(Error::Forbidden);
     }
