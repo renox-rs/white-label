@@ -110,7 +110,9 @@ async fn the_account_page_shows_what_the_customer_owes_against_the_limit() {
         .get("/credit/accounts")
         .await
         .assert_ok()
-        .assert_see("AED 50,000.00")
+        // The limit is a money column: the code is in its label.
+        .assert_see("Credit limit (AED)")
+        .assert_see("50,000.00")
         .assert_see("AED 46,000.00")
         // The status column says something for an account in good standing.
         .assert_see("Account in good standing");
@@ -205,4 +207,72 @@ async fn an_account_is_made_for_a_customer_who_had_none() {
 async fn the_credit_templates_compile() {
     let (t, _) = boot().await;
     t.app.assert_views_compile();
+}
+
+/// The distinct accounts the rows of a grid page link to.
+fn account_rows(html: &str) -> usize {
+    let mut seen = std::collections::BTreeSet::new();
+    for part in html.split("href=\"/credit/accounts/").skip(1) {
+        seen.insert(part.split('"').next().unwrap_or_default().to_owned());
+    }
+    seen.len()
+}
+
+/// The accounts are the standard grid: more than a page, found by the
+/// customer's name, sorted by the limit, filtered by standing, an empty state
+/// in words, the money column named in AED, and no export for a viewer.
+#[renox::test]
+async fn the_account_list_pages_searches_sorts_and_filters() {
+    let (t, _credit) = boot().await;
+    let viewer = t.user("Carla", &[perm::CREDIT_VIEW]).await;
+    t.app.acting_as(&viewer);
+    let empty = t.app.get("/credit/accounts").await.text();
+    assert!(empty.contains("rx-grid") && empty.contains("No customer accounts"));
+
+    for party in 1..=27_i64 {
+        wl_sales::customer_account::save(
+            t.state(),
+            wl_kernel::PartyId(party),
+            wl_sales::customer_account::Terms::default().limit(party * 100_000),
+        )
+        .await
+        .unwrap();
+    }
+    t.app.acting_as(&viewer);
+    let first = t.app.get("/credit/accounts").await.text();
+    assert_eq!(account_rows(&first), 25);
+    assert!(first.contains("of 27"));
+    let second = t.app.get("/credit/accounts?page=2").await.text();
+    assert_eq!(account_rows(&second), 2);
+    // By the customer's name, as the party directory has it.
+    let found = t.app.get("/credit/accounts?search=Party%2012").await.text();
+    assert_eq!(account_rows(&found), 1);
+    assert!(found.contains("Party 12") && found.contains("href=\"/credit/accounts/12\""));
+    let none = t.app.get("/credit/accounts?search=zzzz").await.text();
+    assert_eq!(account_rows(&none), 0);
+    assert!(none.contains("Nothing matches"));
+    // The limit sorts both ways, and its label says the currency.
+    assert!(first.contains("Credit limit (AED)"));
+    let big = t
+        .app
+        .get("/credit/accounts?sort=-credit_limit")
+        .await
+        .text();
+    assert!(big.find("Party 27").unwrap() < big.find("Party 26").unwrap());
+    let small = t.app.get("/credit/accounts?sort=credit_limit").await.text();
+    assert!(small.find("Party 1<").unwrap() < small.find("Party 2<").unwrap());
+    // The standing is a filter.
+    let good = t.app.get("/credit/accounts?in.standing=good").await.text();
+    assert!(good.contains("of 27"));
+    let held = t
+        .app
+        .get("/credit/accounts?in.standing=on_hold")
+        .await
+        .text();
+    assert_eq!(account_rows(&held), 0);
+    // A viewer may not export.
+    t.app
+        .get("/credit/accounts?export=csv")
+        .await
+        .assert_forbidden();
 }

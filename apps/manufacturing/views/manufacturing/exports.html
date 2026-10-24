@@ -2,33 +2,23 @@
     exit (BL-MFG-12). Replace it with resources/views/manufacturing/exports.html
     in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['exports.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['exports.title']" :subtitle="tx['exports.subtitle']"/>
-    <rx-form-errors/>
-    <rx-table :rows="rows" as="row" :key="row.dispatch" :caption="tx['exports.title']" card>
-      <rx-column :label="tx['exports.dispatch']">
-        <rx-stack>
-          <span><a href="{{ row.dispatch_url }}">{{ row.dispatch }}</a> - {{ row.customer }}</span>
-          <span class="rx-subtitle">{{ row.invoices }}</span>
-          <span><rx-badge :kind="row.state_kind" :text="row.state"/></span>
-        </rx-stack>
-      </rx-column>
-      <rx-column :label="tx['exports.left']" hide-narrow>{{ row.left }}</rx-column>
-      <rx-column :label="tx['exports.days']" align="num">{{ row.days }}</rx-column>
-      <rx-column :label="tx['exports.evidence']">
-        <rx-link-button :href="row.evidence_url" :label="tx['exports.attach']"/>
-      </rx-column>
-      <rx-column :label="tx['exports.note']" hide-narrow>
-        <rx-stack>
-          <span>{{ row.note }}</span>
-          <rx-action-sheet :id="'note-' ~ row.party_id ~ '-' ~ row.dispatch" :label="tx['exports.note_edit']" :action="route('manufacturing.exports_note')"
-                           :title="tx['exports.note_edit']" :description="tx['exports.note_hint']" :submit-label="tx['exports.note_save']" variant="secondary" icon="pencil">
-            <input type="hidden" name="party_id" :value="row.party_id"/>
-            <rx-textarea name="note" :label="tx['exports.note']" :id="'note-text-' ~ row.party_id ~ '-' ~ row.dispatch"/>
-          </rx-action-sheet>
-        </rx-stack>
-      </rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['exports.empty']" :message="tx['exports.empty_text']" icon="truck"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['exports.title']" :subtitle="tx['exports.subtitle']"/>
+  <rx-form-errors/>
+  <rx-grid :page="rows">
+    <template rx-if="column.key == 'dispatch'">
+      <a rx-if="row.dispatch_url" href="{{ row.dispatch_url }}">{{ row.number }}</a>
+      <span rx-else>{{ row.number }}</span>
+    </template>
+    <template rx-elif="column.key == 'customer'">{{ row.customer }}</template>
+    <template rx-elif="column.key == 'days'">{{ row.days }}</template>
+    <template rx-elif="column.key == 'evidence'"><rx-link-button :href="row.evidence_url" :label="tx['exports.attach']"/></template>
+    <template rx-elif="column.key == 'note'">{{ row.note }} <rx-open-button :id="'note-' ~ row.sheet" :label="tx['exports.note_edit']" size="small"/></template>
+  </rx-grid>
+  <template rx-for="sheet in sheets">
+    <rx-action-sheet :id="'note-' ~ sheet.id" :label="tx['exports.note_edit']" :action="route('manufacturing.exports_note')"
+                     :title="tx['exports.note_edit']" :description="tx['exports.note_hint']" :submit-label="tx['exports.note_save']" variant="secondary" icon="pencil" :button="false">
+      <input type="hidden" name="party_id" :value="sheet.party_id"/>
+      <rx-textarea name="note" :label="tx['exports.note']" :value="sheet.note" :id="'note-text-' ~ sheet.id"/>
+    </rx-action-sheet>
+  </template>
 </rx-page>

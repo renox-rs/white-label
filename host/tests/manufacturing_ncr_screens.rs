@@ -78,7 +78,7 @@ async fn the_ncr_pages_show_words_and_disable_what_cannot_be_done() {
     for words in [ncr.number.as_str(), "Open", "Unknown"] {
         assert!(list.text().contains(words), "{words}: {}", list.text());
     }
-    assert!(list.text().contains("rx-table-wrap"), "fits a phone");
+    assert!(list.text().contains("rx-grid"), "a grid, cards on a phone");
     page.assert_ok();
     for words in [
         "cracked pellets",

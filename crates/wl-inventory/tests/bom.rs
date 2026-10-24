@@ -410,7 +410,13 @@ async fn the_bom_pages_show_the_versions_lines_and_the_actions_for_the_person() 
     let list = t.browse(&keeper, "/boms").await;
     list.assert_ok();
     let text = visible(&list.text());
-    for word in ["Bills of materials", "PANEL", "v1", "Draft", "New bill"] {
+    for word in [
+        "Bills of materials",
+        "PANEL",
+        "Version",
+        "Draft",
+        "New bill",
+    ] {
         assert!(text.contains(word), "{word}: {text}");
     }
     t.app.acting_as(&keeper);
@@ -464,4 +470,87 @@ async fn the_bom_pages_show_the_versions_lines_and_the_actions_for_the_person() 
         .assert_status(303);
     let blocked = visible(&t.browse(&keeper, &format!("/boms/{first}")).await.text());
     assert!(blocked.contains("This item has a draft version already."));
+}
+
+/// The distinct records the rows of a grid page link to under `/boms/`.
+fn bom_rows(html: &str) -> usize {
+    let mut seen = std::collections::BTreeSet::new();
+    for part in html.split("href=\"/boms/").skip(1) {
+        seen.insert(part.split('"').next().unwrap_or_default().to_owned());
+    }
+    seen.len()
+}
+
+/// The list is the standard grid: searched on the item's code and name,
+/// sorted, filtered by status (the old `?status=` link too), paged, with the
+/// cost only for who sees what materials cost, and an empty state in words.
+#[renox::test]
+async fn the_bom_list_is_a_grid_that_pages_searches_and_filters() {
+    let t = boot().await;
+    let keeper = t.bom_keeper("Kim").await;
+    let releaser = t.bom_releaser("Rae").await;
+    let viewer = t.bom_viewer("Vic").await;
+    let empty = t.browse(&keeper, "/boms").await.text();
+    assert!(empty.contains("rx-grid") && empty.contains("No bill of materials yet"));
+
+    let (panel, resin, film) = items(&t).await;
+    let released = drafted(&t, &keeper, &panel, &resin, &film).await;
+    post(&t, &releaser, &format!("/boms/{released}/release"), &[])
+        .await
+        .assert_ok();
+    for n in 0..12 {
+        let item = t.priced_item(&format!("FG-{n:02}"), false, 0).await;
+        post(&t, &keeper, "/boms", &[("item", &item.id.to_string())]).await;
+    }
+
+    let first = t.browse(&keeper, "/boms?per_page=10").await.text();
+    assert_eq!(bom_rows(&first), 10);
+    assert!(first.contains("of 13"), "the pager counts 13");
+    let second = t.browse(&keeper, "/boms?per_page=10&page=2").await.text();
+    assert_eq!(bom_rows(&second), 3);
+    // Search on the item's code and name.
+    let found = t.browse(&keeper, "/boms?search=FG-03").await.text();
+    assert_eq!(bom_rows(&found), 1);
+    let found = found
+        .split("<table class=\"rx-grid__table\"")
+        .nth(1)
+        .unwrap_or_default();
+    assert!(found.contains("FG-03") && !found.contains("FG-04"));
+    let none = t.browse(&keeper, "/boms?search=zzzz").await.text();
+    assert_eq!(bom_rows(&none), 0);
+    assert!(none.contains("Nothing matches"));
+    // The status: the grid's filter and the old link.
+    for link in ["?in.status=released", "?status=released"] {
+        let only = t.browse(&keeper, &format!("/boms{link}")).await.text();
+        assert_eq!(bom_rows(&only), 1, "{link}");
+        assert!(only.contains("PANEL"));
+    }
+    let drafts = t
+        .browse(&keeper, "/boms?status=draft&per_page=50")
+        .await
+        .text();
+    assert_eq!(bom_rows(&drafts), 12);
+    // Sorted by the item made.
+    let up = t
+        .browse(&keeper, "/boms?sort=item_code&per_page=50")
+        .await
+        .text();
+    let up = up
+        .split("<table class=\"rx-grid__table\"")
+        .nth(1)
+        .unwrap_or_default();
+    assert!(up.find("FG-00").unwrap() < up.find("FG-11").unwrap());
+    let down = t
+        .browse(&keeper, "/boms?sort=-item_code&per_page=50")
+        .await
+        .text();
+    let down = down
+        .split("<table class=\"rx-grid__table\"")
+        .nth(1)
+        .unwrap_or_default();
+    assert!(down.find("PANEL").unwrap() < down.find("FG-00").unwrap());
+    // The cost is a column only for who sees what materials cost.
+    assert!(first.contains("Materials per unit (AED)"));
+    let plain = t.browse(&viewer, "/boms").await.text();
+    assert!(!plain.contains("Materials per unit"), "{plain}");
 }

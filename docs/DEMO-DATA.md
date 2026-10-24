@@ -393,8 +393,13 @@ certificate on file.
 
 **Implemented as** `clients/demo-manufacturing/client.toml` and `host/src/app/manufacturing_demo/`
 (the story at a smaller size: one plant with two lines, nine items with their lots, three released
-BOMs, five customers with credit accounts, five sales orders, seven work orders, two NCRs, one
-supplier recall, five dispatches). `APP_ENV=local CLIENT_CONFIG=clients/demo-manufacturing/client.toml
+BOMs, five customers with credit accounts, five sales orders, seven work orders of the story and
+twenty-six planned for stock so that the list has a second page (thirty-three in all; one aborted
+and one whose abort waits for the production manager), three NCRs, two recalls (one of a supplier's lot, one of a finished lot
+that reached a dispatch already shipped and one that had not left, flagged for a re-pick), seven
+dispatches, three returned lots (one waiting, one passed, one failed with its NCR), a supplier with two
+purchase orders and the goods receipt of the first, two stock transfers (one received, one on the
+road), the company budget sent for approval and Al Noor's delivery claim as a ticket). `APP_ENV=local CLIENT_CONFIG=clients/demo-manufacturing/client.toml
 cargo run -p host -- migrate`, then `-- manufacturing:demo` (or `-- db:seed`), then `-- serve`; the
 logins are on the login page, password `password123`. Every date is relative to today. The work is
 done through the app's own routes as the person who does it (BOMs, work orders, issues, reports, NCRs,

@@ -16,7 +16,9 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::validation::{Errors, ValidationError};
 use serde::Serialize;
 use wl_kernel::PartyId;
@@ -80,64 +82,129 @@ fn invalid<F: Serialize>(field: &str, message: String, form: &F) -> Error {
     Error::Validation(ValidationError::new(errors).with_input(form))
 }
 
-/// One account as the list shows it.
-#[derive(Serialize, Debug, Clone)]
-pub struct AccountRow {
-    /// The customer's party id, for the link.
-    pub party: i64,
-    /// The customer's name.
-    pub name: String,
-    /// The limit, `AED 50,000.00`, or *No limit*.
-    pub limit: String,
-    /// What the customer owes now.
-    pub owes: String,
-    /// The payment terms in words.
-    pub terms: String,
-    /// *On hold* or empty.
-    pub flag: String,
-}
-
 /// What the list needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-sales/credit_accounts.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    accounts: Vec<AccountRow>,
+    accounts: GridPage<CustomerAccount>,
     can_edit: bool,
 }
 
+/// Whether an open source holds the account, worked out in the query so the
+/// standing can be filtered and sorted.
+const STANDING_SQL: &str = "CASE WHEN EXISTS (SELECT 1 FROM \"wl_sales_account_hold_sources\" \
+    WHERE \"wl_sales_account_hold_sources\".\"account_id\" = {T}.\"id\" \
+    AND \"wl_sales_account_hold_sources\".\"cleared_at\" IS NULL) THEN 'on_hold' ELSE 'good' END";
+
+/// The accounts grid: search on the customer's name, filters by standing,
+/// limit and terms. What the customer owes now is worked out from the open
+/// invoices, cheques and orders, so it is drawn by the template (`custom`) and
+/// is not sorted or filtered.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let grid = Grid::new("sales-credit-accounts")
+        .title(&t("credit.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::custom("customer", &t("orders.customer_name"))
+                .frozen()
+                .mobile(),
+        )
+        .column(
+            Column::related(
+                "customer_name",
+                &t("orders.customer_name"),
+                "wl_parties_parties",
+                "party_id",
+                "display_name",
+            )
+            .hidden()
+            .searchable(),
+        )
+        .column(
+            Column::money("credit_limit", &t("credit.limit"))
+                .mobile()
+                .summary(renox::grid::Summary::Sum),
+        )
+        .column(Column::custom("owes", &wl_kernel::money_label(&t("credit.owes"))).mobile())
+        .column(Column::number("payment_terms_days", &t("credit.terms")))
+        .column(Column::number("grace_days", &t("credit.grace")).hidden())
+        .column(
+            Column::related(
+                "sales_rep",
+                &t("credit.sales_rep_name"),
+                "users",
+                "sales_rep_id",
+                "name",
+            )
+            .hidden()
+            .searchable(),
+        )
+        .column(
+            Column::select(
+                "standing",
+                &t("fields.status"),
+                [
+                    ("on_hold", t("credit.on_hold")),
+                    ("good", t("credit.not_on_hold")),
+                ],
+            )
+            .computed(STANDING_SQL)
+            .badges(&[("on_hold", "error"), ("good", "success")])
+            .mobile(),
+        )
+        .sort_by("id")
+        .cards_on_mobile()
+        .empty_state(&t("credit.empty"), Some(&t("credit.empty_hint")));
+    if can_export { grid.exports() } else { grid }
+}
+
 /// `GET /credit/accounts`: the customer accounts.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
-    let mut rows = Vec::new();
-    for account in CustomerAccount::query()
-        .order_by(CustomerAccount::ID)
-        .get(&state.db)
-        .await?
-        .into_iter()
-        .take(100)
-    {
-        let owes = credit::exposure_of(&state, account.party(), None)
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
+    let can_export = user.has_permission(permissions::CREDIT_LIMITS_APPROVE)
+        || user.has_permission(permissions::CREDIT_RELEASE);
+    let grid = grid(&lang, can_export);
+    let query = CustomerAccount::query();
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut owes = std::collections::HashMap::new();
+    let mut names = std::collections::HashMap::new();
+    for account in page.items() {
+        names.insert(
+            account.id,
+            party_name(&state, &lang, account.party_id).await,
+        );
+        let total = credit::exposure_of(&state, account.party(), None)
             .await?
             .total();
-        let on_hold = account.is_on_hold(&state.db).await?;
-        rows.push(AccountRow {
-            party: account.party_id,
-            name: party_name(&state, &lang, account.party_id).await,
-            limit: limit_text(&lang, account.credit_limit),
-            owes: money(owes),
-            terms: terms_text(&lang, account.payment_terms_days),
-            flag: if on_hold {
-                text(&lang, "credit.on_hold")
-            } else {
-                text(&lang, "credit.not_on_hold")
-            },
-        });
+        owes.insert(account.id, money(total));
     }
+    let page = page.extend(|account| {
+        json!({
+            "owes": owes.get(&account.id),
+            "name": names.get(&account.id),
+            "url": format!("/credit/accounts/{}", account.party_id),
+        })
+    });
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        accounts: rows,
+        accounts: page,
         can_edit: user.has_permission(permissions::CREDIT_LIMITS_APPROVE),
-    }))
+    })
+    .into_response())
 }
 
 /// `AED 50,000.00`, or *No limit*.

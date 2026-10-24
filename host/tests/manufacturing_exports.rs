@@ -169,7 +169,11 @@ async fn the_accountant_is_warned_at_day_60_and_given_one_task_at_day_90() {
     // The page, as the accountant.
     let page = browse(&app, &accountant, "/manufacturing/exports").await;
     page.assert_ok();
-    let html = page.text();
+    // The "None" choice of a grid filter is the grid's own label, not a value.
+    let html = page
+        .text()
+        .replace("<option value=\"\">None</option>", "")
+        .replace("<option value=\"\" selected>None</option>", "");
     for word in ["5% VAT due", "Attach evidence", invoice.as_str()] {
         assert!(html.contains(word), "the page says `{word}`: {html}");
     }

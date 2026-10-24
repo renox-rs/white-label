@@ -234,8 +234,9 @@ async fn every_screen_of_the_map_opens_for_its_owner_in_words() {
         if screen.url.contains("/manufacturing/") {
             assert_eq!(
                 html.matches("<table").count(),
-                html.matches("rx-table-wrap").count(),
-                "{}: every table scrolls inside its own box",
+                html.matches("rx-table-wrap").count()
+                    + html.matches("<div class=\"rx-grid__scroll\"").count(),
+                "{}: every table scrolls inside its own box (a grid has its own)",
                 screen.url
             );
         }

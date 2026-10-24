@@ -1,34 +1,24 @@
-{#- manufacturing: the work orders the person may see, with their status, the
-    quantity made so far, the line and the source. Replace it with
+{#- manufacturing: the work orders the person may see, a renox::grid that fills the
+    screen (search on the number and the line, filters by status, period and
+    quantity); the item and the source are custom cells. Replace it with
     resources/views/manufacturing/work_orders.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['orders.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['orders.title']" :subtitle="tx['orders.subtitle']"/>
-    <rx-row rx-if="can_create">
-      <rx-action-sheet id="new-work-order" :label="tx['orders.new']" :action="route('manufacturing.work_order_create')"
-                       :title="tx['orders.new']" :description="tx['orders.new_hint']" :submit-label="tx['orders.new_save']" variant="primary" icon="plus">
-        <rx-select name="plant_id" :label="tx['form.plant']" :options="form.plants" :selected="form.plant_selected"/>
-        <rx-select name="line_id" :label="tx['form.line']" :options="form.lines" :selected="form.line_selected" :placeholder="tx['form.line_placeholder']"/>
-        <rx-input name="item_id" type="number" :label="tx['form.item']" :hint="tx['form.item_hint']" id="new-work-order-item" required/>
-        <rx-input name="bom_id" type="number" :label="tx['form.bom']" :hint="tx['form.bom_hint']" id="new-work-order-bom"/>
-        <rx-input name="quantity" type="text" :label="tx['form.quantity']" :hint="tx['form.quantity_hint']" id="new-work-order-quantity" required/>
-        <rx-input name="planned_start" type="date" :label="tx['form.planned_start']" :value="form.today" id="new-work-order-start"/>
-        <rx-input name="planned_end" type="date" :label="tx['form.planned_end']" id="new-work-order-end"/>
-      </rx-action-sheet>
-    </rx-row>
-    <rx-link-tabs :items="status_tabs" :current="status_current" :label="tx['orders.filter']"/>
-    <rx-table :rows="rows" as="order" :key="order.id" :caption="tx['orders.title']" card>
-      <rx-column :label="tx['orders.order']">
-        <rx-stack>
-          <span><a href="{{ order.url }}">{{ order.number }}</a> - {{ order.item }}</span>
-          <span class="rx-subtitle">{{ order.source }}</span>
-          <span><rx-badge :kind="order.status_kind" :text="order.status"/></span>
-        </rx-stack>
-      </rx-column>
-      <rx-column :label="tx['orders.line']" hide-narrow>{{ order.line }}</rx-column>
-      <rx-column :label="tx['orders.made']" align="num">{{ order.produced }} / {{ order.quantity }}</rx-column>
-      <rx-column :label="tx['orders.period']" hide-narrow>{{ order.period }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['orders.empty']" :message="tx['orders.empty_text']" icon="boxes"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['orders.title']" :subtitle="tx['orders.subtitle']">
+    <rx-link-button :href="all_url" :label="tx['filter.all']" :variant="'plain' if open_now else 'primary'"/>
+    <rx-link-button :href="open_url" :label="tx['filter.open']" :variant="'primary' if open_now else 'plain'"/>
+    <rx-action-sheet rx-if="can_create" id="new-work-order" :label="tx['orders.new']" :action="route('manufacturing.work_order_create')"
+                     :title="tx['orders.new']" :description="tx['orders.new_hint']" :submit-label="tx['orders.new_save']" variant="primary" icon="plus">
+      <rx-select name="plant_id" :label="tx['form.plant']" :options="form.plants" :selected="form.plant_selected"/>
+      <rx-select name="line_id" :label="tx['form.line']" :options="form.lines" :selected="form.line_selected" :placeholder="tx['form.line_placeholder']"/>
+      <rx-input name="item_id" type="number" :label="tx['form.item']" :hint="tx['form.item_hint']" id="new-work-order-item" required/>
+      <rx-input name="bom_id" type="number" :label="tx['form.bom']" :hint="tx['form.bom_hint']" id="new-work-order-bom"/>
+      <rx-input name="quantity" type="text" :label="tx['form.quantity']" :hint="tx['form.quantity_hint']" id="new-work-order-quantity" required/>
+      <rx-input name="planned_start" type="date" :label="tx['form.planned_start']" :value="form.today" id="new-work-order-start"/>
+      <rx-input name="planned_end" type="date" :label="tx['form.planned_end']" id="new-work-order-end"/>
+    </rx-action-sheet>
+  </rx-page-header>
+  <rx-grid :page="rows">
+    <template rx-if="column.key == 'item'">{{ row.item }}</template>
+    <template rx-elif="column.key == 'source'">{{ row.source }}</template>
+  </rx-grid>
 </rx-page>

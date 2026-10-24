@@ -12,12 +12,14 @@ use wl_kernel::delivery::{
 use wl_kernel::invoicing::VatCategory;
 use wl_kernel::{PartyId, Subject};
 
-use super::{ACCOUNTANT_EMAIL, STORE_EMAIL, Seed, day};
+use manufacturing::returns::ReturnInspection;
+
+use super::{ACCOUNTANT_EMAIL, QC_EMAIL, STORE_EMAIL, Seed, day};
 
 impl Seed {
     /// A draft dispatch from the finished goods store of `lines` (item code,
     /// units, sale line) for `customer`'s order `order`.
-    async fn dispatch(
+    pub(crate) async fn dispatch(
         &self,
         customer: &str,
         order: &str,
@@ -55,7 +57,7 @@ impl Seed {
         .await
     }
 
-    async fn leave(&self, dispatch: &Dispatch, tracking: &str, days_ago: i64) -> Result {
+    pub(crate) async fn leave(&self, dispatch: &Dispatch, tracking: &str, days_ago: i64) -> Result {
         self.driver
             .post(
                 STORE_EMAIL,
@@ -199,6 +201,114 @@ impl Seed {
         // The nightly rule has run: the accountant is warned about the first.
         manufacturing::exports::run_daily(&self.state, wl_kernel::documents::today()).await?;
         let _ = (ACCOUNTANT_EMAIL, day(0));
+        Ok(())
+    }
+
+    /// A delivery of `dispatch` that came back in part: `refused` of the
+    /// `units` sent were refused for `reason` and received at the plant, so
+    /// the lot waits for QC under the delivery number `delivery`.
+    async fn came_back(
+        &self,
+        dispatch: &Dispatch,
+        delivery: i64,
+        units: i64,
+        refused: i64,
+        reason: &str,
+    ) -> Result {
+        let line = wl_inventory::dispatch::lines_of(self.db(), dispatch.id)
+            .await?
+            .remove(0);
+        self.state
+            .emit(DeliveryDelivered {
+                delivery: DeliveryId(delivery),
+                source: dispatch.subject(),
+                attempt: 1,
+                proof: delivery,
+                lines: vec![DeliveredLine {
+                    line: Some(line.subject()),
+                    description: "Retail display box".to_owned(),
+                    quantity_milli: units * 1_000,
+                    delivered_milli: (units - refused) * 1_000,
+                    refused_milli: refused * 1_000,
+                    refusal_reason: Some(reason.to_owned()),
+                }],
+                cash_expected: 0,
+                cash_collected: 0,
+                cod_difference: 0,
+                cod_difference_reason: None,
+                absorbed_by: None,
+                cheque: None,
+            })
+            .await?;
+        self.state
+            .emit(DeliveryRefusedReceived {
+                delivery: DeliveryId(delivery),
+                source: dispatch.subject(),
+                run: RunId(delivery),
+                lines: vec![RefusedLineReceived {
+                    line: Some(line.subject()),
+                    description: "Retail display box".to_owned(),
+                    refused_milli: refused * 1_000,
+                    received_milli: refused * 1_000,
+                    missing_milli: 0,
+                    refusal_reason: Some(reason.to_owned()),
+                }],
+            })
+            .await?;
+        Ok(())
+    }
+
+    /// Two more deliveries of Al Noor's retail boxes that came back in part:
+    /// QC passes the first (the lot is released) and fails the second (an NCR
+    /// is raised on the lot), so the list of returned lots has a lot waiting,
+    /// one passed and one failed.
+    pub(crate) async fn decided_returns(&mut self) -> Result {
+        let noor_lines = wl_sales::SaleLine::of(
+            self.db(),
+            &Subject::new("sales.sales_order", self.orders["noor"].0),
+        )
+        .await?;
+        let lid_line = noor_lines
+            .get(1)
+            .or(noor_lines.first())
+            .map(|l| l.id)
+            .ok_or_else(|| renox::anyhow::anyhow!("demo seed: the lines of Al Noor's order"))?;
+        for (delivery, units, refused, reason, tracking, days_ago, verdict) in [
+            (
+                2,
+                150,
+                12,
+                "printing out of register",
+                "AWB-77188",
+                9,
+                "pass",
+            ),
+            (3, 100, 8, "boxes arrived wet", "AWB-77201", 6, "fail"),
+        ] {
+            let sent = self
+                .dispatch("noor", "noor", &[("BOX-RTL", units, lid_line)])
+                .await?;
+            self.leave(&sent, tracking, days_ago).await?;
+            self.came_back(&sent, delivery, units, refused, reason)
+                .await?;
+            let found = ReturnInspection::query()
+                .where_(ReturnInspection::DISPATCH_ID.eq(sent.id))
+                .first(self.db())
+                .await?
+                .ok_or_else(|| renox::anyhow::anyhow!("demo seed: the inspection of {tracking}"))?;
+            let (action, form): (&str, Vec<(&str, &str)>) = if verdict == "pass" {
+                ("pass", vec![("note", "Reprinted labels checked, released")])
+            } else {
+                ("fail", vec![("defect", "Water damage to the board")])
+            };
+            self.driver
+                .post(
+                    QC_EMAIL,
+                    &format!("/manufacturing/inspections/{}/{action}", found.id),
+                    &form,
+                )
+                .await?;
+        }
         Ok(())
     }
 }

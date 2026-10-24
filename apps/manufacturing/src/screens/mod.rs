@@ -96,6 +96,84 @@ pub(crate) const VIEWS: &[(&str, &str)] = &[
     ),
 ];
 
+/// `ids`, or `-1` when none: a query on no row.
+pub(crate) fn ids_or_none(mut ids: Vec<i64>) -> Vec<i64> {
+    if ids.is_empty() {
+        ids.push(-1);
+    }
+    ids
+}
+
+/// The export file when the request asks for one; refused for a person who
+/// may not export.
+pub(crate) async fn exported<M: Model + serde::Serialize>(
+    grid: &renox::grid::Grid,
+    query: &renox::db::Query<M>,
+    request: &renox::grid::GridRequest,
+    can_export: bool,
+) -> Result<Option<Response>> {
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    grid.export(query.clone(), request).await
+}
+
+/// The item's code and name as two hidden columns the search looks in (the
+/// stock module's items table; the item itself is drawn by the template from
+/// the stock contract). `foreign_key` is the model's item column; `unit` adds the item's unit beside the quantities.
+pub(crate) fn with_item_search(
+    grid: renox::grid::Grid,
+    lang: &Lang,
+    foreign_key: &str,
+    unit: bool,
+) -> renox::grid::Grid {
+    use renox::grid::Column;
+    let grid = if unit {
+        grid.column(Column::related(
+            "unit",
+            &t(lang, "manufacturing.screen.fact.unit"),
+            "wl_inventory_items",
+            foreign_key,
+            "base_unit",
+        ))
+    } else {
+        grid
+    };
+    grid.column(
+        Column::related(
+            "item_code",
+            &t(lang, "manufacturing.screen.fact.item_code"),
+            "wl_inventory_items",
+            foreign_key,
+            "code",
+        )
+        .hidden()
+        .searchable(),
+    )
+    .column(
+        Column::related(
+            "item_name",
+            &t(lang, "manufacturing.screen.fact.item_name"),
+            "wl_inventory_items",
+            foreign_key,
+            "name_en",
+        )
+        .hidden()
+        .searchable(),
+    )
+}
+
+/// Whether `user` may open a dispatch's page: wl-inventory answers 403 unless
+/// the person holds `stock.view` or `dispatch.manage` in the scope of the
+/// dispatch's location, which a role held for a plant only (the QC inspector)
+/// or none at all (the accountant) does not. A list then names the dispatch
+/// as plain text instead of a link that ends in a 403.
+pub(crate) fn may_open_dispatch(user: &AuthUser) -> bool {
+    ["stock.view", "dispatch.manage"]
+        .iter()
+        .any(|permission| user.has_permission(permission))
+}
+
 /// A date as `01 Nov 2026`.
 pub(crate) fn date_text(date: NaiveDate) -> String {
     date.format("%d %b %Y").to_string()

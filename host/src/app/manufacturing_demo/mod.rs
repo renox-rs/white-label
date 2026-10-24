@@ -45,6 +45,7 @@ use super::roles::{
 use super::seed::PASSWORD;
 
 mod floor;
+mod more;
 mod orders;
 mod quality;
 mod screens;
@@ -372,6 +373,7 @@ impl Seed {
         self.work().await?;
         self.shipping().await?;
         self.quality().await?;
+        self.more().await?;
         renox::audit::record(
             self.db(),
             renox::audit::Entry::new(DONE_ACTION).subject(MARKER_SUBJECT, 1),
