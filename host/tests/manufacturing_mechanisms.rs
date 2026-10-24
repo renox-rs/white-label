@@ -24,7 +24,9 @@ use wl_inventory::supplier_review::{self, SupplierReview};
 use wl_inventory::supplier_score::{Figures, ScoreBand, band_of, score_of};
 use wl_invoicing::BillLineDraft;
 use wl_invoicing::bill_submit;
+use wl_invoicing::budget_category::BudgetKind;
 use wl_invoicing::budget_lines::{self, LineInput, NewBudget};
+use wl_invoicing::budget_report::{self, ReportQuery};
 use wl_invoicing::credit_notes::By;
 use wl_invoicing::supplier_bill::{self, BillDraft};
 use wl_invoicing::{
@@ -36,7 +38,7 @@ use wl_kernel::cheques::{ChequeStatus, RegisterCheque, cheques};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::VatCategory;
 use wl_kernel::tickets::task_creator;
-use wl_payments::Cheque;
+use wl_payments::{Cheque, ChequeReturn};
 use wl_sales::customer_account::{self, CustomerAccount, Terms};
 use wl_sales::{SalesOrder, SalesOrderStatus};
 
@@ -198,7 +200,28 @@ async fn a_bounced_cheque_holds_the_account_and_a_third_presentation_is_refused(
         )
     };
     act("deposit", vec![]).await.assert_ok();
+    let invoices = wl_invoicing::Invoice::query().count(app.db()).await.unwrap();
     bounce().await.assert_ok();
+
+    // `SAL.RUL.05` with no bounce fee in 07: nothing is charged or invoiced
+    // for the bounce, on the cheque, on its return or in the invoices.
+    let bounced = Cheque::find_or_404(app.db(), id).await.unwrap();
+    assert_eq!(bounced.status, ChequeStatus::Bounced);
+    assert_eq!(bounced.bounce_fee_total, 0, "no bounce fee on the cheque");
+    let returns = ChequeReturn::query()
+        .where_(ChequeReturn::CHEQUE_ID.eq(id))
+        .get(app.db())
+        .await
+        .unwrap();
+    assert_eq!(returns.len(), 1, "the return is recorded");
+    assert_eq!(returns[0].fee_amount, 0);
+    assert!(returns[0].fee_charge_type.is_none());
+    assert!(returns[0].fee_subject_id.is_none(), "no charge was made");
+    assert_eq!(
+        wl_invoicing::Invoice::query().count(app.db()).await.unwrap(),
+        invoices,
+        "no invoice for a bounce fee"
+    );
 
     let account = CustomerAccount::of_party(app.db(), customer.0)
         .await
@@ -238,6 +261,12 @@ const VARIANCE: &str = "invoicing.budget_variance";
 /// A draft budget of EPI for this year with `amount` fils for the category
 /// `code` in the current month, prepared by `by`.
 async fn draft_budget(app: &TestApp, by: &User, code: &str, amount: i64) -> CompanyBudget {
+    draft_budget_lines(app, by, &[(code, amount)]).await
+}
+
+/// A draft budget of EPI for this year with the `(category code, fils)` lines
+/// in the current month, prepared by `by`.
+async fn draft_budget_lines(app: &TestApp, by: &User, lines: &[(&str, i64)]) -> CompanyBudget {
     let entity = entity(app, "EPI").await;
     let budget = budget_lines::create(
         app.state(),
@@ -252,23 +281,23 @@ async fn draft_budget(app: &TestApp, by: &User, code: &str, amount: i64) -> Comp
     )
     .await
     .expect("the draft is made");
-    let category = BudgetCategory::by_code(app.db(), code)
-        .await
-        .unwrap()
-        .unwrap_or_else(|| panic!("the category {code}"));
     let month = budget.months()[today().month0() as usize];
-    budget_lines::set_lines(
-        app.db(),
-        budget.id,
-        &[LineInput {
+    let mut inputs = Vec::new();
+    for (code, amount) in lines {
+        let category = BudgetCategory::by_code(app.db(), code)
+            .await
+            .unwrap()
+            .unwrap_or_else(|| panic!("the category {code}"));
+        inputs.push(LineInput {
             category_id: category.id,
             month,
-            amount,
+            amount: *amount,
             note: None,
-        }],
-    )
-    .await
-    .expect("the line is set");
+        });
+    }
+    budget_lines::set_lines(app.db(), budget.id, &inputs)
+        .await
+        .expect("the lines are set");
     budget
 }
 
@@ -281,6 +310,18 @@ async fn approved_budget(
     amount: i64,
 ) -> CompanyBudget {
     let budget = draft_budget(app, by, code, amount).await;
+    approve_draft(app, by, &[], approver, budget).await
+}
+
+/// Submits the draft as `by`; neither `by` nor any of `refused` may approve
+/// it, `approver` does.
+async fn approve_draft(
+    app: &TestApp,
+    by: &User,
+    refused: &[&User],
+    approver: &User,
+    budget: CompanyBudget,
+) -> CompanyBudget {
     app.acting_as(by);
     app.htmx()
         .post(&format!("/budgets/{}/submit", budget.id), &[])
@@ -296,6 +337,15 @@ async fn approved_budget(
             .is_err(),
         "the preparer cannot approve their own budget"
     );
+    for other in refused {
+        assert!(
+            approvals::approve(app.state(), pending[0].id, other, "")
+                .await
+                .is_err(),
+            "{} does not hold the approval of a budget",
+            other.name
+        );
+    }
     approvals::approve(app.state(), pending[0].id, approver, "")
         .await
         .unwrap()
@@ -468,6 +518,90 @@ async fn an_owner_drawing_is_never_approved_by_the_person_who_recorded_it() {
         (done.status, done.approved_by),
         (DrawingStatus::Approved, Some(osman.id))
     );
+}
+
+/// `FIN.BUD.01` and `FIN.ACL.21` with the 07 values, through the report: the
+/// budget the accountant prepares is approved by the owner and not by another
+/// accountant; an approved owner drawing is in the drawings of the budget
+/// report and never in the expense or the operating result, while the rent
+/// bill is; the result after drawings takes the drawing off.
+#[renox::test]
+async fn owner_drawings_stay_out_of_the_operating_result_and_the_budget_is_the_owners_to_approve()
+{
+    let app = manufacturing_booted().await;
+    let amal = person(&app, "Amal", ACCOUNTANT).await;
+    let bilal = person(&app, "Bilal", ACCOUNTANT).await;
+    let omar = person(&app, "Omar", OWNER).await;
+    let vendor = company(&app, "Dubai Utilities LLC").await;
+    let code = wl_parties::Party::find_or_404(app.db(), vendor.0)
+        .await
+        .unwrap()
+        .code;
+    let budget = draft_budget_lines(
+        &app,
+        &amal,
+        &[("rent_utilities", 500_000), ("owner_drawings", 300_000)],
+    )
+    .await;
+    let budget = approve_draft(&app, &amal, &[&bilal], &omar, budget).await;
+    assert_eq!(budget.approved_by, Some(omar.id), "the owner approved it");
+
+    let rent = bill(&app, &amal, &code, "UT-1", "1000", "utilities").await;
+    approve_bill(&app, &bilal, &rent).await;
+    let drawing = bill(&app, &amal, &code, "VD-1", "2000", "owner_drawings").await;
+    let request = DrawingApproval::for_source(app.db(), &drawing.subject())
+        .await
+        .unwrap()
+        .remove(0)
+        .approval_request_id
+        .expect("an approval request");
+    approvals::approve(app.state(), request, &omar, "")
+        .await
+        .unwrap()
+        .expect("the owner approves the drawing");
+    approve_bill(&app, &bilal, &drawing).await;
+
+    let config = app
+        .state()
+        .provided::<wl_invoicing::InvoicingConfig>()
+        .expect("the invoicing settings");
+    let epi = entity(&app, "EPI").await;
+    let report = budget_report::build(
+        app.db(),
+        &config,
+        &ReportQuery {
+            entities: vec![epi.id],
+            month: today(),
+            ytd: false,
+            drawings_lines: true,
+            uncategorised: "Uncategorised".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let (drawings_budget, drawings_actual) = report.drawings_total();
+    assert_eq!(drawings_budget, 300_000);
+    assert_eq!(
+        drawings_actual, 210_000,
+        "the drawing is on its own line with its VAT, which is not recovered"
+    );
+    assert!(
+        report.expense.iter().all(|r| r.kind == BudgetKind::Expense),
+        "no drawing row among the expenses"
+    );
+    let (expense_budget, expense_actual) = report.expense_total();
+    assert_eq!(expense_budget, 500_000);
+    assert_eq!(
+        expense_actual, 100_000,
+        "only the rent bill, VAT recovered, is an expense"
+    );
+    assert_eq!(
+        report.operating(),
+        (-500_000, -100_000),
+        "the operating result leaves the drawing out"
+    );
+    assert_eq!(report.after_drawings(), (-800_000, -310_000));
+    assert_eq!(report.drawings_items.len(), 1, "the owner sees its lines");
 }
 
 // -------------------------------------------------------- supplier scorecard
