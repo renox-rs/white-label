@@ -127,5 +127,6 @@
       <rx-column :label="tx['fields.status']">{{ row.status }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['enrolments.no_certificates']" icon="award"/></rx-slot>
     </rx-table>
+    <div id="related-panel" hx-get="/related/edtech.enrolment:{{ id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

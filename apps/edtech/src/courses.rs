@@ -126,6 +126,11 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewCourse) -> Result<C
         ..Course::default()
     };
     course.save(&state.db).await?;
+    crate::search::index(
+        &state.db,
+        &wl_kernel::Subject::new(crate::seed::COURSE_SUBJECT_TYPE, course.id),
+    )
+    .await?;
     Ok(course)
 }
 
@@ -152,5 +157,10 @@ pub async fn record_approval(
     course.approval_required = true;
     course.approval_no = Some(number.to_owned());
     course.save(&state.db).await?;
+    crate::search::index(
+        &state.db,
+        &wl_kernel::Subject::new(crate::seed::COURSE_SUBJECT_TYPE, course.id),
+    )
+    .await?;
     Ok(course)
 }

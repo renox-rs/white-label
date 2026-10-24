@@ -86,5 +86,6 @@
       <rx-column :label="tx['sessions.flag_column']" hide-narrow>{{ row.flag }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['batches.no_sessions']" icon="calendar-days"/></rx-slot>
     </rx-table>
+    <div id="related-panel" hx-get="/related/edtech.batch:{{ id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

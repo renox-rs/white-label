@@ -405,6 +405,11 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewEnrolment) -> Resul
     enrolment
         .insert_in_state(&mut tx, EnrolmentStatus::PendingPayment, "create")
         .await?;
+    wl_kernel::search::index_in(
+        &mut tx,
+        &wl_kernel::Subject::new(crate::enrolment::ENROLMENT_SUBJECT_TYPE, enrolment.id),
+    )
+    .await?;
     tx.commit().await?;
     fees::raise(state, &enrolment).await
 }

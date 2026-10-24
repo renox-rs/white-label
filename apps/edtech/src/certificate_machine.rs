@@ -245,6 +245,11 @@ fn reissue() -> Transition<Certificate> {
                     ..Certificate::default()
                 };
                 draft.insert(&mut *tx).await?;
+                wl_kernel::search::index_in(
+                    &mut *tx,
+                    &wl_kernel::Subject::new(crate::certificate::CERTIFICATE_SUBJECT_TYPE, draft.id),
+                )
+                .await?;
                 set(tx, c.id, &[("reissue_reason", &reason)]).await
             })
         })

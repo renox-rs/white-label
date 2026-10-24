@@ -42,6 +42,7 @@ pub mod plan;
 pub mod reasons;
 pub mod refund;
 pub mod roster;
+pub mod search;
 pub mod seats;
 pub mod seed;
 pub mod session;
@@ -173,6 +174,9 @@ impl Module for EdTech {
     }
 
     fn register(&self, app: &mut Registry) {
+        // The records in the global search and the Related panel (BL-AGT-13).
+        search::register();
+        search::listen(app);
         app.view_data::<pages::courses::IndexPage>()
             .view_data::<pages::batches::IndexPage>()
             .view_data::<pages::batches::ShowPage>()

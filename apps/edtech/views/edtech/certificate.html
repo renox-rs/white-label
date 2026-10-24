@@ -47,5 +47,6 @@
         <rx-entry :label="tx['certificates.copies']" :value="copies"/>
       </rx-infolist>
     </rx-card>
+    <div id="related-panel" hx-get="/related/edtech.certificate:{{ id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

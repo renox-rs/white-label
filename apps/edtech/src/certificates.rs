@@ -111,6 +111,11 @@ pub async fn evaluate(state: &AppState, enrolment: &Enrolment) -> Result<Option<
         ..Certificate::default()
     };
     draft.save(&state.db).await?;
+    crate::search::index(
+        &state.db,
+        &wl_kernel::Subject::new(crate::certificate::CERTIFICATE_SUBJECT_TYPE, draft.id),
+    )
+    .await?;
     Ok(Some(draft))
 }
 

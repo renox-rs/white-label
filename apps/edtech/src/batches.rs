@@ -193,6 +193,11 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewBatch) -> Result<Ba
         };
         tutors::record_batch(&mut tx, batch.id, &tutor, batch.start_date, Some(by.id)).await?;
     }
+    wl_kernel::search::index_in(
+        &mut tx,
+        &wl_kernel::Subject::new(crate::batch::BATCH_SUBJECT_TYPE, batch.id),
+    )
+    .await?;
     tx.commit().await?;
     Ok(batch)
 }
