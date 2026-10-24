@@ -114,11 +114,11 @@ async fn a_pending_renewal_is_named_and_comes_first_in_the_queue() {
     let renewal = t.attach(ravi(), "residence_visa", Some(day(400))).await;
     assert_eq!(renewal.status, DocumentStatus::PendingReview);
     assert!(renewal.review_priority_at.is_none());
-
+    // The row cells (`>Name<`), not the kind filter's options above the rows.
     let queue = |body: &str| {
-        let visa = body.find("Residence visa").expect("the renewal is listed");
+        let visa = body.find(">Residence visa<").expect("the renewal is listed");
         let licence = body
-            .find("Driving licence")
+            .find(">Driving licence<")
             .expect("the older one is listed");
         (visa, licence)
     };
