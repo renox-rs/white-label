@@ -618,6 +618,16 @@ impl InvoiceBook {
             chasing_paused_until: None,
         });
     }
+
+    /// Sets or clears the `disputed` flag of the invoice numbered `number`.
+    pub fn set_disputed(&self, number: &str, disputed: bool) {
+        let mut all = self.0.lock().unwrap();
+        for invoice in all.iter_mut() {
+            if invoice.number.as_deref() == Some(number) {
+                invoice.disputed = disputed;
+            }
+        }
+    }
 }
 
 impl Invoicer for InvoiceBook {
@@ -657,6 +667,23 @@ impl Invoicer for InvoiceBook {
             .filter(|i| i.party == party && i.status == InvoiceStatus::Overdue)
             .cloned()
             .collect();
+        Box::pin(async move { Ok(found) })
+    }
+
+    fn open_of<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+    ) -> InvoiceFuture<'a, Vec<InvoiceSummary>> {
+        let mut found: Vec<InvoiceSummary> = self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|i| i.party == party && i.status.is_open() && i.balance > 0)
+            .cloned()
+            .collect();
+        found.sort_by_key(|i| (i.due_date, i.id));
         Box::pin(async move { Ok(found) })
     }
 }

@@ -1752,6 +1752,15 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.request_lists.state.not_delivered",
         "Notice not delivered",
     ),
+    // `ACC.RUL.07` (BL-ACC-22).
+    (
+        "accounting.overdue_suspension.notice_subject",
+        "Engagement suspended for non-payment",
+    ),
+    (
+        "accounting.overdue_suspension.notice_body",
+        "Engagement {{ number }} was suspended for non-payment: invoice {{ invoice }}, due {{ due }}, still has {{ balance }} open after {{ days }} days. {{ link }}",
+    ),
 ];
 
 /// Whether the app has a text for `key`.

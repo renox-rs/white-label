@@ -26,6 +26,7 @@ pub mod kpi_machine;
 pub mod kpi_packs;
 pub mod kyc_updates;
 pub mod letters;
+pub mod overdue_suspension;
 pub mod pages;
 pub mod permissions;
 pub mod portal;
@@ -38,6 +39,7 @@ pub mod return_machine;
 pub mod returns;
 pub mod screening;
 pub mod seed;
+pub mod settings;
 pub mod suspension;
 pub mod tasks;
 pub mod tax_profile;
@@ -192,7 +194,8 @@ impl Module for Accounting {
             .model::<WipWriteOff>()
             .model::<KpiPack>()
             .model::<KpiFigure>()
-            .model::<KpiMapping>();
+            .model::<KpiMapping>()
+            .model::<settings::AccountingSetting>();
         engagement_machine::register();
         return_machine::register();
         // `ACC.ACL.13`: a tax profile change waits for another manager.
@@ -233,6 +236,10 @@ impl Module for Accounting {
         // A voluntary disclosure whose task was lost after the commit is
         // opened by the daily catch-up (BL-ACC-18).
         corrections::register(app);
+        // `ACC.RUL.07`: an invoice overdue by 60 days suspends the
+        // engagement, never a disputed one; off until the firm turns it on
+        // (BL-ACC-22).
+        overdue_suspension::register(app);
         // In the app group of the staff sidebar; the label is the host's
         // `nav.engagements` text.
         app.nav(
