@@ -460,7 +460,7 @@ pub struct RenderJob {
     /// The Arabic footer.
     pub footer_ar: Option<String>,
     /// The provider's values.
-    pub values: serde_json::Value,
+    pub values: renox::serde_json::Value,
     /// The client's branding.
     pub brand: BrandAssets,
 }
@@ -506,9 +506,9 @@ fn renderer(state: &AppState) -> Arc<dyn PdfRenderer> {
 
 /// `value` as text with its object keys sorted, so equal data hashes
 /// equally whatever order the provider built it in.
-fn canonical(value: &serde_json::Value) -> String {
+fn canonical(value: &renox::serde_json::Value) -> String {
     match value {
-        serde_json::Value::Object(map) => {
+        renox::serde_json::Value::Object(map) => {
             let mut keys: Vec<&String> = map.keys().collect();
             keys.sort();
             let fields: Vec<String> = keys
@@ -516,14 +516,14 @@ fn canonical(value: &serde_json::Value) -> String {
                 .map(|key| {
                     format!(
                         "{}:{}",
-                        serde_json::Value::String(key.clone()),
+                        renox::serde_json::Value::String(key.clone()),
                         canonical(&map[key.as_str()])
                     )
                 })
                 .collect();
             format!("{{{}}}", fields.join(","))
         }
-        serde_json::Value::Array(items) => {
+        renox::serde_json::Value::Array(items) => {
             let items: Vec<String> = items.iter().map(canonical).collect();
             format!("[{}]", items.join(","))
         }
@@ -532,12 +532,12 @@ fn canonical(value: &serde_json::Value) -> String {
 }
 
 /// The data hash of a generation: the canonical values and the language.
-pub fn data_hash(values: &serde_json::Value, mode: LanguageMode) -> String {
+pub fn data_hash(values: &renox::serde_json::Value, mode: LanguageMode) -> String {
     sha256_hex(format!("{}|{}", canonical(values), mode.as_str()).as_bytes())
 }
 
 /// Fills `body` with the context; an unknown field is an error.
-fn fill(body: &str, context: &serde_json::Value) -> std::result::Result<String, RenderError> {
+fn fill(body: &str, context: &renox::serde_json::Value) -> std::result::Result<String, RenderError> {
     if body.trim().is_empty() {
         return Ok(String::new());
     }

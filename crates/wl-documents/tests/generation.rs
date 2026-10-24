@@ -31,9 +31,9 @@ const LOGO: &[u8] = &[
 ];
 
 /// The test statements' data, per subject id: each test uses its own ids.
-static STATEMENTS: Mutex<BTreeMap<i64, serde_json::Value>> = Mutex::new(BTreeMap::new());
+static STATEMENTS: Mutex<BTreeMap<i64, renox::serde_json::Value>> = Mutex::new(BTreeMap::new());
 
-fn set_statement(id: i64, values: serde_json::Value) {
+fn set_statement(id: i64, values: renox::serde_json::Value) {
     STATEMENTS
         .lock()
         .unwrap_or_else(PoisonError::into_inner)

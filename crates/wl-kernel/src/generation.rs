@@ -90,7 +90,7 @@ impl fmt::Display for LanguageMode {
 #[non_exhaustive]
 pub struct GenerationData {
     /// The values the template reads (`{{ data.period }}`), a JSON object.
-    pub values: serde_json::Value,
+    pub values: renox::serde_json::Value,
     /// The legal entity that issues the document: its number series (when
     /// per entity), names and footer.
     pub entity_id: Option<i64>,
@@ -100,7 +100,7 @@ pub struct GenerationData {
 
 impl GenerationData {
     /// `values` (a JSON object) and nothing else.
-    pub fn new(values: serde_json::Value) -> Self {
+    pub fn new(values: renox::serde_json::Value) -> Self {
         GenerationData {
             values,
             entity_id: None,
