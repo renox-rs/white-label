@@ -502,6 +502,76 @@ pub async fn record_arrival(
     Ok(())
 }
 
+/// The subject type of the late entry of a goods receipt: the key of the
+/// limits M and N (`PLT.ACL.10`).
+pub const LATE_SUBJECT_TYPE: &str = "inventory.goods_receipt";
+
+/// Registers the receipt with the kernel's late-entry check: the arrival day
+/// of a draft receipt is its business time.
+pub(crate) fn register_late_entry() {
+    use wl_kernel::late_entries::LateEntryDef;
+    LateEntryDef::of(LATE_SUBJECT_TYPE, |tx, new| {
+        Box::pin(async move {
+            let id = new.existing.ok_or(Error::NotFound)?;
+            let receipt = GoodsReceipt::find(&mut *tx, id)
+                .await?
+                .ok_or(Error::NotFound)?;
+            if receipt.status != GoodsReceiptStatus::Draft {
+                return Err(Error::Status(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    said("wl_inventory.receipt.not_draft", &[]),
+                ));
+            }
+            GoodsReceipt::query()
+                .where_(GoodsReceipt::ID.eq(id))
+                .update(
+                    &mut *tx,
+                    &[
+                        ("arrived_at", &Some(new.occurred_at)),
+                        ("late_entry", &new.late),
+                    ],
+                )
+                .await?;
+            Ok(id)
+        })
+    })
+    .business_time("arrived_at")
+    .register();
+}
+
+/// Enters the arrival time of the draft receipt `receipt_id` through the
+/// kernel's late-entry check with the limits of [`LATE_SUBJECT_TYPE`]: more
+/// than M minutes before now it needs a `reason` and is flagged; more than N
+/// hours before now it waits for a holder of `late_entries.approve`, and the
+/// receipt keeps its old arrival time until then.
+///
+/// # Errors
+///
+/// 422 unless the receipt is a draft, when the entry is late and has no
+/// reason, or when no approval policy is active for one that needs it.
+pub async fn enter_arrival(
+    state: &AppState,
+    user_id: i64,
+    receipt_id: i64,
+    arrived_at: DateTime,
+    reason: Option<&str>,
+) -> Result<wl_kernel::late_entries::Entered> {
+    let receipt = GoodsReceipt::find_or_404(&state.db, receipt_id).await?;
+    if receipt.status != GoodsReceiptStatus::Draft {
+        return Err(Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            said("wl_inventory.receipt.not_draft", &[]),
+        ));
+    }
+    let mut spec = wl_kernel::late_entries::EntrySpec::new(LATE_SUBJECT_TYPE, user_id, arrived_at)
+        .existing(receipt_id)
+        .parent(Subject::new(GOODS_RECEIPT_SUBJECT_TYPE, receipt_id));
+    if let Some(reason) = reason {
+        spec = spec.reason(reason);
+    }
+    wl_kernel::late_entries::enter(state, spec).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

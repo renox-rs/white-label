@@ -48,7 +48,11 @@ pub use app::logistics_seed;
 pub use app::logistics_settings;
 pub use app::manpower_demo;
 pub use app::manpower_seed;
+pub use app::manufacturing_demo;
+pub use app::manufacturing_seed;
+pub use app::manufacturing_settings;
 pub use app::negative_flow::{delivery_for, invoicing_for, payments_for};
+pub use app::property_seed::sales_for;
 pub use app::roles;
 
 use wl_invoicing::WlInvoicing;
@@ -95,6 +99,7 @@ pub const DEMO_COMMANDS: &[&str] = &[
     app::clinics_demo::COMMAND,
     app::fnb_demo::COMMAND,
     app::edtech_demo::COMMAND,
+    app::manufacturing_demo::COMMAND,
 ];
 
 /// The refusal for `command` when `app_env` is a production environment.
@@ -211,6 +216,10 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     app::edtech_settings::grant_roles(&client_app);
     app::logistics_seed::register_integrations(&client_app);
     app::logistics_rules::register_critical(&client_app);
+    // `MFG.RUL.08` is compliance-critical for a manufacturer (BL-MFG-12).
+    app::manufacturing_seed::register_critical(&client_app);
+    // The storekeeper and the supervisor open the tasks of 07 (BL-MFG-14).
+    app::manufacturing_seed::grant_roles(&client_app);
     app::negative_flow::register_approvals(&client_app);
     // What a client user of an accounting firm sees of its engagements.
     app::accounting_portal::register(&client_app);
@@ -289,6 +298,16 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
         app = app.module(app::fnb_seed::FnbSeed);
         app = app.module(app::fnb_demo::FnbDemo);
     }
+    // The Manufacturing client's late-entry limits, lead sources, onboarding
+    // checklists and SOP library (BL-MFG-14).
+    if client_app == app::manufacturing_seed::MANUFACTURING {
+        app = app.module(app::manufacturing_seed::ManufacturingSeed);
+        // The demo company, after the installs: `manufacturing:demo`, and
+        // `db:seed` in local (never in production).
+        app = app.module(app::manufacturing_demo::ManufacturingDemo::new(
+            demo_client.clone(),
+        ));
+    }
     // The page that shows the shared modules' settings of this client.
     let app = app
         .module(app::negative_flow::NegativeFlow::new(&client_app, entities))
@@ -328,6 +347,7 @@ pub const VERTICALS: &[&str] = &[
     "construction",
     "clinics",
     "manpower",
+    "manufacturing",
     "logistics",
     "fnb",
     "edtech",
@@ -337,7 +357,7 @@ pub const VERTICALS: &[&str] = &[
 /// The refusal of a vertical app that is not built.
 fn unbuilt_vertical(name: &str) -> ConfigError {
     ConfigError(format!(
-        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction`, `clinics`, `manpower`, `logistics`, `fnb`, `edtech` and `auto`"
+        "[client] app `{name}` is not built yet; the apps built are `property`, `accounting`, `construction`, `clinics`, `manpower`, `manufacturing`, `logistics`, `fnb`, `edtech` and `auto`"
     ))
 }
 
@@ -359,6 +379,7 @@ fn mount_vertical(app: renox::App, name: &str) -> Result<renox::App, ConfigError
         "construction" => Ok(app.module(construction::Construction)),
         "clinics" => Ok(app.module(clinics::Clinics)),
         "manpower" => Ok(app.module(manpower::Manpower)),
+        "manufacturing" => Ok(app.module(manufacturing::Manufacturing)),
         "logistics" => Ok(app.module(logistics::Logistics)),
         "fnb" => Ok(app.module(app::fnb_seed::module())),
         "edtech" => Ok(app.module(edtech::EdTech)),
@@ -393,6 +414,7 @@ fn enable(
             if client_app == app::manpower_seed::MANPOWER {
                 app::manpower_seed::register_documents();
             }
+            app::manufacturing_seed::register_documents(client_app);
             Ok(app.module(wl_documents::WlDocuments))
         }
         "notify" => {
@@ -437,6 +459,8 @@ fn enable(
                     app::auto_money::inventory(module)
                 } else if client_app == app::fnb_seed::FNB {
                     app::fnb_seed::inventory_for(client_app, module)
+                } else if client_app == app::manufacturing_seed::MANUFACTURING {
+                    app::manufacturing_seed::inventory(module)
                 } else {
                     app::clinics_money::inventory(client_app, module)
                 }),

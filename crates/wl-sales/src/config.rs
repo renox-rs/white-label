@@ -57,6 +57,14 @@ pub const DEFAULT_PROGRAMME_NOTICE_DAYS: i64 = 30;
 /// The days members can redeem after the programme is turned off (§7: 90).
 pub const DEFAULT_PROGRAMME_CLOSING_DAYS: i64 = 90;
 
+/// The days past terms before an overdue invoice fails the credit check
+/// (`SAL.ACL.03`, §7: 30).
+pub const DEFAULT_CREDIT_GRACE_DAYS: i64 = 30;
+
+/// The role told of a credit hold next to the customer's sales rep
+/// (`SAL.RUL.01`).
+pub const DEFAULT_ACCOUNTANT_ROLE: &str = "accountant";
+
 /// The lost reasons a lead can be closed with (§7: the starter list, always
 /// with *duplicate* and *spam or invalid*).
 pub const DEFAULT_LOST_REASONS: &[&str] = &[
@@ -197,6 +205,34 @@ pub struct SalesConfig {
     /// The days after the programme is turned off that points can still be
     /// redeemed.
     pub programme_closing_days: i64,
+    /// Whether orders on account are credit-checked at all (`SAL.CRD.01`).
+    pub credit_check: bool,
+    /// The days past terms before an overdue invoice fails the check (§7:
+    /// 30); an account may set its own.
+    pub credit_grace_days: i64,
+    /// Whether an invoice overdue beyond the grace days holds the order
+    /// (§7 *hold on overdue*).
+    pub hold_on_overdue: bool,
+    /// Whether an exposure above the limit holds the order (§7 *hold on
+    /// limit*).
+    pub hold_on_limit: bool,
+    /// Whether each dispatch of an order on account is credit-checked again
+    /// (§7: on).
+    pub credit_recheck_at_dispatch: bool,
+    /// Whether a bounced cheque holds the whole credit group (`SAL.RUL.05`,
+    /// §7: on).
+    pub bounced_cheque_hold_group: bool,
+    /// Whether the same customer PO number (with its call-off number) may
+    /// not be used twice for a customer (§7: off; 07: on).
+    pub unique_customer_po: bool,
+    /// Whether the invoice is drafted on delivery for the quantities the
+    /// customer accepted and kept up to date as deliveries come and go
+    /// (§5.2 step 4; default off: drafted when the order is fulfilled; 07
+    /// turns it on).
+    pub invoice_on_delivery: bool,
+    /// The role told (mail and task) when an order goes on credit hold,
+    /// with the sales rep (`SAL.RUL.01`); the company admin when empty.
+    pub accountant_role: String,
     /// The order channels whose lines without stock are back-ordered
     /// (§7 *Back-orders allowed per channel*). Empty: none.
     pub back_order_channels: Vec<String>,
@@ -217,9 +253,6 @@ pub struct SalesConfig {
     /// The hours a payment link of an increase lasts outside the website and
     /// the portal.
     pub amend_link_hours: i64,
-    /// The role told when an order goes on credit hold (`SAL.RUL.01`); the
-    /// company admin when empty.
-    pub accountant_role: String,
     /// The role that owns the orders of the channels that are not website or
     /// portal (the sales rep); the company admin when empty.
     pub sales_rep_role: String,
@@ -283,6 +316,15 @@ impl Default for SalesConfig {
             segment_clinical_rules: false,
             programme_notice_days: DEFAULT_PROGRAMME_NOTICE_DAYS,
             programme_closing_days: DEFAULT_PROGRAMME_CLOSING_DAYS,
+            credit_check: true,
+            credit_grace_days: DEFAULT_CREDIT_GRACE_DAYS,
+            hold_on_overdue: true,
+            hold_on_limit: true,
+            credit_recheck_at_dispatch: true,
+            bounced_cheque_hold_group: true,
+            unique_customer_po: false,
+            invoice_on_delivery: false,
+            accountant_role: DEFAULT_ACCOUNTANT_ROLE.to_owned(),
             back_order_channels: Vec::new(),
             unique_external_order_number: true,
             online_payment_window_minutes: DEFAULT_ONLINE_PAYMENT_WINDOW_MINUTES,
@@ -293,7 +335,6 @@ impl Default for SalesConfig {
                 .collect(),
             manual_discount_limit_bps: DEFAULT_MANUAL_DISCOUNT_LIMIT_BPS,
             amend_link_hours: DEFAULT_AMEND_LINK_HOURS,
-            accountant_role: String::new(),
             sales_rep_role: String::new(),
             cancel_outcomes: DEFAULT_CANCEL_OUTCOMES
                 .iter()

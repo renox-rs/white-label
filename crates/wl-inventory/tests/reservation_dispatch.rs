@@ -36,8 +36,10 @@ async fn pick(
         NewDispatch {
             location_id: location.id,
             source: order(id),
-            recipient_party_id: Some(1),
-            lines: vec![NewDispatchLine::of(item.id, quantity_milli, line)],
+            recipient: Some(wl_kernel::PartyId(1)),
+            recipient_name: "Customer".to_owned(),
+            address: String::new(),
+            lines: vec![NewDispatchLine::of(item.id, quantity_milli).for_sale_line(line)],
         },
     )
     .await

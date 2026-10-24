@@ -49,13 +49,14 @@ use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError, Transitioned};
 use wl_kernel::documents::{dubai_date, today};
 use wl_kernel::inventory::{
-    LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE, LotTrace, RECALL_LINE_SUBJECT_TYPE,
-    RECALL_SUBJECT_TYPE, RecallTraced, TraceFuture, TraceParty, TracePartyResolver, TracedHolder,
-    TracedPlace, trace_party_resolver,
+    DISPATCH_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE, LotTrace,
+    RECALL_LINE_SUBJECT_TYPE, RECALL_SUBJECT_TYPE, RecallTraced, TraceFuture, TraceParty,
+    TracePartyResolver, TracedHolder, TracedPlace, TracedRecall, trace_party_resolver,
 };
 use wl_kernel::{PartyId, Subject};
 
 use crate::balance;
+use crate::dispatch::{Dispatch, DispatchLine, DispatchStatus};
 use crate::hold_service::{NewHold, NewScope, announce_added, announce_placed, place_in};
 use crate::lot::{self, Lot, LotStatus};
 use crate::movement::{MovementType, StockMovement};
@@ -115,7 +116,10 @@ fn subject_of(moved: &StockMovement) -> Option<Subject> {
         (Some(kind), Some(id)) => Some(Subject::new(kind, id)),
         _ => {
             let source = moved.source();
-            (source.module() != "inventory").then_some(source)
+            // A dispatch is a subject of its own; the other records of this
+            // module (a location, a count) name nobody.
+            (source.module() != "inventory" || source.subject_type == DISPATCH_SUBJECT_TYPE)
+                .then_some(source)
         }
     }
 }
@@ -263,6 +267,14 @@ impl<'a> Collector<'a> {
     ) -> Result {
         let on = dubai_date(at);
         let party = self.resolver.party(self.state, &subject).await?;
+        if party == TraceParty::NotAffected {
+            return Ok(());
+        }
+        // A production source is listed only when the vertical knows its
+        // party (07: the customer of an order not yet delivered).
+        if kind == LineKind::Production && !matches!(party, TraceParty::Party(_)) {
+            return Ok(());
+        }
         if party == TraceParty::WalkIn {
             let entry = self
                 .walk_in
@@ -276,6 +288,7 @@ impl<'a> Collector<'a> {
             LineKind::Uncertain => format!("u:{subject}"),
             LineKind::Possible => format!("p:{subject}"),
             LineKind::Dispatch => format!("d:{subject}:{lot_id}"),
+            LineKind::Production => format!("o:{subject}:{lot_id}"),
             _ => format!("c:{subject}:{lot_id}"),
         };
         if let Some(found) = self.planned.get_mut(&key) {
@@ -283,11 +296,10 @@ impl<'a> Collector<'a> {
             found.on = found.on.min(Some(on));
             return Ok(());
         }
-        let delivery = if kind == LineKind::Dispatch {
-            self.resolver.delivery_status(self.state, &subject).await?
-        } else {
-            None
-        };
+        // The vertical may say a subject has not shipped (a work order still
+        // making the goods) as well as how a dispatch stands.
+        let delivery = self.resolver.delivery_status(self.state, &subject).await?;
+
         let party = match party {
             TraceParty::Party(PartyId(id)) => Some(id),
             _ => None,
@@ -457,6 +469,20 @@ async fn plan(state: &AppState, recall: &Recall) -> Result<Plan> {
                 continue;
             };
             if is_production(db, &moved.source()).await? {
+                // The work order itself gives the output lots and, when the
+                // vertical knows whose order it is, a line of its own.
+                if kind == LineKind::Confirmed {
+                    collector
+                        .add(
+                            LineKind::Production,
+                            subject,
+                            *lot_id,
+                            moved.from_location_id,
+                            moved.quantity_milli,
+                            moved.moved_at,
+                        )
+                        .await?;
+                }
                 continue;
             }
             // The posting of a pending issue is listed as uncertain below.
@@ -477,6 +503,34 @@ async fn plan(state: &AppState, recall: &Recall) -> Result<Plan> {
                     moved.from_location_id,
                     moved.quantity_milli,
                     moved.moved_at,
+                )
+                .await?;
+        }
+    }
+    // The dispatches that have not left yet and hold a lot in scope: the lot
+    // is held, so they cannot go; the vertical flags them for a re-pick.
+    for lot_id in &lots {
+        for line in DispatchLine::query()
+            .where_(DispatchLine::LOT_ID.eq(Some(*lot_id)))
+            .order_by(DispatchLine::ID)
+            .get(db)
+            .await?
+        {
+            let dispatch = Dispatch::find_or_404(db, line.dispatch_id).await?;
+            if !matches!(
+                dispatch.status,
+                DispatchStatus::Draft | DispatchStatus::Picked
+            ) {
+                continue;
+            }
+            collector
+                .add(
+                    LineKind::Dispatch,
+                    dispatch.subject(),
+                    *lot_id,
+                    Some(dispatch.location_id),
+                    line.quantity_milli,
+                    dispatch.picked_at.or(dispatch.created_at).unwrap_or(traced),
                 )
                 .await?;
         }
@@ -758,6 +812,21 @@ pub async fn trace(
                     )
                     .await?;
             }
+            Some(existing)
+                if found.kind != LineKind::WalkIn && existing.delivery_status != found.delivery =>
+            {
+                // A dispatch that left since the last run is *shipped* now.
+                RecallLine::query()
+                    .where_(RecallLine::ID.eq(existing.id))
+                    .update(
+                        &mut tx,
+                        &[
+                            ("delivery_status", &found.delivery),
+                            ("updated_at", &renox::db::now()),
+                        ],
+                    )
+                    .await?;
+            }
             Some(_) => {}
         }
     }
@@ -836,6 +905,24 @@ impl LotTrace for InventoryTrace {
                 return Ok(false);
             }
             crate::recall_notice::set_notice(state, line.subject_id, sent, by).await
+        })
+    }
+
+    fn recalls<'a>(&'a self, state: &'a AppState) -> TraceFuture<'a, Vec<TracedRecall>> {
+        Box::pin(async move {
+            Ok(Recall::query()
+                .order_by_desc(Recall::ID)
+                .get(&state.db)
+                .await?
+                .into_iter()
+                .map(|recall| TracedRecall {
+                    recall: recall.subject(),
+                    number: recall.number.clone().unwrap_or_default(),
+                    status: recall.status.as_str().to_owned(),
+                    reason: recall.reason.clone(),
+                    opened_on: recall.opened_at.map(dubai_date),
+                })
+                .collect())
         })
     }
 

@@ -42,10 +42,17 @@
 //!   share of the line before the discount; there is no price list yet, so
 //!   "below list" is not checked.
 //! - One request waits at a time per order and action.
+//! - The customer PO number and the call-off number may be changed too
+//!   (BL-SAL-18): with *Unique customer PO number per customer* on the new
+//!   number is checked with `po_number::ensure_free`, the amended order being
+//!   the exception, and the order's PoKey moves with it; a number another
+//!   order holds is refused (422, naming that order) before anything is
+//!   written. At the last approval the unique index still guards the number.
 //! - A prepaid increase holds the added quantity back from fulfilment until
 //!   the payment link is paid ([`SaleLine::held_milli`]); see
 //!   [`crate::settle`].
 
+use renox::chrono::NaiveDate;
 use renox::db::Transaction;
 use renox::prelude::*;
 use renox::state_machine::{Machine, Transition, TransitionCtx};
@@ -54,8 +61,10 @@ use wl_kernel::approvals::ApprovalRequest;
 use wl_kernel::sales::{AmendedLine, SALES_ORDER_SUBJECT_TYPE, fulfilment_progress};
 
 use crate::config::config_of;
+use crate::destination::Delivery;
 use crate::order_change::{KIND_AMEND, OrderChange, OrderRevision, RevisionLine};
 use crate::permissions;
+use crate::po_number::{PoKey, Reference};
 use crate::sale_line::{KIND_ITEM, SaleLine, ratio_half_up, totals};
 use crate::sales_order::{OrderPaymentStatus, PAYMENT_ONLINE, SalesOrder, SalesOrderStatus};
 use crate::texts::english;
@@ -99,6 +108,15 @@ pub struct LineChange {
     pub discount: i64,
 }
 
+/// A new promised day for a line (BL-MFG-11).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LinePromise {
+    /// The sale line (its id).
+    pub line: i64,
+    /// The day it is promised for.
+    pub day: NaiveDate,
+}
+
 /// A line the amendment adds, standard-rated.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AddedLine {
@@ -116,6 +134,9 @@ pub struct AddedLine {
     /// taxed as the item it replaces); `None`: standard rated.
     #[serde(default)]
     pub vat_like: Option<i64>,
+    /// The day the new line is promised for.
+    #[serde(default)]
+    pub promised_on: Option<NaiveDate>,
 }
 
 /// What an amendment carries to its guards and effect: what the user asks
@@ -129,8 +150,19 @@ pub struct AmendInput {
     pub changes: Vec<LineChange>,
     /// The lines that are added.
     pub added: Vec<AddedLine>,
+    /// The lines whose promised day changes.
+    pub promises: Vec<LinePromise>,
+    /// The new delivery of the order; `None` leaves it as it is.
+    pub delivery: Option<Delivery>,
     /// The revision the user saw; 0 when not given.
     pub base_revision: i64,
+    /// The new customer PO reference; `None` leaves it as it is.
+    pub customer_po: Option<String>,
+    /// The new call-off number; `None` leaves it as it is.
+    pub call_off: Option<String>,
+    /// Whether the PO key of the order is kept (the setting *Unique customer
+    /// PO number per customer* was on when the amendment was asked).
+    pub keep_po_key: bool,
     /// Skip the money of the change (an amendment back after an unpaid
     /// payment link: the increase is removed, nothing is charged or refunded).
     pub no_money: bool,
@@ -184,7 +216,36 @@ impl AmendInput {
             unit_price,
             discount: 0,
             vat_like: None,
+            promised_on: None,
         });
+        self
+    }
+
+    /// The line added last is promised for `day`.
+    pub fn promised_on(mut self, day: NaiveDate) -> Self {
+        if let Some(added) = self.added.last_mut() {
+            added.promised_on = Some(day);
+        }
+        self
+    }
+
+    /// Line `line` is promised for `day`.
+    pub fn promise(mut self, line: i64, day: NaiveDate) -> Self {
+        self.promises.push(LinePromise { line, day });
+        self
+    }
+
+    /// The order is delivered as `delivery` says.
+    pub fn delivery(mut self, delivery: Delivery) -> Self {
+        self.delivery = Some(delivery);
+        self
+    }
+
+    /// Changes the customer PO reference (and the call-off number, when
+    /// given) of the order.
+    pub fn po(mut self, customer_po: &str, call_off: Option<&str>) -> Self {
+        self.customer_po = Some(customer_po.trim().to_owned());
+        self.call_off = call_off.map(|c| c.trim().to_owned());
         self
     }
 
@@ -228,6 +289,46 @@ fn discount_bps(unit_price: i64, quantity_milli: i64, discount: i64) -> i64 {
         return 0;
     }
     ratio_half_up(discount, 10_000, before)
+}
+
+/// The customer PO reference and call-off number the order has after
+/// `input`, trimmed; empty for none.
+fn po_after(order: &SalesOrder, input: &AmendInput) -> (String, String) {
+    let pick = |new: &Option<String>, old: &Option<String>| {
+        new.as_deref()
+            .unwrap_or_else(|| old.as_deref().unwrap_or_default())
+            .trim()
+            .to_owned()
+    };
+    (
+        pick(&input.customer_po, &order.customer_po),
+        pick(&input.call_off, &order.call_off),
+    )
+}
+
+/// Whether `input` changes the PO reference or the call-off number.
+fn po_changed(order: &SalesOrder, input: &AmendInput) -> bool {
+    let (po, call_off) = po_after(order, input);
+    let was = |old: &Option<String>| old.as_deref().unwrap_or_default().trim().to_owned();
+    po != was(&order.customer_po) || call_off != was(&order.call_off)
+}
+
+/// The delivery the amendment sets, when it differs from the order's. The
+/// answer is worked out (a contradiction is the problem of the amendment).
+fn delivery_after(
+    order: &SalesOrder,
+    input: &AmendInput,
+) -> Result<Option<(Delivery, Option<String>)>> {
+    let Some(asked) = &input.delivery else {
+        return Ok(None);
+    };
+    let answer = asked.answer()?.map(str::to_owned);
+    let now = Delivery::of_order(order);
+    let same = now.address == asked.address
+        && now.emirate == asked.emirate
+        && now.country == asked.country
+        && now.destination == answer;
+    Ok((!same).then(|| (asked.clone(), answer)))
 }
 
 /// The amendment `asked` checked against the order and its `lines`, with the
@@ -339,8 +440,30 @@ pub fn evaluate(order: &SalesOrder, lines: &[SaleLine], asked: &AmendInput) -> A
             discount: added.discount,
             kind: KIND_ITEM.to_owned(),
             vat_category: like.unwrap_or_default(),
+            promised_on: added.promised_on,
             ..SaleLine::default()
         });
+    }
+    changed |= po_changed(order, &input);
+    match delivery_after(order, &input) {
+        Ok(delivery) => changed |= delivery.is_some(),
+        Err(Error::Status(_, message)) => first(&mut problem, message),
+        Err(_) => {}
+    }
+    for promise in &input.promises {
+        match revised
+            .iter_mut()
+            .find(|l| l.id == promise.line && l.kind == KIND_ITEM)
+        {
+            Some(line) => {
+                changed |= line.promised_on != Some(promise.day);
+                line.promised_on = Some(promise.day);
+            }
+            None => first(
+                &mut problem,
+                english("wl_sales.orders.problem.unknown_line", &[]),
+            ),
+        }
     }
     if !changed {
         first(&mut problem, english("wl_sales.amend.problem.nothing", &[]));
@@ -481,6 +604,33 @@ async fn amend_in(tx: &mut Transaction, order: SalesOrder, run: &AmendInput) -> 
         && order.payment_status == OrderPaymentStatus::Received;
     let hold = prepaid && found.new_gross > found.old_gross && !run.no_money;
     let stamp = renox::db::now();
+    if po_changed(&order, run) {
+        move_po(tx, &order, run, &stamp).await?;
+    }
+    if let Some((delivery, answer)) = delivery_after(&order, run)? {
+        SalesOrder::query()
+            .where_(SalesOrder::ID.eq(order.id))
+            .update(
+                &mut *tx,
+                &[
+                    ("delivery_address", &delivery.address),
+                    ("delivery_emirate", &delivery.emirate),
+                    ("delivery_country", &delivery.country),
+                    ("delivery_destination", &answer),
+                    ("updated_at", &stamp),
+                ],
+            )
+            .await?;
+    }
+    for promise in &run.promises {
+        SaleLine::query()
+            .where_(SaleLine::ID.eq(promise.line))
+            .update(
+                &mut *tx,
+                &[("promised_on", &Some(promise.day)), ("updated_at", &stamp)],
+            )
+            .await?;
+    }
     let mut report = Vec::new();
     for change in &run.changes {
         let Some(line) = before.iter().find(|l| l.id == change.line) else {
@@ -539,6 +689,7 @@ async fn amend_in(tx: &mut Transaction, order: SalesOrder, run: &AmendInput) -> 
             unit_price: added.unit_price,
             discount: added.discount,
             held_milli: held,
+            promised_on: added.promised_on,
             ..SaleLine::default()
         };
         if let Some(like) = added.vat_like
@@ -581,6 +732,47 @@ async fn amend_in(tx: &mut Transaction, order: SalesOrder, run: &AmendInput) -> 
         no_money: run.no_money,
     };
     OrderChange::record(tx, order.id, KIND_AMEND, &run.reason, run.by, &detail).await?;
+    Ok(())
+}
+
+/// Writes the new PO reference and call-off number of the order and moves
+/// its PO key (the order keeps no key when the setting was off).
+async fn move_po(
+    tx: &mut Transaction,
+    order: &SalesOrder,
+    run: &AmendInput,
+    stamp: &renox::db::DateTime,
+) -> Result {
+    let (po, call_off) = po_after(order, run);
+    let value = |text: &str| (!text.is_empty()).then(|| text.to_owned());
+    SalesOrder::query()
+        .where_(SalesOrder::ID.eq(order.id))
+        .update(
+            &mut *tx,
+            &[
+                ("customer_po", &value(&po)),
+                ("call_off", &value(&call_off)),
+                ("updated_at", stamp),
+            ],
+        )
+        .await?;
+    if run.keep_po_key {
+        PoKey::query()
+            .where_(PoKey::ORDER_ID.eq(order.id))
+            .delete(&mut *tx)
+            .await?;
+        if let Some(reference) = Reference::of(&po, &call_off) {
+            PoKey {
+                order_id: order.id,
+                party_id: order.party_id,
+                po_key: reference.po_key,
+                call_off_key: reference.call_off_key,
+                ..PoKey::default()
+            }
+            .insert(&mut *tx)
+            .await?;
+        }
+    }
     Ok(())
 }
 
@@ -638,9 +830,36 @@ pub async fn amend(
     asked.started_lines = fulfilment_progress(state)
         .started_lines(state, order.order_id(), &item_ids)
         .await?;
+    asked.keep_po_key = crate::po_number::is_on(state);
     let found = evaluate(&order, &lines, &asked);
     if let Some(problem) = found.problem.clone() {
         return Err(refused(problem));
+    }
+    // The vertical's rules on the lines the amendment adds or enlarges, or on
+    // all of them when the delivery changes (07: no *export only* item for a
+    // delivery in the UAE).
+    let delivery = delivery_after(&order, &found)?;
+    let export = match &delivery {
+        Some((_, answer)) => answer.as_deref().map(|a| a == crate::destination::EXPORT),
+        None => crate::destination::is_export(&order),
+    };
+    let mut checked: Vec<&str> = found.added.iter().map(|a| a.item_code.as_str()).collect();
+    for line in lines.iter().filter(|l| l.kind == KIND_ITEM) {
+        let enlarged = found
+            .changes
+            .iter()
+            .any(|c| c.line == line.id && c.quantity_milli > line.quantity_milli);
+        if enlarged || delivery.is_some() {
+            checked.push(line.item_code.as_str());
+        }
+    }
+    crate::destination::ensure_lines_allowed(state, export, checked).await?;
+    // The new number must not be held by another order of the customer
+    // (BL-SAL-18): this order is the exception.
+    if found.keep_po_key && po_changed(&order, &found) {
+        let (po, call_off) = po_after(&order, &found);
+        crate::po_number::ensure_free(&state.db, order.party_id, &po, &call_off, Some(order.id))
+            .await?;
     }
     let reason = found.reason.clone();
     if let Some(request) = crate::order_changes::request_or_run(

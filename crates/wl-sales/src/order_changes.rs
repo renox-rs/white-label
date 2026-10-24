@@ -265,10 +265,9 @@ async fn recheck(
 /// changes and their final check, and the link to the order from the
 /// approvals inbox.
 pub(crate) fn register(_app: &mut Registry) {
-    // The kernel runs `<transition>_approved` on the order through this entry.
-    wl_kernel::SubjectMachine::of::<SalesOrder>(SALES_ORDER_SUBJECT_TYPE)
-        .scope(|_order: &SalesOrder| renox::auth::permissions::Scope::global())
-        .register();
+    // The kernel runs `<transition>_approved` on the order through this entry;
+    // it also names the approval action of the credit releases.
+    crate::sales_order_machine::subject_machine().register();
     for policy in crate::policy::order_change_policies() {
         policy.register();
     }

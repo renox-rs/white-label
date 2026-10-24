@@ -1,0 +1,34 @@
+{#- manufacturing portal: the open invoices of the buyer's company, with the
+    status of a dispute in words and the form to dispute one. It shows no NCR,
+    cost or other customer's data. Replace it with
+    resources/views/manufacturing/portal_invoices.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['portal.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['portal.title']" :subtitle="tx['portal.subtitle']"/>
+    <rx-form-errors/>
+    <rx-table :rows="invoices" as="invoice" :key="invoice.id" :caption="tx['portal.title']" card>
+      <rx-column :label="tx['portal.invoice']">
+        <rx-stack>
+          <span>{{ invoice.number }}</span>
+          <span><rx-badge :kind="invoice.status_kind" :text="invoice.status"/></span>
+        </rx-stack>
+      </rx-column>
+      <rx-column :label="tx['portal.balance']" align="num">{{ invoice.balance }}</rx-column>
+      <rx-column :label="tx['portal.due']" hide-narrow>{{ invoice.due }}</rx-column>
+      <rx-row-actions>
+        <template rx-if="not invoice.disputed">
+          <rx-action-sheet :id="'dispute-' ~ invoice.id" :label="tx['portal.dispute']" :action="route('manufacturing.portal_dispute', invoice.id)"
+                           :title="tx['portal.dispute']" :description="tx['portal.dispute_hint']" :submit-label="tx['portal.dispute_send']" icon="circle-alert">
+            <rx-select name="kind" :label="tx['portal.kind']" :options="kinds" :selected="kind_selected" :id="'dispute-kind-' ~ invoice.id"/>
+            <rx-textarea name="text" :label="tx['portal.text']" :id="'dispute-text-' ~ invoice.id" required/>
+            <rx-show-when field="kind" values="quality">
+              <rx-checkbox rx-for="line in invoice.lines" :name="line.name" :label="line.label" :id="'dispute-' ~ invoice.id ~ '-' ~ line.name"/>
+              <span>{{ tx['portal.lines_hint'] }}</span>
+            </rx-show-when>
+          </rx-action-sheet>
+        </template>
+      </rx-row-actions>
+      <rx-slot name="empty"><rx-empty :title="tx['portal.empty']" :message="tx['portal.empty_text']" icon="receipt"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

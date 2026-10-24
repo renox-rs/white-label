@@ -172,6 +172,10 @@ const ACTION_LABELS: &[(&str, &str)] = &[
         "Release a client contract from a credit hold",
     ),
     ("manpower.terminate", "Terminate a client contract"),
+    ("manufacturing.abort", "Abort a work order"),
+    ("manufacturing.report_void", "Void a production report"),
+    ("manufacturing.ncr_scrap", "Scrap goods of an NCR"),
+    ("manufacturing.ncr_use_as_is", "Use goods as they are (NCR)"),
     (
         "notifications.broadcast_approval",
         "Send a broadcast to its audience",
@@ -197,6 +201,11 @@ const ACTION_LABELS: &[(&str, &str)] = &[
     ("property.lease_force_terminate", "End a lease by force"),
     ("property.owner_invoice", "Invoice an owner"),
     ("property.owner_payout", "Pay an owner"),
+    (
+        "sales.account_hold_clear",
+        "Clear the hold on a customer account",
+    ),
+    ("sales.order_release", "Release an order from a credit hold"),
     ("sales.order_amend", "Approve a change to an order"),
     ("sales.order_cancel", "Approve cancelling an order"),
     (

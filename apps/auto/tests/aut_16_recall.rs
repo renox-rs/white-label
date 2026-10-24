@@ -105,6 +105,8 @@ async fn traced(t: &Garage, subjects: &[Subject]) {
             TraceParty::Party(party) => t.trace.line(subject, Some(party.0), sold_on()),
             TraceParty::Unknown => t.trace.line(subject, None, sold_on()),
             TraceParty::WalkIn => walk_in += 1,
+            // Back on site: not listed (07 §4.4 step 8).
+            TraceParty::NotAffected => {}
         }
     }
     if walk_in > 0 {

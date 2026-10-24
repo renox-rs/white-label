@@ -75,6 +75,13 @@ pub const RECALL_LINE_SUBJECT_TYPE: &str = "inventory.recall_line";
 /// The subject type of a pending issue.
 pub const PENDING_ISSUE_SUBJECT_TYPE: &str = "inventory.pending_issue";
 
+/// The subject type of a dispatch.
+pub const DISPATCH_SUBJECT_TYPE: &str = "inventory.dispatch";
+
+/// The subject type of a dispatch line (what `wl-delivery` hands back as the
+/// source line of a delivery's item).
+pub const DISPATCH_LINE_SUBJECT_TYPE: &str = "inventory.dispatch_line";
+
 /// One line of a posted goods receipt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GoodsReceivedLine {
@@ -827,6 +834,44 @@ pub struct StockNegative {
 
 impl Event for StockNegative {}
 
+/// A pending issue was `posted` against stock that arrived or was `cleared`
+/// (wl-inventory §3 *Pending issue*): it is no longer open. The record that
+/// consumed (a work order) learns what its short part became: the lot and
+/// the cost it posted with, and whether other pending issues of the same
+/// source are still open (07 Manufacturing, `MFG.RUL`: the line's supervisor
+/// is asked to resume a work order held for material once none is).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingIssueClosed {
+    /// The pending issue that closed, `inventory.pending_issue:5`. A partly
+    /// covered pending issue is split: the covered part is a row of its own,
+    /// the rest stays open on [`PendingIssueClosed::original`].
+    pub pending_issue: Subject,
+    /// The pending issue the source was given by `consume`
+    /// ([`Consumed::pending_issue`]): the same as `pending_issue`, or the one
+    /// it was split from.
+    pub original: Subject,
+    /// The record that consumed: a visit, a sale, a work order.
+    pub source: Subject,
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The location, `inventory.location:2`.
+    pub location: Subject,
+    /// How it closed: `posted` (stock arrived), `cleared` (the storekeeper
+    /// entered the stock that had been used) or `source_cancelled` (nothing
+    /// was consumed).
+    pub how: String,
+    /// The lot it posted against, for a lot-tracked item.
+    pub lot: Option<Subject>,
+    /// The quantity that closed, in thousandths.
+    pub quantity_milli: i64,
+    /// The cost of one base unit it posted at, in fils; 0 when nothing posted.
+    pub unit_cost: i64,
+    /// How many pending issues of the same source are still open.
+    pub open_for_source: i64,
+}
+
+impl Event for PendingIssueClosed {}
+
 /// The future a [`StockService`] or [`StockHoldService`] method returns.
 pub type StockFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
@@ -908,6 +953,11 @@ pub struct ConsumedLot {
     pub lot: Option<Subject>,
     /// The quantity taken from it, in thousandths.
     pub quantity_milli: i64,
+    /// The cost of one base unit it was posted at, in fils (the item's
+    /// average cost then): a work order keeps it per issue to value what
+    /// goes back or is scrapped.
+    #[serde(default)]
+    pub unit_cost: i64,
 }
 
 /// What a consumption did: the part that posted now, and the pending issue
@@ -950,6 +1000,15 @@ pub struct StockChoice {
     /// held, not expired, with a quantity. Empty for an item that is not
     /// lot-tracked.
     pub lots: Vec<StockLot>,
+}
+
+/// The code and name of an item, as a screen of another module shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ItemLabel {
+    /// The item's code, e.g. `CHK-FRZ`.
+    pub code: String,
+    /// The item's name in English.
+    pub name: String,
 }
 
 /// Goods put back into stock by the record that took them (wl-inventory §6
@@ -1051,6 +1110,52 @@ pub trait StockService: Send + Sync + 'static {
         _code: &'a str,
         _location: &'a Subject,
     ) -> StockFuture<'a, Option<StockChoice>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// What can be taken of `item` (`inventory.item:9`) at `location`, as
+    /// [`StockService::choices`] tells it by item code: for a caller that
+    /// holds the item's id (a work order). `None` when no such item exists
+    /// or the module is off.
+    fn choices_of_item<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _item: &'a Subject,
+        _location: &'a Subject,
+    ) -> StockFuture<'a, Option<StockChoice>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// How much of `item` is on hand at `location`, in thousandths. `None`
+    /// when the module is off (07: the plants that hold stock of an item).
+    fn on_hand<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _item: &'a Subject,
+        _location: &'a Subject,
+    ) -> StockFuture<'a, Option<i64>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// The code and name of `item` (`inventory.item:9`), for a screen that
+    /// shows an item in words. `None` when the module is off or the item is
+    /// unknown; the caller then shows the id.
+    fn item_label<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _item: &'a Subject,
+    ) -> StockFuture<'a, Option<ItemLabel>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// The number printed on the pack of `lot` (`inventory.lot:4`). `None`
+    /// when the module is off or the lot is unknown; the caller then shows
+    /// the id.
+    fn lot_number<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _lot: &'a Subject,
+    ) -> StockFuture<'a, Option<String>> {
         Box::pin(async { Ok(None) })
     }
 
@@ -1474,6 +1579,9 @@ pub enum TraceParty {
     /// The vertical does not know: the line is listed with the party
     /// *unknown* for manual handling.
     Unknown,
+    /// The goods of the subject are back on site (a returned or cancelled
+    /// dispatch): the subject is not listed (07 §4.4 step 8).
+    NotAffected,
 }
 
 /// The future a [`TracePartyResolver`] or [`LotTrace`] method returns.
@@ -1496,6 +1604,8 @@ pub trait TracePartyResolver: Send + Sync + 'static {
 
     /// The delivery status of a dispatched `subject` (`wl-delivery`), when
     /// the deployment has one: an undelivered delivery can still be stopped.
+    /// The trace also asks it for a dispatch that has not left and for a
+    /// production source (07: [`NOT_SHIPPED`], [`SHIPPED`]).
     fn delivery_status<'a>(
         &'a self,
         _state: &'a AppState,
@@ -1503,7 +1613,31 @@ pub trait TracePartyResolver: Send + Sync + 'static {
     ) -> TraceFuture<'a, Option<String>> {
         Box::pin(async { Ok(None) })
     }
+
+    /// Who is told about a line whose party is `party`: one recipient per
+    /// active buyer of a customer, else the party itself, reached through its
+    /// contact points (07: the customer's main contact email). The default is
+    /// the party.
+    fn addressees<'a>(
+        &'a self,
+        _state: &'a AppState,
+        party: PartyId,
+    ) -> TraceFuture<'a, Vec<crate::notify::NotifyRecipient>> {
+        Box::pin(async move { Ok(vec![crate::notify::NotifyRecipient::Party { id: party }]) })
+    }
 }
+
+/// The delivery status of a subject whose goods have not left the plant: a
+/// dispatch that is `draft` or `picked`, or a work order for an order not yet
+/// delivered (07 §4.4 step 8).
+pub const NOT_SHIPPED: &str = "not_shipped";
+
+/// The delivery status of a dispatch that left and is on its way (07 lists it
+/// for the recall owner to bring back).
+pub const SHIPPED: &str = "shipped";
+
+/// The delivery status of a dispatch the customer accepted.
+pub const DELIVERED: &str = "delivered";
 
 /// The resolver when no vertical provides one: nobody is known.
 #[derive(Debug, Clone, Copy, Default)]
@@ -1573,6 +1707,21 @@ pub struct TracedPlace {
     pub location: Subject,
     /// The quantity held there, in thousandths.
     pub quantity_milli: i64,
+}
+
+/// A recall as the verticals list it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TracedRecall {
+    /// The recall, `inventory.recall:2`.
+    pub recall: Subject,
+    /// The number, `RCL-2026-0001`.
+    pub number: String,
+    /// `open`, `traced` or `closed`.
+    pub status: String,
+    /// Why it was opened.
+    pub reason: String,
+    /// The day it was opened (Asia/Dubai).
+    pub opened_on: Option<NaiveDate>,
 }
 
 /// Goods a customer brings back that may be under a recall (wl-sales §4.5
@@ -1657,6 +1806,11 @@ pub trait LotTrace: Send + Sync + 'static {
         _by: Option<i64>,
     ) -> TraceFuture<'a, bool> {
         Box::pin(async { Ok(false) })
+    }
+    /// The recalls, newest first (a vertical lists them beside its own
+    /// customer view of the trace). The default has none.
+    fn recalls<'a>(&'a self, _state: &'a AppState) -> TraceFuture<'a, Vec<TracedRecall>> {
+        Box::pin(async { Ok(Vec::new()) })
     }
 
     /// The open recall (`inventory.recall:2`, `open` or `traced` and its hold
@@ -1757,6 +1911,359 @@ pub struct RecallClosed {
 }
 
 impl Event for RecallClosed {}
+
+/// One line of a dispatch, as the dispatch events carry it (wl-inventory §6).
+/// Quantities are thousandths of the item's base unit, value is fils.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchedLine {
+    /// The dispatch line, `inventory.dispatch_line:4`.
+    pub line: Subject,
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The lot the line was picked from, `inventory.lot:2`.
+    pub lot: Option<Subject>,
+    /// The line of the source it fulfils (a sales order line), when it has one.
+    pub source_line: Option<Subject>,
+    /// The quantity sent.
+    pub quantity_milli: i64,
+    /// The quantity the recipient accepted; 0 until the proof of delivery.
+    pub delivered_milli: i64,
+    /// The quantity the recipient refused; it is *in return* until it is
+    /// received back into quarantine.
+    pub refused_milli: i64,
+    /// The refusal reason's code, when something was refused.
+    pub refusal_reason: Option<String>,
+    /// The value of the quantity sent (the cost it left stock at), in fils.
+    pub value: i64,
+}
+
+/// A dispatch left (`dispatch`, `DispatchSent`): `wl-delivery` creates the
+/// delivery for an own-delivery hand-over.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchSent {
+    /// The dispatch, `inventory.dispatch:3`.
+    pub dispatch: Subject,
+    /// The record it fulfils (a sales order).
+    pub source: Subject,
+    /// The recipient, when it is a party.
+    pub recipient: Option<PartyId>,
+    /// `own_delivery`, `courier` or `collection`.
+    pub handover: String,
+    /// The delivery `wl-delivery` was asked for, for an own delivery.
+    pub delivery: Option<i64>,
+    /// The courier's tracking number.
+    pub tracking_number: Option<String>,
+    /// The lines.
+    pub lines: Vec<DispatchedLine>,
+}
+
+impl Event for DispatchSent {}
+
+/// A dispatch was confirmed delivered (`confirm_delivery`,
+/// `DispatchDelivered`): the source fulfils and bills the delivered quantity
+/// only; the refused quantity is *in return*.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchDelivered {
+    /// The dispatch.
+    pub dispatch: Subject,
+    /// The record it fulfils.
+    pub source: Subject,
+    /// The recipient, when it is a party.
+    pub recipient: Option<PartyId>,
+    /// The lines with the delivered and the refused quantity.
+    pub lines: Vec<DispatchedLine>,
+}
+
+impl Event for DispatchDelivered {}
+
+/// A dispatch was lost (`mark_lost`, `DispatchLost`) and its value is held as
+/// a loss while the claim runs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchLost {
+    /// The dispatch.
+    pub dispatch: Subject,
+    /// The record it fulfils.
+    pub source: Subject,
+    /// The recipient, when it is a party.
+    pub recipient: Option<PartyId>,
+    /// Whether the dispatch was `delivered` (under review) when it was lost:
+    /// the source then reverses its fulfilment.
+    pub was_delivered: bool,
+    /// The value held as a loss, in fils.
+    pub value: i64,
+    /// The lines (delivered quantity 0 when the dispatch had been delivered).
+    pub lines: Vec<DispatchedLine>,
+}
+
+impl Event for DispatchLost {}
+
+/// A delivered dispatch was reopened because its delivery was reversed
+/// (`reverse`, `DispatchReversed`): the source reverses its fulfilment.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchReversed {
+    /// The dispatch.
+    pub dispatch: Subject,
+    /// The record it fulfils.
+    pub source: Subject,
+    /// The recipient, when it is a party.
+    pub recipient: Option<PartyId>,
+    /// The lines (delivered quantity 0; the refused quantity is unchanged).
+    pub lines: Vec<DispatchedLine>,
+}
+
+impl Event for DispatchReversed {}
+
+/// A dispatch came back (`return`, `DispatchReturned`): refused or returned
+/// whole. Its goods are in quarantine and a complaint ticket was opened; the
+/// source keeps its reservation request and tells the rep and the customer
+/// (wl-sales `return_delivery`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchReturned {
+    /// The dispatch.
+    pub dispatch: Subject,
+    /// The record it fulfils.
+    pub source: Subject,
+    /// The recipient, when it is a party.
+    pub recipient: Option<PartyId>,
+    /// Why it came back.
+    pub reason: String,
+    /// The complaint ticket opened by the return, when ticketing is on.
+    #[serde(default)]
+    pub complaint: Option<Subject>,
+    /// The lines.
+    pub lines: Vec<DispatchedLine>,
+}
+
+impl Event for DispatchReturned {}
+
+/// A perishable dispatch was destroyed after a failed attempt (`discard`,
+/// `DispatchDiscarded`): its value went to wastage and no stock moved.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchDiscarded {
+    /// The dispatch.
+    pub dispatch: Subject,
+    /// The record it fulfils.
+    pub source: Subject,
+    /// The recipient, when it is a party.
+    pub recipient: Option<PartyId>,
+    /// The reason the driver gave.
+    pub reason: String,
+    /// The photo of the discarded goods.
+    pub photo: Option<String>,
+    /// The value posted as wastage, in fils.
+    pub value: i64,
+    /// The lines.
+    pub lines: Vec<DispatchedLine>,
+}
+
+impl Event for DispatchDiscarded {}
+
+/// Goods of a dispatch that came back and were booked into quarantine: the
+/// whole quantity of a returned dispatch, or the refused quantity received
+/// back at run close (`DeliveryRefusedReceived`, or by hand for a courier).
+/// The vertical inspects each lot (07 `MFG.RUL.10`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchGoodsQuarantined {
+    /// The dispatch.
+    pub dispatch: Subject,
+    /// The record it fulfils.
+    pub source: Subject,
+    /// The recipient, when it is a party.
+    pub recipient: Option<PartyId>,
+    /// Whether the whole dispatch came back (`return`); false for refused
+    /// lines of a delivered dispatch.
+    pub returned: bool,
+    /// The complaint ticket of a returned dispatch, when there is one.
+    #[serde(default)]
+    pub complaint: Option<Subject>,
+    /// What was booked: one entry per line.
+    pub lines: Vec<QuarantinedLine>,
+}
+
+impl Event for DispatchGoodsQuarantined {}
+
+/// The quantity of one dispatch line booked into quarantine.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuarantinedLine {
+    /// The dispatch line, `inventory.dispatch_line:4`.
+    pub line: Subject,
+    /// The item.
+    pub item: Subject,
+    /// The lot the goods were picked from (and are held as in quarantine).
+    pub lot: Option<Subject>,
+    /// The line of the source it fulfils (a sales order line).
+    pub source_line: Option<Subject>,
+    /// The quantity booked, in thousandths.
+    pub quantity_milli: i64,
+    /// The refusal or return reason.
+    pub reason: Option<String>,
+}
+
+/// A dispatch as the verticals read it (wl-inventory §6 `DispatchDirectory`):
+/// who it goes to, where it stands and what is on it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchFacts {
+    /// The dispatch, `inventory.dispatch:3`.
+    pub dispatch: Subject,
+    /// The number, `DSP-2026-0001`.
+    pub number: String,
+    /// The state: `draft`, `picked`, `dispatched`, `delivered`, `returned`,
+    /// `discarded`, `lost` or `cancelled`.
+    pub status: String,
+    /// The record it fulfils (a sales order).
+    pub source: Subject,
+    /// The recipient, when it is a party.
+    pub recipient: Option<PartyId>,
+    /// The day it left (Asia/Dubai); `None` until `dispatch`.
+    pub dispatched_on: Option<NaiveDate>,
+    /// The lines.
+    pub lines: Vec<DispatchedLine>,
+}
+
+/// The dispatches, for the verticals that guard or follow them: the item
+/// flags at `pick` and `dispatch` (07 `MFG.ACL.11`), the export evidence
+/// (`MFG.RUL.08`) and the recall trace. `wl-inventory` provides it; without
+/// it [`dispatch_directory`] gives [`NoDispatchDirectory`], which knows none.
+pub trait DispatchDirectory: Send + Sync + 'static {
+    /// The dispatch `dispatch` (`inventory.dispatch:3`); `None` when unknown.
+    fn facts<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _dispatch: &'a Subject,
+    ) -> TraceFuture<'a, Option<DispatchFacts>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// The dispatches made for `source` (a sales order), oldest first, in
+    /// every state. A source reads how far its goods are (picked, out for
+    /// delivery, delivered, lost). The default knows none.
+    fn of_source<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _source: &'a Subject,
+    ) -> TraceFuture<'a, Vec<DispatchFacts>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// The dispatches that left on or before `day` and have not been
+    /// returned, cancelled or discarded, oldest first.
+    fn left_by<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _day: NaiveDate,
+    ) -> TraceFuture<'a, Vec<DispatchFacts>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// The directory when nothing provides one.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoDispatchDirectory;
+
+impl DispatchDirectory for NoDispatchDirectory {}
+
+/// Makes `directory` the app's [`DispatchDirectory`].
+pub fn provide_dispatch_directory(app: &mut Registry, directory: impl DispatchDirectory) {
+    let directory: Arc<dyn DispatchDirectory> = Arc::new(directory);
+    app.provide(directory);
+}
+
+/// The app's [`DispatchDirectory`], or [`NoDispatchDirectory`] when none is
+/// provided.
+pub fn dispatch_directory(state: &AppState) -> Arc<dyn DispatchDirectory> {
+    match state.provided::<Arc<dyn DispatchDirectory>>() {
+        Some(directory) => Arc::clone(&directory),
+        None => Arc::new(NoDispatchDirectory),
+    }
+}
+
+/// One line to deliver again: the quantity of the order line `source_line`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RedispatchLine {
+    /// The line of the source (a sales order line) the original dispatch
+    /// carried for it.
+    pub source_line: Subject,
+    /// The quantity to send again, in thousandths.
+    pub quantity_milli: i64,
+}
+
+/// Makes the draft dispatch that delivers goods again (wl-inventory §5.4
+/// step 1, 07 `MFG.RUL.10`): the new draft goes to the same recipient and
+/// address from the same location, with the item and lot of the original
+/// lines. `wl-inventory` provides it; the default makes none.
+pub trait DispatchMaker: Send + Sync + 'static {
+    /// A draft dispatch for `lines`, copied from `original`; `by` is the user
+    /// who asks. `None` when nothing can be made (unknown dispatch, none of
+    /// the lines is on it) and by default.
+    fn redispatch<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _by: Option<i64>,
+        _original: &'a Subject,
+        _lines: &'a [RedispatchLine],
+    ) -> TraceFuture<'a, Option<Subject>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The maker when nothing provides one.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoDispatchMaker;
+
+impl DispatchMaker for NoDispatchMaker {}
+
+/// Makes `maker` the app's [`DispatchMaker`].
+pub fn provide_dispatch_maker(app: &mut Registry, maker: impl DispatchMaker) {
+    let maker: Arc<dyn DispatchMaker> = Arc::new(maker);
+    app.provide(maker);
+}
+
+/// The app's [`DispatchMaker`], or [`NoDispatchMaker`] when none is provided.
+pub fn dispatch_maker(state: &AppState) -> Arc<dyn DispatchMaker> {
+    match state.provided::<Arc<dyn DispatchMaker>>() {
+        Some(maker) => Arc::clone(&maker),
+        None => Arc::new(NoDispatchMaker),
+    }
+}
+
+/// The item-flag guard of a dispatch (wl-inventory §4 *Dispatch* rows `pick`
+/// and `dispatch`, STK.DSP.01; 07 `MFG.ACL.11`): the vertical says why the
+/// goods on a dispatch may not be picked or may not leave, with no override.
+/// The default blocks nothing. The refusal is a 422 with the words it gives;
+/// the dispatch can still be cancelled.
+pub trait DispatchGuard: Send + Sync + 'static {
+    /// Why `dispatch` may not take the step `guarded` (`dispatch.pick` or
+    /// `dispatch.dispatch`) on `on` (Asia/Dubai); `None` when it may.
+    fn blocked<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _dispatch: &'a DispatchFacts,
+        _guarded: &'a str,
+        _on: NaiveDate,
+    ) -> TraceFuture<'a, Option<String>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The guard when no vertical provides one: nothing is blocked.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoDispatchGuard;
+
+impl DispatchGuard for NoDispatchGuard {}
+
+/// Makes `guard` the app's [`DispatchGuard`].
+pub fn provide_dispatch_guard(app: &mut Registry, guard: impl DispatchGuard) {
+    let guard: Arc<dyn DispatchGuard> = Arc::new(guard);
+    app.provide(guard);
+}
+
+/// The app's [`DispatchGuard`], or [`NoDispatchGuard`] when none is provided.
+pub fn dispatch_guard(state: &AppState) -> Arc<dyn DispatchGuard> {
+    match state.provided::<Arc<dyn DispatchGuard>>() {
+        Some(guard) => Arc::clone(&guard),
+        None => Arc::new(NoDispatchGuard),
+    }
+}
 
 /// A production batch's use of one ingredient lot (wl-inventory §3 lot
 /// genealogy).

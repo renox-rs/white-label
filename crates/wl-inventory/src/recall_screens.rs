@@ -20,10 +20,10 @@
 //!
 //! The buttons post to the routes of [`crate::recall_pages`].
 
+use crate::screens::dubai_text;
 use renox::prelude::*;
 use serde::Serialize;
 use wl_kernel::Subject;
-use wl_kernel::documents::dubai_text;
 
 use crate::balance;
 use crate::item::Item;
@@ -406,6 +406,7 @@ async fn line_row(
         LineKind::Uncertain | LineKind::Possible => (word(lang, "mark", "uncertain"), "warning"),
         LineKind::Dispatch => (word(lang, "mark", "dispatch"), "info"),
         LineKind::WalkIn => (word(lang, "mark", "walk_in"), "info"),
+        LineKind::Production => (word(lang, "mark", "production"), "info"),
     };
     Ok(LineRow {
         id: line.id,

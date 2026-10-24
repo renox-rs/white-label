@@ -1,6 +1,8 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod account_hold;
+pub mod account_hold_clearing;
 pub mod acquisition;
 pub mod acquisition_change;
 pub mod acquisition_daily;
@@ -24,7 +26,12 @@ pub mod counter_sale;
 pub mod counter_sale_machine;
 pub mod counter_sales;
 pub mod credit;
+mod credit_texts;
+pub mod customer_account;
 pub mod daily;
+pub mod deliveries;
+pub mod delivery_invoice;
+pub mod destination;
 mod events;
 pub mod expiry;
 pub mod lead;
@@ -43,13 +50,16 @@ pub mod notices;
 pub mod online_payment;
 pub mod order_change;
 pub mod order_changes;
+mod order_directory;
 mod order_notices;
 pub mod package;
 pub mod package_machine;
 pub mod package_reopen;
 pub mod packages;
 pub mod pages;
+pub mod po_number;
 pub mod policy;
+pub mod progress;
 pub mod promo_code;
 pub mod redeem;
 pub mod redemption;
@@ -71,6 +81,8 @@ pub mod settle;
 pub mod terms;
 mod texts;
 mod texts_changes;
+mod texts_deliveries;
+mod texts_destination;
 mod texts_till;
 pub mod till_session;
 pub mod till_sessions;
@@ -80,6 +92,7 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
+pub use account_hold_clearing::{AccountHoldClearing, ClearingStatus};
 pub use acquisition::{AcquisitionRefused, AcquisitionSale, PartyAcquisition};
 pub use acquisition_change::{
     AcquisitionChange, ChangeRefused, ChangeRequest, ChangeStatus, ChangeTarget,
@@ -92,6 +105,7 @@ pub use campaign::{
 pub use config::SalesConfig;
 pub use cost_entry::{CostEntry, CostRefused, CostStatus};
 pub use counter_sale::{CounterSale, CounterSalePayment, CounterSaleStatus};
+pub use customer_account::{AccountHoldSource, CreditGroup, CustomerAccount};
 pub use lead::{Captured, Lead, LeadNote, LeadRefused, LeadStatus, NewLead};
 pub use lead_source::{LeadSource, LeadSourceRefused};
 pub use loyalty_account::{AccountStatus, Enrolment, LoyaltyAccount};
@@ -167,6 +181,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-sales/sales_order.html",
         include_str!("../views/wl-sales/sales_order.html"),
+    ),
+    (
+        "wl-sales/credit_accounts.html",
+        include_str!("../views/wl-sales/credit_accounts.html"),
+    ),
+    (
+        "wl-sales/credit_account.html",
+        include_str!("../views/wl-sales/credit_account.html"),
     ),
     (
         "wl-sales/sales_order_revision.html",
@@ -282,6 +304,14 @@ pub mod permissions {
     /// Turn the loyalty programme on, review accounts and approve a large
     /// adjustment.
     pub const LOYALTY_MANAGE: &str = "loyalty.manage";
+    /// See the credit hold reason, the customer accounts and their limits
+    /// (`credit.view`).
+    pub const CREDIT_VIEW: &str = "credit.view";
+    /// Release an order held for credit and clear an account hold, never the
+    /// order's creator nor the requester (`SAL.ACL.03`).
+    pub const CREDIT_RELEASE: &str = "credit.release";
+    /// Set the credit limit and terms of a customer account.
+    pub const CREDIT_LIMITS_APPROVE: &str = "credit.limits.approve";
     /// Define customer segments and preview their size.
     pub const SEGMENTS_MANAGE: &str = "segments.manage";
     /// Export the members of a segment: a sensitive export, audited
@@ -512,8 +542,9 @@ impl WlSales {
         self
     }
 
-    /// The role told when an order goes on credit hold (`SAL.RUL.01`); the
-    /// company admin when not set.
+    /// The role told (mail and task) when an order goes on credit hold,
+    /// with the customer's sales rep (`SAL.RUL.01`; default `accountant`);
+    /// the company admin when set to nothing.
     pub fn accountant_role(mut self, role: &str) -> Self {
         self.config.accountant_role = role.to_owned();
         self
@@ -616,6 +647,62 @@ impl WlSales {
         self
     }
 
+    /// Whether orders on account are credit-checked (`SAL.CRD.01`, default
+    /// on; a customer without an account is never checked).
+    pub fn credit_check(mut self, on: bool) -> Self {
+        self.config.credit_check = on;
+        self
+    }
+
+    /// The days past terms before an overdue invoice fails the credit check
+    /// (§7, default 30).
+    pub fn credit_grace_days(mut self, days: i64) -> Self {
+        assert!(days >= 0, "the grace days cannot be negative");
+        self.config.credit_grace_days = days;
+        self
+    }
+
+    /// Whether an invoice overdue beyond the grace days holds the order
+    /// (§7, default on).
+    pub fn hold_on_overdue(mut self, on: bool) -> Self {
+        self.config.hold_on_overdue = on;
+        self
+    }
+
+    /// Whether an exposure above the limit holds the order (§7, default on).
+    pub fn hold_on_limit(mut self, on: bool) -> Self {
+        self.config.hold_on_limit = on;
+        self
+    }
+
+    /// Whether each dispatch of an order on account is credit-checked again
+    /// (§7, default on).
+    pub fn credit_recheck_at_dispatch(mut self, on: bool) -> Self {
+        self.config.credit_recheck_at_dispatch = on;
+        self
+    }
+
+    /// Whether a bounced cheque holds the whole credit group (`SAL.RUL.05`,
+    /// §7, default on).
+    pub fn bounced_cheque_hold_group(mut self, on: bool) -> Self {
+        self.config.bounced_cheque_hold_group = on;
+        self
+    }
+
+    /// Whether the invoice is drafted on delivery for the accepted quantities
+    /// (§5.2 step 4, default off: drafted when the order is fulfilled; 07: on).
+    pub fn invoice_on_delivery(mut self, on: bool) -> Self {
+        self.config.invoice_on_delivery = on;
+        self
+    }
+
+    /// Whether the same customer PO number, with its call-off number, may be
+    /// used by one order of a customer only (§7, default off; 07: on).
+    pub fn unique_customer_po(mut self, on: bool) -> Self {
+        self.config.unique_customer_po = on;
+        self
+    }
+
     /// The order channels whose lines without stock are back-ordered
     /// (wl-sales §7 *Back-orders allowed per channel*). Default: none.
     pub fn back_orders_for(mut self, channels: &[&str]) -> Self {
@@ -688,6 +775,8 @@ impl Module for WlSales {
             .view_data::<pages::campaigns::ShowPage>()
             .view_data::<pages::counter_sales::IndexPage>()
             .view_data::<pages::counter_sales::ShowPage>()
+            .view_data::<pages::credit::IndexPage>()
+            .view_data::<pages::credit::ShowPage>()
             .view_data::<pages::till_sessions::IndexPage>()
             .view_data::<pages::till_sessions::ShowPage>()
             .view_data::<pages::sales_orders::IndexPage>()
@@ -727,9 +816,14 @@ impl Module for WlSales {
         app.model::<SaleLine>();
         app.model::<CounterSale>();
         app.model::<CounterSalePayment>();
+        app.model::<CreditGroup>();
+        app.model::<CustomerAccount>();
+        app.model::<AccountHoldSource>();
+        app.model::<AccountHoldClearing>();
         app.model::<till_session::TillSession>();
         app.model::<SalesOrder>();
         app.model::<FulfilmentRecord>();
+        app.model::<po_number::PoKey>();
         app.model::<back_orders::BackOrderServe>();
         app.model::<SalesReturn>();
         app.model::<SalesReturnLine>();
@@ -763,6 +857,18 @@ impl Module for WlSales {
         // The sales order: its machine, its events and the kernel's
         // `OrderFulfilment`.
         sales_orders::register(app);
+        deliveries::register(app);
+        // The 07 vertical's contracts the sales order answers.
+        wl_kernel::production::provide_order_lines(app, order_directory::Lines);
+        wl_kernel::sales::provide_customer_po_check(app, order_directory::PoCheck);
+        // Where an order is delivered and which day a line is promised for:
+        // the vertical's dispatch guard and the look-ahead of an expiring
+        // document read them (BL-MFG-11).
+        wl_kernel::sales::provide_delivery_destination(app, destination::Destination);
+        wl_kernel::sales::provide_promised_lines(app, destination::PromisedDays);
+        // `SAL.RUL.05`: a bounced cheque holds the customer account, and
+        // *Clear account hold* with another releaser's approval.
+        account_hold::register(app);
         // Back-orders: reservations, the arrivals that serve them, the demand.
         back_orders::register(app);
         // The sales return: its machine and the `ReturnResolved` event.
@@ -843,6 +949,14 @@ impl Module for WlSales {
         );
         app.nav(
             "app",
+            NavLink::route("wl_sales.credit_accounts", "nav.credit_accounts")
+                .icon("credit-card")
+                .group("nav.app")
+                .order(52)
+                .permission(permissions::CREDIT_VIEW),
+        );
+        app.nav(
+            "app",
             NavLink::route("wl_sales.sales_returns", "nav.sales_returns")
                 .icon("refresh-cw")
                 .group("nav.app")
@@ -871,6 +985,22 @@ impl Module for WlSales {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every `tx['key']` a template reads is a text of the module: a missing
+    /// one is no compile error but a 500 at render time.
+    #[test]
+    fn every_text_a_template_reads_exists() {
+        let mut missing = Vec::new();
+        for (name, source) in VIEWS {
+            for part in source.split("tx['").skip(1) {
+                let key = part.split('\'').next().unwrap_or_default();
+                if texts::english(&format!("wl_sales.{key}"), &[]) == format!("wl_sales.{key}") {
+                    missing.push(format!("{name}: {key}"));
+                }
+            }
+        }
+        assert!(missing.is_empty(), "texts missing: {missing:?}");
+    }
 
     #[test]
     fn the_defaults_are_the_spec_values() {

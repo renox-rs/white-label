@@ -3,7 +3,8 @@
 
 use renox::prelude::*;
 
-use crate::dispatch_screens::DISPATCH_TEXTS;
+use crate::bom_texts::BOM_TEXTS;
+use crate::dispatch_texts::DISPATCH_TEXTS;
 use crate::screen_texts::SCREEN_TEXTS;
 use crate::stock_ui_texts::STOCK_TEXTS;
 
@@ -989,6 +990,23 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.recall.notice_task_body",
         "The notice about {{ subject }} to party {{ party }} could not be delivered after every retry. The line is pending again: send it again with another template or channel, or waive it with a reason.",
     ),
+    // The lot operations of a vertical's NCR (`LotDisposal`).
+    (
+        "wl_inventory.lot.no_supplier_lot",
+        "The lot has no supplier lot (no goods receipt behind it): it cannot be returned to a supplier.",
+    ),
+    (
+        "wl_inventory.lot.nothing_left",
+        "Nothing of the lot is left in stock.",
+    ),
+    (
+        "wl_inventory.lot.not_at_location",
+        "Only {{ available }} of the lot can be taken; {{ quantity }} was asked.",
+    ),
+    (
+        "wl_inventory.lot.release_blocked",
+        "Lot {{ lot }} is not released: {{ reason }}",
+    ),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",
@@ -1003,6 +1021,7 @@ pub(crate) fn english(key: &str) -> &str {
         .chain(SCREEN_TEXTS)
         .chain(STOCK_TEXTS)
         .chain(DISPATCH_TEXTS)
+        .chain(BOM_TEXTS)
         .find(|(k, _)| *k == key)
         .map_or(key, |(_, text)| text)
 }
@@ -1044,6 +1063,7 @@ mod tests {
             .chain(SCREEN_TEXTS)
             .chain(STOCK_TEXTS)
             .chain(DISPATCH_TEXTS)
+            .chain(BOM_TEXTS)
         {
             assert!(key.starts_with("wl_inventory."), "{key}");
             assert!(seen.insert(*key), "{key} twice");

@@ -151,6 +151,28 @@ impl Invoicer for Invoices {
         })
     }
 
+    fn lines_of<'a>(
+        &'a self,
+        db: &'a Db,
+        invoice: InvoiceId,
+    ) -> InvoiceFuture<'a, Vec<wl_kernel::invoicing::InvoiceLineInfo>> {
+        Box::pin(async move {
+            Ok(lines_of(db, invoice.0)
+                .await?
+                .iter()
+                .filter_map(|line| {
+                    Some(wl_kernel::invoicing::InvoiceLineInfo {
+                        position: i32::try_from(line.position).ok()?,
+                        description: line.description.clone(),
+                        gross: line.gross_amount,
+                        origin: line.origin(),
+                        vat_category: line.vat_category,
+                    })
+                })
+                .collect())
+        })
+    }
+
     fn dispute<'a>(
         &'a self,
         state: &'a AppState,

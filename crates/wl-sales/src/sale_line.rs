@@ -16,6 +16,7 @@
 //!   is a line of kind `loyalty_redemption` with a negative price, so the sum
 //!   of the lines already excludes "the redeemed value" from what earns.
 
+use renox::chrono::NaiveDate;
 use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -57,6 +58,9 @@ pub struct SaleLine {
     pub vat_category: VatCategory,
     /// Whether the loyalty programme leaves the line out.
     pub loyalty_excluded: bool,
+    /// The day the line is promised for (sales orders); the look-ahead of an
+    /// expiring document reads it ([`crate::delivery::PromisedDays`]).
+    pub promised_on: Option<NaiveDate>,
     /// The quantity handed over (sales orders), in thousandths.
     pub fulfilled_milli: i64,
     /// The quantity cancelled (sales orders), in thousandths.
@@ -106,6 +110,8 @@ pub struct NewLine {
     pub loyalty_excluded: bool,
     /// `item` or `loyalty_redemption`.
     pub kind: String,
+    /// The day the line is promised for.
+    pub promised_on: Option<NaiveDate>,
 }
 
 impl NewLine {
@@ -121,7 +127,14 @@ impl NewLine {
             vat_category: VatCategory::Standard,
             loyalty_excluded: false,
             kind: KIND_ITEM.to_owned(),
+            promised_on: None,
         }
+    }
+
+    /// Promised for `day`.
+    pub fn promised_on(mut self, day: NaiveDate) -> Self {
+        self.promised_on = Some(day);
+        self
     }
 
     /// With this description.
@@ -221,6 +234,7 @@ impl SaleLine {
                 discount: line.discount,
                 vat_category: line.vat_category,
                 loyalty_excluded: line.loyalty_excluded,
+                promised_on: line.promised_on,
                 ..SaleLine::default()
             },
         )
@@ -279,6 +293,20 @@ impl SaleLine {
     /// (BL-SAL-08).
     pub fn share_of(&self, quantity_milli: i64) -> i64 {
         ratio_half_up(self.gross(), quantity_milli, self.quantity_milli)
+    }
+
+    /// The line as an invoice on delivery carries it: the quantity handed
+    /// over, with the discount in proportion; `None` when nothing was.
+    pub fn delivered_draft_line(&self) -> Option<DraftLine> {
+        if self.kind != KIND_ITEM || self.fulfilled_milli <= 0 {
+            return None;
+        }
+        let discount = ratio_half_up(self.discount, self.fulfilled_milli, self.quantity_milli);
+        Some(
+            DraftLine::new(&self.description, self.unit_price, self.vat_category)
+                .quantity_milli(self.fulfilled_milli)
+                .discount(discount),
+        )
     }
 
     /// The line as the invoice carries it once the order is complete: the

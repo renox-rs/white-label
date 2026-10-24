@@ -5,7 +5,7 @@
 /// Every key of the stock screens, with its English text.
 pub(crate) const STOCK_TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.stock.fields.status", "Status"),
-    ("wl_inventory.stock.none", "None"),
+    ("wl_inventory.stock.none", "-"),
     ("wl_inventory.stock.stock.title", "Stock"),
     ("wl_inventory.stock.stock.store", "Store"),
     ("wl_inventory.stock.stock.show", "Show"),
@@ -13,6 +13,7 @@ pub(crate) const STOCK_TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.stock.stock.item", "Item"),
     ("wl_inventory.stock.stock.on_hand", "On hand"),
     ("wl_inventory.stock.stock.held", "On hold"),
+    ("wl_inventory.stock.stock.reserved", "Reserved for orders"),
     ("wl_inventory.stock.stock.available", "Available"),
     ("wl_inventory.stock.stock.reorder", "Reorder at"),
     ("wl_inventory.stock.stock.level", "Level"),
@@ -418,6 +419,7 @@ pub(crate) const STOCK_TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.stock.mark.possible", "Possible"),
     ("wl_inventory.stock.mark.dispatch", "Dispatched"),
     ("wl_inventory.stock.mark.walk_in", "Walk-in sales"),
+    ("wl_inventory.stock.mark.production", "Work order"),
     ("wl_inventory.stock.notice.pending", "Not told"),
     ("wl_inventory.stock.notice.sent", "Sent"),
     ("wl_inventory.stock.notice.waived", "Waived"),

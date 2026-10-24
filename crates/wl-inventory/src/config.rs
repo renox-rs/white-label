@@ -158,6 +158,11 @@ pub struct InventoryConfig {
     /// and told. Set, the recall page links to it and does not offer the
     /// module's own notice templates.
     pub recall_notices_route: Option<String>,
+    /// The key of the vertical's own notification type of a recall notice
+    /// (07 `mfg.recall_notice`): no group, urgency `urgent`, a notice that
+    /// gives up gives the recall owner a task. Set, every notice of a recall
+    /// goes out under it, in place of the module's three templates' types.
+    pub recall_notice_key: Option<String>,
 }
 
 impl InventoryConfig {
@@ -235,6 +240,7 @@ impl Default for InventoryConfig {
             hold_escalation_role_by_reason: Vec::new(),
             hold_escalation_role_by_location: Vec::new(),
             recall_notices_route: None,
+            recall_notice_key: None,
             rejection_reasons: DEFAULT_REASONS
                 .iter()
                 .map(|code| RejectionReason {

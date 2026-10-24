@@ -16,9 +16,9 @@
 //!   `credit_hold` is skipped. A pass runs once per arrival and line (the
 //!   rows of [`BackOrderServe`]). The customer gets one message per order
 //!   when any of its lines was reserved.
-//! - [`order_released`] is the seam for `release` (BL-SAL-11, not built on
-//!   this branch): it reserves the order's open back-orders at once from the
-//!   stock then available, in line order.
+//! - `release` (BL-SAL-11) of an order held for credit confirms it like a new
+//!   one (a held order reserved nothing) and [`order_released`] reserves its
+//!   open back-orders at once from the stock then available, in line order.
 //! - [`StockArrivalReversed`] gives back what was reserved from the receipt
 //!   and back-orders those quantities again.
 //! - A cancelled line takes its quantity off the back-order first, then off
@@ -53,7 +53,7 @@ use crate::config::config_of;
 use crate::sale_line::{KIND_ITEM, SaleLine};
 use crate::sales_order::{SalesOrder, SalesOrderStatus};
 use crate::sales_order_machine::{
-    ACCEPT, CANCEL, CONFIRM_PAYMENT, FULFIL, FULFIL_LAST, REJECT, SUBMIT,
+    ACCEPT, CANCEL, CONFIRM_PAYMENT, FULFIL, FULFIL_LAST, REJECT, RELEASE, RELEASE_PARTLY, SUBMIT,
 };
 use crate::texts::english;
 
@@ -554,6 +554,13 @@ pub(crate) fn register(app: &mut Registry) {
                 .unwrap_or(&event.transition);
             match name {
                 SUBMIT | ACCEPT | CONFIRM_PAYMENT => on_confirmed(&state, event.key).await,
+                // An order held for credit reserved nothing; released, it is
+                // confirmed like a new one (BL-SAL-11 point 2), and what
+                // arrived while it was held is reserved at once.
+                RELEASE | RELEASE_PARTLY => {
+                    on_confirmed(&state, event.key).await?;
+                    order_released(&state, event.key).await.map(|_| ())
+                }
                 CANCEL | REJECT => on_ended(&state, event.key).await,
                 FULFIL | FULFIL_LAST => {
                     let Ok(request) =

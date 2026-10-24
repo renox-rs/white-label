@@ -3,7 +3,7 @@
     in the app. -#}
 <rx-page layout="layouts/app.html" :title="title">
   <rx-stack>
-    <rx-page-header :title="title" :subtitle="tx['orders.subtitle']" :back="route('wl_sales.sales_orders')" :back-label="tx['orders.title']"
+    <rx-page-header :title="title" :subtitle="customer" :back="route('wl_sales.sales_orders')" :back-label="tx['orders.title']"
                     :badge="status_label" :badge-kind="status_kind">
       <template rx-if="can_edit">
         <rx-action-sheet id="add-order-line" :label="tx['orders.add_line']" :action="route('wl_sales.sales_order_line', order.id)"
@@ -12,9 +12,23 @@
           <rx-input name="description" :label="tx['counter.description']" id="add-order-line-description"/>
           <rx-input name="quantity" :label="tx['counter.quantity']" id="add-order-line-quantity"/>
           <rx-input name="unit_price" :label="tx['counter.unit_price']" id="add-order-line-price" required/>
+          <rx-input name="promised" :label="tx['orders.promised']" :hint="tx['orders.promised_hint']" id="add-order-line-promised"/>
           <rx-checkbox name="loyalty_excluded" :label="tx['counter.loyalty_excluded']" id="add-order-line-excluded"/>
         </rx-action-sheet>
-        <rx-confirm :id="'submit-order-' ~ order.id" :label="tx['orders.submit']" :action="route('wl_sales.sales_order_submit', order.id)" method="POST"
+        <rx-action-sheet id="order-reference" :label="tx['po.change']" :action="route('wl_sales.sales_order_reference', order.id)"
+                         :title="tx['po.change']" :description="tx['po.change_description']" :submit-label="tx['po.change']" icon="pencil">
+          <rx-input name="customer_po" :label="tx['po.customer_po']" id="order-reference-po" :value="po.customer_po"/>
+          <rx-input name="call_off" :label="tx['po.call_off']" id="order-reference-call-off" :value="po.call_off"/>
+        </rx-action-sheet>
+        <rx-action-sheet id="order-delivery" :label="tx['delivery.change']" :action="route('wl_sales.sales_order_delivery', order.id)"
+                         :title="tx['delivery.change']" :description="tx['delivery.change_description']" :submit-label="tx['delivery.change']" icon="truck">
+          <rx-textarea name="delivery_address" :label="tx['delivery.address']" id="order-delivery-address" :value="delivery.address"/>
+          <rx-input name="delivery_emirate" :label="tx['delivery.emirate']" id="order-delivery-emirate" :value="delivery.emirate"/>
+          <rx-input name="delivery_country" :label="tx['delivery.country']" id="order-delivery-country" :value="delivery.country"/>
+          <rx-select name="delivery_destination" :label="tx['delivery.destination']" :options="delivery.options" :selected="delivery.destination" :placeholder="tx['delivery.not_stated']" id="order-delivery-destination"/>
+        </rx-action-sheet>
+        <rx-button rx-if="po.blocked" :label="tx['orders.submit']" icon="check" :disabled-reason="po.blocked"/>
+        <rx-confirm rx-else :id="'submit-order-' ~ order.id" :label="tx['orders.submit']" :action="route('wl_sales.sales_order_submit', order.id)" method="POST"
                     :title="tx['orders.submit']" :message="tx['orders.submit_message']" :confirm-label="tx['orders.submit']" :cancel-label="tx['cancel']" icon="check"/>
       </template>
       <rx-action-sheet rx-if="redeem.can_redeem" id="redeem-sales_order" :label="tx['redeem.redeem']" :action="route('wl_sales.sales_order_redeem', order.id)"
@@ -39,16 +53,22 @@
           <rx-input :name="'line_' ~ line.id ~ '_quantity'" :label="tx['amend.line'] ~ ' ' ~ line.line_no ~ ' ' ~ line.description ~ ': ' ~ tx['amend.quantity']" :value="line.quantity" :hint="tx['amend.current'] ~ ': ' ~ line.quantity" :id="'amend-order-quantity-' ~ line.id"/>
           <rx-input :name="'line_' ~ line.id ~ '_price'" :label="tx['amend.price']" :value="line.price" :id="'amend-order-price-' ~ line.id"/>
           <rx-input :name="'line_' ~ line.id ~ '_discount'" :label="tx['amend.discount']" :value="line.discount" :id="'amend-order-discount-' ~ line.id"/>
+          <rx-input :name="'line_' ~ line.id ~ '_promised'" :label="tx['amend.promised']" :value="line.promised_input" :hint="tx['orders.promised_hint']" :id="'amend-order-promised-' ~ line.id"/>
         </rx-stack>
+        <rx-textarea name="delivery_address" :label="tx['delivery.address']" id="amend-order-delivery-address" :value="delivery.address"/>
+        <rx-input name="delivery_emirate" :label="tx['delivery.emirate']" id="amend-order-delivery-emirate" :value="delivery.emirate"/>
+        <rx-input name="delivery_country" :label="tx['delivery.country']" id="amend-order-delivery-country" :value="delivery.country"/>
+        <rx-select name="delivery_destination" :label="tx['delivery.destination']" :options="delivery.options" :selected="delivery.destination" :placeholder="tx['delivery.not_stated']" id="amend-order-delivery-destination"/>
         <rx-input name="add_item" :label="tx['amend.add_title'] ~ ': ' ~ tx['amend.add_item']" id="amend-order-add-item"/>
         <rx-input name="add_quantity" :label="tx['amend.add_quantity']" id="amend-order-add-quantity"/>
         <rx-input name="add_price" :label="tx['amend.add_price']" id="amend-order-add-price"/>
+        <rx-input name="add_promised" :label="tx['amend.add_promised']" :hint="tx['orders.promised_hint']" id="amend-order-add-promised"/>
       </rx-action-sheet>
       <rx-action-sheet rx-if="can_cancel_order" id="cancel-order" :label="tx['cancelling.order']" :action="route('wl_sales.sales_order_cancel', order.id)"
                        :title="tx['cancelling.order']" :description="tx['cancelling.order_description'] ~ ' ' ~ tx['cancelling.order_approval_hint']" :submit-label="tx['cancelling.order']" icon="x" danger>
         <rx-textarea name="reason" :label="tx['orders.reason']" id="cancel-order-reason" required/>
         <rx-stack rx-for="line in lines">
-          <rx-select rx-if="line.started" :name="'line_' ~ line.id ~ '_outcome'" :label="tx['amend.line'] ~ ' ' ~ line.line_no ~ ' ' ~ line.description ~ ' (' ~ tx['cancelling.started'] ~ '): ' ~ tx['cancelling.outcome_label']" :options="outcome_options" :selected="outcome_default" :placeholder="tx['cancelling.outcome_none']" :id="'cancel-order-outcome-' ~ line.id"/>
+          <rx-select rx-if="line.started" :name="'line_' ~ line.id ~ '_outcome'" :label="tx['amend.line'] ~ ' ' ~ line.line_no ~ ' ' ~ line.description ~ ' (' ~ tx['cancelling.started'] ~ '): ' ~ tx['cancelling.outcome_label']" :options="outcome_options" :selected="line.proposed or outcome_default" :placeholder="tx['cancelling.outcome_none']" :id="'cancel-order-outcome-' ~ line.id"/>
           <rx-input rx-if="line.started" :name="'line_' ~ line.id ~ '_fee'" :label="tx['cancelling.fee']" :hint="tx['cancelling.fee_hint']" :id="'cancel-order-fee-' ~ line.id"/>
           <rx-checkbox rx-if="line.started" :name="'line_' ~ line.id ~ '_waive'" :label="tx['cancelling.waive_fee']" :id="'cancel-order-waive-' ~ line.id"/>
         </rx-stack>
@@ -62,11 +82,27 @@
         <rx-input name="fee" :label="tx['cancelling.fee']" :hint="tx['cancelling.fee_hint']" id="cancel-order-line-fee"/>
         <rx-checkbox name="waive_fee" :label="tx['cancelling.waive_fee']" id="cancel-order-line-waive"/>
       </rx-action-sheet>
+      <rx-confirm rx-if="can_accept" :id="'accept-order-' ~ order.id" :label="tx['orders.accept']" :action="route('wl_sales.sales_order_accept', order.id)" method="POST"
+                  :title="tx['orders.accept']" :message="tx['orders.accept_message']" :confirm-label="tx['orders.accept']" :cancel-label="tx['cancel']" icon="check"/>
+      <template rx-if="release.shown">
+        <template rx-if="release.blocked">
+          <rx-button :label="tx['credit.release']" variant="primary" icon="unlock" :disabled-reason="release.blocked"/>
+        </template>
+        <template rx-else>
+          <rx-action-sheet id="release-order" :label="tx['credit.release']" :action="route('wl_sales.sales_order_release', order.id)"
+                           :title="tx['credit.release']" :description="release.description" :submit-label="tx['credit.release']" variant="primary" icon="unlock">
+            <rx-textarea name="note" :label="tx['credit.release_note']" id="release-order-note"/>
+            <rx-checkbox rx-if="release.account_on_hold" name="clear_hold" :label="tx['credit.release_also_clear']" id="release-order-also-clear"/>
+            <rx-select rx-if="release.account_on_hold" name="kind" :label="tx['credit.clear_reason']" :options="release.kinds" :selected="'cheque_replaced'"/>
+            <rx-textarea rx-if="release.account_on_hold" name="clear_note" :label="tx['credit.clear_note']" id="release-order-clear-note"/>
+          </rx-action-sheet>
+        </template>
+      </template>
       <rx-action-sheet rx-if="can_cancel_remaining" id="cancel-order-remaining" :label="tx['cancelling.remaining']" :action="route('wl_sales.sales_order_cancel_remaining', order.id)"
                        :title="tx['cancelling.remaining']" :description="tx['cancelling.remaining_description'] ~ ' ' ~ tx['cancelling.approval_hint']" :submit-label="tx['cancelling.remaining']" icon="x" danger>
         <rx-textarea name="reason" :label="tx['orders.reason']" id="cancel-order-remaining-reason" required/>
         <rx-stack rx-for="line in lines">
-          <rx-select :name="'line_' ~ line.id ~ '_outcome'" :label="tx['amend.line'] ~ ' ' ~ line.line_no ~ ' ' ~ line.description ~ ' (' ~ tx['cancelling.open'] ~ ' ' ~ line.open ~ '): ' ~ tx['cancelling.outcome_label']" :options="outcome_options" :selected="outcome_default" :placeholder="tx['cancelling.outcome_none']" :id="'cancel-order-remaining-outcome-' ~ line.id"/>
+          <rx-select :name="'line_' ~ line.id ~ '_outcome'" :label="tx['amend.line'] ~ ' ' ~ line.line_no ~ ' ' ~ line.description ~ ' (' ~ tx['cancelling.open'] ~ ' ' ~ line.open ~ '): ' ~ tx['cancelling.outcome_label']" :options="outcome_options" :selected="line.proposed or outcome_default" :placeholder="tx['cancelling.outcome_none']" :id="'cancel-order-remaining-outcome-' ~ line.id"/>
           <rx-input :name="'line_' ~ line.id ~ '_fee'" :label="tx['cancelling.fee']" :id="'cancel-order-remaining-fee-' ~ line.id"/>
           <rx-checkbox :name="'line_' ~ line.id ~ '_waive'" :label="tx['cancelling.waive_fee']" :id="'cancel-order-remaining-waive-' ~ line.id"/>
         </rx-stack>
@@ -91,6 +127,20 @@
         <rx-transition-actions :actions="actions" action="/sales-orders/{{ order.id }}/transitions"/>
       </template>
     </rx-page-header>
+    <rx-alert rx-if="po.clash_id" kind="warning" :message="po.blocked"/>
+    <p rx-if="po.clash_id"><a href="{{ route('wl_sales.sales_order', po.clash_id) }}">{{ po.clash_number }}</a></p>
+    <rx-include template="wl-kernel/approval_card.html"/>
+    <rx-card rx-if="hold" :title="tx['credit.hold_title']">
+      <p>{{ tx['credit.hold_goods_reserved'] }}</p>
+      <rx-infolist rx-if="hold.detail" columns="2">
+        <rx-entry :label="tx['credit.hold_reason']" :value="hold.reason"/>
+        <rx-entry :label="tx['credit.returns_to']" :value="hold.returns_to"/>
+        <rx-entry :label="tx['credit.owes']" :value="hold.owes"/>
+        <rx-entry :label="tx['credit.overdue']" :value="hold.overdue"/>
+        <rx-entry :label="tx['credit.limit']" :value="hold.limit"/>
+        <rx-entry :label="tx['credit.held_on']" :value="hold.held_on"/>
+      </rx-infolist>
+    </rx-card>
     <rx-alert rx-if="awaiting_hint" kind="info" :message="awaiting_hint"/>
     <rx-alert rx-if="waiting_alert" kind="warning" :message="waiting_alert"/>
     <rx-alert rx-if="amend_blocked" kind="info" :message="amend_blocked"/>
@@ -102,7 +152,9 @@
       <rx-column :label="tx['orders.line_no']" hide-narrow>{{ line.line_no }}</rx-column>
       <rx-column :label="tx['counter.description']">{{ line.description }}</rx-column>
       <rx-column :label="tx['counter.quantity']" hide-narrow>{{ line.quantity }}</rx-column>
+      <rx-column :label="tx['orders.promised']" hide-narrow>{{ line.promised }}</rx-column>
       <rx-column :label="tx['orders.fulfilled']" hide-narrow>{{ line.fulfilled }}</rx-column>
+      <rx-column :label="tx['progress.label']" hide-narrow>{{ line.progress }}</rx-column>
       <rx-column :label="tx['orders.backordered']" hide-narrow>{{ line.backordered }}</rx-column>
       <rx-column :label="tx['cancelling.open']" hide-narrow>{{ line.open }}</rx-column>
       <rx-column :label="tx['settle.held']" hide-narrow>{{ line.held }}</rx-column>
@@ -119,6 +171,12 @@
         <rx-entry rx-if="order.refunded_amount" :label="tx['returns.refunded']" :value="refunded"/>
         <rx-entry :label="tx['orders.channel']" :value="order.channel"/>
         <rx-entry :label="tx['orders.payment_mode']" :value="payment_mode_label"/>
+        <rx-entry :label="tx['delivery.destination']" :value="delivery.destination_label"/>
+        <rx-entry rx-if="delivery.address" :label="tx['delivery.address']" :value="delivery.address"/>
+        <rx-entry rx-if="delivery.emirate" :label="tx['delivery.emirate']" :value="delivery.emirate"/>
+        <rx-entry rx-if="delivery.country" :label="tx['delivery.country']" :value="delivery.country"/>
+        <rx-entry :label="tx['delivery.vat']" :value="delivery.vat"/>
+        <rx-entry rx-if="po.reference" :label="tx['po.customer_po']" :value="po.reference"/>
         <rx-entry rx-if="order.reason" :label="tx['orders.reason']" :value="order.reason"/>
         <rx-entry rx-if="order.external_number" :label="tx['orders.external_number']" :value="order.external_number"/>
         <rx-entry rx-if="order.payment_mode == 'online'" :label="tx['orders.payment_label']" :value="payment_label"/>

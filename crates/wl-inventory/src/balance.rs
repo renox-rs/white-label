@@ -3,8 +3,9 @@
 //! lot-tracked item):
 //!
 //! - *on hand*: what arrived less what left;
-//! - *reserved*: set aside for a draft Return to supplier, or for a sales
-//!   order line ([`crate::reservation`], BL-SAL-17);
+//! - *reserved*: set aside for a draft Return to supplier, for the lines of
+//!   a `picked` dispatch at the location and for the sales order lines that
+//!   hold a reservation there ([`crate::reservation`]);
 //! - *on hold*: blocked by an open stock hold: the undecided lines of an open
 //!   hold on whole lots follow the lot wherever it is, those of an open hold
 //!   on a location block that balance only (a line decided `release`,
@@ -135,9 +136,9 @@ pub async fn lot_locations<'c>(db: impl Executor<'c>, lot_id: i64) -> Result<Vec
     Ok(places.into_iter().filter(|(_, qty)| *qty > 0).collect())
 }
 
-/// What draft returns to supplier and picked dispatches set aside of `item_id` at `location_id`
-/// (of `lot_id` when given), in thousandths, and, when no lot is named, what
-/// sales orders set aside.
+/// What draft returns to supplier, picked dispatches and the reservations
+/// for sales order lines ([`crate::reservation`]) set aside of
+/// `item_id` at `location_id` (of `lot_id` when given), in thousandths.
 ///
 /// # Errors
 ///
@@ -167,59 +168,11 @@ pub async fn reserved_at<'c>(
             .map(|line| line.quantity_milli)
             .sum::<i64>();
     }
-    // A picked dispatch keeps its goods reserved until it is dispatched or
-    // cancelled (wl-inventory §4 *Dispatch* `pick`).
-    let picked = crate::dispatch::Dispatch::query()
-        .where_(crate::dispatch::Dispatch::STATUS.eq(crate::dispatch::DispatchStatus::Picked))
-        .where_(crate::dispatch::Dispatch::LOCATION_ID.eq(location_id))
-        .get(conn.reborrow())
-        .await?;
-    // The part of a picked line that the order's own reservation of the sale
-    // line already covers is counted once (BL-SAL-17).
-    let mut covered: std::collections::BTreeMap<(i64, i64), i64> =
-        std::collections::BTreeMap::new();
-    for dispatch in picked {
-        let lines = crate::dispatch::DispatchLine::query()
-            .where_(crate::dispatch::DispatchLine::DISPATCH_ID.eq(dispatch.id))
-            .where_(crate::dispatch::DispatchLine::ITEM_ID.eq(item_id))
-            .get(conn.reborrow())
+    reserved +=
+        crate::dispatch::reserved_picked(conn.reborrow(), item_id, location_id, lot_id).await?;
+    reserved +=
+        crate::reservation::reserved_in(conn.reborrow(), item_id, location_id, lot_id, None)
             .await?;
-        for line in lines
-            .iter()
-            .filter(|line| lot_id.is_none() || line.lot_id == lot_id)
-        {
-            let mut quantity = line.quantity_milli;
-            if lot_id.is_none()
-                && dispatch.source_type == wl_kernel::sales::SALES_ORDER_SUBJECT_TYPE
-                && let Some(sale_line) = line.sale_line_id
-            {
-                let key = (dispatch.source_id, sale_line);
-                let left = match covered.get(&key) {
-                    Some(left) => *left,
-                    None => {
-                        crate::reservation::reserved_for_line(
-                            conn.reborrow(),
-                            &dispatch.source(),
-                            sale_line,
-                            item_id,
-                            location_id,
-                        )
-                        .await?
-                    }
-                };
-                let used = left.min(quantity);
-                covered.insert(key, left - used);
-                quantity -= used;
-            }
-            reserved += quantity;
-        }
-    }
-    // What sales orders set aside is by item and location, not by lot
-    // (BL-SAL-17).
-    if lot_id.is_none() {
-        reserved +=
-            crate::reservation::sales_reserved(conn.reborrow(), item_id, location_id).await?;
-    }
     Ok(reserved)
 }
 

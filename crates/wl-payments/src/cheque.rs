@@ -344,6 +344,22 @@ impl Cheque {
         Ok(owed.into_iter().filter(|c| Some(c.id) != except).collect())
     }
 
+    /// What `party` has in received cheques not cleared yet in `currency`,
+    /// in fils.
+    pub async fn uncleared_amount(db: &Db, party: PartyId, currency: &str) -> Result<i64> {
+        Cheque::query()
+            .where_(Cheque::PARTY_ID.eq(party.0))
+            .where_(Cheque::DIRECTION.eq(Direction::In))
+            .where_(Cheque::CURRENCY.eq(currency))
+            .where_(Cheque::STATUS.is_in([
+                ChequeStatus::Received,
+                ChequeStatus::DueForDeposit,
+                ChequeStatus::Deposited,
+            ]))
+            .sum::<i64, _>(db, "open_amount")
+            .await
+    }
+
     /// What `party` still owes on its bounced received cheques in
     /// `currency`, in fils.
     pub async fn owed_amount(db: &Db, party: PartyId, currency: &str) -> Result<i64> {

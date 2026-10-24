@@ -8,13 +8,20 @@
         <rx-input name="party_id" :label="tx['orders.customer']" id="create-sales-order-party" required/>
         <rx-input name="channel" :label="tx['orders.channel']" id="create-sales-order-channel"/>
         <rx-input name="payment_mode" :label="tx['orders.payment_mode']" id="create-sales-order-payment"/>
+        <rx-input name="customer_po" :label="tx['po.customer_po']" id="create-sales-order-po"/>
+        <rx-input name="call_off" :label="tx['po.call_off']" id="create-sales-order-call-off"/>
         <rx-input name="external_number" :label="tx['orders.external_number']" id="create-sales-order-external"/>
         <rx-input name="promo_code" :label="tx['orders.promo_code']" id="create-sales-order-promo"/>
+        <rx-textarea name="delivery_address" :label="tx['delivery.address']" id="create-sales-order-delivery-address"/>
+        <rx-input name="delivery_emirate" :label="tx['delivery.emirate']" id="create-sales-order-delivery-emirate"/>
+        <rx-input name="delivery_country" :label="tx['delivery.country']" id="create-sales-order-delivery-country"/>
+        <rx-select name="delivery_destination" :label="tx['delivery.destination']" :options="delivery_options" :selected="''" :placeholder="tx['delivery.not_stated']" id="create-sales-order-delivery-destination"/>
       </rx-action-sheet>
     </rx-page-header>
     <nav aria-label="{{ tx['orders.title'] }}">
-      <a href="{{ route('wl_sales.sales_orders') }}" {% if not awaiting %}aria-current="page"{% endif %}>{{ tx['orders.tab.active'] }}</a>
+      <a href="{{ route('wl_sales.sales_orders') }}" {% if not awaiting and not held_only %}aria-current="page"{% endif %}>{{ tx['orders.all'] if held_only else tx['orders.tab.active'] }}</a>
       <a href="{{ route('wl_sales.sales_orders') }}?awaiting=1" {% if awaiting %}aria-current="page"{% endif %}>{{ tx['orders.tab.awaiting'] }} ({{ awaiting_count }})</a>
+      <a href="{{ route('wl_sales.sales_orders') }}?view=credit_hold" {% if held_only %}aria-current="page"{% endif %}>{{ tx['orders.on_credit_hold'] }} ({{ held_count }})</a>
     </nav>
     <rx-table :rows="orders" as="order" :key="order.id" :caption="tx['orders.title']" card>
       <rx-column :label="tx['orders.number']"><a href="{{ route('wl_sales.sales_order', order.id) }}">{{ order.number }}</a></rx-column>
@@ -22,6 +29,7 @@
       <rx-column :label="tx['orders.channel']" hide-narrow>{{ order.channel }}</rx-column>
       <rx-column :label="tx['orders.total']">{{ order.total }}</rx-column>
       <rx-column :label="tx['fields.status']"><rx-badge :kind="order.status_kind" :text="order.status_label"/></rx-column>
+      <rx-column :label="tx['credit.hold_reason']" hide-narrow>{{ order.hold_reason }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['orders.awaiting_empty'] if awaiting else tx['orders.empty']" icon="inbox"/></rx-slot>
     </rx-table>
   </rx-stack>

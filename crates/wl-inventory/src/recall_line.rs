@@ -33,13 +33,19 @@ pub enum LineKind {
     Dispatch,
     /// A count of walk-in sales at one outlet on one day.
     WalkIn,
+    /// A production source (a work order) the recalled lot was issued to,
+    /// when the vertical knows its party (07: the customer of an order not
+    /// yet delivered).
+    Production,
 }
 
 impl LineKind {
     /// How sure the trace is about a line of this kind.
     pub fn mark(self) -> TraceMark {
         match self {
-            LineKind::Confirmed | LineKind::Dispatch | LineKind::WalkIn => TraceMark::Confirmed,
+            LineKind::Confirmed | LineKind::Dispatch | LineKind::WalkIn | LineKind::Production => {
+                TraceMark::Confirmed
+            }
             LineKind::Uncertain => TraceMark::Uncertain,
             LineKind::Possible => TraceMark::Possible,
         }

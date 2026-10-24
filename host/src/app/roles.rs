@@ -11,6 +11,7 @@ use edtech::permissions as edu;
 use fnb::permissions as fnb_perm;
 use logistics::permissions as log;
 use manpower::permissions as mpw;
+use manufacturing::permissions as mfg;
 use property::permissions as prp;
 use renox::anyhow::anyhow;
 use renox::auth::permissions;
@@ -207,6 +208,27 @@ pub const ACCOUNT_MANAGER: &str = mpw::ACCOUNT_MANAGER_ROLE;
 /// The PRO (visa officer): works the visa cases of the workers and is told
 /// when a step passes its target (09 Manpower `MPW.RUL.14`).
 pub const PRO: &str = mpw::PRO_ROLE;
+/// The production planner: writes, releases, cancels and unlinks work orders and
+/// asks for the abort of one (07 Manufacturing §3.1, `MFG.ACL.12`); assigned per
+/// plant.
+pub const PRODUCTION_PLANNER: &str = mfg::PLANNER_ROLE;
+/// The production manager: also approves the abort of a work order and closes
+/// it, and sees its costs (07 §3.1, `MFG.ACL.12`); assigned per plant.
+pub const PRODUCTION_MANAGER: &str = mfg::PRODUCTION_MANAGER_ROLE;
+/// The QC inspector: sees the work orders of the plant, releases lots, raises
+/// and dispositions NCRs (07 §3.1).
+pub const QC_INSPECTOR: &str = mfg::QC_ROLE;
+/// The operator of a production line: reports the output of the work orders
+/// of their line, on the tablet (07 §3.1, `MFG.ACL.01`); assigned per line.
+pub const LINE_OPERATOR: &str = "line_operator";
+/// The sales person of a manufacturer: enters and amends the customers' orders,
+/// decides what happens to goods that came back (deliver again or cancel the
+/// line) and follows the credit of the account (07 §3.1, `SAL.ACL.05`).
+pub const SALES: &str = mfg::SALES_ROLE;
+/// The sales manager of a manufacturer: approves the changes of an order after
+/// its work started (`SAL.ACL.05`), releases an order held for credit
+/// (`SAL.ACL.03`) and decides what a blocked customer's orders do (07 §7.1).
+pub const SALES_MANAGER: &str = "sales_manager";
 /// The owner / operations director of an F&B client: sees every brand, outlet
 /// and margin, approves refunds and write-offs (06 §3.1).
 pub const OPERATIONS_DIRECTOR: &str = fnb_perm::OPERATIONS_DIRECTOR_ROLE;
@@ -364,6 +386,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::LOYALTY_MANAGE,
             sales::SEGMENTS_MANAGE,
             sales::SEGMENTS_EXPORT,
+            sales::CREDIT_VIEW,
+            sales::CREDIT_RELEASE,
+            sales::CREDIT_LIMITS_APPROVE,
             hr::EMPLOYEES_VIEW,
             hr::EMPLOYEES_MANAGE,
             hr::EMPLOYEES_SENSITIVE_VIEW,
@@ -470,6 +495,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::PURCHASE_ORDERS_ISSUE,
             inventory::GOODS_RECEIPTS_POST,
             inventory::GOODS_RECEIPTS_REVERSE,
+            inventory::DISPATCH_MANAGE,
             inventory::SUPPLIER_RETURNS_MANAGE,
             inventory::LANDED_COSTS_POST,
             inventory::ITEM_SUPPLIERS_MANAGE,
@@ -479,7 +505,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::STOCK_ADJUST,
             inventory::STOCK_HOLD,
             inventory::LOTS_RELEASE,
-            inventory::DISPATCH_MANAGE,
+            inventory::BOMS_VIEW,
+            inventory::BOMS_MANAGE,
+            inventory::BOMS_RELEASE,
             scheduling::VIEW,
             scheduling::VIEW_DETAILS,
             scheduling::MANAGE,
@@ -561,6 +589,26 @@ pub const ROLES: &[(&str, &[&str])] = &[
             mpw::DEPLOYMENTS_VIEW,
             mpw::DEPLOYMENTS_MANAGE,
             mpw::ABSENCE_MANAGE,
+            mfg::WORK_ORDERS_VIEW,
+            mfg::WORK_ORDERS_CREATE,
+            mfg::WORK_ORDERS_RELEASE,
+            mfg::WORK_ORDERS_REPORT,
+            mfg::WORK_ORDERS_ISSUE,
+            mfg::WORK_ORDERS_CLOSE,
+            mfg::WORK_ORDERS_ABORT_APPROVE,
+            mfg::WORK_ORDERS_VOID_APPROVE,
+            mfg::WORK_ORDERS_COST_VIEW,
+            mfg::NCRS_VIEW,
+            mfg::NCRS_RAISE,
+            mfg::NCRS_DISPOSITION,
+            mfg::NCRS_APPROVE,
+            mfg::PLANTS_MANAGE,
+            mfg::CONFORMITY_MANAGE,
+            mfg::EXPORTS_MANAGE,
+            mfg::RETURNED_GOODS_VIEW,
+            mfg::RETURNED_GOODS_DECIDE,
+            mfg::INSPECTIONS_VIEW,
+            mfg::INSPECTIONS_RECORD,
             prp::UNITS_VIEW,
             prp::UNITS_MANAGE,
             prp::UNITS_RESERVE,
@@ -830,6 +878,14 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         ACCOUNTANT,
         &[
+            // Sees why an order is held for credit and releases it, never
+            // the one who entered it (`SAL.ACL.03`).
+            sales::SALES_ORDERS_VIEW,
+            sales::CREDIT_VIEW,
+            sales::CREDIT_RELEASE,
+            // 07 `MFG.RUL.08`: follows the exports without exit evidence and
+            // writes the customers' contract notes (BL-MFG-12).
+            mfg::EXPORTS_MANAGE,
             hr::LEAVE_REQUEST,
             edu::COURSES_VIEW,
             edu::BATCHES_VIEW,
@@ -942,6 +998,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         FINANCE_MANAGER,
         &[
+            // Sets the credit limits and releases a held order (`SAL.ACL.03`).
+            sales::SALES_ORDERS_VIEW,
+            sales::CREDIT_VIEW,
+            sales::CREDIT_RELEASE,
+            sales::CREDIT_LIMITS_APPROVE,
             invoices::VIEW,
             invoices::RECEIVABLES_VIEW,
             invoices::BUDGETS_VIEW,
@@ -1046,6 +1107,14 @@ pub const ROLES: &[(&str, &[&str])] = &[
             attendance::CORRECT,
             // 09 §3.1: sees the deployments of their site (§3.2).
             mpw::DEPLOYMENTS_VIEW,
+            // 07 §3.1: the line supervisor reports on the work orders of
+            // their line and asks for the abort of one (`MFG.ACL.12`).
+            mfg::WORK_ORDERS_VIEW,
+            mfg::WORK_ORDERS_REPORT,
+            mfg::WORK_ORDERS_RELEASE,
+            // The supervisor approves the void of a production report on
+            // their line (`PLT.ACL.09`).
+            mfg::WORK_ORDERS_VOID_APPROVE,
         ],
     ),
     (
@@ -1080,6 +1149,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::STOCK_VIEW,
             inventory::PURCHASE_ORDERS_VIEW,
             inventory::GOODS_RECEIPTS_POST,
+            inventory::DISPATCH_MANAGE,
             inventory::STOCK_ISSUE,
             inventory::STOCK_TRANSFER,
             inventory::STOCK_ADJUST,
@@ -1088,6 +1158,102 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // 08: issues parts to a job card and takes back what was not fitted.
             aut::JOB_CARDS_VIEW,
             inventory::DISPATCH_MANAGE,
+            mfg::WORK_ORDERS_VIEW,
+            mfg::WORK_ORDERS_ISSUE,
+        ],
+    ),
+    (
+        LINE_OPERATOR,
+        &[mfg::WORK_ORDERS_VIEW, mfg::WORK_ORDERS_REPORT],
+    ),
+    (
+        PRODUCTION_PLANNER,
+        &[
+            // The tasks 07 gives this role (`MFG.RUL.09`, `MFG.RUL.10`, the abort,
+            // the final inspection) are tickets (BL-MFG-14).
+            tickets::VIEW,
+            tickets::WORK,
+            mfg::WORK_ORDERS_VIEW,
+            mfg::WORK_ORDERS_CREATE,
+            mfg::WORK_ORDERS_RELEASE,
+            mfg::RETURNED_GOODS_VIEW,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            // 07 §3.1: the planner reads the BOMs the work orders are made
+            // from.
+            inventory::BOMS_VIEW,
+        ],
+    ),
+    (
+        PRODUCTION_MANAGER,
+        &[
+            // The tasks 07 gives this role (`MFG.RUL.09`, `MFG.RUL.10`, the abort,
+            // the final inspection) are tickets (BL-MFG-14).
+            tickets::VIEW,
+            tickets::WORK,
+            mfg::WORK_ORDERS_VIEW,
+            mfg::WORK_ORDERS_CREATE,
+            mfg::WORK_ORDERS_RELEASE,
+            mfg::WORK_ORDERS_REPORT,
+            mfg::WORK_ORDERS_CLOSE,
+            mfg::WORK_ORDERS_ABORT_APPROVE,
+            mfg::WORK_ORDERS_VOID_APPROVE,
+            mfg::WORK_ORDERS_COST_VIEW,
+            // 07 §3.1, `MFG.ACL.03`: also decides NCRs and approves a
+            // *use as is* that somebody else asks for.
+            mfg::NCRS_VIEW,
+            mfg::NCRS_RAISE,
+            mfg::NCRS_DISPOSITION,
+            mfg::NCRS_APPROVE,
+            // `STK.ACL.02`: decides a scrap above AED 2,000 (an NCR's) and the
+            // second step of an abort.
+            inventory::STOCK_APPROVE,
+            mfg::PLANTS_MANAGE,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::STOCK_COST_VIEW,
+            // 07 §3.1: the production manager keeps and releases the BOMs
+            // (`MFG.ACL.06`).
+            inventory::BOMS_VIEW,
+            inventory::BOMS_MANAGE,
+            inventory::BOMS_RELEASE,
+            // 07 §4.4 step 8: the production manager opens a recall and reads
+            // which customers it reached (BL-MFG-10).
+            inventory::RECALLS_VIEW,
+            inventory::RECALLS_MANAGE,
+            // 07 `MFG.ACL.11`: flags the regulated and export only items and
+            // follows the export evidence (BL-MFG-11, BL-MFG-12).
+            mfg::CONFORMITY_MANAGE,
+            mfg::EXPORTS_MANAGE,
+            mfg::RETURNED_GOODS_VIEW,
+            mfg::INSPECTIONS_VIEW,
+            // `PLT.ACL.10`: approves a production report entered more than
+            // 24 hours late (BL-MFG-14).
+            wl_kernel::permissions::LATE_ENTRIES_APPROVE,
+        ],
+    ),
+    (
+        QC_INSPECTOR,
+        &[
+            // The tasks 07 gives this role (`MFG.RUL.09`, `MFG.RUL.10`, the abort,
+            // the final inspection) are tickets (BL-MFG-14).
+            tickets::VIEW,
+            tickets::WORK,
+            mfg::WORK_ORDERS_VIEW,
+            // `MFG.RUL.10`: inspects the lots that came back; passing releases
+            // the lot, failing raises an NCR.
+            mfg::INSPECTIONS_VIEW,
+            mfg::INSPECTIONS_RECORD,
+            // 07 §3.1, `MFG.QCL.02`: raises NCRs and decides what becomes of
+            // the goods; approves a *use as is* only on an NCR somebody else
+            // raised (`MFG.ACL.03`).
+            mfg::NCRS_VIEW,
+            mfg::NCRS_RAISE,
+            mfg::NCRS_DISPOSITION,
+            mfg::NCRS_APPROVE,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::LOTS_RELEASE,
         ],
     ),
     (
@@ -1905,6 +2071,71 @@ pub const ROLES: &[(&str, &[&str])] = &[
     ),
     (HSE_OFFICER, &[attendance::VIEW]),
     (PRO, &[hr::EMPLOYEES_VIEW, hr::VISAS_MANAGE]),
+    (
+        SALES,
+        &[
+            // The tasks 07 gives this role (`MFG.RUL.09`, `MFG.RUL.10`, the abort,
+            // the final inspection) are tickets (BL-MFG-14).
+            tickets::VIEW,
+            tickets::WORK,
+            // 07 §3.1: enters, accepts, amends and cancels the orders of the
+            // customers; a started line needs a manager (`SAL.ACL.05`).
+            sales::SALES_ORDERS_VIEW,
+            sales::SALES_ORDERS_CREATE,
+            sales::SALES_ORDERS_ACCEPT,
+            sales::SALES_ORDERS_CANCEL,
+            sales::SALES_ORDERS_AMEND,
+            sales::CREDIT_VIEW,
+            sales::LEADS_VIEW,
+            sales::LEADS_MANAGE,
+            // Decides what to do with goods that came back (`MFG.RUL.10`).
+            mfg::RETURNED_GOODS_VIEW,
+            mfg::RETURNED_GOODS_DECIDE,
+            mfg::WORK_ORDERS_VIEW,
+            parties::VIEW,
+            parties::CREATE,
+            parties::UPDATE,
+            documents::VIEW,
+            documents::UPLOAD,
+            invoices::VIEW,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            tickets::CREATE,
+        ],
+    ),
+    (
+        SALES_MANAGER,
+        &[
+            // The tasks 07 gives this role (`MFG.RUL.09`, `MFG.RUL.10`, the abort,
+            // the final inspection) are tickets (BL-MFG-14).
+            tickets::VIEW,
+            tickets::WORK,
+            sales::SALES_ORDERS_VIEW,
+            sales::SALES_ORDERS_CREATE,
+            sales::SALES_ORDERS_ACCEPT,
+            sales::SALES_ORDERS_CANCEL,
+            sales::SALES_ORDERS_AMEND,
+            // Approves a change after the work started, never their own
+            // (`SAL.ACL.05`); releases a held order (`SAL.ACL.03`).
+            sales::SALES_ORDERS_APPROVE,
+            sales::CREDIT_VIEW,
+            sales::CREDIT_RELEASE,
+            sales::LEADS_VIEW,
+            sales::LEADS_MANAGE,
+            mfg::RETURNED_GOODS_VIEW,
+            mfg::RETURNED_GOODS_DECIDE,
+            mfg::WORK_ORDERS_VIEW,
+            parties::VIEW,
+            parties::CREATE,
+            parties::UPDATE,
+            parties::BLOCK,
+            documents::VIEW,
+            invoices::VIEW,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            tickets::CREATE,
+        ],
+    ),
     (MEMBER, &[]),
 ];
 

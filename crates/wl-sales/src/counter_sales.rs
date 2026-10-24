@@ -157,6 +157,10 @@ pub async fn complete(
         vat: t.vat,
         gross: t.gross,
         allow_account: config_of(state).counter_sales_on_account,
+        account_on_hold: match sale.party_id {
+            Some(party) => crate::account_hold::is_on_hold(&state.db, party).await?,
+            None => false,
+        },
     };
     let _ = sale
         .transition(COMPLETE)

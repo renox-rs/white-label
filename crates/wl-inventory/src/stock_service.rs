@@ -256,6 +256,7 @@ pub async fn consume(state: &AppState, request: ConsumeRequest) -> Result<Consum
         lots.push(ConsumedLot {
             lot: lot_id.map(|id| Subject::new(LOT_SUBJECT_TYPE, id)),
             quantity_milli: quantity,
+            unit_cost: item.average_cost,
         });
         let mut moved = StockMovement::leaving(
             MovementType::Consume,
@@ -421,10 +422,27 @@ pub async fn choices(db: &Db, code: &str, location_id: i64) -> Result<Option<Sto
     else {
         return Ok(None);
     };
+    choices_of(db, &item, location_id).await.map(Some)
+}
+
+/// What can be taken of the item with id `item_id` at `location_id`; `None`
+/// for an unknown item.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn choices_by_id(db: &Db, item_id: i64, location_id: i64) -> Result<Option<StockChoice>> {
+    match Item::find(db, item_id).await? {
+        Some(item) => choices_of(db, &item, location_id).await.map(Some),
+        None => Ok(None),
+    }
+}
+
+async fn choices_of(db: &Db, item: &Item, location_id: i64) -> Result<StockChoice> {
     let mut lots = Vec::new();
     if item.lot_tracked {
         let day = today();
-        for candidate in balance::candidates(db, &item, location_id).await? {
+        for candidate in balance::candidates(db, item, location_id).await? {
             let Some(lot_id) = candidate.lot_id else {
                 continue;
             };
@@ -440,11 +458,11 @@ pub async fn choices(db: &Db, code: &str, location_id: i64) -> Result<Option<Sto
             });
         }
     }
-    Ok(Some(StockChoice {
+    Ok(StockChoice {
         item: item.subject(),
         lot_tracked: item.lot_tracked,
         lots,
-    }))
+    })
 }
 
 /// The module's [`StockService`].
@@ -488,6 +506,57 @@ impl StockService for InventoryStock {
         location: &'a Subject,
     ) -> StockFuture<'a, Option<StockChoice>> {
         Box::pin(async move { choices(&state.db, code, location.subject_id).await })
+    }
+
+    fn choices_of_item<'a>(
+        &'a self,
+        state: &'a AppState,
+        item: &'a Subject,
+        location: &'a Subject,
+    ) -> StockFuture<'a, Option<StockChoice>> {
+        Box::pin(
+            async move { choices_by_id(&state.db, item.subject_id, location.subject_id).await },
+        )
+    }
+
+    fn on_hand<'a>(
+        &'a self,
+        state: &'a AppState,
+        item: &'a Subject,
+        location: &'a Subject,
+    ) -> StockFuture<'a, Option<i64>> {
+        Box::pin(async move {
+            crate::movement::on_hand(&state.db, item.subject_id, location.subject_id)
+                .await
+                .map(Some)
+        })
+    }
+
+    fn item_label<'a>(
+        &'a self,
+        state: &'a AppState,
+        item: &'a Subject,
+    ) -> StockFuture<'a, Option<wl_kernel::inventory::ItemLabel>> {
+        Box::pin(async move {
+            Ok(Item::find(&state.db, item.subject_id).await?.map(|found| {
+                wl_kernel::inventory::ItemLabel {
+                    code: found.code,
+                    name: found.name_en,
+                }
+            }))
+        })
+    }
+
+    fn lot_number<'a>(
+        &'a self,
+        state: &'a AppState,
+        lot: &'a Subject,
+    ) -> StockFuture<'a, Option<String>> {
+        Box::pin(async move {
+            Ok(Lot::find(&state.db, lot.subject_id)
+                .await?
+                .map(|found| found.number))
+        })
     }
 
     fn source_cancelled<'a>(

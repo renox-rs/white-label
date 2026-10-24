@@ -25,6 +25,7 @@
       <rx-table :rows="places" as="place" :key="place.location" :caption="tx['lot.where']">
         <rx-column :label="tx['stock.store']">{{ place.location }}</rx-column>
         <rx-column :label="tx['stock.on_hand']">{{ place.quantity }}</rx-column>
+        <rx-column :label="tx['stock.reserved']">{{ place.reserved }}</rx-column>
         <rx-slot name="empty"><rx-empty :title="tx['lot.nowhere']" icon="package"/></rx-slot>
       </rx-table>
     </rx-card>

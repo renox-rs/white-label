@@ -19,8 +19,11 @@
 //!   that state with `insert_in_state`, and the place says why: the only one
 //!   is the card payment of the online gateway, because no gateway adapter is
 //!   installed in the demo (as in the clinics demo).
-//! - **Relative dates.** Every date is `day(n)`, today plus or minus days
-//!   (Asia/Dubai). A step of the past runs on the seed's [`Clock`] set to its
+//! - **Relative dates.** Every date is `day(n)`, the anchor day plus or minus
+//!   days (Asia/Dubai). The anchor is the latest Friday up to today
+//!   ([`anchor_day`]): the batches meet on fixed weekdays and the stories
+//!   hold and mark their sessions on fixed days, so the demo tells the same
+//!   story whatever weekday it is seeded on (on a Friday the anchor is today). A step of the past runs on the seed's [`Clock`] set to its
 //!   day: a batch is planned a month before it starts, its students enrol
 //!   and pay in the weeks before, each session is marked on the evening it
 //!   was taught, so the numbers, the invoices and the audit trail carry the
@@ -308,6 +311,16 @@ pub(crate) struct Seed {
     pub(crate) enrolments: BTreeMap<String, i64>,
 }
 
+/// The day the seed's dates are counted from: the latest Friday up to
+/// `today`. The sessions of a batch fall on weekdays, so the number of
+/// sessions before a given day, and who is on the roster of each, depend on
+/// the weekday of day 0; a Friday is the weekday the stories are written for.
+pub(crate) fn anchor_day(today: renox::chrono::NaiveDate) -> renox::chrono::NaiveDate {
+    use renox::chrono::{Datelike, Days};
+    let back = (today.weekday().number_from_monday() + 2) % 7;
+    today - Days::new(u64::from(back))
+}
+
 impl Seed {
     fn new(state: AppState, driver: Driver, clock: std::sync::Arc<Clock>) -> Self {
         Self {
@@ -342,17 +355,16 @@ impl Seed {
     }
 
     async fn run(&mut self) -> Result {
-        // The seed's dates are relative to the real today, also inside a step
+        // The seed's dates are relative to the anchor day, also inside a step
         // that runs on the clock of a day in the past.
         *super::demo_data::REAL_TODAY
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) =
-            Some(wl_kernel::documents::today());
-        let done = self.story().await;
-        *super::demo_data::REAL_TODAY
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-        done
+            Some(anchor_day(wl_kernel::documents::today()));
+        // Not cleared afterwards: seeds that run at the same time in one
+        // process (the tests) share it, and the first to end would send the
+        // others back to the clock of their step. The next seed sets it again.
+        self.story().await
     }
 
     async fn story(&mut self) -> Result {
@@ -373,5 +385,26 @@ impl Seed {
         )
         .await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::anchor_day;
+    use renox::chrono::{Datelike, NaiveDate, Weekday};
+
+    /// Whatever the weekday, the anchor is a Friday, and it is today on a
+    /// Friday and never more than six days before.
+    #[test]
+    fn the_anchor_is_the_latest_friday() {
+        let first = NaiveDate::from_ymd_opt(2026, 10, 19).unwrap_or_default();
+        for n in 0..14 {
+            let today = first + renox::chrono::Days::new(n);
+            let anchor = anchor_day(today);
+            assert_eq!(anchor.weekday(), Weekday::Fri, "{today}");
+            let back = (today - anchor).num_days();
+            assert!((0..=6).contains(&back), "{today}: {back}");
+            assert_eq!(back == 0, today.weekday() == Weekday::Fri);
+        }
     }
 }

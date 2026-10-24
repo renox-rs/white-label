@@ -111,6 +111,9 @@ pub struct Dispute {
     pub invoice_id: i64,
     /// Why it is disputed.
     pub reason: String,
+    /// What it is about when the form asked: `quantity`, `price`, `quality`,
+    /// `other`.
+    pub kind: Option<String>,
     /// The disputed amount, fixed when it was raised.
     pub amount: i64,
     /// The disputed line positions; empty when not tied to lines.
@@ -391,6 +394,7 @@ pub async fn raise(state: &AppState, request: DisputeRequest) -> Result<i64> {
     let mut dispute = Dispute {
         invoice_id: invoice.id,
         reason: request.reason.trim().to_owned(),
+        kind: request.kind.clone().filter(|kind| !kind.trim().is_empty()),
         amount: plan.amount,
         lines: Json(plan.positions.clone()),
         raised_by_user_id: user_id,
@@ -535,6 +539,8 @@ async fn after_commit(
                 .collect(),
             ticket: ticket.map(|t| TicketId(t.id.0)),
             raised_by: dispute.raised_by(),
+            reason: dispute.reason.clone(),
+            kind: dispute.kind.clone(),
         })
         .await
 }

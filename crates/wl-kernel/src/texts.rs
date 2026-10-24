@@ -113,7 +113,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_kernel.approvals.card.approvers", "Approvers"),
     (
         "wl_kernel.approvals.card.holders_of",
-        "holders of :permission",
+        "anyone with the :permission permission",
     ),
     ("wl_kernel.approvals.card.decisions", "Decisions"),
     ("wl_kernel.approvals.card.decision", "Decision"),

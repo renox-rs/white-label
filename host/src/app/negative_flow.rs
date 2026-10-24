@@ -105,6 +105,12 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
         // 04 `FIN.ACL.15`, `FIN.RUL.15`, `FIN.RUL.23`, `FIN.RUL.24`, `FIN.ACL.21`
         // (BL-ACC-24): see [`super::accounting_seed::invoicing`].
         "accounting" => super::accounting_seed::invoicing(module, entities),
+        // 07 Manufacturing §7.1 *Disputes*: the customer buyer disputes an
+        // invoice in the portal (a quality dispute links an NCR, BL-MFG-13),
+        // and `FIN.RUL.15` escalates after 14 days to the accountant.
+        // The money values of 07 (BL-MFG-14): see
+        // [`super::manufacturing_seed::invoicing`].
+        "manufacturing" => super::manufacturing_seed::invoicing(module, entities),
         _ => module,
     }
 }
@@ -164,6 +170,8 @@ pub fn payments_for(client_app: &str) -> WlPayments {
         // operations manager; the manager of a driver is that role. Salary
         // deduction stays off (`FIN.ACL.19`, open item L-20).
         "logistics" => super::logistics_seed::payments(module),
+        // 07: two presentations, chased after 3 and 14 days, no bounce fee.
+        "manufacturing" => super::manufacturing_seed::payments(module),
         "construction" => super::construction_seed::payments(module),
         "manpower" => super::manpower_seed::payments(module),
         // 06: pending payments, late payments, refund retry, shortage
@@ -612,6 +620,9 @@ async fn show(State(state): State<AppState>) -> Result<Response> {
     } else if settings.client_app == super::fnb_seed::FNB {
         // The 06 client has its own table (BL-FNB-16).
         super::fnb_settings::money_rows(&settings.entities)
+    } else if settings.client_app == super::manufacturing_seed::MANUFACTURING {
+        // The 07 client has its own table (BL-MFG-14).
+        super::manufacturing_settings::money_rows(&settings.entities)
     } else {
         rows(&settings.client_app, &settings.entities)
     };

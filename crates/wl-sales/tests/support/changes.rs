@@ -36,6 +36,7 @@ struct Pages {
     drafts: Vec<(i64, InvoiceDraft)>,
     updates: Vec<(i64, InvoiceDraft)>,
     credits: Vec<(i64, Vec<CreditLine>, String)>,
+    discarded: Vec<i64>,
     status: BTreeMap<i64, InvoiceStatus>,
 }
 
@@ -59,6 +60,11 @@ impl Ledger {
     /// The draft invoices updated, oldest first.
     pub fn updates(&self) -> Vec<(i64, InvoiceDraft)> {
         self.0.lock().unwrap().updates.clone()
+    }
+
+    /// The draft invoices discarded, oldest first.
+    pub fn discarded(&self) -> Vec<i64> {
+        self.0.lock().unwrap().discarded.clone()
     }
 
     /// The credit notes asked for: invoice, lines, reason.
@@ -99,6 +105,22 @@ impl Invoicer for Ledger {
                 return Ok(false);
             }
             book.updates.push((id.0, draft));
+            Ok(true)
+        })
+    }
+
+    fn discard_draft<'a>(&'a self, _db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, bool> {
+        Box::pin(async move {
+            let mut book = self.0.lock().unwrap();
+            let status = book
+                .status
+                .get(&id.0)
+                .copied()
+                .unwrap_or(InvoiceStatus::Draft);
+            if status != InvoiceStatus::Draft {
+                return Ok(false);
+            }
+            book.discarded.push(id.0);
             Ok(true)
         })
     }

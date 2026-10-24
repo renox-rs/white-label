@@ -1844,7 +1844,10 @@ pub(crate) fn t_with(lang: &Lang, key: &str, params: &[(&str, &dyn Display)]) ->
 pub(crate) fn all(lang: &Lang) -> BTreeMap<&'static str, String> {
     TEXTS
         .iter()
+        .chain(crate::credit_texts::TEXTS)
         .chain(crate::texts_changes::CHANGE_TEXTS.iter())
+        .chain(crate::texts_deliveries::DELIVERY_TEXTS.iter())
+        .chain(crate::texts_destination::DESTINATION_TEXTS.iter())
         .chain(crate::texts_till::TILL_TEXTS.iter())
         .map(|(key, _)| (key.trim_start_matches("wl_sales."), t(lang, key)))
         .collect()
@@ -1855,7 +1858,10 @@ pub(crate) fn all(lang: &Lang) -> BTreeMap<&'static str, String> {
 pub(crate) fn english(key: &str, params: &[(&str, &dyn Display)]) -> String {
     let text = TEXTS
         .iter()
+        .chain(crate::credit_texts::TEXTS)
         .chain(crate::texts_changes::CHANGE_TEXTS.iter())
+        .chain(crate::texts_deliveries::DELIVERY_TEXTS.iter())
+        .chain(crate::texts_destination::DESTINATION_TEXTS.iter())
         .chain(crate::texts_till::TILL_TEXTS.iter())
         .find(|(k, _)| *k == key)
         .map_or(key, |(_, text)| *text);
@@ -1871,7 +1877,10 @@ mod tests {
     fn keys_are_unique_and_prefixed() {
         let mut keys: Vec<&str> = TEXTS
             .iter()
+            .chain(crate::credit_texts::TEXTS)
             .chain(crate::texts_changes::CHANGE_TEXTS.iter())
+            .chain(crate::texts_deliveries::DELIVERY_TEXTS.iter())
+            .chain(crate::texts_destination::DESTINATION_TEXTS.iter())
             .chain(crate::texts_till::TILL_TEXTS.iter())
             .map(|(key, _)| *key)
             .collect();

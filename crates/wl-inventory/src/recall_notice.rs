@@ -26,7 +26,7 @@
 
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
-use wl_kernel::inventory::{RECALL_LINE_SUBJECT_TYPE, TraceMark};
+use wl_kernel::inventory::{RECALL_LINE_SUBJECT_TYPE, TraceMark, trace_party_resolver};
 use wl_kernel::notify::{
     self, Category, MessageGaveUp, NotificationTypeDef, NotifyChannel, NotifyRequest,
 };
@@ -125,11 +125,50 @@ pub fn notice_types() -> Vec<NotificationTypeDef> {
         .collect()
 }
 
-/// Registers the notification types with the kernel registry.
-pub(crate) fn register_types() {
-    for def in notice_types() {
-        notify::register_type(def);
+/// The notification type the vertical sends every notice under: no group,
+/// urgent, the customer text; a notice that gives up gives the recall owner a
+/// task ([`on_gave_up`]).
+pub fn urgent_notice_type(key: &str) -> NotificationTypeDef {
+    NotificationTypeDef::new(key, "inventory")
+        .group("")
+        .category(Category::Transactional)
+        .urgency(notify::Urgency::Urgent)
+        .give_up(&[notify::GiveUpReaction::StaffTask])
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_inventory.recall.notice_subject")),
+            english("wl_inventory.recall.notice_body_customer"),
+        )
+        .template(NotifyChannel::Email, "ar", Some(SUBJECT_AR), CUSTOMER_AR)
+}
+
+/// Registers the notification types with the kernel registry: the module's
+/// three, or the one the vertical named.
+pub(crate) fn register_types(config: &crate::InventoryConfig) {
+    match &config.recall_notice_key {
+        Some(key) => notify::register_type(urgent_notice_type(key)),
+        None => {
+            for def in notice_types() {
+                notify::register_type(def);
+            }
+        }
     }
+}
+
+/// The notification type key a notice with `template` goes out under: the
+/// vertical's own when it named one.
+fn key_for(state: &AppState, template: &str) -> String {
+    crate::config_of(state)
+        .recall_notice_key
+        .clone()
+        .unwrap_or_else(|| notice_key(template))
+}
+
+/// Whether `type_key` is the type of a recall notice.
+fn is_notice_key(state: &AppState, type_key: &str) -> bool {
+    type_key.starts_with(NOTICE_PREFIX)
+        || crate::config_of(state).recall_notice_key.as_deref() == Some(type_key)
 }
 
 /// The source key of the owner's task about line `line_id`.
@@ -159,17 +198,21 @@ async fn request_for(
     };
     let number = recall.number.clone().unwrap_or_default();
     let party = PartyId(line.party_id.unwrap_or_default());
-    Ok(NotifyRequest::new(&notice_key(template), line.subject())
-        .subject_label(&number)
-        .to_party(party)
-        .data(renox::serde_json::json!({
-            "number": number,
-            "reason": recall.reason,
-            "item": item.0,
-            "lot": item.1,
-            "subject": line.used_by().map(|s| s.to_string()).unwrap_or_default(),
-            "date": line.occurred_on.map(|d| d.to_string()).unwrap_or_default(),
-        })))
+    // The vertical says who is told for the party: every active buyer of a
+    // customer, else the party's own contact points (07 §4.4 step 8).
+    let mut request =
+        NotifyRequest::new(&key_for(state, template), line.subject()).subject_label(&number);
+    for recipient in trace_party_resolver(state).addressees(state, party).await? {
+        request = request.to(recipient);
+    }
+    Ok(request.data(renox::serde_json::json!({
+        "number": number,
+        "reason": recall.reason,
+        "item": item.0,
+        "lot": item.1,
+        "subject": line.used_by().map(|s| s.to_string()).unwrap_or_default(),
+        "date": line.occurred_on.map(|d| d.to_string()).unwrap_or_default(),
+    })))
 }
 
 /// Puts the lines `ids` back to `pending` after a notice failed.
@@ -395,7 +438,7 @@ pub async fn set_notice(
 /// A database error, or the task creator's.
 pub async fn on_gave_up(state: &AppState, event: &MessageGaveUp) -> Result {
     if event.subject.subject_type != RECALL_LINE_SUBJECT_TYPE
-        || !event.type_key.starts_with(NOTICE_PREFIX)
+        || !is_notice_key(state, &event.type_key)
     {
         return Ok(());
     }

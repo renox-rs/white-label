@@ -15,9 +15,9 @@
 //! Decision: the form makes a transfer of one item (one line); a transfer of
 //! several lines is made through the service.
 
+use crate::screens::dubai_text;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
-use wl_kernel::documents::dubai_text;
 
 use crate::hold_service::warnings_for;
 use crate::item::Item;
