@@ -37,7 +37,7 @@ Map of IDs to numbers: `docs/backlog/github-issues.md`. Issue text: `docs/backlo
 - `crates/wl-sales`: customer credit account, credit hold and release (user and `_approved` twins), account hold, PO number uniqueness (also on amend),
   invoice on delivery, order directory (`order_directory.rs` provides the kernel `OrderLines`, `CustomerPoCheck`, `CreditExposure`, `CreditChecker`).
 - `crates/wl-inventory`: Dispatch lifecycle (pick, send, deliver, loss, reverse, return, discard), dispatch guard (documents at pick and dispatch),
-  BOM provider, production stock, lot disposal, recall trace with production lines and dispatch directory.
+  BOM provider, production stock, reservations of stock for sales order lines and work order output lots (`reservation`), lot disposal, recall trace with production lines and dispatch directory.
 - `crates/wl-kernel`: new contracts with defaults (`production`, `lot_disposal`, `DispatchDirectory`, `TracePartyResolver::addressees`, `DispatchGuard`,
   `OutcomeProposals`, `CustomerPoCheck`, `OrderLineRules`, `PromisedLines`, `DeliveryDestination`, dispatch events, credit contracts).
 - Host: `host/src/app/manufacturing_seed.rs` (07 configuration), `manufacturing_demo/`, `dashboard/manufacturing_tiles.rs`, roles in `host/src/app/roles.rs`.
@@ -55,8 +55,6 @@ Map of IDs to numbers: `docs/backlog/github-issues.md`. Issue text: `docs/backlo
 
 | # | Issue, point | What is missing | Provider | Why not now |
 |---|---|---|---|---|
-| 4 | BL-MFG-02 (#383) pt 5 / `release_reservation` | wl-inventory keeps no reservation of an output lot for an order line; answers `false` | wl-inventory | no such reservation |
-| 5 | BL-MFG-03 (#384): output "for stock" of a started work order | only flagged, never reserved or released | wl-inventory | same as 4 |
 | 6 | BL-SAL-13 (#132) / BL-MFG-14: delivery after the invoice was issued | not billed (one invoice per order, accountant task) | wl-sales / client billing | open decision |
 | 7 | BL-MFG-14 (#395) late entry for goods receipts and inspections | limits installed only for production reports | wl-inventory, this app | needs an approval flow in each |
 | 8 | BL-MFG-14 calibration certificates kind | no kind, no equipment record | later issue | no entity |
@@ -66,7 +64,6 @@ Map of IDs to numbers: `docs/backlog/github-issues.md`. Issue text: `docs/backlo
 | 12 | BL-MFG-14 signed checklists `WRK.CHK.01` (onboarding, returned goods inspection) | wl-ticketing has only the kernel contract `Checklists` | wl-ticketing | no provider |
 | 13 | BL-MFG-09 (#390) scanner/import entry | no scanner or import entry in the app | later issue | nothing to test |
 | 14 | BL-MFG-13 (#394) pt 3 | "no line selection for a price dispute" is a client-side show/hide; server ignores lines for a price dispute (tested). Ticked on the issue | none (by design) | not enforceable on the server |
-| 15 | BL-SAL-11 (#130) pt 2: stock reserved after a held order is released | nothing reserves stock on `SalesOrderConfirmed` (the dispatch pick reserves); only the status and the single event are tested. Left open on the issue | wl-inventory (reservation on the confirmed event) | no consumer exists |
 | 17 | BL-MFG-14 (#395) pt 3: no bounce fee invoiced | asserted only as the config value `bounce_fee.is_none()` | wl-payments | no mechanism run under the 07 seed |
 | 18 | BL-MFG-14 pt 14: drawings left out of operating cost and profit reports; owner approval of the budget | not tested; approval asserted only as configuration (100% budget warning and drawing self-approval refusal are proved) | wl-invoicing / wl-accounting reports | not run with the 07 seed |
 | 19 | BL-MFG-14 pt 16: alternative supplier on a purchase request and a second person for a preferred supplier | not run with the 07 seed (supplier score 69 vs 70 is proved) | wl-inventory | not run with the 07 seed |
@@ -113,4 +110,4 @@ Never `pkill -f cargo` (it kills your own shell); use `pgrep -x cargo`. Do not r
 2. Push the branch (check that no CI run is in progress on it first).
 3. Update the 25 GitHub issues as described above (one agent per ~9 issues), then a sweep that re-reads every body and comment.
 4. Open the pull request only when asked: title with scope and count, `Closes #N` per issue, verification totals, the deferred list above.
-5. Possible follow-ups: output lot reservation in wl-inventory (4, 5). The wl-sales delivery destination and promised day (`crates/wl-sales/src/destination.rs`) are built; BL-MFG-11 points 6 and 7 and BL-SAL-18 point 2 are tested (`host/tests/manufacturing_conformity.rs`, `host/tests/manufacturing_po_number.rs`).
+5. The wl-sales delivery destination and promised day (`crates/wl-sales/src/destination.rs`) are built; BL-MFG-11 points 6 and 7 and BL-SAL-18 point 2 are tested (`host/tests/manufacturing_conformity.rs`, `host/tests/manufacturing_po_number.rs`).
