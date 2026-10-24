@@ -27,7 +27,7 @@ let app = wl_kernel::apply(App::new(), config)?;
 brand colour is not readable (the message names the nearest colour that is), or when the
 file is malformed.
 
-What is here so far:
+What is here so far (the main parts and contracts; **every** public trait, with its purpose, file and provider crates, is indexed in [docs/modules/KERNEL-CONTRACTS.md](../../docs/modules/KERNEL-CONTRACTS.md), and the rows below do not name all of them):
 
 | Part | Spec | Module |
 |---|---|---|
