@@ -343,6 +343,7 @@ pub async fn raise(
     claim
         .insert_in_state(&mut tx, SupplierClaimStatus::Raised, RAISE)
         .await?;
+    wl_kernel::search::index_in(&mut tx, &claim.subject()).await?;
     tx.commit().await?;
     // The claim document goes to the supplier and the kept part onto a Return
     // to supplier.

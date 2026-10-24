@@ -270,6 +270,7 @@ pub async fn check_in(state: &AppState, by: &AuthUser, new: NewJobCard) -> Resul
     let stamp = now();
     let mut card = JobCard {
         vehicle_id: vehicle.id,
+        intake_plate: Some(crate::search::plate_key(&vehicle)),
         customer_party_id: new.customer_party_id.unwrap_or(vehicle.owner_party_id),
         booking_id: new.booking_id,
         workshop_type: new.workshop.as_ref().map(|w| w.subject_type.clone()),
@@ -294,6 +295,7 @@ pub async fn check_in(state: &AppState, by: &AuthUser, new: NewJobCard) -> Resul
     let mut tx = state.db.begin().await?;
     card.insert_in_state(&mut tx, JobCardStatus::CheckedIn, CHECK_IN)
         .await?;
+    wl_kernel::search::index_in(&mut tx, &card.subject()).await?;
     if new.odometer_in > vehicle.odometer_km {
         Vehicle::query()
             .where_(Vehicle::ID.eq(vehicle.id))

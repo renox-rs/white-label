@@ -345,6 +345,8 @@ pub async fn update(state: &AppState, by: &AuthUser, id: i64, new: NewVehicle) -
     vehicle.owner_party_id = new.owner_party_id;
     vehicle.fleet_contract_id = new.fleet_contract_id;
     vehicle.save(&state.db).await?;
+    // The plate or VIN finds the car's job cards and claims (BL-AGT-13).
+    crate::search::index_vehicle(&state.db, id).await?;
     Vehicle::find_or_404(&state.db, id).await
 }
 

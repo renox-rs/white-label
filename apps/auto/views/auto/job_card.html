@@ -389,5 +389,6 @@
         <rx-column :label="tx['jobs.reason']" hide-narrow>{{ step.reason }}</rx-column>
       </rx-table>
     </rx-card>
+    <div id="related-panel" hx-get="/related/auto.job_card:{{ id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

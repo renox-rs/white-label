@@ -214,6 +214,7 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewContract) -> Result
     contract
         .insert_in_state(&mut tx, FleetStatus::Draft, CREATE)
         .await?;
+    wl_kernel::search::index_in(&mut tx, &contract.subject()).await?;
     tx.commit().await?;
     FleetContract::find_or_404(&state.db, contract.id).await
 }

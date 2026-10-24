@@ -58,5 +58,6 @@
         <rx-entry :label="tx['supplier.recovery']" :value="recovery"/>
       </rx-infolist>
     </rx-card>
+    <div id="related-panel" hx-get="/related/auto.supplier_claim:{{ id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

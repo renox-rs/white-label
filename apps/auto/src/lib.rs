@@ -58,6 +58,7 @@ pub mod parts_wait;
 pub mod payer;
 pub mod permissions;
 pub mod reasons;
+pub mod search;
 pub mod recalls;
 pub mod release;
 pub mod seed;
@@ -230,6 +231,9 @@ impl Module for Auto {
     }
 
     fn register(&self, app: &mut Registry) {
+        // The records in the global search and the Related panel (BL-AGT-13).
+        search::register();
+        search::listen(app);
         app.view_data::<pages::vehicles::IndexPage>()
             .view_data::<pages::vehicles::ShowPage>()
             .view_data::<pages::job_cards::IndexPage>()

@@ -280,6 +280,10 @@ pub struct JobCard {
     pub released_by: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: JobCardStatus,
+    /// The plate the car had when the card was opened (`dubai A 12345`): the
+    /// card is still found by it after the plate moves to another car
+    /// (BL-AGT-13).
+    pub intake_plate: Option<String>,
     /// The user who opened it.
     pub created_by: Option<i64>,
     /// When the row was created.

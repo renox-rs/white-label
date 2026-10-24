@@ -183,5 +183,6 @@
         <rx-slot name="empty"><rx-empty :title="tx['fleet.invoices_empty']" icon="receipt"/></rx-slot>
       </rx-table>
     </rx-card>
+    <div id="related-panel" hx-get="/related/auto.fleet_contract:{{ id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

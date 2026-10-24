@@ -59,6 +59,7 @@ pub async fn on_checked_in(state: &AppState, event: &BookingCheckedIn) -> Result
     };
     let mut card = JobCard {
         vehicle_id: vehicle.id,
+        intake_plate: Some(crate::search::plate_key(&vehicle)),
         customer_party_id: vehicle.owner_party_id,
         booking_id: Some(event.booking.0),
         workshop_type: workshop.as_ref().map(|(kind, _)| kind.clone()),
@@ -70,6 +71,7 @@ pub async fn on_checked_in(state: &AppState, event: &BookingCheckedIn) -> Result
     let mut tx = state.db.begin().await?;
     card.insert_in_state(&mut tx, JobCardStatus::CheckedIn, CHECK_IN)
         .await?;
+    wl_kernel::search::index_in(&mut tx, &card.subject()).await?;
     tx.commit().await?;
     booking_actions(state)
         .link_work_done(state, BookingId(event.booking.0), card.subject())

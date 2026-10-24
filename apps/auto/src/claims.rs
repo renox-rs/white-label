@@ -275,6 +275,7 @@ pub async fn register(state: &AppState, by: &AuthUser, new: NewClaim) -> Result<
     claim
         .insert_in_state(&mut tx, ClaimStatus::Registered, REGISTER)
         .await?;
+    wl_kernel::search::index_in(&mut tx, &claim.subject()).await?;
     tx.commit().await?;
     // The accident and its police report are the job card's too
     // (`AUT.ACL.20`: the report is attached to the job card or its claim).

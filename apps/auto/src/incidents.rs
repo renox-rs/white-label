@@ -198,6 +198,7 @@ pub async fn decide(
     if liability == WORKSHOP {
         let mut internal = JobCard {
             vehicle_id: vehicle.id,
+            intake_plate: Some(crate::search::plate_key(&vehicle)),
             customer_party_id: card.customer_party_id,
             workshop_type: card.workshop_type.clone(),
             workshop_id: card.workshop_id,
@@ -219,6 +220,7 @@ pub async fn decide(
         internal
             .insert_in_state(&mut tx, JobCardStatus::CheckedIn, "incident")
             .await?;
+        wl_kernel::search::index_in(&mut tx, &internal.subject()).await?;
         internal_id = Some(internal.id);
     }
     Incident::query()
