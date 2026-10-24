@@ -125,6 +125,7 @@ async fn boot(sales: WlSales) -> (Booted, Shop, Stock) {
                 perm::SALES_ORDERS_VIEW,
                 perm::SALES_ORDERS_CREATE,
                 perm::SALES_ORDERS_CANCEL,
+                perm::SALES_ORDERS_AMEND,
             ],
         )
         .await;
@@ -382,4 +383,94 @@ async fn sal_17_the_rest_of_the_order_is_fulfilled_while_a_line_is_back_ordered(
     assert_eq!(split(&t, &order, 1).await, (0, 3));
     assert_eq!(split(&t, &order, 2).await, (0, 0));
     assert_eq!(stock.free_of("Q"), 1_000);
+}
+
+/// BL-SAL-09 beside BL-SAL-17: `cancel_remaining` gives the reservation back
+/// and takes the back-order off the demand, as `cancel_line` does.
+#[renox::test]
+async fn sal_17_cancelling_the_remaining_lines_releases_the_reservation_and_the_demand() {
+    use wl_kernel::sales::{FulfilOrder, FulfilledLine, order_fulfilment};
+    let (t, _shop, stock) = boot(on()).await;
+    stock.add("P", 2_000);
+    stock.add("Q", 1_000);
+    let order = confirmed(&t, "phone", &[("P", 3), ("Q", 1)]).await;
+    assert_eq!(split(&t, &order, 1).await, (2, 1));
+    let q = line(&t, &order, 2).await;
+    order_fulfilment(t.state())
+        .fulfil(
+            t.state(),
+            FulfilOrder {
+                order: order.order_id(),
+                source: Subject::new("inventory.dispatch", 1),
+                lines: vec![FulfilledLine {
+                    line: q.id,
+                    quantity_milli: 1_000,
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::PartiallyFulfilled
+    );
+    t.app
+        .post(
+            &format!("/sales-orders/{}/cancel-remaining", order.id),
+            &[("reason", "the customer went elsewhere")],
+        )
+        .await
+        .assert_status(303);
+    assert_eq!(
+        reload(&t, order.id).await.status,
+        SalesOrderStatus::Fulfilled
+    );
+    assert_eq!(split(&t, &order, 1).await, (0, 0));
+    assert_eq!(stock.free_of("P"), 2_000);
+    let demand = back_orders(t.state()).open(t.state()).await.unwrap();
+    assert!(demand.iter().all(|d| d.item_code != "P"));
+}
+
+/// BL-SAL-05 beside BL-SAL-17: an amendment that cuts a line takes the cut
+/// off the back-order first and gives reserved stock back; one that adds is
+/// back-ordered like the first quantity.
+#[renox::test]
+async fn sal_17_an_amendment_follows_the_reservation_and_the_demand() {
+    let (t, _shop, stock) = boot(on()).await;
+    stock.add("P", 2_000);
+    let order = confirmed(&t, "phone", &[("P", 3)]).await;
+    let p = line(&t, &order, 1).await;
+    let quantity = format!("line_{}_quantity", p.id);
+    let amend = |order: SalesOrder, units: &'static str| {
+        let t = &t;
+        let quantity = quantity.clone();
+        async move {
+            let revision = order.revision.to_string();
+            t.app
+                .post(
+                    &format!("/sales-orders/{}/amend", order.id),
+                    &[
+                        ("revision", revision.as_str()),
+                        ("reason", "the guest count changed"),
+                        (quantity.as_str(), units),
+                    ],
+                )
+                .await
+                .assert_status(303);
+            reload(t, order.id).await
+        }
+    };
+    assert_eq!(split(&t, &order, 1).await, (2, 1));
+    // 3 -> 2: the back-order goes first, the reservation stays.
+    let order = amend(order, "2").await;
+    assert_eq!(split(&t, &order, 1).await, (2, 0));
+    assert_eq!(stock.free_of("P"), 0);
+    // 2 -> 1: reserved stock goes back.
+    let order = amend(order, "1").await;
+    assert_eq!(split(&t, &order, 1).await, (1, 0));
+    assert_eq!(stock.free_of("P"), 1_000);
+    // 1 -> 4: the free unit is reserved, the rest is back-ordered.
+    let order = amend(order, "4").await;
+    assert_eq!(split(&t, &order, 1).await, (2, 2));
+    assert_eq!(stock.free_of("P"), 0);
 }
