@@ -26,7 +26,7 @@
     <rx-card :title="tx['jobs.parts']">
       <rx-table :rows="parts" as="part" :key="part.id" :caption="tx['jobs.parts']">
         <rx-column :label="tx['jobs.description']">{{ part.description }}</rx-column>
-        <rx-column :label="tx['jobs.part_condition']">{{ part.condition }}</rx-column>
+        <rx-column :label="tx['jobs.part_condition']">{{ part.condition | capitalize }}</rx-column>
         <rx-column :label="tx['jobs.quantity']" align="num">{{ part.quantity }}</rx-column>
         <rx-column :label="tx['jobs.unit_price']" align="num">{{ part.unit_price }}</rx-column>
         <rx-column :label="tx['jobs.price']" align="num">{{ part.price }}</rx-column>

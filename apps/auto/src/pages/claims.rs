@@ -26,11 +26,14 @@
 //! typed as ids; the insurer's answer is recorded with an amount per line of
 //! the estimate that was sent.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 
+use super::lists;
 use super::{
     Texts, invalid, parse_money, parse_number, parse_optional_date, parse_optional_id, party_name,
     require, text,
@@ -122,67 +125,6 @@ fn done(lang: &Lang, key: &str) -> Result<Response> {
     Ok((Toast::success(text(lang, key)), renox::HxRefresh).into_response())
 }
 
-/// What the list can be narrowed by.
-#[derive(Deserialize, Default, Debug, Clone)]
-pub struct Filter {
-    /// Text in the claim number, the insurer's claim number or the policy.
-    #[serde(default)]
-    q: String,
-    /// `open`, `invoiced` or `closed`; blank for every claim.
-    #[serde(default)]
-    tab: String,
-}
-
-impl Filter {
-    fn href(&self) -> String {
-        if self.tab.is_empty() {
-            "/auto/claims".to_owned()
-        } else {
-            format!("/auto/claims?tab={}", self.tab)
-        }
-    }
-
-    fn with_tab(&self, tab: &str) -> Filter {
-        Filter {
-            tab: tab.to_owned(),
-            ..self.clone()
-        }
-    }
-
-    /// Whether a claim in `status` belongs to the tab.
-    fn takes(&self, status: ClaimStatus) -> bool {
-        match self.tab.as_str() {
-            "open" => !status.is_closed() && status != ClaimStatus::Invoiced,
-            "invoiced" => status == ClaimStatus::Invoiced,
-            "closed" => status.is_closed(),
-            _ => true,
-        }
-    }
-}
-
-/// One claim of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct ClaimRow {
-    /// The primary key.
-    pub id: i64,
-    /// `CLM-00007`.
-    pub number: String,
-    /// The insurer's claim number.
-    pub claim_no: String,
-    /// The insurer's name.
-    pub insurer: String,
-    /// `Dubai A 12345`.
-    pub plate: String,
-    /// The accident date.
-    pub accident: String,
-    /// What the insurer approved.
-    pub approved: String,
-    /// The status in words.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
-}
-
 /// The repair types as options, `[stored name, name]`.
 fn repair_options(lang: &Lang) -> Vec<[String; 2]> {
     [RepairType::NonAgency, RepairType::Agency]
@@ -210,16 +152,73 @@ async fn insurer_options(state: &AppState, lang: &Lang) -> Result<Vec<[String; 2
     Ok(options)
 }
 
+/// The badge tone of a claim's status in the grid.
+fn grid_tone(status: ClaimStatus) -> &'static str {
+    match status_kind(status) {
+        "error" => "danger",
+        other => other,
+    }
+}
+
+/// The claims grid: the number first and frozen, the insurer, the insurer's
+/// claim number, the policy (searched, hidden), the plate, the accident day,
+/// what the insurer approved in dirhams and the status in words.
+pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
+    let statuses = lists::options(
+        t,
+        "claims.status",
+        ClaimStatus::ALL.iter().map(|status| status.as_str()),
+    );
+    let tones: Vec<(&str, &str)> = ClaimStatus::ALL
+        .iter()
+        .map(|status| (status.as_str(), grid_tone(*status)))
+        .collect();
+    Grid::new("auto-claims")
+        .title(&t("claims.title"))
+        .column(
+            Column::text("number", &t("claims.number"))
+                .computed(&lists::numbered_sql("CLM-", 5))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/auto/claims/{id}"),
+        )
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&tones)
+                .width("11rem")
+                .mobile(),
+        )
+        .column(Column::custom("insurer", &t("claims.insurer")).mobile())
+        .column(
+            Column::text("claim_no", &t("claims.claim_no"))
+                .searchable()
+                .copyable(),
+        )
+        .column(
+            Column::text("policy_no", &t("claims.policy_no"))
+                .searchable()
+                .hidden(),
+        )
+        .column(
+            Column::text("plate", &t("vehicles.plate"))
+                .computed(&lists::plate_sql("vehicle_id"))
+                .searchable(),
+        )
+        .column(Column::date("accident_date", &t("claims.accident")))
+        .column(lists::money("approved_amount", &t("claims.approved")).mobile())
+        .sort_by("-id")
+        .row_url("/auto/claims/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("claims.empty"), None)
+}
+
 /// What the list page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "auto/claims.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    rows: Vec<ClaimRow>,
-    tabs: Vec<(String, String)>,
-    tab_current: String,
-    tab: String,
-    q: String,
+    claims: GridPage<InsuranceClaim>,
     can_register: bool,
     insurer_options: Vec<[String; 2]>,
     repair_options: Vec<[String; 2]>,
@@ -230,50 +229,36 @@ async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
-    Query(filter): Query<Filter>,
+    request: GridRequest,
 ) -> Result<View> {
     if !may_view(&user) {
         return Err(Error::Forbidden);
     }
-    let found = claims::search(&state.db, &filter.q, None).await?;
-    let mut rows = Vec::new();
-    for claim in found.into_iter().filter(|c| filter.takes(c.status)) {
-        let insurer = Insurer::find_or_404(&state.db, claim.insurer_id).await?;
-        let vehicle = Vehicle::find_or_404(&state.db, claim.vehicle_id).await?;
-        rows.push(ClaimRow {
-            id: claim.id,
-            number: claim.number(),
-            claim_no: claim.claim_no.clone(),
-            insurer: party_name(&state, &lang.locale, insurer.party_id).await,
-            plate: vehicle.plate(),
-            accident: claim.accident_date.to_string(),
-            approved: money_text(claim.approved_amount),
-            status: status_text(&lang, claim.status),
-            status_kind: status_kind(claim.status),
-        });
+    let page = grid(&lists::texts_in(&lang))
+        .page(InsuranceClaim::query(), &request)
+        .await?;
+    let insurer_ids: Vec<i64> = page.items().iter().map(|claim| claim.insurer_id).collect();
+    let mut party_of_insurer = HashMap::new();
+    for insurer_id in insurer_ids {
+        if party_of_insurer.contains_key(&insurer_id) {
+            continue;
+        }
+        if let Some(insurer) = Insurer::find(&state.db, insurer_id).await? {
+            party_of_insurer.insert(insurer_id, insurer.party_id);
+        }
     }
-    let tabs = vec![
-        (filter.with_tab("").href(), text(&lang, "claims.tab.all")),
-        (
-            filter.with_tab("open").href(),
-            text(&lang, "claims.tab.open"),
-        ),
-        (
-            filter.with_tab("invoiced").href(),
-            text(&lang, "claims.tab.invoiced"),
-        ),
-        (
-            filter.with_tab("closed").href(),
-            text(&lang, "claims.tab.closed"),
-        ),
-    ];
+    let names = lists::party_names(&state, &lang, party_of_insurer.values().copied()).await;
+    let claims = lists::with_currency(page, |claim| {
+        let name = party_of_insurer
+            .get(&claim.insurer_id)
+            .and_then(|party| names.get(party))
+            .cloned()
+            .unwrap_or_default();
+        json!({ "insurer": name })
+    });
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        rows,
-        tabs,
-        tab_current: filter.href(),
-        tab: filter.tab.clone(),
-        q: filter.q.clone(),
+        claims,
         can_register: user.has_permission(permissions::INSURANCE_MANAGE),
         insurer_options: insurer_options(&state, &lang).await?,
         repair_options: repair_options(&lang),
@@ -487,13 +472,16 @@ pub(crate) struct ShowPage {
     estimate: String,
     approved: String,
     rate_card: String,
+    rate_card_url: String,
     closed_reason: String,
     total_loss: String,
     withdrawal: String,
     withdrawal_choice: String,
     unlinked_job_card: String,
     payer_bill: String,
+    payer_bill_url: String,
     customer_invoice: String,
+    customer_invoice_url: String,
     approvals: Vec<ApprovalRow>,
     estimate_lines: Vec<LineChoice>,
     supplementary_lines: Vec<LineChoice>,
@@ -598,8 +586,24 @@ async fn show(
         subject.subject_type, subject.subject_id
     );
     let rate_card = match (claim.rate_card_id, claim.rate_card_version) {
-        (Some(card), Some(version)) => format!("#{card} v{version}"),
+        (Some(_), Some(version)) => texts::t_with(
+            &lang,
+            "auto.claims.rate_card_version",
+            &[("version", &version)],
+        ),
         _ => none.clone(),
+    };
+    let rate_card_url = match claim.rate_card_id {
+        Some(card) if user.has_permission("rate_cards.view") => format!("/rate-cards/{card}"),
+        _ => String::new(),
+    };
+    let payer_bill = match claim.payer_bill_id {
+        Some(id) => super::payer_bill_ref(&state, &user, &lang, id).await,
+        None => super::RecordRef::default(),
+    };
+    let customer_invoice = match claim.customer_invoice_id {
+        Some(id) => super::invoice_ref(&state, &user, &lang, id).await,
+        None => super::RecordRef::default(),
     };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
@@ -627,6 +631,7 @@ async fn show(
         estimate: money_text(claim.estimate_amount),
         approved: money_text(claim.approved_amount),
         rate_card,
+        rate_card_url,
         closed_reason: claim.closed_reason.clone().unwrap_or_default(),
         total_loss: claim
             .total_loss_notice
@@ -646,12 +651,18 @@ async fn show(
                 .map_or_else(|| none.clone(), |card| card.number()),
             None => none.clone(),
         },
-        payer_bill: claim
-            .payer_bill_id
-            .map_or_else(|| none.clone(), |bill| format!("#{bill}")),
-        customer_invoice: claim
-            .customer_invoice_id
-            .map_or_else(|| none.clone(), |invoice| format!("#{invoice}")),
+        payer_bill: if payer_bill.label.is_empty() {
+            none.clone()
+        } else {
+            payer_bill.label
+        },
+        payer_bill_url: payer_bill.url,
+        customer_invoice: if customer_invoice.label.is_empty() {
+            none.clone()
+        } else {
+            customer_invoice.label
+        },
+        customer_invoice_url: customer_invoice.url,
         approvals: approval_rows(&lang, &approvals),
         estimate_lines: choices(
             &claims::request_lines(&state.db, claim.id, ApprovalKind::Estimate).await?,
@@ -949,18 +960,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_tabs_split_the_claims_by_where_they_stand() {
-        let open = Filter {
-            tab: "open".to_owned(),
-            ..Filter::default()
-        };
-        assert!(open.takes(ClaimStatus::Approved));
-        assert!(!open.takes(ClaimStatus::Invoiced));
-        assert!(!open.takes(ClaimStatus::Voided));
-        let closed = open.with_tab("closed");
-        assert!(closed.takes(ClaimStatus::Settled));
-        assert!(!closed.takes(ClaimStatus::TotalLoss));
-        assert!(Filter::default().takes(ClaimStatus::Registered));
+    fn the_grid_has_the_claim_columns_and_every_status_in_words() {
+        let grid = grid(&lists::english_text);
+        let keys: Vec<&str> = grid.columns().iter().map(|c| c.key()).collect();
+        assert_eq!(keys[..2], ["number", "status"]);
+        assert!(keys.contains(&"approved_amount"));
+        let status = grid.columns().iter().find(|c| c.key() == "status").unwrap();
+        assert_eq!(status.options().len(), ClaimStatus::ALL.len());
+        assert!(
+            status
+                .options()
+                .iter()
+                .any(|(value, label)| value == "supplementary_pending"
+                    && label == "Supplementary pending")
+        );
     }
 
     #[test]

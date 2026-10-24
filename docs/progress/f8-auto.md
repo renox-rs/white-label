@@ -18,6 +18,10 @@ Run with the `build-issues` skill (`.claude/skills/build-issues/SKILL.md`). Defe
   per-crate tests all green (auto 402, wl-kernel 668, wl-sales 336, ...). Host tests run one file at a time
   (disk): all green except tests that depend on the wall clock (see next).
 
+- Demo company: `auto:demo` (`host/src/app/auto_demo/`, test `host/tests/auto_demo.rs`, `docs/DEMO-DATA.md` 08). Seeding it
+  showed that the lists of the claims, fleet contracts and supplier claims failed (500) in the host's layout, which has a `tabs`
+  of its own: the page variable is now `status_tabs`.
+
 ## Open at hand-over
 1. Host tests that expect a real message to be sent fail when the machine clock is in the quiet hours of wl-notify
    (21:00-08:00 Asia/Dubai). Make them clock-independent (travel to noon with `app.travel` + `at_travelled_time`, see

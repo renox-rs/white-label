@@ -463,9 +463,45 @@ inventory and portal) and the seeds of `host/src/app/auto_seed.rs`, `auto_settin
 the document kinds (police accident report, claim documents, trade licence, fleet contract), the
 08 values for the shared modules (back-orders on the counter, phone and sales rep channels, the
 cheque, cash and stock limits, the loyalty programme, the onboarding checklists and the SOP
-library) and the two settings pages. **There is no demo company yet: the command `auto:demo` is
-future work and not built**, so the 10-minute script above is walked by hand on an empty
-deployment (the tests of `apps/auto` and `host/tests/auto_*.rs` hold the fixtures).
+library) and the two settings pages. `APP_ENV=local CLIENT_CONFIG=clients/demo-auto/client.toml cargo run -p host --
+migrate`, then `-- wl:install`, then `-- db:seed` (the client's seeds, then the demo company: in `local` only), then
+`-- serve`; `-- auto:demo` runs the demo alone on a database whose seeds are there (local and testing).
+
+**The demo company (`auto:demo`).** `host/src/app/auto_demo/` makes *Al Noor Auto Parts & Garage LLC* (the
+client file's name: a fictional parts trader on Naif Road, Deira, with a workshop and a second counter in
+Sharjah) at a smaller size than the table above, with the same stories. The logins are on the login page,
+password `password123`: `admin@`, `owner@`, `basma@` (branch manager), `sami@` (service advisor), `waleed@`
+(workshop manager), `tareq@` and `nabil@` (technicians), `hussein@` (counter sales and field cheques), `karim@`
+(storekeeper), `pia@` (purchaser), `carla@` (insurance coordinator), `fatima@` (fleet account manager) and
+`aisha@` (accountant), all `@alnoorauto.example`. Names are in English and Arabic, money is in fils, the seed
+is deterministic and idempotent (an audit entry marks it done), and it takes about 10 s in a debug build.
+Every date is relative to today, and **every step runs at 10:00 of a day gone by** (never today), so the
+story is the same whatever the weekday and whatever the hour it is seeded at, the quiet hours of the
+notifier (21:00-08:00 Asia/Dubai) included; the workshop's bay is open all week.
+
+| Screen | What the seed puts there |
+|---|---|
+| Labour menu | four operations kept by the workshop manager: oil and filter change, front brake pads, the 60,000 km service (flat rate) and diagnostics (hourly) |
+| Vehicles | thirty-odd vehicles with plates of four emirates, VIN, year and odometer: private cars, the vans of three fleets |
+| Job cards | one in every state: checked in (from a booking), awaiting approval (the customer's link is open), in progress, awaiting parts (an imported part, the legal supply date), quality check, ready, delivered and paid, cancelled (work done billed, the filter back in the store), declined (the inspection fee billed), voided; accident cards with the police report waiting for review and accepted |
+| Not collected | the ready vehicle, the cancelled one and the declined one: reminders at 3 and 7 days, the branch manager's task at 30 days (the SMS channel has no gateway in the demo, so the texts are kept as suppressed) |
+| Insurers, claims | two insurers with payer agreements and rate cards; claims registered, awaiting survey, estimate submitted, approved, supplementary pending, rejected, withdrawn, total loss, invoiced (payer bill and the excess), settled and voided |
+| Fleet contracts | Al Noor Logistics active (three vans, a service booked by the daily run, two job cards with the fleet's PO, the monthly invoice), Desert Rent a Car suspended, Sharjah Cargo Express ended (the last invoice drafted, the contact told) |
+| Supplier claims | an alternator recovered (credit note), a battery accepted and waiting for the credit, spark plugs raised, an oil filter refused with the write-off waiting for the branch manager |
+| Recalls | brake pads of one supplier, traced to a car owner, a fleet, and four walk-in sales (counted); the stock is on hold; the customers told |
+| Back-orders | a phone order for clutch kits served by a goods receipt; timing kits ordered (six reserved, four back-ordered) with the rental fleet's order behind it; the reorder suggestion |
+| Export sales | three zero-rated sales: told at 60 days, flagged at 90 days (the accountant's task), and one with a bill of lading |
+| Incidents | a test drive and a scratch decided *workshop* by the branch manager (an internal job card), and one incident still open |
+| Loyalty | three members who earn points on a paid invoice; a fleet earns none. Marketing consent is not implied by joining (`PTY.CNS.01`), so there is no campaign |
+| Cash | two cheques collected in the field: one ticked present and deposited, one missing (the handover is short, the cheque returned as lost, a replacement asked), and one cheque waiting for the next count |
+
+Everything a person does at a screen is the app's own service called as the demo user who does it (the
+services take the signed-in user, which the seed gets from the one route `/demo/auto/whoami`, answering in
+`local` and `testing` only), and the pages that exist (purchase orders, goods receipts, sales orders, counter
+sales, loyalty, recalls, cash) are requests to the app's router, so the permissions, guards and machines are
+the real ones. Money goes through wl-invoicing and wl-payments. The only records inserted in a state are the
+draft purchase orders (no screen writes one yet). Not seeded: VIN search, the online B2B portal, delivery runs
+with proof of delivery, the volumes of the table above.
 
 ---
 

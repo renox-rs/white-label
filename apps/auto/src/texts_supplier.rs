@@ -3,6 +3,15 @@
 
 /// Every key of this part, with its English text.
 pub(crate) const TEXTS: &[(&str, &str)] = &[
+    (
+        "auto.supplier.return_placeholder",
+        "Pick the return to the supplier",
+    ),
+    ("auto.supplier.terms_label", "Warranty terms"),
+    (
+        "auto.supplier.claim_letter",
+        "Claim email sent to the supplier (:number)",
+    ),
     ("auto.supplier.title", "Supplier warranty claims"),
     (
         "auto.supplier.subtitle",

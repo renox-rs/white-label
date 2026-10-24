@@ -25,6 +25,7 @@ use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
 pub use app::accounting_seed::parties_for;
+pub use app::auto_demo;
 pub use app::auto_money;
 pub use app::auto_seed;
 pub use app::auto_settings;
@@ -99,6 +100,7 @@ pub const DEMO_COMMANDS: &[&str] = &[
     app::clinics_demo::COMMAND,
     app::fnb_demo::COMMAND,
     app::edtech_demo::COMMAND,
+    app::auto_demo::COMMAND,
     app::manufacturing_demo::COMMAND,
 ];
 
@@ -269,6 +271,9 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // The Auto client's service types and ticket categories (08 §4.4).
     if client_app == app::auto_seed::AUTO {
         app = app.module(app::auto_seed::AutoSeed);
+        // The demo company, after the installs: `auto:demo`, and `db:seed`
+        // in local (never in production).
+        app = app.module(app::auto_demo::AutoDemo::new(demo_client.clone()));
     }
     // The Construction client's categories, checklists and SOPs (BL-CON-17,
     // BL-CON-18).

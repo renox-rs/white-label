@@ -53,13 +53,16 @@ async fn aut_base_the_claim_list_shows_filters_and_searches() {
         .assert_see("Orient Insurance")
         .assert_see("Dubai A 12345")
         .assert_see("Estimate submitted");
-    let open = t.app.get("/auto/claims?tab=open").await;
+    let open = t.app.get("/auto/claims?in.status=estimate_submitted").await;
     open.assert_ok().assert_see(&claim.number());
-    let closed = t.app.get("/auto/claims?tab=closed").await;
+    let closed = t
+        .app
+        .get("/auto/claims?in.status=voided&in.status=settled")
+        .await;
     assert!(!closed.text().contains(&claim.number()));
-    let found = t.app.get("/auto/claims?q=POL-7788").await;
+    let found = t.app.get("/auto/claims?search=POL-7788").await;
     found.assert_ok().assert_see(&claim.number());
-    let none = t.app.get("/auto/claims?q=nothing-here").await;
+    let none = t.app.get("/auto/claims?search=nothing-here").await;
     assert!(!none.text().contains(&claim.number()));
 
     sign_in(&t, "Aisha", &[permissions::INVOICES_ISSUE]).await;
@@ -382,7 +385,7 @@ async fn aut_base_the_insurer_pages_record_and_show_the_terms() {
         .await
         .assert_ok()
         .assert_see("Orient Insurance")
-        .assert_see("45 days")
+        .assert_see("45")
         .assert_see("AED 120.00")
         .assert_see("Takes new claims");
     t.app
@@ -390,7 +393,7 @@ async fn aut_base_the_insurer_pages_record_and_show_the_terms() {
         .await
         .assert_ok()
         .assert_see("claims@orient.example")
-        .assert_see("#31 v2")
+        .assert_see("Version 2")
         .assert_see("Stop new claims");
     t.app
         .htmx()

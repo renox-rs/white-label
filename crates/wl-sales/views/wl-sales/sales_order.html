@@ -169,7 +169,7 @@
         <rx-entry :label="tx['counter.total']" :value="gross"/>
         <rx-entry :label="tx['amend.revision']" :value="order.revision"/>
         <rx-entry rx-if="order.refunded_amount" :label="tx['returns.refunded']" :value="refunded"/>
-        <rx-entry :label="tx['orders.channel']" :value="order.channel"/>
+        <rx-entry :label="tx['orders.channel']" :value="order.channel | replace('_', ' ') | capitalize"/>
         <rx-entry :label="tx['orders.payment_mode']" :value="payment_mode_label"/>
         <rx-entry :label="tx['delivery.destination']" :value="delivery.destination_label"/>
         <rx-entry rx-if="delivery.address" :label="tx['delivery.address']" :value="delivery.address"/>

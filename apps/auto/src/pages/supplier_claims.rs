@@ -16,10 +16,13 @@
 //! warranty ticket is named by its number among the warranty tickets of the
 //! job card.
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 
+use super::lists;
 use super::{
     Texts, invalid, parse_milli, parse_money, parse_number, parse_optional_date, parse_optional_id,
     party_name, party_of, require, text, ticked,
@@ -29,6 +32,7 @@ use crate::money_text;
 use crate::permissions;
 use crate::supplier_claim::{SupplierAnswer, SupplierClaim, SupplierClaimStatus};
 use crate::supplier_claims::{self, NewSupplierClaim, SUPPLIER_RETURN_SUBJECT_TYPE};
+use crate::supplier_rules::SUPPLIER_CLAIM_TYPE;
 use crate::texts;
 use crate::vehicle::Vehicle;
 
@@ -75,69 +79,81 @@ fn done(lang: &Lang, key: &str) -> Result<Response> {
     Ok((Toast::success(text(lang, key)), renox::HxRefresh).into_response())
 }
 
-/// What the list can be narrowed by.
-#[derive(Deserialize, Default, Debug, Clone)]
-pub struct Filter {
-    /// Text in the number, the ticket number or the part.
-    #[serde(default)]
-    q: String,
-    /// `raised` or `ended`; blank for every claim.
-    #[serde(default)]
-    tab: String,
-}
-
-impl Filter {
-    fn href(&self) -> String {
-        if self.tab.is_empty() {
-            "/auto/supplier-claims".to_owned()
-        } else {
-            format!("/auto/supplier-claims?tab={}", self.tab)
-        }
-    }
-
-    fn with_tab(&self, tab: &str) -> Filter {
-        Filter {
-            tab: tab.to_owned(),
-            ..self.clone()
-        }
-    }
-
-    /// Whether a claim in `status` belongs to the tab.
-    fn takes(&self, status: SupplierClaimStatus) -> bool {
-        match self.tab.as_str() {
-            "raised" => status == SupplierClaimStatus::Raised,
-            "ended" => status != SupplierClaimStatus::Raised,
-            _ => true,
-        }
-    }
-}
-
-/// One claim of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct ClaimRow {
-    /// The primary key.
-    pub id: i64,
-    /// `SWC-0007`.
-    pub number: String,
-    /// The warranty ticket.
-    pub ticket: String,
-    /// The supplier.
-    pub supplier: String,
-    /// The failed part.
-    pub part: String,
-    /// What is claimed.
-    pub amount: String,
-    /// What the supplier said, in words.
-    pub answer: String,
-    /// The status in words.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
-}
-
 /// The answer as staff read it.
 fn answer_text(lang: &Lang, answer: SupplierAnswer) -> String {
     text(lang, &format!("supplier.answer.{}", answer.as_str()))
+}
+
+/// Whether `user` may see the claims: who raises them, and who decides their
+/// write-off (the branch manager opens the record the approvals inbox names).
+fn may_view(user: &AuthUser) -> bool {
+    user.has_permission(permissions::SUPPLIER_CLAIMS_MANAGE)
+        || user.has_permission(permissions::SUPPLIER_CLAIMS_APPROVE)
+}
+
+/// The badge tone of a claim's status in the grid.
+fn grid_tone(status: SupplierClaimStatus) -> &'static str {
+    match status {
+        SupplierClaimStatus::Raised => "warning",
+        SupplierClaimStatus::Recovered => "success",
+        SupplierClaimStatus::WrittenOff => "neutral",
+    }
+}
+
+/// The supplier claims grid: the number first and frozen, the warranty
+/// ticket, the supplier, the failed part, what is claimed in dirhams, what
+/// the supplier said and the status in words; searched by number, ticket or
+/// part.
+pub(crate) fn grid(t: lists::Text<'_>) -> Grid {
+    let statuses = lists::options(
+        t,
+        "supplier.status",
+        SupplierClaimStatus::ALL
+            .iter()
+            .map(|status| status.as_str()),
+    );
+    let tones: Vec<(&str, &str)> = SupplierClaimStatus::ALL
+        .iter()
+        .map(|status| (status.as_str(), grid_tone(*status)))
+        .collect();
+    let answers = lists::options(
+        t,
+        "supplier.answer",
+        SupplierAnswer::ALL.iter().map(|answer| answer.as_str()),
+    );
+    Grid::new("auto-supplier-claims")
+        .title(&t("supplier.title"))
+        .column(
+            Column::text("number", &t("supplier.number"))
+                .computed(&lists::numbered_sql("SWC-", 4))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/auto/supplier-claims/{id}"),
+        )
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&tones)
+                .width("11rem")
+                .mobile(),
+        )
+        .column(Column::text("ticket_number", &t("supplier.ticket")).searchable())
+        .column(Column::custom("supplier", &t("supplier.supplier")))
+        .column(
+            Column::text("part_description", &t("supplier.part"))
+                .searchable()
+                .mobile(),
+        )
+        .column(lists::money("claim_amount", &t("supplier.claimed")).mobile())
+        .column(Column::select(
+            "supplier_answer",
+            &t("supplier.answer"),
+            answers,
+        ))
+        .sort_by("-id")
+        .row_url("/auto/supplier-claims/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("supplier.empty"), None)
 }
 
 /// What the list page needs.
@@ -145,11 +161,7 @@ fn answer_text(lang: &Lang, answer: SupplierAnswer) -> String {
 #[view(template = "auto/supplier_claims.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    rows: Vec<ClaimRow>,
-    tabs: Vec<(String, String)>,
-    tab_current: String,
-    tab: String,
-    q: String,
+    claims: GridPage<SupplierClaim>,
 }
 
 /// `GET /auto/supplier-claims`.
@@ -157,42 +169,27 @@ async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
-    Query(filter): Query<Filter>,
+    request: GridRequest,
 ) -> Result<View> {
-    require(&user, permissions::SUPPLIER_CLAIMS_MANAGE)?;
-    let found = supplier_claims::search(&state.db, &filter.q, None).await?;
-    let mut rows = Vec::new();
-    for claim in found.into_iter().filter(|c| filter.takes(c.status)) {
-        rows.push(ClaimRow {
-            id: claim.id,
-            number: claim.number(),
-            ticket: claim.ticket_number.clone(),
-            supplier: party_name(&state, &lang.locale, claim.supplier_party_id).await,
-            part: claim.part_description.clone(),
-            amount: money_text(claim.claim_amount),
-            answer: answer_text(&lang, claim.supplier_answer),
-            status: status_text(&lang, claim.status),
-            status_kind: status_kind(claim.status),
-        });
+    if !may_view(&user) {
+        return Err(Error::Forbidden);
     }
-    let tabs = vec![
-        (filter.with_tab("").href(), text(&lang, "supplier.tab.all")),
-        (
-            filter.with_tab("raised").href(),
-            text(&lang, "supplier.tab.raised"),
-        ),
-        (
-            filter.with_tab("ended").href(),
-            text(&lang, "supplier.tab.ended"),
-        ),
-    ];
+    let page = grid(&lists::texts_in(&lang))
+        .page(SupplierClaim::query(), &request)
+        .await?;
+    let ids: Vec<i64> = page
+        .items()
+        .iter()
+        .map(|claim| claim.supplier_party_id)
+        .collect();
+    let names = lists::party_names(&state, &lang, ids).await;
+    let claims = lists::with_currency(
+        page,
+        |claim| json!({ "supplier": names.get(&claim.supplier_party_id).cloned().unwrap_or_default() }),
+    );
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        rows,
-        tabs,
-        tab_current: filter.href(),
-        tab: filter.tab.clone(),
-        q: filter.q.clone(),
+        claims,
     }))
 }
 
@@ -397,7 +394,9 @@ async fn show(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<View> {
-    require(&user, permissions::SUPPLIER_CLAIMS_MANAGE)?;
+    if !may_view(&user) {
+        return Err(Error::Forbidden);
+    }
     let claim = SupplierClaim::find_or_404(&state.db, id).await?;
     let none = text(&lang, "none");
     let terms = match claim.warranty_km {
@@ -476,19 +475,34 @@ async fn show(
                 "supplier.not_kept"
             },
         ),
-        document: claim.claim_document.clone().unwrap_or_else(|| none.clone()),
+        document: match claim.claim_document.as_deref() {
+            // The letter the rule emailed is kept as the claim's own record.
+            Some(sent) if sent.starts_with(&format!("{SUPPLIER_CLAIM_TYPE}:")) => texts::t_with(
+                &lang,
+                "auto.supplier.claim_letter",
+                &[("number", &claim.number())],
+            ),
+            Some(named) => named.to_owned(),
+            None => none.clone(),
+        },
         reference: claim
             .supplier_reference
             .clone()
             .unwrap_or_else(|| none.clone()),
         answer: answer_text(&lang, claim.supplier_answer),
         answer_note: claim.supplier_answer_note.clone().unwrap_or_default(),
-        return_ref: claim
-            .supplier_return_id
-            .map_or_else(|| none.clone(), |id| format!("#{id}")),
+        return_ref: match claim.supplier_return_id {
+            Some(id) => wl_kernel::documents::subject_label(
+                &state.db,
+                &Subject::new(SUPPLIER_RETURN_SUBJECT_TYPE, id),
+            )
+            .await?
+            .unwrap_or_else(|| none.clone()),
+            None => none.clone(),
+        },
         recovery,
         write_off: claim.write_off_reason.clone().unwrap_or_default(),
-        is_open: claim.is_open(),
+        is_open: claim.is_open() && user.has_permission(permissions::SUPPLIER_CLAIMS_MANAGE),
     }))
 }
 
@@ -629,17 +643,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_tabs_split_the_claims_into_raised_and_ended() {
-        let raised = Filter {
-            tab: "raised".to_owned(),
-            ..Filter::default()
-        };
-        assert!(raised.takes(SupplierClaimStatus::Raised));
-        assert!(!raised.takes(SupplierClaimStatus::Recovered));
-        let ended = raised.with_tab("ended");
-        assert!(ended.takes(SupplierClaimStatus::WrittenOff));
-        assert!(!ended.takes(SupplierClaimStatus::Raised));
-        assert!(Filter::default().takes(SupplierClaimStatus::Recovered));
+    fn the_grid_has_the_claim_columns_and_every_status_and_answer_in_words() {
+        let grid = grid(&lists::english_text);
+        let keys: Vec<&str> = grid.columns().iter().map(|c| c.key()).collect();
+        assert_eq!(keys[..2], ["number", "status"]);
+        assert!(keys.contains(&"claim_amount") && keys.contains(&"supplier_answer"));
+        let status = grid.columns().iter().find(|c| c.key() == "status").unwrap();
+        assert_eq!(status.options().len(), SupplierClaimStatus::ALL.len());
+        let answer = grid
+            .columns()
+            .iter()
+            .find(|c| c.key() == "supplier_answer")
+            .unwrap();
+        assert_eq!(answer.options().len(), SupplierAnswer::ALL.len());
+        assert!(
+            answer
+                .options()
+                .iter()
+                .all(|(_, label)| !label.starts_with("auto."))
+        );
     }
 
     #[test]

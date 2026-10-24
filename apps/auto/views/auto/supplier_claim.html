@@ -20,7 +20,7 @@
         </rx-action-sheet>
         <rx-action-sheet :id="'supplier-return-' ~ id" :label="tx['supplier.link_return']" :action="route('auto.supplier_claim_return', id)"
                          :title="tx['supplier.link_return']" :description="tx['supplier.return_description']" :submit-label="tx['supplier.link_return']" icon="package">
-          <rx-input name="supplier_return" type="number" :label="tx['supplier.return']" :id="'supplier-return-number-' ~ id" required/>
+          <rx-select name="supplier_return" :label="tx['supplier.return']" :options="[]" :placeholder="tx['supplier.return_placeholder']" options-url="{{ route('auto.supplier_return_options') }}" :id="'supplier-return-number-' ~ id" required/>
         </rx-action-sheet>
         <rx-action-sheet :id="'supplier-recover-' ~ id" :label="tx['supplier.recover']" :action="route('auto.supplier_claim_recover', id)"
                          :title="tx['supplier.recover']" :description="tx['supplier.recover_description']" :submit-label="tx['supplier.recover']" icon="check">
@@ -46,7 +46,7 @@
         <rx-entry :label="tx['supplier.labour']" :value="labour"/>
         <rx-entry :label="tx['supplier.claimed']" :value="amount"/>
         <rx-entry :label="tx['supplier.purchased']" :value="purchased"/>
-        <rx-entry :label="tx['supplier.terms']" :value="terms"/>
+        <rx-entry :label="tx['supplier.terms_label']" :value="terms"/>
         <rx-entry :label="tx['supplier.fitted']" :value="fitted"/>
         <rx-entry :label="tx['supplier.failure']" :value="failure"/>
         <rx-entry :label="tx['supplier.part_kept']" :value="kept"/>
