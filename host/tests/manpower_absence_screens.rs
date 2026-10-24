@@ -79,8 +79,9 @@ async fn the_list_shows_the_case_of_the_absent_worker_in_a_table() {
         "nine days absent, in the cell of the days column"
     );
     no_raw_words(&html);
-    // At 390 px the table scrolls inside the grid's own box.
-    says(&html, &["rx-grid__scroll"]);
+    // At 390 px the table scrolls inside the grid's own box, and under 768 px
+    // each row is a card (`Grid::cards_on_mobile`).
+    says(&html, &["rx-grid__scroll", "rx-grid--cards"]);
     fits_a_phone(&html);
 
     let user = person(&app, HR).await;

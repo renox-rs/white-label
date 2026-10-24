@@ -437,6 +437,8 @@ async fn the_list_and_the_page_are_built_to_fit_a_phone() {
     let list = page(&app, AMAL, "/manpower/requests").await;
     // The list is the standard grid: it scrolls in its own `rx-grid__scroll`.
     says(&list, &["rx-grid__scroll", "rx-sheet"]);
+    // Under 768 px each row of the grid is a card (`Grid::cards_on_mobile`).
+    says(&list, &["rx-grid--cards"]);
     assert_eq!(
         list.matches("<table").count(),
         list.matches("class=\"rx-grid__scroll\"").count(),
