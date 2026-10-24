@@ -28,10 +28,15 @@
 //!   statement (what it carried forward when it was settled, else its
 //!   balance).
 //!
-//! Expenses (vendor bills including each building's share of the AMC costs)
-//! are entered by the accountant as lines of the draft: the supplier bills are
-//! not read from here yet. A generated statement is regenerated for no period
-//! that already has a non-superseded statement, so the rule can run again.
+//! - *expenses*: the approved vendor bills of the owner's units (a ticket job,
+//!   also one cancelled after work started) and each building's share of an
+//!   AMC bill are posted as expense lines when the bill is approved
+//!   ([`crate::vendor_bills`], BL-PRP-34), waiting for the draft of the period
+//!   that holds the approval day; the accountant can still add or remove lines
+//!   of the draft.
+//!
+//! A generated statement is regenerated for no period that already has a
+//! non-superseded statement, so the rule can run again.
 //!
 //! Decided where the spec is silent: the user who generated or last edited the
 //! draft is its preparer ([`OwnerStatement::prepared_by`]); a statement the rule

@@ -55,7 +55,8 @@ use wl_kernel::payments::{
     provide_payment_recorder,
 };
 use wl_kernel::tickets::{
-    Assignee, OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
+    Assignee, OpenTicket, TaskCreator, TicketAbout, TicketFuture, TicketId, TicketRef,
+    TicketSummary, provide_task_creator,
 };
 use wl_kernel::workforce::{
     EmployeeId, StaffProfile, Workforce, WorkforceFuture, provide_workforce,
@@ -636,6 +637,31 @@ impl TaskCreator for Tasks {
                     number: format!("TKT-{}", t.id),
                 })
                 .collect())
+        })
+    }
+
+    fn ticket_about<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+    ) -> TicketFuture<'a, Option<TicketAbout>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|t| t.id == ticket.0)
+                .map(|t| TicketAbout {
+                    ticket: TicketSummary {
+                        id: TicketId(t.id),
+                        number: format!("TKT-{}", t.id),
+                        title: t.title.clone(),
+                        status: if t.open { "open" } else { "cancelled" }.to_owned(),
+                    },
+                    subject: t.subject.clone(),
+                    category_key: t.category.clone(),
+                }))
         })
     }
 

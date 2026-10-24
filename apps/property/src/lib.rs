@@ -53,6 +53,7 @@ pub mod ticket_update;
 pub mod unit;
 pub mod unit_machine;
 pub mod unit_transfer;
+pub mod vendor_bills;
 pub mod withdraw;
 pub mod write_off;
 
@@ -192,7 +193,8 @@ impl Module for Property {
             .model::<statement::OwnerStatement>()
             .model::<statement::StatementLine>()
             .model::<statement_dispute::StatementDispute>()
-            .model::<write_off::WriteOffConsent>();
+            .model::<write_off::WriteOffConsent>()
+            .model::<vendor_bills::ContractBuilding>();
         unit_machine::register();
         lease_machine::register();
         documents::register();
@@ -218,6 +220,8 @@ impl Module for Property {
         statement_machine::register();
         statement_events::register(app);
         statement::schedule(app);
+        // Approved vendor bills and AMC shares become expense lines (BL-PRP-34).
+        vendor_bills::register(app);
         write_off::register(app);
         compliance::register(app);
         seed::register_critical_rules();

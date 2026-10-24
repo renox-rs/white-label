@@ -984,6 +984,18 @@ const TEXTS: &[(&str, &str)] = &[
         "Refund :refund was asked but credit note :note was not reduced: cancel the refund or reduce the note by hand.",
     ),
     (
+        "property.vendor_bills.ticket_line",
+        "Vendor bill :bill :supplier — :ticket (unit :unit)",
+    ),
+    (
+        "property.vendor_bills.building_line",
+        "Vendor bill :bill :supplier — :ticket, :building, owner's share",
+    ),
+    (
+        "property.vendor_bills.contract_line",
+        "Vendor bill :bill :supplier — :building, owner's share",
+    ),
+    (
         "property.terminate.invoice_missing",
         "Invoice :invoice of the lease cannot be found: nothing was changed.",
     ),
