@@ -1,6 +1,8 @@
 # wl-scheduling
 
-> Status: draft · Last updated: 2026-10-16
+> Status: specification, partly built; the build ledger is [crates/wl-scheduling/README.md](../../crates/wl-scheduling/README.md) · Last updated: 2026-10-24
+
+**Build status (2026-10-24):** Built: resources, service types, availability rules and blocks, slots, the Booking machine (including check-in, start, complete, no-show, reschedule and reassign), the waiting list, booking deposits, cancellation after check-in, conflicts, the prepayment hold, eligibility re-checks, and the strategy traits `ResourceEligibility`, `BookingActions`, `BookingGate`, `CheckInGuard`, `CompleteGuard`, `WorkDoneStatus`. Partly built: blocks from other modules (leave and sick blocks from `wl-hr` and the class sessions of `apps/edtech` reach it through `AvailabilitySource`; rosters from `wl-attendance` are not built because the Roster entity is not). List screens use the standard Renox grid (`renox::grid::Grid`).
 
 ## 1. Purpose
 
@@ -39,7 +41,7 @@ booking.
 
 **Availability** of a resource at a time = its availability rules − its blocks − its existing
 bookings, intersected for every resource the service type needs. Other modules contribute
-blocks through `AvailabilitySource` (§8): leave from `wl-hr`, rosters from `wl-attendance`,
+blocks through `AvailabilitySource` (§8): leave from `wl-hr`, rosters from `wl-attendance` (not built: today only leave and sick blocks come from `wl-hr`),
 class sessions from `apps/edtech`.
 
 **No double-booking:** the module guarantees that two bookings never hold the same resource
@@ -90,7 +92,7 @@ off per service type, so every vertical keeps its flow without new states:
 | `start` | checked_in | in_progress | the resource (e.g. practitioner) or `bookings.checkin` | service type tracks in-progress; resource eligible now (`ResourceEligibility`) | — |
 | `complete` | booked, confirmed, checked_in, in_progress | completed | the resource, `bookings.manage`, or system (a vertical record completes) | start time passed; from `booked`/`confirmed` only if the service type does not require check-in | event `BookingCompleted` (packages consume a credit; charges are captured) |
 | `mark_no_show` | booked, confirmed | no_show | system (`SCH.RUL.02`), the resource, or `bookings.manage` | start time + grace period passed; no open conflict on the booking (a conflicted booking is resolved by staff, not marked no-show) | slot released; booking deposit forfeited if the service type requires one; event `BookingNoShow` |
-| `reassign` | requested, booked, confirmed | same state | `bookings.manage` | reason code given (not shown to the party); same time; new resources free and eligible (`ResourceEligibility` at the booking time) | old resources' slot released; party notified of the new resource with *accept*, *pick another time* and *cancel* links (the reason, e.g. illness, is not disclosed); a party who cancels from that message cancels as business-initiated (§4.1 reason codes); conflict cleared; event `BookingReassigned` |
+| `reassign` (in code three transitions by state: `reassign_requested`, `reassign`, `reassign_confirmed`) | requested, booked, confirmed | same state | `bookings.manage` | reason code given (not shown to the party); same time; new resources free and eligible (`ResourceEligibility` at the booking time) | old resources' slot released; party notified of the new resource with *accept*, *pick another time* and *cancel* links (the reason, e.g. illness, is not disclosed); a party who cancels from that message cancels as business-initiated (§4.1 reason codes); conflict cleared; event `BookingReassigned` |
 | `cancel` | requested, booked, confirmed, checked_in, in_progress | cancelled | party (before the cancellation cut-off; never after check-in), `bookings.manage`, or system | reason code given; initiated by `party` or `business` recorded; from `checked_in`/`in_progress`: `bookings.manage` only, and the vertical record opened at check-in (visit, job card) has its work done captured or marked *none* (`SCH.ACL.06`) | slot released (`SlotReleased`) for the remaining time; deposit per `SCH.ACL.05`: business-initiated → refunded in full; party-initiated inside the forfeit window → forfeited, after first settling any work done; walk-out → applied to work done, the remainder forfeited or refunded per the walk-out setting (§7); work done is billed by the vertical (charges from the visit or job card); event `BookingCancelled` |
 
 ```mermaid
@@ -436,6 +438,13 @@ Later). `SCH.RUL.03`–`06` are module defaults: generic and on for every vertic
   - `WorkDoneStatus`: the vertical's `work_done_status(booking)` returning `captured`, `none`
     or `pending` for the record opened at check-in; `cancel` from `checked_in` or
     `in_progress` is refused while it is `pending` (`SCH.ACL.06`).
+  - `CheckInGuard` (kernel `scheduling`): `check(booking, at)` answers *allowed* or
+    *refused* with a text safe to show to the staff, asked by `check_in` (05 refuses the
+    check-in of an insured visit without a coverage outcome, `CLN.ACL.15`). The default
+    allows every check-in.
+  - `CompleteGuard` (kernel `scheduling`): the same answer asked by `complete` (05 refuses the
+    check-out of a visit with a lot-tracked consumable that has no lot, `STK.LOT.01`). The
+    default allows every completion.
 - **Events:** all events in §6. Verticals open their own records on `BookingCheckedIn` (a
   visit, a job card), consume package credits on `BookingCompleted`, and count no-shows on
   `BookingNoShow`.
