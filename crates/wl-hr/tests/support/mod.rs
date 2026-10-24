@@ -268,6 +268,33 @@ impl PartyDirectory for PartyDesk {
         Box::pin(async move { Ok(self.names.lock().unwrap().get(&party.0).cloned()) })
     }
 
+    fn search<'a>(
+        &'a self,
+        _db: &'a Db,
+        text: &'a str,
+        limit: u64,
+    ) -> PartyFuture<'a, Vec<PartySummary>> {
+        Box::pin(async move {
+            let wanted = text.to_lowercase();
+            Ok(self
+                .names
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(_, name)| name.to_lowercase().contains(&wanted))
+                .take(usize::try_from(limit).unwrap_or(usize::MAX))
+                .map(|(id, name)| PartySummary {
+                    id: PartyId(*id),
+                    code: format!("P-{id:05}"),
+                    kind: PartyKind::Person,
+                    display_name: name.clone(),
+                    status: PartyStatus::Active,
+                    display_block_reason: None,
+                })
+                .collect())
+        })
+    }
+
     fn status<'a>(&'a self, _db: &'a Db, _party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
         Box::pin(async { Ok(None) })
     }
