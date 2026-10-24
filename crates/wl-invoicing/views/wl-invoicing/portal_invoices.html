@@ -1,0 +1,33 @@
+{#- wl-invoicing: the party's invoices in the portal (BL-INV-31), with the
+    status its invoice stored (Disputed while flagged) and, when the client
+    allows it, the Dispute action on an open invoice. Never a block status, an
+    internal note or another party's invoice. Replace it with
+    resources/views/wl-invoicing/portal_invoices.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['portal.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['portal.title']" :subtitle="tx['portal.subtitle']" :back="home_url" :back-label="tx['portal.home']">
+      <rx-link-button :href="statement_url" :label="tx['portal.statement.title']" variant="secondary" icon="file-text"/>
+    </rx-page-header>
+    <rx-alert rx-if="read_only_notice" kind="warning" :message="read_only_notice"/>
+    <rx-form-errors/>
+    <rx-table :rows="invoices" as="invoice" :key="invoice.id" :caption="tx['portal.title']" card>
+      <rx-column :label="tx['fields.number']">{{ invoice.number }}</rx-column>
+      <rx-column :label="tx['fields.issue_date']" hide-narrow>{{ invoice.issue_date }}</rx-column>
+      <rx-column :label="tx['fields.due_date']" hide-narrow>{{ invoice.due_date }}</rx-column>
+      <rx-column :label="tx['fields.gross_total']" align="num">{{ invoice.amount }}</rx-column>
+      <rx-column :label="tx['fields.balance']" align="num">{{ invoice.balance }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="invoice.status_kind" :text="invoice.status"/></rx-column>
+      <rx-row-actions>
+        <template rx-if="invoice.can_dispute">
+          <rx-action-sheet :id="'portal-dispute-' ~ invoice.id" :label="tx['portal.dispute']" :action="dispute_base ~ '/' ~ invoice.id ~ '/dispute'"
+                           :title="tx['portal.dispute_title'] | replace(':number', invoice.number)" :description="tx['portal.dispute_hint']" :submit-label="tx['portal.dispute_send']" icon="triangle-alert">
+            <rx-textarea name="reason" :label="tx['dispute.fields.reason']" :id="'portal-dispute-reason-' ~ invoice.id" required/>
+            <rx-input name="amount" :label="tx['dispute.fields.amount']" :hint="tx['dispute.fields.amount_hint']" :id="'portal-dispute-amount-' ~ invoice.id"/>
+            <rx-checkbox rx-for="line in invoice.lines" :name="line.name" :label="line.label" :id="'portal-dispute-' ~ invoice.id ~ '-' ~ line.name"/>
+          </rx-action-sheet>
+        </template>
+      </rx-row-actions>
+      <rx-slot name="empty"><rx-empty :title="tx['portal.empty']" icon="receipt"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

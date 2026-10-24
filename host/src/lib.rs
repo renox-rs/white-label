@@ -229,6 +229,9 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // What a client user of an accounting firm sees of its engagements.
     app::accounting_portal::register(&client_app);
     app::manpower_portal::register(&client_app);
+    // The party's invoices, statement and deposit in the portal (BL-INV-31,
+    // BL-PAY-27).
+    app::money_portal::register();
     // The kernel goes first: its seeder creates the legal entities the other
     // modules' demo data needs, and seeders run in the order modules mount.
     let portal_on = manifest.enabled().contains(&"portal");
@@ -245,6 +248,9 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
             &owner_role,
             &mut tuning,
         )?;
+    }
+    if portal_on {
+        app = app.module(app::money_portal::MoneyPortal);
     }
     // The Property client's categories, checklists and SOPs go in after the
     // modules' own seeds (BL-PRP-27).

@@ -100,6 +100,7 @@ pub mod payer_tax;
 mod payer_texts;
 pub mod period_locks;
 pub mod policy;
+pub mod portal;
 pub mod rate_card;
 mod rate_card_contract;
 mod rate_card_pages;
@@ -334,6 +335,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-invoicing/payer_bill.html",
         include_str!("../views/wl-invoicing/payer_bill.html"),
+    ),
+    (
+        "wl-invoicing/portal_invoices.html",
+        include_str!("../views/wl-invoicing/portal_invoices.html"),
+    ),
+    (
+        "wl-invoicing/portal_statement.html",
+        include_str!("../views/wl-invoicing/portal_statement.html"),
     ),
 ];
 
@@ -1118,6 +1127,8 @@ impl Module for WlInvoicing {
             .view_data::<rate_card_screens::CardPage>()
             .view_data::<rate_card_screens::VersionPage>()
             .view_data::<subscription_pages::IndexPage>()
+            .view_data::<portal::PortalInvoicesPage>()
+            .view_data::<portal::PortalStatementPage>()
             .view_data::<subscription_pages::ShowPage>()
             .view_data::<payer_bill_pages::IndexPage>()
             .view_data::<payer_bill_pages::ShowPage>()

@@ -1,0 +1,32 @@
+{#- wl-invoicing: the party's statement of account in the portal
+    (BL-INV-31): invoices, credit notes and payments of a period with the
+    opening balance, a running balance and the closing balance. Replace it
+    with resources/views/wl-invoicing/portal_statement.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['portal.statement.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['portal.statement.title']" :subtitle="period" :back="invoices_url" :back-label="tx['portal.title']"/>
+    <rx-alert rx-if="read_only_notice" kind="warning" :message="read_only_notice"/>
+    <rx-card>
+      <rx-form method="GET" :action="statement_url">
+        <rx-row>
+          <rx-input type="date" name="from" :label="tx['portal.statement.from']" :value="from" id="statement-from"/>
+          <rx-input type="date" name="to" :label="tx['portal.statement.to']" :value="to" id="statement-to"/>
+          <rx-button type="submit" :label="tx['portal.statement.show']" variant="secondary"/>
+        </rx-row>
+      </rx-form>
+    </rx-card>
+    <rx-infolist columns="2">
+      <rx-entry :label="tx['portal.statement.opening']" :value="opening"/>
+      <rx-entry :label="tx['portal.statement.closing']" :value="closing"/>
+    </rx-infolist>
+    <rx-table :rows="statement_rows" as="line" :key="line.date ~ line.reference ~ line.balance" :caption="tx['portal.statement.title']" card>
+      <rx-column :label="tx['portal.statement.date']">{{ line.date }}</rx-column>
+      <rx-column :label="tx['portal.statement.what']">{{ line.kind }}</rx-column>
+      <rx-column :label="tx['portal.statement.reference']" hide-narrow>{{ line.reference }}</rx-column>
+      <rx-column :label="tx['portal.statement.debit']" align="num">{{ line.debit }}</rx-column>
+      <rx-column :label="tx['portal.statement.credit']" align="num">{{ line.credit }}</rx-column>
+      <rx-column :label="tx['portal.statement.balance']" align="num">{{ line.balance }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['portal.statement.empty']" icon="file-text"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>
