@@ -8,6 +8,7 @@ pub mod call;
 pub mod cancellation;
 pub mod certificate;
 pub mod chase;
+pub mod client_portal;
 pub mod completion;
 pub mod cutoff;
 pub mod deduction;
@@ -47,6 +48,7 @@ use renox::state_machine::Transitioned;
 pub use absence::AbsenceCase;
 pub use boq::{BoqLine, IpaProgress};
 pub use call::GuaranteeCall;
+pub use client_portal::{ClientAccess, ProjectClosed};
 pub use deduction::{DeductionKind, DeductionStatus, IpaDeduction};
 pub use events::ProjectTerminated;
 pub use guarantee::{Guarantee, GuaranteeDocument, GuaranteeKind, GuaranteeStatus};
@@ -212,6 +214,16 @@ impl Module for Construction {
                 .contains(&event.transition.as_str());
             if terminated && event.to == ProjectStatus::Terminated.as_str() {
                 let _done = termination::after_termination(&state, event.key).await?;
+            }
+            Ok(())
+        });
+        // A closed final account turns the client portal read-only
+        // (`POR.ACL.01`, BL-CON-19): `ProjectClosed` for the host.
+        app.listen(|event: Transitioned<Project>, state: AppState| async move {
+            let closing = [project::CLOSE, project::SETTLE_FINAL_ACCOUNT]
+                .contains(&event.transition.as_str());
+            if closing && event.to == ProjectStatus::Closed.as_str() {
+                client_portal::after_close(&state, event.key, &event.transition).await?;
             }
             Ok(())
         });

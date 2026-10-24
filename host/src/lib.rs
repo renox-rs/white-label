@@ -34,6 +34,7 @@ pub use app::clinics_demo;
 pub use app::clinics_money;
 pub use app::clinics_seed;
 pub use app::construction_demo;
+pub use app::construction_portal;
 pub use app::construction_seed;
 pub use app::demo_data;
 pub use app::edtech_demo;
@@ -292,6 +293,11 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // BL-CON-18).
     if client_app == app::construction_seed::CONSTRUCTION {
         app = app.module(app::construction_seed::ConstructionSeed);
+        // A closed final account turns the client's portal grants read-only
+        // when no other project of theirs runs (`POR.ACL.01`, BL-CON-19).
+        if portal_on {
+            app = app.module(app::construction_portal::ConstructionPortal);
+        }
         // The demo company, after the installs: `construction:demo`, and
         // `db:seed` in local (never in production).
         app = app.module(app::construction_demo::DemoSeed::new(demo_client.clone()));

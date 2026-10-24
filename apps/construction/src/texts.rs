@@ -765,6 +765,15 @@ const TEXTS: &[(&str, &str)] = &[
     ("construction.settle.done", "Final account settled."),
     ("construction.cancel.done", "Project cancelled."),
     ("construction.bad_input", "Check the fields and try again."),
+    // The client portal after the final account (`POR.ACL.01`).
+    (
+        "construction.client_portal.read_only",
+        "The project is closed: its documents can be read until {{ until }}, nothing can be uploaded.",
+    ),
+    (
+        "construction.client_portal.hidden",
+        "The project is closed and no longer in the portal.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

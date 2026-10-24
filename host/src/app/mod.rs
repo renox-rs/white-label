@@ -12,6 +12,7 @@ pub mod clinics_money;
 pub mod clinics_seed;
 pub mod compliance_settings;
 pub mod construction_demo;
+pub mod construction_portal;
 pub mod construction_seed;
 pub mod dashboard;
 pub mod demo;

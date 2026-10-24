@@ -13,8 +13,8 @@ use std::sync::{Arc, Mutex};
 use construction::permissions as perm;
 use construction::{
     Construction, DeductionKind, DeductionStatus, Guarantee, GuaranteeKind, GuaranteeStatus, Ipa,
-    IpaDeduction, IpaStatus, Project, ProjectStatus, ProjectTerminated, Retention, RetentionPart,
-    RetentionStatus,
+    IpaDeduction, IpaStatus, Project, ProjectClosed, ProjectStatus, ProjectTerminated, Retention,
+    RetentionPart, RetentionStatus,
 };
 use renox::auth::{Permissions, permissions};
 use renox::chrono::NaiveDate;
@@ -858,6 +858,7 @@ struct Fakes {
     bills: Bills,
     costs: Costs,
     terminated: Arc<Mutex<Vec<ProjectTerminated>>>,
+    closed: Arc<Mutex<Vec<ProjectClosed>>>,
     registrations: Registrations,
 }
 
@@ -879,6 +880,7 @@ impl Module for Fakes {
         provide_cost_poster(app, self.costs.clone());
         provide_block_guard(app, self.blocked.clone());
         record(app, &self.terminated);
+        record(app, &self.closed);
     }
 }
 
@@ -904,6 +906,8 @@ pub struct Booted {
     pub registrations: Registrations,
     /// `ProjectTerminated`.
     pub terminated: Recorded<ProjectTerminated>,
+    /// `ProjectClosed`.
+    pub closed: Recorded<ProjectClosed>,
     /// Days the clock was moved forward from the real one.
     clock_days: std::sync::atomic::AtomicI64,
     /// The projects made, for their codes.
@@ -1277,6 +1281,7 @@ pub async fn boot() -> Booted {
     let costs = Costs::default();
     let blocked = Blocked::default();
     let terminated = Arc::new(Mutex::new(Vec::new()));
+    let closed = Arc::new(Mutex::new(Vec::new()));
     let registrations = Registrations::default();
     let fakes = Fakes {
         registrations: registrations.clone(),
@@ -1288,6 +1293,7 @@ pub async fn boot() -> Booted {
         bills: bills.clone(),
         costs: costs.clone(),
         terminated: terminated.clone(),
+        closed: closed.clone(),
     };
     let app = App::new()
         .module(Auth::new())
@@ -1384,6 +1390,7 @@ pub async fn boot() -> Booted {
         blocked,
         registrations,
         terminated: Recorded(terminated),
+        closed: Recorded(closed),
         clock_days: std::sync::atomic::AtomicI64::new(0),
         made: std::sync::atomic::AtomicI64::new(0),
         _views: views,
