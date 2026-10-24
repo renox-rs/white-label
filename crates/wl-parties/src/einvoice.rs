@@ -13,6 +13,9 @@
 //!   the default entity.
 //! - [`lookup_available`] says whether the *Look up* button is enabled: the
 //!   entity's ASP connection is `up`.
+//! - [`lookup_by_trn`] is the same lookup by a TRN typed in the company
+//!   create form, before the party exists (BL-PTY-11, #460); a TRN that is
+//!   not 15 digits makes no call.
 //!
 //! Persons do not have the field.
 
@@ -128,6 +131,19 @@ pub async fn lookup_recipient(state: &AppState, user: &AuthUser, party: i64) -> 
     };
     let entity = LegalEntity::for_scope(&state.db, None).await?;
     einvoice::lookup(state, &entity, &trn).await
+}
+
+/// Looks up the identifier of a company not saved yet by the `trn` typed
+/// in the create form, through the ASP adapter of the default legal entity;
+/// nothing is saved. `None` (and no call) when the TRN is missing or not 15
+/// digits; [`Lookup::Unavailable`] (and no call) while the ASP connection is
+/// not `up`. The route checks the permission (`parties.create`).
+pub async fn lookup_by_trn(state: &AppState, trn: Option<&str>) -> Result<Option<Lookup>> {
+    let Some(trn) = clean(trn).filter(|trn| is_trn(trn)) else {
+        return Ok(None);
+    };
+    let entity = LegalEntity::for_scope(&state.db, None).await?;
+    Ok(Some(einvoice::lookup(state, &entity, &trn).await?))
 }
 
 #[cfg(test)]

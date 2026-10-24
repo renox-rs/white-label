@@ -423,3 +423,146 @@ async fn ptyeinv07_a_company_without_a_trn_cannot_look_up() {
         .assert_status(422);
     assert_eq!(asp.calls(), 0);
 }
+
+// BL-PTY-11 (#460): *Look up* in the company create form, by the TRN typed,
+// before the party is saved.
+
+/// The create form as typed: a company named Delta with `trn` and `id`.
+fn typed<'a>(trn: &'a str, id: &'a str) -> Vec<(&'static str, &'a str)> {
+    vec![
+        ("kind", "company"),
+        ("legal_name_en", DELTA),
+        ("email", "accounts@delta.example"),
+        ("default_language", "en"),
+        ("preferred_channel", "email"),
+        ("trn", trn),
+        ("einvoice_recipient_id", id),
+    ]
+}
+
+const CREATE_LOOKUP: &str = "/parties/new/einvoice-lookup";
+
+async fn parties(t: &Booted) -> usize {
+    Party::query().get(t.db()).await.unwrap().len()
+}
+
+/// Done when 1: with TRN 100123456700003 typed and the ASP returning
+/// `0235:100123456700003`, *Look up* fills the field and keeps what was
+/// typed; no party exists until *Save*, which stores the found ID.
+#[renox::test]
+async fn ptyeinv11_look_up_in_the_create_form_fills_the_field_and_saves_nothing() {
+    let (t, asp) = setup().await;
+    let staff = t.user("Sami", &[perm::VIEW, perm::CREATE]).await;
+    t.app.acting_as(&staff);
+
+    let form = t.app.get("/parties/new").await;
+    form.assert_ok();
+    assert!(form.text().contains(CREATE_LOOKUP), "{}", form.text());
+
+    let found = "0235:100123456700003";
+    let page = t.app.post(CREATE_LOOKUP, &typed(DELTA_TRN, "")).await;
+    page.assert_ok();
+    let html = page.text();
+    assert!(html.contains(&format!(r#"value="{found}""#)), "{html}");
+    assert!(html.contains(r#"value="Delta Trading LLC""#), "what was typed is kept: {html}");
+    assert!(html.contains(r#"value="accounts@delta.example""#), "{html}");
+    assert!(html.contains(&format!(r#"value="{DELTA_TRN}""#)), "{html}");
+    assert_eq!(asp.calls(), 1);
+    assert_eq!(parties(&t).await, 0, "no party until Save");
+
+    let saved = t.app.post("/parties", &typed(DELTA_TRN, found)).await;
+    assert!(saved.status.is_redirection(), "{}", saved.text());
+    let party = t.party(DELTA).await;
+    assert_eq!(stored(&t, &party).await.as_deref(), Some(found));
+}
+
+/// An ID the user typed is not replaced: the found one is offered, and
+/// taken only when the user accepts it. Nothing is saved either way.
+#[renox::test]
+async fn ptyeinv11_a_typed_id_is_kept_and_the_found_one_offered() {
+    let (t, asp) = setup().await;
+    let staff = t.user("Sami", &[perm::VIEW, perm::CREATE]).await;
+    t.app.acting_as(&staff);
+
+    let page = t.app.post(CREATE_LOOKUP, &typed(DELTA_TRN, "0235:1")).await;
+    page.assert_ok();
+    let html = page.text();
+    assert!(html.contains(r#"value="0235:1""#), "{html}");
+    assert!(html.contains("Use the found ID"), "{html}");
+    assert!(html.contains("0235:100123456700003"), "{html}");
+    assert_eq!(asp.calls(), 1);
+
+    let mut accept = typed(DELTA_TRN, "0235:1");
+    accept.push(("einvoice_suggestion", "0235:100123456700003"));
+    accept.push(("accept_suggestion", "1"));
+    let page = t.app.post(CREATE_LOOKUP, &accept).await;
+    page.assert_ok();
+    assert!(page.text().contains(r#"value="0235:100123456700003""#));
+    assert_eq!(asp.calls(), 1, "accepting asks nothing");
+    assert_eq!(parties(&t).await, 0);
+}
+
+/// Done when 2: with the connection `down`, the button in the form is
+/// disabled with its reason, the banner shows, no ASP call is made, and
+/// saving with an identifier typed by hand works.
+#[renox::test]
+async fn ptyeinv11_with_the_connection_down_the_form_lookup_is_off_and_saving_by_hand_works() {
+    let (t, asp) = setup().await;
+    let staff = t.user("Sami", &[perm::VIEW, perm::CREATE]).await;
+    t.app.acting_as(&staff);
+
+    integrations::report_failure(t.app.state(), KEY, "timeout")
+        .await
+        .unwrap();
+    t.app.travel(std::time::Duration::from_secs(15 * 60));
+    t.app
+        .run_scheduled(integrations::service::TASK)
+        .await
+        .expect("the integration task runs");
+
+    let form = t.app.get("/parties/new").await;
+    form.assert_ok();
+    let html = form.text();
+    assert!(html.contains("Enter the e-invoicing ID by hand."), "the banner: {html}");
+    assert!(
+        html.contains("The lookup is not available now; enter the ID by hand"),
+        "the reason: {html}"
+    );
+    assert!(!html.contains(CREATE_LOOKUP), "no live Look up button: {html}");
+
+    let page = t.app.post(CREATE_LOOKUP, &typed(DELTA_TRN, "")).await;
+    page.assert_ok();
+    assert!(page.text().contains("The lookup is not available now"));
+    assert_eq!(asp.calls(), 0);
+    assert_eq!(parties(&t).await, 0);
+
+    let saved = t.app.post("/parties", &typed(DELTA_TRN, "0235:555")).await;
+    assert!(saved.status.is_redirection(), "{}", saved.text());
+    let party = t.party(DELTA).await;
+    assert_eq!(stored(&t, &party).await.as_deref(), Some("0235:555"));
+    assert_eq!(asp.calls(), 0);
+}
+
+/// Done when 3: with no TRN typed, the button is disabled ("Enter the TRN
+/// first"); a lookup sent anyway, or with a TRN that is not 15 digits, asks
+/// nothing.
+#[renox::test]
+async fn ptyeinv11_with_no_trn_typed_the_button_is_disabled() {
+    let (t, asp) = setup().await;
+    let staff = t.user("Sami", &[perm::VIEW, perm::CREATE]).await;
+    t.app.acting_as(&staff);
+
+    let form = t.app.get("/parties/new").await;
+    form.assert_ok();
+    let html = form.text();
+    assert!(html.contains("Enter the TRN first"), "{html}");
+    assert!(html.contains("disabled"), "{html}");
+
+    for trn in ["", "12345"] {
+        let page = t.app.post(CREATE_LOOKUP, &typed(trn, "")).await;
+        page.assert_ok();
+        assert!(page.text().contains("Enter the TRN first"));
+    }
+    assert_eq!(asp.calls(), 0);
+    assert_eq!(parties(&t).await, 0);
+}

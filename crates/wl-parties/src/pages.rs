@@ -5,6 +5,7 @@
 //! | `GET /parties` | `wl_parties.index` | `parties.view` (`?export=` also `parties.export`) |
 //! | `GET /parties/new` | `wl_parties.create` | `parties.create` |
 //! | `POST /parties` | `wl_parties.store` | `parties.create` |
+//! | `POST /parties/new/einvoice-lookup` | `wl_parties.create_einvoice_lookup` | `parties.create` (the create form posted by its *Look up* button: asks the ASP by the TRN typed, then shows the form again with what was typed; nothing is saved) |
 //! | `GET /parties/{id}` | `wl_parties.show` | `parties.view` |
 //! | `POST /parties/{id}/block` | `wl_parties.block` | `parties.block` (a restricted reason also `parties.block_reason.view`) |
 //! | `POST /parties/{id}/unblock` | `wl_parties.unblock` | `parties.block` (multipart: note, basis and evidence files; the service checks the rest) |
@@ -62,7 +63,9 @@ use crate::confirm_match;
 use crate::contacts::{ContactPoint, ContactStatus, ContactType, update_contact, verify_contact};
 use crate::create::{NewParty, create};
 use crate::details::{CompanyDetails, PersonDetails};
-use crate::einvoice::{clean, lookup_available, lookup_recipient, set_recipient_id};
+use crate::einvoice::{
+    clean, lookup_available, lookup_by_trn, lookup_recipient, set_recipient_id,
+};
 use crate::evidence::{UnblockBasis, UnblockEvidence};
 use crate::list_parser::ListParsers;
 use crate::list_upload::{
@@ -99,6 +102,8 @@ pub fn routes() -> Routes {
         .name("wl_parties.create")
         .post("/parties", store)
         .name("wl_parties.store")
+        .post("/parties/new/einvoice-lookup", lookup_new_einvoice)
+        .name("wl_parties.create_einvoice_lookup")
         .require_permission(permissions::CREATE)
         // Anywhere: a manager of some buildings sees the people of those
         // buildings (their tenants, the owners of their units).
@@ -334,17 +339,185 @@ pub(crate) struct NewPage {
     kinds: Vec<(String, String)>,
     languages: Vec<(String, String)>,
     channels: Vec<(String, String)>,
+    /// What the fields start with: empty, or what was typed before a
+    /// *Look up* (with the found ID filled in).
+    entered: EnteredParty,
+    /// Whether *Look up* can be used: the ASP connection is `up`. The button
+    /// is also off while the TRN field is empty ("Enter the TRN first").
+    lookup_up: bool,
+    /// The answer of a lookup, if one was just made.
+    message: Option<String>,
+    /// `success` or `warning`.
+    message_kind: &'static str,
+    /// An ID the lookup found while the user had typed another one: shown
+    /// for the user to accept, never put over what they typed.
+    suggestion: Option<String>,
+    /// The banner of a `down` ASP connection (the manual fallback).
+    integration_banner: Option<renox::serde_json::Value>,
 }
 
-/// `GET /parties/new`: the create form.
-async fn new(lang: Lang) -> Result<View> {
-    let t = texts_in(&lang);
+/// The values of the create form, as typed (and drawn again after a
+/// *Look up*). Named `entered` in the template: a variable named after a
+/// kit tag (`form`) would be shadowed.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct EnteredParty {
+    /// `person` or `company`.
+    #[serde(default = "person")]
+    pub kind: String,
+    /// The legal name in English.
+    #[serde(default)]
+    pub legal_name_en: String,
+    /// The legal name in Arabic.
+    #[serde(default)]
+    pub legal_name_ar: String,
+    /// The name to show.
+    #[serde(default)]
+    pub display_name: String,
+    /// The primary e-mail address.
+    #[serde(default)]
+    pub email: String,
+    /// The primary mobile number.
+    #[serde(default)]
+    pub mobile: String,
+    /// The language documents and messages use.
+    #[serde(default = "english")]
+    pub default_language: String,
+    /// The preferred channel.
+    #[serde(default = "email_channel")]
+    pub preferred_channel: String,
+    /// A company's TRN.
+    #[serde(default)]
+    pub trn: String,
+    /// A company's e-invoicing recipient identifier.
+    #[serde(default)]
+    pub einvoice_recipient_id: String,
+    /// The ID a lookup found while another one was typed (a hidden field).
+    #[serde(default)]
+    pub einvoice_suggestion: String,
+    /// `1` when the user accepts [`Self::einvoice_suggestion`].
+    #[serde(default)]
+    pub accept_suggestion: String,
+}
+
+fn person() -> String {
+    PartyKind::Person.as_str().to_owned()
+}
+
+fn english() -> String {
+    Language::default().as_str().to_owned()
+}
+
+fn email_channel() -> String {
+    Channel::default().as_str().to_owned()
+}
+
+impl Default for EnteredParty {
+    fn default() -> Self {
+        EnteredParty {
+            kind: person(),
+            legal_name_en: String::new(),
+            legal_name_ar: String::new(),
+            display_name: String::new(),
+            email: String::new(),
+            mobile: String::new(),
+            default_language: english(),
+            preferred_channel: email_channel(),
+            trn: String::new(),
+            einvoice_recipient_id: String::new(),
+            einvoice_suggestion: String::new(),
+            accept_suggestion: String::new(),
+        }
+    }
+}
+
+impl Validate for EnteredParty {
+    fn rules(&self, _v: &mut Validator) {}
+}
+
+/// The create form drawn with `entered`, and the answer of a lookup.
+async fn new_page(
+    state: &AppState,
+    lang: &Lang,
+    entered: EnteredParty,
+    message: Option<(String, &'static str)>,
+    suggestion: Option<String>,
+) -> Result<View> {
+    let t = texts_in(lang);
+    let (message, message_kind) = match message {
+        Some((text, kind)) => (Some(text), kind),
+        None => (None, "success"),
+    };
     Ok(View::typed(NewPage {
-        tx: texts::all(&lang),
+        tx: texts::all(lang),
         kinds: options(&t, "kind", PartyKind::ALL.iter().map(PartyKind::as_str)),
         languages: options(&t, "language", Language::ALL.iter().map(Language::as_str)),
         channels: options(&t, "channel", Channel::ALL.iter().map(Channel::as_str)),
+        entered,
+        lookup_up: lookup_available(state).await?,
+        message,
+        message_kind,
+        suggestion,
+        integration_banner: banner_for(&state.db, PARTY_SCREEN, lang).await?,
     }))
+}
+
+/// `GET /parties/new`: the create form.
+async fn new(State(state): State<AppState>, lang: Lang) -> Result<View> {
+    new_page(&state, &lang, EnteredParty::default(), None, None).await
+}
+
+/// `POST /parties/new/einvoice-lookup`: the create form sent by its *Look
+/// up* button (or by *Use the found ID*). Asks the ASP for the identifier of
+/// the TRN typed and draws the form again with everything typed kept;
+/// nothing is saved, and no party exists until *Save*.
+///
+/// - TRN missing or not 15 digits: no call, "Enter the TRN first".
+/// - Connection not `up`: no call, the form says to enter the ID by hand.
+/// - Found: fills the field when it is empty; when the user typed another
+///   ID, the found one is offered as a suggestion to accept.
+async fn lookup_new_einvoice(
+    State(state): State<AppState>,
+    lang: Lang,
+    Valid(mut entered): Valid<EnteredParty>,
+) -> Result<View> {
+    let suggestion = std::mem::take(&mut entered.einvoice_suggestion);
+    if std::mem::take(&mut entered.accept_suggestion) == "1"
+        && let Some(found) = clean(Some(&suggestion))
+    {
+        entered.einvoice_recipient_id = found;
+        return new_page(&state, &lang, entered, None, None).await;
+    }
+    let warning = |key: &str| Some((texts::t(&lang, key), "warning"));
+    let Some(answer) = lookup_by_trn(&state, Some(&entered.trn)).await? else {
+        let message = warning("wl_parties.einvoice.enter_trn");
+        return new_page(&state, &lang, entered, message, None).await;
+    };
+    let (message, suggestion) = match answer {
+        Lookup::Found(found) => {
+            let typed = clean(Some(&entered.einvoice_recipient_id));
+            match typed {
+                None => {
+                    let text =
+                        texts::t_with(&lang, "wl_parties.einvoice.found", &[("id", &found)]);
+                    entered.einvoice_recipient_id = found;
+                    (Some((text, "success")), None)
+                }
+                Some(typed) if typed == found => (None, None),
+                Some(_) => {
+                    let text = texts::t_with(
+                        &lang,
+                        "wl_parties.einvoice.suggestion",
+                        &[("id", &found)],
+                    );
+                    (Some((text, "warning")), Some(found))
+                }
+            }
+        }
+        Lookup::NotFound => (warning("wl_parties.einvoice.not_found"), None),
+        Lookup::Failed(_) => (warning("wl_parties.einvoice.lookup_failed"), None),
+        Lookup::Unavailable => (warning("wl_parties.einvoice.unavailable"), None),
+    };
+    new_page(&state, &lang, entered, message, suggestion).await
 }
 
 /// The create form. The service checks the rest (a 15-digit TRN, one
@@ -377,8 +550,8 @@ pub struct PartyForm {
     /// A company's TRN (sent only for a company).
     #[validate(max = 15)]
     pub trn: Option<String>,
-    /// A company's e-invoicing recipient identifier, entered by hand (the
-    /// lookup by TRN is on the company's e-invoicing page).
+    /// A company's e-invoicing recipient identifier, entered by hand or
+    /// filled by *Look up* (`wl_parties.create_einvoice_lookup`).
     #[validate(max = 100)]
     pub einvoice_recipient_id: Option<String>,
 }

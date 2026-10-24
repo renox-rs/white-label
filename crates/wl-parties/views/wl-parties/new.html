@@ -1,30 +1,52 @@
-{#- wl-parties: the form that creates a party. Replace it with
-    resources/views/wl-parties/new.html in the app. -#}
+{#- wl-parties: the form that creates a party. A company's e-invoicing
+    recipient ID can be looked up by the TRN typed (BL-PTY-11): *Look up*
+    posts the form to wl_parties.create_einvoice_lookup, which draws it again
+    with what was typed and saves nothing. The button is off while the TRN
+    field is empty ("Enter the TRN first") and while the ASP connection is
+    not up (the kernel banner then shows the manual fallback). Replace it
+    with resources/views/wl-parties/new.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['new']">
   <rx-stack>
     <rx-page-header :title="tx['new']" :back="route('wl_parties.index')" :back-label="tx['title']"/>
+    <rx-include template="wl-kernel/integration_banner.html"/>
+    <rx-alert rx-if="message" :kind="message_kind" :message="message"/>
     <rx-form route="wl_parties.store" live novalidate>
       <rx-card>
         <rx-form-errors/>
-        <rx-radio name="kind" :label="tx['fields.kind']" :options="kinds" :selected="'person'" inline required/>
+        <rx-radio name="kind" :label="tx['fields.kind']" :options="kinds" :selected="entered.kind" inline required/>
         <rx-fieldset :legend="tx['sections.names']">
           <rx-form-grid columns="2">
-            <rx-input name="legal_name_en" :label="tx['fields.legal_name_en']" required/>
-            <rx-input name="legal_name_ar" :label="tx['fields.legal_name_ar']" dir="rtl"/>
-            <rx-input name="display_name" :label="tx['fields.display_name']" :hint="tx['fields.display_name_hint']" span="full"/>
+            <rx-input name="legal_name_en" :label="tx['fields.legal_name_en']" :value="entered.legal_name_en" required/>
+            <rx-input name="legal_name_ar" :label="tx['fields.legal_name_ar']" :value="entered.legal_name_ar" dir="rtl"/>
+            <rx-input name="display_name" :label="tx['fields.display_name']" :hint="tx['fields.display_name_hint']" :value="entered.display_name" span="full"/>
           </rx-form-grid>
         </rx-fieldset>
         <rx-fieldset :legend="tx['sections.contact']">
           <rx-form-grid columns="2">
-            <rx-input name="email" type="email" :label="tx['fields.email']" autocomplete="off"/>
-            <rx-input name="mobile" type="tel" :label="tx['fields.mobile']" autocomplete="off"/>
-            <rx-select name="default_language" :label="tx['fields.default_language']" :options="languages" :selected="'en'"/>
-            <rx-select name="preferred_channel" :label="tx['fields.preferred_channel']" :options="channels" :selected="'email'"/>
+            <rx-input name="email" type="email" :label="tx['fields.email']" :value="entered.email" autocomplete="off"/>
+            <rx-input name="mobile" type="tel" :label="tx['fields.mobile']" :value="entered.mobile" autocomplete="off"/>
+            <rx-select name="default_language" :label="tx['fields.default_language']" :options="languages" :selected="entered.default_language"/>
+            <rx-select name="preferred_channel" :label="tx['fields.preferred_channel']" :options="channels" :selected="entered.preferred_channel"/>
           </rx-form-grid>
         </rx-fieldset>
         <rx-show-when field="kind" values="company">
-          <rx-input name="trn" :label="tx['fields.trn']" :hint="tx['fields.trn_hint']" inputmode="numeric" maxlength="15"/>
-          <rx-input name="einvoice_recipient_id" :label="tx['fields.einvoice_recipient_id']" :hint="tx['fields.einvoice_recipient_id_hint']" maxlength="100"/>
+          <rx-input name="trn" :label="tx['fields.trn']" :hint="tx['fields.trn_hint']" :value="entered.trn" inputmode="numeric" maxlength="15"/>
+          <rx-input name="einvoice_recipient_id" :label="tx['fields.einvoice_recipient_id']" :hint="tx['fields.einvoice_recipient_id_hint']" :value="entered.einvoice_recipient_id" maxlength="100"/>
+          <template rx-if="suggestion">
+            <input type="hidden" name="einvoice_suggestion" value="{{ suggestion }}"/>
+            <rx-button :label="tx['einvoice.use_found']" name="accept_suggestion" value="1" variant="secondary" icon="check" :formaction="route('wl_parties.create_einvoice_lookup')" formnovalidate/>
+          </template>
+          <template rx-if="lookup_up">
+            <rx-show-when field="trn" values="">
+              <rx-button :label="tx['einvoice.lookup']" variant="plain" icon="search" disabled :disabled-reason="tx['einvoice.enter_trn']"/>
+            </rx-show-when>
+            <rx-hide-when field="trn" values="">
+              <rx-button :label="tx['einvoice.lookup']" variant="plain" icon="search" :formaction="route('wl_parties.create_einvoice_lookup')" formnovalidate/>
+            </rx-hide-when>
+          </template>
+          <template rx-if="not lookup_up">
+            <rx-button :label="tx['einvoice.lookup']" variant="plain" icon="search" disabled :disabled-reason="tx['einvoice.unavailable']"/>
+          </template>
         </rx-show-when>
         <div class="rx-card__footer">
           <rx-link-button route="wl_parties.index" :label="tx['cancel']" variant="plain"/>
