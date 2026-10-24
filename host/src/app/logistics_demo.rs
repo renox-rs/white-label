@@ -170,5 +170,7 @@ async fn run(state: AppState, forced: bool) -> Result {
             println!("A demo freight job opened for {DEMO_CLIENT}.");
         }
     }
+    // The demo ends with a full search index (BL-AGT-11).
+    wl_kernel::search::rebuild(&state.db).await?;
     Ok(())
 }

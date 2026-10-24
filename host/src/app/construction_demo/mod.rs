@@ -211,6 +211,8 @@ pub async fn seed(kernel: &Kernel) -> Result<Report> {
         items: BTreeMap::new(),
     };
     Box::pin(seed.run()).await?;
+    // The demo ends with a full search index (BL-AGT-11).
+    wl_kernel::search::rebuild(&kernel.state().db).await?;
     Ok(seed.report)
 }
 

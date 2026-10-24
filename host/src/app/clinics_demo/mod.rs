@@ -314,6 +314,8 @@ pub async fn seed(kernel: &renox::Kernel) -> Result<bool> {
     let driver = Driver::new(kernel.router());
     let clock = Clock::new().await;
     Box::pin(Seed::new(state, driver, clock).run()).await?;
+    // The demo ends with a full search index (BL-AGT-11).
+    wl_kernel::search::rebuild(&kernel.state().db).await?;
     Ok(true)
 }
 

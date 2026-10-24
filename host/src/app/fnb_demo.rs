@@ -293,6 +293,8 @@ async fn run(state: AppState, forced: bool) -> Result {
         "{} aggregator orders to chase, {} tasks to record what happened.",
         watched.alerts, watched.tasks
     );
+    // The demo ends with a full search index (BL-AGT-11).
+    wl_kernel::search::rebuild(&state.db).await?;
     Ok(())
 }
 
