@@ -760,7 +760,7 @@ fn log_missing_once(relation: &Relation, target: &Subject) {
 
 /// Registers the panel's views and the kernel's own generic relation: the
 /// approval requests of any record.
-pub(crate) fn register(app: &mut Registry) {
+pub(crate) fn register_module(app: &mut Registry) {
     app.view_data::<web::RelatedPage>()
         .view_data::<web::RelatedPanel>();
     Relation::attached(APPROVALS, APPROVAL_SUBJECT_TYPE, "wl_approval_requests")

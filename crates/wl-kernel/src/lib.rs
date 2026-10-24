@@ -482,7 +482,7 @@ impl Module for WlKernel {
         compliance::register_models(app);
         digest::register(app);
         search::register(app);
-        related::register(app);
+        related::register_module(app);
         // In the admin group of the staff sidebar; the label is the app's
         // `nav.legal_entities` text.
         app.nav(
