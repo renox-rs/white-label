@@ -75,7 +75,7 @@ export APP_ENV=local APP_DEBUG=true APP_KEY=base64:$(head -c 32 /dev/urandom | b
 
 The demo client is `clients/demo-properties/client.toml`. Other verticals: set
 `CLIENT_CONFIG=clients/demo-<x>/client.toml`, run `<vertical>:demo` (see
-[docs/DEMO-DATA.md](docs/DEMO-DATA.md)); 04 accounting has `db:seed` only. Tests: `cargo test --workspace --locked`.
+[docs/DEMO-DATA.md](docs/DEMO-DATA.md)). Tests: `cargo test --workspace --locked`.
 Deploying a client to a server (production variables, systemd, Caddy, Litestream, rollout,
 restore drill): [deploy/README.md](deploy/README.md) and [docs/OPERATIONS.md](docs/OPERATIONS.md).
 Never run `migrate:fresh`, `db:seed` or a `<vertical>:demo` command against a production
