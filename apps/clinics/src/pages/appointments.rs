@@ -145,15 +145,16 @@ pub(crate) fn grid(lang: &Lang, names: &std::collections::BTreeMap<String, Strin
         )
         .column(Column::custom("patient", &text(lang, "appointments.patient")).mobile())
         .column(
-            Column::select("service_code", &text(lang, "appointments.service"), services)
-                .searchable(),
+            Column::select(
+                "service_code",
+                &text(lang, "appointments.service"),
+                services,
+            )
+            .searchable(),
         )
         .column(Column::custom("cover", &text(lang, "appointments.cover")).mobile())
         .column(Column::custom("flags", &text(lang, "flags.title")).mobile())
-        .column(
-            Column::custom("open", &text(lang, "appointments.title"))
-                .frozen_right(),
-        )
+        .column(Column::custom("open", &text(lang, "appointments.title")).frozen_right())
         // Search: the booking number (and the service code, through its own
         // column, so a code never shows as a cell); the names are in the parties
         // module, so the patient is not searched.

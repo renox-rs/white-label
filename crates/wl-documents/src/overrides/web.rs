@@ -131,7 +131,12 @@ impl<'a> Names<'a> {
 pub fn grid(lang: &Lang, user_id: i64, can_export: bool) -> Grid {
     let statuses: Vec<(String, String)> = ["requested", "approved", "refused", "used"]
         .into_iter()
-        .map(|key| (key.to_owned(), text(lang, &format!("overrides.status.{key}"))))
+        .map(|key| {
+            (
+                key.to_owned(),
+                text(lang, &format!("overrides.status.{key}")),
+            )
+        })
         .collect();
     let lists = vec![
         ("waiting".to_owned(), text(lang, "overrides.waiting")),
@@ -143,9 +148,8 @@ pub fn grid(lang: &Lang, user_id: i64, can_export: bool) -> Grid {
         "(SELECT \"name_en\" FROM \"wl_documents_kinds\" WHERE \"id\" = {T}.\"kind_id\")"
     };
     // `user_id` is the signed-in user's number, never a request value.
-    let list_sql = format!(
-        "CASE WHEN {{T}}.\"requested_by\" = {user_id} THEN 'mine' ELSE 'waiting' END"
-    );
+    let list_sql =
+        format!("CASE WHEN {{T}}.\"requested_by\" = {user_id} THEN 'mine' ELSE 'waiting' END");
     let grid = Grid::new("wl-documents-overrides")
         .title(&text(lang, "overrides.title"))
         .per_page(25)
@@ -168,9 +172,12 @@ pub fn grid(lang: &Lang, user_id: i64, can_export: bool) -> Grid {
         .column(Column::text("guarded", &text(lang, "fields.guarded")).searchable())
         .column(Column::number("record_id", &text(lang, "overrides.fields.record")).hidden())
         .column(
-            Column::text("requested_name", &text(lang, "overrides.fields.requested_by"))
-                .computed("(SELECT \"name\" FROM \"users\" WHERE \"id\" = {T}.\"requested_by\")")
-                .searchable(),
+            Column::text(
+                "requested_name",
+                &text(lang, "overrides.fields.requested_by"),
+            )
+            .computed("(SELECT \"name\" FROM \"users\" WHERE \"id\" = {T}.\"requested_by\")")
+            .searchable(),
         )
         .column(Column::text("reason", &text(lang, "overrides.fields.reason")).searchable())
         .column(
@@ -183,7 +190,10 @@ pub fn grid(lang: &Lang, user_id: i64, can_export: bool) -> Grid {
                 ])
                 .mobile(),
         )
-        .column(Column::datetime("valid_until", &text(lang, "overrides.fields.valid_until")))
+        .column(Column::datetime(
+            "valid_until",
+            &text(lang, "overrides.fields.valid_until"),
+        ))
         .column(
             Column::select("list", &text(lang, "overrides.list"), lists)
                 .computed(&list_sql)

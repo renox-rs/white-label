@@ -70,14 +70,7 @@ pub(crate) struct TransfersPage {
 /// The transfers grid: search on the number and the stores, filters by status.
 pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
     let place = |key: &str, label: &str, foreign_key: &str| {
-        Column::related(
-            key,
-            label,
-            "wl_inventory_locations",
-            foreign_key,
-            "name_en",
-        )
-        .searchable()
+        Column::related(key, label, "wl_inventory_locations", foreign_key, "name_en").searchable()
     };
     let grid = Grid::new("inventory-transfers")
         .title(&tr(lang, "transfers.title"))
@@ -114,9 +107,7 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
         )
         .column(
             Column::datetime("when", &tr(lang, "transfers.when"))
-                .computed(
-                    "COALESCE({T}.\"received_at\", {T}.\"sent_at\", {T}.\"created_at\")",
-                )
+                .computed("COALESCE({T}.\"received_at\", {T}.\"sent_at\", {T}.\"created_at\")")
                 .mobile(),
         )
         .column(Column::custom("actions", &tr(lang, "stock.actions")))
@@ -190,7 +181,12 @@ async fn transfers(
             });
         }
     }
-    let page = page.extend(|transfer| extra.get(&transfer.id).cloned().unwrap_or_else(|| json!({})));
+    let page = page.extend(|transfer| {
+        extra
+            .get(&transfer.id)
+            .cloned()
+            .unwrap_or_else(|| json!({}))
+    });
     let from: Vec<(String, String)> = locations_with(&state, &user, permissions::STOCK_TRANSFER)
         .await?
         .iter()

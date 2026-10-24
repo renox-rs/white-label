@@ -241,21 +241,17 @@ pub fn grid(lang: &Lang, can_export: bool) -> Grid {
             &text(lang, "payer_bill.fields.source"),
         ))
         .column(
-            Column::select(
-                "status",
-                &text(lang, "payer_bill.fields.status"),
-                statuses,
-            )
-            .badges(&[
-                ("draft", "info"),
-                ("issued", "info"),
-                ("partially_paid", "warning"),
-                ("denied", "danger"),
-                ("paid", "success"),
-                ("closed", "info"),
-                ("voided", "info"),
-            ])
-            .mobile(),
+            Column::select("status", &text(lang, "payer_bill.fields.status"), statuses)
+                .badges(&[
+                    ("draft", "info"),
+                    ("issued", "info"),
+                    ("partially_paid", "warning"),
+                    ("denied", "danger"),
+                    ("paid", "success"),
+                    ("closed", "info"),
+                    ("voided", "info"),
+                ])
+                .mobile(),
         )
         .column(
             Column::money("claimed_total", &text(lang, "payer_bill.fields.claimed"))

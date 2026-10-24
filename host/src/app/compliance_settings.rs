@@ -405,12 +405,23 @@ async fn show(State(state): State<AppState>, request: GridRequest) -> Result<Res
         &request,
         |row| &row.group,
         |row| {
-            [&row.number, &row.setting, &row.value, &row.source, &row.reference, &row.open]
-                .map(String::as_str)
-                .join(" ")
+            [
+                &row.number,
+                &row.setting,
+                &row.value,
+                &row.source,
+                &row.reference,
+                &row.open,
+            ]
+            .map(String::as_str)
+            .join(" ")
         },
     );
-    Ok(view("settings/compliance.html", context! { rows, groups, q, group }).into_response())
+    Ok(view(
+        "settings/compliance.html",
+        context! { rows, groups, q, group },
+    )
+    .into_response())
 }
 
 #[cfg(test)]

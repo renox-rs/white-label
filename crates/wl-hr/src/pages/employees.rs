@@ -277,10 +277,7 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
         .sort_by("-id")
         .row_url("/hr/employees/{id}")
         .cards_on_mobile()
-        .empty_state(
-            &t("employees.empty"),
-            Some(&t("employees.empty_hint")),
-        );
+        .empty_state(&t("employees.empty"), Some(&t("employees.empty_hint")));
     if can_export { grid.exports() } else { grid }
 }
 
@@ -350,7 +347,8 @@ async fn index(
             }
         }
         let ids: Vec<i64> = ending.keys().copied().collect();
-        employees = employees.where_(Employee::ID.is_in(if ids.is_empty() { vec![-1] } else { ids }));
+        employees =
+            employees.where_(Employee::ID.is_in(if ids.is_empty() { vec![-1] } else { ids }));
     }
     let can_export = user.has_permission(permissions::EMPLOYEES_MANAGE);
     let grid = grid(&lang, can_export);

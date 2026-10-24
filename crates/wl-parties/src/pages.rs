@@ -1982,7 +1982,11 @@ pub fn compliance_tasks_grid(lang: &Lang, can_export: bool) -> Grid {
         .per_page(25)
         .remember()
         .advanced_filter()
-        .column(Column::custom("task", &t("tasks.fields.kind")).frozen().mobile())
+        .column(
+            Column::custom("task", &t("tasks.fields.kind"))
+                .frozen()
+                .mobile(),
+        )
         .column(Column::select("kind", &t("tasks.fields.kind"), kinds).hidden())
         .column(Column::custom("due", &t("tasks.fields.due")).mobile())
         .column(Column::datetime("due_at", &t("tasks.fields.due")).hidden())

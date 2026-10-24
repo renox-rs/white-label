@@ -564,10 +564,7 @@ pub(crate) fn requests_grid(lang: &Lang) -> Grid {
         .sort_by("id")
         .row_url("/preferred-requests/{id}")
         .cards_on_mobile()
-        .empty_state(
-            &text("requests.empty"),
-            Some(&text("requests.empty_text")),
-        )
+        .empty_state(&text("requests.empty"), Some(&text("requests.empty_text")))
 }
 
 /// The text of a request's status.
@@ -622,7 +619,11 @@ pub(crate) async fn requests(
         );
     }
     let page = page.extend(|found| names.get(&found.id).cloned().unwrap_or_default());
-    Ok(View::typed(RequestsPage { tx: tx(lang), rows: page }).into_response())
+    Ok(View::typed(RequestsPage {
+        tx: tx(lang),
+        rows: page,
+    })
+    .into_response())
 }
 
 /// One side of a request.

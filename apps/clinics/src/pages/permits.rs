@@ -131,10 +131,7 @@ async fn index(
     for permit in page.items() {
         let label = wl_kernel::documents::subject_label(
             &state.db,
-            &wl_kernel::Subject::new(
-                wl_kernel::sales::CAMPAIGN_SUBJECT_TYPE,
-                permit.campaign_id,
-            ),
+            &wl_kernel::Subject::new(wl_kernel::sales::CAMPAIGN_SUBJECT_TYPE, permit.campaign_id),
         )
         .await?
         .unwrap_or_else(|| format!("#{}", permit.campaign_id));

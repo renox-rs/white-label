@@ -94,9 +94,7 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
         // The number once issued, else the draft label (`Certificate::label`).
         .column(
             Column::text("number", &text(lang, "certificates.number"))
-                .computed(
-                    "COALESCE({T}.\"number\", 'CRT-draft-' || CAST({T}.\"id\" AS TEXT))",
-                )
+                .computed("COALESCE({T}.\"number\", 'CRT-draft-' || CAST({T}.\"id\" AS TEXT))")
                 .frozen()
                 .mobile()
                 .searchable()
@@ -145,11 +143,7 @@ pub(crate) struct IndexPage {
 
 /// `GET /edtech/certificates`, or its export (`?export=`, with
 /// `certificates.issue`).
-async fn index(
-    user: AuthUser,
-    lang: Lang,
-    request: GridRequest,
-) -> Result<Response> {
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
     require(&user, permissions::CERTIFICATES_VIEW)?;
     let can_export = user.has_permission(permissions::CERTIFICATES_ISSUE);
     let grid = grid(&lang, can_export);

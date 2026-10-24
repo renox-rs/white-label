@@ -165,9 +165,7 @@ pub fn grid(lang: &Lang, can_export: bool) -> Grid {
                 .currency_from("currency")
                 .hidden(),
         )
-        .column(
-            Column::select("cycle", &text(lang, "subscription.fields.cycle"), cycles).hidden(),
-        )
+        .column(Column::select("cycle", &text(lang, "subscription.fields.cycle"), cycles).hidden())
         .column(Column::date("start_date", &text(lang, "subscription.fields.start")).hidden())
         .column(Column::date("end_date", &text(lang, "subscription.fields.end")).hidden())
         .sort_by("-id")

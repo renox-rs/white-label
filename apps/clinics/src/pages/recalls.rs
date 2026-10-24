@@ -214,7 +214,10 @@ pub(crate) fn calls_grid(lang: &Lang) -> Grid {
                 .searchable(),
         )
         .column(Column::custom("branch", &text(lang, "recall.branch")).mobile())
-        .column(Column::datetime("gave_up_at", &text(lang, "recall.call_gave_up")))
+        .column(Column::datetime(
+            "gave_up_at",
+            &text(lang, "recall.call_gave_up"),
+        ))
         .column(Column::custom("record", &text(lang, "recall.call_record")).frozen_right())
         .sort_by("gave_up_at")
         .cards_on_mobile()
@@ -242,7 +245,10 @@ async fn calls(
         if !user.has_permission_in(permissions::RECALLS_CALL, &scope) {
             continue;
         }
-        branches.insert(notice.id, wl_kernel::scopes::label_of(&state.db, &scope).await?);
+        branches.insert(
+            notice.id,
+            wl_kernel::scopes::label_of(&state.db, &scope).await?,
+        );
         visible.push(notice.id);
     }
     let query = RecallNotice::query().where_(RecallNotice::ID.is_in(if visible.is_empty() {

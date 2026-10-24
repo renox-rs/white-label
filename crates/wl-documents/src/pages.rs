@@ -164,7 +164,9 @@ pub fn queue_grid(lang: &Lang, kinds: Vec<(String, String)>, can_export: bool) -
         .advanced_filter()
         .column(
             Column::select("kind", &text(lang, "fields.kind"), kinds)
-                .computed("(SELECT \"key\" FROM \"wl_documents_kinds\" WHERE \"id\" = {T}.\"kind_id\")")
+                .computed(
+                    "(SELECT \"key\" FROM \"wl_documents_kinds\" WHERE \"id\" = {T}.\"kind_id\")",
+                )
                 .frozen()
                 .mobile(),
         )
@@ -180,7 +182,10 @@ pub fn queue_grid(lang: &Lang, kinds: Vec<(String, String)>, can_export: bool) -
                 .searchable()
                 .hidden(),
         )
-        .column(Column::datetime("submitted_at", &text(lang, "fields.submitted_at")))
+        .column(Column::datetime(
+            "submitted_at",
+            &text(lang, "fields.submitted_at"),
+        ))
         .column(Column::custom("file", &text(lang, "review.file")))
         .column(
             Column::number("queue_rank", "")
@@ -825,17 +830,32 @@ pub fn kinds_grid(lang: &Lang, can_export: bool) -> Grid {
         .per_page(25)
         .remember()
         .advanced_filter()
-        .column(Column::custom("name", &text(lang, "fields.name")).frozen().mobile())
+        .column(
+            Column::custom("name", &text(lang, "fields.name"))
+                .frozen()
+                .mobile(),
+        )
         .column(
             Column::text("key", &text(lang, "fields.key"))
                 .searchable()
                 .copyable()
                 .mobile(),
         )
-        .column(Column::text("name_en", &text(lang, "fields.name")).searchable().hidden())
-        .column(Column::text("name_ar", &text(lang, "fields.name")).searchable().hidden())
+        .column(
+            Column::text("name_en", &text(lang, "fields.name"))
+                .searchable()
+                .hidden(),
+        )
+        .column(
+            Column::text("name_ar", &text(lang, "fields.name"))
+                .searchable()
+                .hidden(),
+        )
         .column(Column::custom("subject_types", &text(lang, "fields.subject_types")).mobile())
-        .column(Column::bool("legal_block", &text(lang, "fields.legal_block")))
+        .column(Column::bool(
+            "legal_block",
+            &text(lang, "fields.legal_block"),
+        ))
         .column(Column::bool("enabled", &text(lang, "kinds.enabled")).mobile())
         .sort_by("key")
         .cards_on_mobile()
@@ -855,11 +875,7 @@ pub(crate) struct KindsPage {
 }
 
 /// `GET /document-kinds`: every kind, linking to its page (or the export).
-async fn kinds_index(
-    user: AuthUser,
-    lang: Lang,
-    request: GridRequest,
-) -> Result<Response> {
+async fn kinds_index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
     let can_export = user.has_permission(permissions::KINDS_MANAGE);
     let grid = kinds_grid(&lang, can_export);
     if request.param("export").is_some() && !can_export {

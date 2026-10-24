@@ -146,7 +146,12 @@ pub struct DispatchSheet {
 pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
     let statuses: Vec<(String, String)> = DispatchStatus::ALL
         .iter()
-        .map(|status| (status.as_str().to_owned(), word(lang, "status", status.as_str())))
+        .map(|status| {
+            (
+                status.as_str().to_owned(),
+                word(lang, "status", status.as_str()),
+            )
+        })
         .collect();
     let grid = Grid::new("inventory-dispatches")
         .title(&tr(lang, "title"))
@@ -196,7 +201,11 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                 ])
                 .mobile(),
         )
-        .column(Column::text("cancel_reason", &tr(lang, "note")).hidden().searchable())
+        .column(
+            Column::text("cancel_reason", &tr(lang, "note"))
+                .hidden()
+                .searchable(),
+        )
         .column(Column::datetime("updated_at", &tr(lang, "when")).hidden())
         .column(Column::custom("actions", &tr(lang, "actions")))
         .sort_by("-id")
@@ -289,7 +298,12 @@ async fn list(
             }),
         );
     }
-    let page = page.extend(|dispatch| extra.get(&dispatch.id).cloned().unwrap_or_else(|| json!({})));
+    let page = page.extend(|dispatch| {
+        extra
+            .get(&dispatch.id)
+            .cloned()
+            .unwrap_or_else(|| json!({}))
+    });
     Ok(View::typed(DispatchesPage {
         tx: tx(&lang),
         rows: page,

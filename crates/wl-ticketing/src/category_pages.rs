@@ -121,8 +121,14 @@ pub fn grid(lang: &Lang) -> Grid {
         .column(Column::text("default_assignee_role", &t("categories.assignee_role")).searchable())
         .column(Column::bool("chargeable", &t("categories.charging")))
         .column(Column::select("invoice_on", &t("categories.invoice_on"), invoice_on).hidden())
-        .column(Column::bool("compliance_critical", &t("categories.compliance")))
-        .column(Column::bool("contract_end_reassign_only", &t("categories.contract_end")))
+        .column(Column::bool(
+            "compliance_critical",
+            &t("categories.compliance"),
+        ))
+        .column(Column::bool(
+            "contract_end_reassign_only",
+            &t("categories.contract_end"),
+        ))
         .column(Column::bool("platform", &t("categories.platform")).hidden())
         .column(Column::bool("confidential", &t("fields.confidential")).hidden())
         .column(Column::bool("active", &t("categories.status")).mobile())

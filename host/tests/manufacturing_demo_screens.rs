@@ -114,7 +114,9 @@ fn no_iso_times(html: &str, url: &str) {
     // printed by a screen.
     let mut plain = String::new();
     for (index, part) in html.split("<span class=\"rx-grid__val\">").enumerate() {
-        let cell = part.get(16..).is_some_and(|rest| rest.starts_with("</span>"))
+        let cell = part
+            .get(16..)
+            .is_some_and(|rest| rest.starts_with("</span>"))
             && part.as_bytes()[4] == b'-'
             && part.as_bytes()[10] == b' ';
         if index > 0 {

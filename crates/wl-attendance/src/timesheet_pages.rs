@@ -411,11 +411,8 @@ async fn list(
         return Ok(Json(renox::serde_json::to_value(&rows)?).into_response());
     }
     let ids: Vec<i64> = kept.iter().map(|(sheet, _, _)| sheet.id).collect();
-    let query = Timesheet::query().where_(Timesheet::ID.is_in(if ids.is_empty() {
-        vec![-1]
-    } else {
-        ids
-    }));
+    let query =
+        Timesheet::query().where_(Timesheet::ID.is_in(if ids.is_empty() { vec![-1] } else { ids }));
     let page = sheets_grid(&lang).page(query, &request).await?;
     // The worker, client, work and hours of the page's rows.
     let on_page: Vec<i64> = page.items().iter().map(|sheet| sheet.id).collect();

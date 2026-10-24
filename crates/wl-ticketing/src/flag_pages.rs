@@ -143,12 +143,11 @@ async fn index(
     if request.param("export").is_some() && !can_export {
         return Err(Error::Forbidden);
     }
-    let visible =
-        ComplianceFlag::query().where_(ComplianceFlag::ID.is_in(if ids.is_empty() {
-            vec![-1]
-        } else {
-            ids
-        }));
+    let visible = ComplianceFlag::query().where_(ComplianceFlag::ID.is_in(if ids.is_empty() {
+        vec![-1]
+    } else {
+        ids
+    }));
     if let Some(file) = grid.export(visible.clone(), &request).await? {
         return Ok(file);
     }

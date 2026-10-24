@@ -129,7 +129,10 @@ pub(crate) fn orders_grid(lang: &Lang, can_export: bool) -> Grid {
         .column(Column::custom("actions", &tr(lang, "stock.actions")))
         .sort_by("-id")
         .cards_on_mobile()
-        .empty_state(&tr(lang, "orders.empty"), Some(&tr(lang, "orders.empty_hint")));
+        .empty_state(
+            &tr(lang, "orders.empty"),
+            Some(&tr(lang, "orders.empty_hint")),
+        );
     if can_export { grid.exports() } else { grid }
 }
 
@@ -324,7 +327,11 @@ pub(crate) fn receipts_grid(lang: &Lang, can_export: bool) -> Grid {
                 &tr(lang, "fields.status"),
                 options(lang, "receipt", &["draft", "posted", "reversed"]),
             )
-            .badges(&[("draft", "warning"), ("posted", "success"), ("reversed", "error")])
+            .badges(&[
+                ("draft", "warning"),
+                ("posted", "success"),
+                ("reversed", "error"),
+            ])
             .mobile(),
         )
         .column(
@@ -335,7 +342,10 @@ pub(crate) fn receipts_grid(lang: &Lang, can_export: bool) -> Grid {
         .sort_by("-id")
         .row_url("/goods-receipts/{id}")
         .cards_on_mobile()
-        .empty_state(&tr(lang, "receipts.empty"), Some(&tr(lang, "receipts.empty_hint")));
+        .empty_state(
+            &tr(lang, "receipts.empty"),
+            Some(&tr(lang, "receipts.empty_hint")),
+        );
     if can_export { grid.exports() } else { grid }
 }
 

@@ -104,11 +104,7 @@ fn approval_of(lang: &Lang, course: &Course) -> (String, &'static str) {
 }
 
 /// `GET /edtech/courses`, or its export (`?export=`, with `courses.manage`).
-async fn index(
-    user: AuthUser,
-    lang: Lang,
-    request: GridRequest,
-) -> Result<Response> {
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
     require(&user, permissions::COURSES_VIEW)?;
     let can_export = user.has_permission(permissions::COURSES_MANAGE);
     let grid = grid(&lang, can_export);

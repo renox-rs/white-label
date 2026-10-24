@@ -637,7 +637,11 @@ async fn show(State(state): State<AppState>, request: GridRequest) -> Result<Res
                 .join(" ")
         },
     );
-    Ok(view("settings/negative_flow.html", context! { rows, groups, q, group }).into_response())
+    Ok(view(
+        "settings/negative_flow.html",
+        context! { rows, groups, q, group },
+    )
+    .into_response())
 }
 
 #[cfg(test)]

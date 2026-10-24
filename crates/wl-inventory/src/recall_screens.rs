@@ -100,7 +100,8 @@ async fn lot_numbers(state: &AppState, recall: i64) -> Result<Vec<Lot>> {
 /// and status. How many lines were told of how many affected comes from the
 /// recall's lines; the lots are listed by the template (`custom`).
 pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
-    let lines = "SELECT COUNT(*) FROM \"wl_inventory_recall_lines\" WHERE \"recall_id\" = {T}.\"id\"";
+    let lines =
+        "SELECT COUNT(*) FROM \"wl_inventory_recall_lines\" WHERE \"recall_id\" = {T}.\"id\"";
     let grid = Grid::new("inventory-recalls")
         .title(&tr(lang, "recalls.title"))
         .per_page(25)
@@ -134,7 +135,11 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                 &tr(lang, "fields.status"),
                 options(lang, "recall", &["open", "traced", "closed"]),
             )
-            .badges(&[("open", "error"), ("traced", "warning"), ("closed", "success")])
+            .badges(&[
+                ("open", "error"),
+                ("traced", "warning"),
+                ("closed", "success"),
+            ])
             .mobile(),
         )
         .column(Column::datetime("opened_at", &tr(lang, "recalls.opened")))
@@ -154,7 +159,10 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
         .sort_by("-id")
         .row_url("/recalls/{id}")
         .cards_on_mobile()
-        .empty_state(&tr(lang, "recalls.empty"), Some(&tr(lang, "recalls.empty_hint")));
+        .empty_state(
+            &tr(lang, "recalls.empty"),
+            Some(&tr(lang, "recalls.empty_hint")),
+        );
     if can_export { grid.exports() } else { grid }
 }
 

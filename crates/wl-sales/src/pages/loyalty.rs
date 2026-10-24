@@ -151,7 +151,10 @@ pub(crate) fn grid(lang: &Lang, per_visit: bool, can_export: bool) -> Grid {
         .column(Column::custom("actions", ""))
         .sort_by("-id")
         .cards_on_mobile()
-        .empty_state(&t("loyalty.no_accounts"), Some(&t("loyalty.no_accounts_hint")));
+        .empty_state(
+            &t("loyalty.no_accounts"),
+            Some(&t("loyalty.no_accounts_hint")),
+        );
     if can_export { grid.exports() } else { grid }
 }
 
@@ -453,11 +456,8 @@ pub(crate) fn review_grid(lang: &Lang) -> Grid {
         .column(Column::number("sales_count", &t("loyalty.review.sales")).mobile())
         .sort_by("-on_date")
         .row_action(
-            Action::new(
-                &t("loyalty.review.resolve"),
-                "/loyalty/review/{id}/resolve",
-            )
-            .confirm(&t("loyalty.review.resolve")),
+            Action::new(&t("loyalty.review.resolve"), "/loyalty/review/{id}/resolve")
+                .confirm(&t("loyalty.review.resolve")),
         )
         .cards_on_mobile()
         .empty_state(

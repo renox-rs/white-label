@@ -459,7 +459,10 @@ pub(crate) const STOCK_TEXTS: &[(&str, &str)] = &[
         "wl_inventory.stock.receipts.empty_hint",
         "Start a receipt from a purchase order waiting for goods.",
     ),
-    ("wl_inventory.stock.recalls.affected_lines", "Lines affected"),
+    (
+        "wl_inventory.stock.recalls.affected_lines",
+        "Lines affected",
+    ),
     ("wl_inventory.stock.recalls.told_lines", "Lines told"),
     (
         "wl_inventory.stock.recalls.empty_hint",

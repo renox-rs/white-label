@@ -115,10 +115,16 @@ pub fn grid(lang: &Lang, mine: &[i64], has_in_person: bool) -> Grid {
         .per_page(25)
         .remember()
         .advanced_filter()
-        .column(Column::custom("sop", &text(lang, "sops.fields.code")).frozen().mobile())
+        .column(
+            Column::custom("sop", &text(lang, "sops.fields.code"))
+                .frozen()
+                .mobile(),
+        )
         .column(
             Column::text("code", &text(lang, "sops.fields.code"))
-                .computed("(SELECT \"code\" FROM \"wl_documents_sops\" WHERE \"id\" = {T}.\"sop_id\")")
+                .computed(
+                    "(SELECT \"code\" FROM \"wl_documents_sops\" WHERE \"id\" = {T}.\"sop_id\")",
+                )
                 .searchable()
                 .hidden(),
         )
@@ -136,8 +142,16 @@ pub fn grid(lang: &Lang, mine: &[i64], has_in_person: bool) -> Grid {
         .column(Column::date("due_date", &text(lang, "acks.due")).mobile())
         .column(Column::custom("overdue", &text(lang, "acks.overdue")))
         .column(Column::custom("files", &text(lang, "acks.open")))
-        .column(Column::bool("opened", &text(lang, "acks.opened")).computed("{T}.\"opened_document_id\" IS NOT NULL").hidden())
-        .column(Column::select("list", &text(lang, "acks.list"), lists).computed(&list_sql).hidden())
+        .column(
+            Column::bool("opened", &text(lang, "acks.opened"))
+                .computed("{T}.\"opened_document_id\" IS NOT NULL")
+                .hidden(),
+        )
+        .column(
+            Column::select("list", &text(lang, "acks.list"), lists)
+                .computed(&list_sql)
+                .hidden(),
+        )
         .sort_by("due_date,id")
         .cards_on_mobile()
         .empty_state(
@@ -230,11 +244,8 @@ async fn index(
     }
     let grid = grid(&lang, &mine, !in_person.is_empty());
     let ids: Vec<i64> = mine.iter().chain(&in_person).copied().collect();
-    let visible = SopAcknowledgement::query().where_(SopAcknowledgement::ID.is_in(if ids.is_empty() {
-        vec![-1]
-    } else {
-        ids
-    }));
+    let visible = SopAcknowledgement::query()
+        .where_(SopAcknowledgement::ID.is_in(if ids.is_empty() { vec![-1] } else { ids }));
     let page = grid.page(visible, &request).await?;
     // Per row: the SOP's page, the reader, the overdue mark and the files.
     let mut extra: BTreeMap<i64, Value> = BTreeMap::new();

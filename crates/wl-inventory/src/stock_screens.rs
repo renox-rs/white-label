@@ -286,7 +286,11 @@ pub(crate) fn items_grid(lang: &Lang) -> Grid {
                 .mobile()
                 .searchable(),
         )
-        .column(Column::text("name_ar", &tr(lang, "stock.item_ar")).hidden().searchable())
+        .column(
+            Column::text("name_ar", &tr(lang, "stock.item_ar"))
+                .hidden()
+                .searchable(),
+        )
         .column(quantity("on_hand_milli", &tr(lang, "stock.on_hand")).mobile())
         .column(quantity("held_milli", &tr(lang, "stock.held")).hidden())
         .column(quantity("reserved_milli", &tr(lang, "stock.reserved")).hidden())
@@ -300,7 +304,10 @@ pub(crate) fn items_grid(lang: &Lang) -> Grid {
         .column(Column::custom("level", &tr(lang, "stock.level")).mobile())
         .sort_by("name_en")
         .cards_on_mobile()
-        .empty_state(&tr(lang, "stock.empty"), Some(&tr(lang, "stock.empty_hint")))
+        .empty_state(
+            &tr(lang, "stock.empty"),
+            Some(&tr(lang, "stock.empty_hint")),
+        )
 }
 
 /// The lots grid of the stock page: the lots of lot-tracked items with stock
@@ -375,7 +382,10 @@ pub(crate) fn lots_grid(lang: &Lang) -> Grid {
         )
         .sort_by("expiry_date")
         .cards_on_mobile()
-        .empty_state(&tr(lang, "stock.no_lots"), Some(&tr(lang, "stock.no_lots_hint")))
+        .empty_state(
+            &tr(lang, "stock.no_lots"),
+            Some(&tr(lang, "stock.no_lots_hint")),
+        )
 }
 
 /// `GET /stock`: the items of one store (`?view=lots` for its lots,
@@ -478,13 +488,13 @@ async fn stock(
             if found.on_hand_milli == 0 && item.reorder_point_milli == 0 {
                 continue;
             }
-            let low = item.reorder_point_milli > 0 && found.on_hand_milli <= item.reorder_point_milli;
+            let low =
+                item.reorder_point_milli > 0 && found.on_hand_milli <= item.reorder_point_milli;
             if low_only && !low {
                 continue;
             }
             let reserved =
-                crate::reservation::reserved_in(&state.db, item.id, chosen.id, None, None)
-                    .await?;
+                crate::reservation::reserved_in(&state.db, item.id, chosen.id, None, None).await?;
             ids.push(item.id);
             figures.insert(item.id, (found, low, reserved));
         }
@@ -744,9 +754,13 @@ pub(crate) fn holds_grid(lang: &Lang, can_export: bool) -> Grid {
             .searchable(),
         )
         .column(
-            Column::select("reason", &tr(lang, "hold.reason"), options(lang, "reason", &REASONS))
-                .computed(&of_hold("reason"))
-                .mobile(),
+            Column::select(
+                "reason",
+                &tr(lang, "hold.reason"),
+                options(lang, "reason", &REASONS),
+            )
+            .computed(&of_hold("reason"))
+            .mobile(),
         )
         .column(
             Column::select(
@@ -755,10 +769,18 @@ pub(crate) fn holds_grid(lang: &Lang, can_export: bool) -> Grid {
                 options(lang, "hold", &["open", "closed", "cancelled"]),
             )
             .computed(&of_hold("status"))
-            .badges(&[("open", "warning"), ("closed", "success"), ("cancelled", "info")])
+            .badges(&[
+                ("open", "warning"),
+                ("closed", "success"),
+                ("cancelled", "info"),
+            ])
             .hidden(),
         )
-        .column(Column::datetime("placed_at", &tr(lang, "holds.placed")).computed(&of_hold("placed_at")).hidden())
+        .column(
+            Column::datetime("placed_at", &tr(lang, "holds.placed"))
+                .computed(&of_hold("placed_at"))
+                .hidden(),
+        )
         .column(Column::custom("reference", &tr(lang, "holds.reference")).hidden())
         .column(
             Column::related(
@@ -832,7 +854,10 @@ pub(crate) fn holds_grid(lang: &Lang, can_export: bool) -> Grid {
         .groups(&["reason", "hold_status"])
         .sort_by("-id")
         .cards_on_mobile()
-        .empty_state(&tr(lang, "holds.empty"), Some(&tr(lang, "holds.empty_hint")));
+        .empty_state(
+            &tr(lang, "holds.empty"),
+            Some(&tr(lang, "holds.empty_hint")),
+        );
     if can_export { grid.exports() } else { grid }
 }
 
@@ -1004,8 +1029,15 @@ pub(crate) fn pending_grid(lang: &Lang, can_export: bool) -> Grid {
             .hidden(),
         )
         .column(Column::custom("source", &tr(lang, "pending.source")))
-        .column(Column::text("source_type", &tr(lang, "pending.source_type")).hidden().searchable())
-        .column(Column::datetime("recorded_at", &tr(lang, "pending.recorded")))
+        .column(
+            Column::text("source_type", &tr(lang, "pending.source_type"))
+                .hidden()
+                .searchable(),
+        )
+        .column(Column::datetime(
+            "recorded_at",
+            &tr(lang, "pending.recorded"),
+        ))
         .column(Column::custom("state", &tr(lang, "fields.status")).mobile())
         .column(Column::custom("actions", &tr(lang, "stock.actions")))
         .sort_by("recorded_at")
@@ -1113,7 +1145,6 @@ async fn pending_row(
     });
     Ok((value, sheet))
 }
-
 
 /// The routes of the stock screens.
 pub fn routes() -> Routes {

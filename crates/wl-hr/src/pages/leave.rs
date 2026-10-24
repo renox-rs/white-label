@@ -179,27 +179,27 @@ fn leave_grid(id: &str, title: &str, lang: &Lang, queue: bool) -> Grid {
     }
     let kind = Column::select("leave_type", &t("my_leave.type"), type_options(lang)).mobile();
     grid.column(if queue { kind } else { kind.frozen() })
-    .column(Column::custom("period", &t("my_leave.period")).mobile())
-    .column(Column::date("from_date", &t("my_leave.from")).hidden())
-    .column(Column::date("to_date", &t("my_leave.to")).hidden())
-    .column(Column::custom("days", &t("my_leave.days")))
-    .column(Column::number("unpaid_days", &t("leave.unpaid_days")).hidden())
-    .column(
-        Column::select("status", &t("fields.status"), statuses)
-            .badges(&[
-                ("requested", "warning"),
-                ("approved", "success"),
-                ("completed", "info"),
-                ("rejected", "danger"),
-                ("cancelled", "info"),
-            ])
-            .mobile(),
-    )
-    .column(Column::text("decision_reason", &t("my_leave.reason")).searchable())
-    .column(Column::custom("note", &t("sick.note")))
-    .column(Column::custom("actions", &t("leave.actions")))
-    .sort_by(if queue { "from_date" } else { "-from_date" })
-    .cards_on_mobile()
+        .column(Column::custom("period", &t("my_leave.period")).mobile())
+        .column(Column::date("from_date", &t("my_leave.from")).hidden())
+        .column(Column::date("to_date", &t("my_leave.to")).hidden())
+        .column(Column::custom("days", &t("my_leave.days")))
+        .column(Column::number("unpaid_days", &t("leave.unpaid_days")).hidden())
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("requested", "warning"),
+                    ("approved", "success"),
+                    ("completed", "info"),
+                    ("rejected", "danger"),
+                    ("cancelled", "info"),
+                ])
+                .mobile(),
+        )
+        .column(Column::text("decision_reason", &t("my_leave.reason")).searchable())
+        .column(Column::custom("note", &t("sick.note")))
+        .column(Column::custom("actions", &t("leave.actions")))
+        .sort_by(if queue { "from_date" } else { "-from_date" })
+        .cards_on_mobile()
 }
 
 /// The grid of *My leave*: no export, the person's own requests.

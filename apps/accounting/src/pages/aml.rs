@@ -72,11 +72,21 @@ pub(crate) fn grid(lang: &Lang) -> Grid {
     let t = |key: &str| text(lang, key);
     let kinds: Vec<(String, String)> = AmlKind::ALL
         .iter()
-        .map(|k| (k.as_str().to_owned(), t(&format!("aml.kind.{}", k.as_str()))))
+        .map(|k| {
+            (
+                k.as_str().to_owned(),
+                t(&format!("aml.kind.{}", k.as_str())),
+            )
+        })
         .collect();
     let statuses: Vec<(String, String)> = AmlStatus::ALL
         .iter()
-        .map(|s| (s.as_str().to_owned(), t(&format!("aml.status.{}", s.as_str()))))
+        .map(|s| {
+            (
+                s.as_str().to_owned(),
+                t(&format!("aml.status.{}", s.as_str())),
+            )
+        })
         .collect();
     Grid::new("accounting-aml-cases")
         .title(&t("aml.title"))

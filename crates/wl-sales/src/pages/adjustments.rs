@@ -156,9 +156,8 @@ async fn index(
             cards.extend(approvals::cards_for(&db, &a.subject(), &user, &lang).await?);
         }
         // Closing an account is not changed, only submitted again.
-        let can_resubmit = a.status == AdjustmentStatus::Draft
-            && a.requested_by == user.id
-            && can_adjust;
+        let can_resubmit =
+            a.status == AdjustmentStatus::Draft && a.requested_by == user.id && can_adjust;
         if can_resubmit {
             sheets.push(a.id);
         }

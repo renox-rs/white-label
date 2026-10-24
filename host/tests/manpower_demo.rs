@@ -308,7 +308,10 @@ async fn the_demo_pages_show_words_not_keys() {
         page.assert_ok();
         let html = page.text();
         assert!(html.contains(wanted), "{path} has no `{wanted}`");
-        assert!(!shown(&html).contains("security_guard"), "{path} shows a key");
+        assert!(
+            !shown(&html).contains("security_guard"),
+            "{path} shows a key"
+        );
         assert!(!html.contains("None."), "{path} shows `None.`");
     }
     let settlement = count(&app, "select min(id) from wl_hr_final_settlements").await;

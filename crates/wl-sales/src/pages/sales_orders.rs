@@ -241,7 +241,11 @@ pub(crate) fn grid(
                 .mobile(),
         )
         .column(Column::datetime("created_at", &t("orders.created_at")).hidden())
-        .sort_by(if held_only { "created_at" } else { "-created_at" })
+        .sort_by(if held_only {
+            "created_at"
+        } else {
+            "-created_at"
+        })
         .row_url("/sales-orders/{id}")
         .cards_on_mobile()
         .empty_state(
@@ -262,7 +266,11 @@ pub(crate) fn grid(
                 )
             })
             .collect();
-        grid = grid.column(Column::select("hold_reason", &t("credit.hold_reason"), reasons));
+        grid = grid.column(Column::select(
+            "hold_reason",
+            &t("credit.hold_reason"),
+            reasons,
+        ));
     }
     if can_export { grid.exports() } else { grid }
 }

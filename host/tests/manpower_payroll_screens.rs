@@ -21,7 +21,13 @@ async fn hr_sees_the_payroll_runs_with_period_status_and_total_in_aed() {
     // The grid shows bare amounts under a column label that ends with (AED).
     says(
         &html,
-        &["Payroll runs", &month, "Draft", "Total net (AED)", "New run"],
+        &[
+            "Payroll runs",
+            &month,
+            "Draft",
+            "Total net (AED)",
+            "New run",
+        ],
     );
     no_raw_words(&html);
     fits_a_phone(&html);

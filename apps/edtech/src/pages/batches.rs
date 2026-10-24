@@ -224,7 +224,10 @@ pub(crate) struct IndexPage {
 
 /// A resource as a grid option, `(id, name)`.
 fn grid_options(choices: Vec<ResourceChoice>) -> Vec<(String, String)> {
-    choices.into_iter().map(|c| (c.id.to_string(), c.name)).collect()
+    choices
+        .into_iter()
+        .map(|c| (c.id.to_string(), c.name))
+        .collect()
 }
 
 /// `GET /edtech/batches`, or its export (`?export=`, with `batches.manage`).
@@ -263,11 +266,9 @@ async fn index(
     }
     // A tutor sees the batches they are assigned to (`EDU.ACL.03`).
     let query = match mine {
-        Some(ids) => Batch::query().where_(Batch::ID.is_in(if ids.is_empty() {
-            vec![-1]
-        } else {
-            ids
-        })),
+        Some(ids) => {
+            Batch::query().where_(Batch::ID.is_in(if ids.is_empty() { vec![-1] } else { ids }))
+        }
         None => Batch::query(),
     };
     if let Some(file) = grid.export(query.clone(), &request).await? {
