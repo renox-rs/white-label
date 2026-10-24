@@ -79,8 +79,9 @@ pub async fn open(state: &AppState, cashier: i64, new: NewCounterSale) -> Result
     let number = RECEIPT_SERIES
         .next_allowing_gaps(&state.db, None, None, wl_kernel::documents::today())
         .await?;
-    CounterSale::create(
-        &state.db,
+    let mut tx = state.db.begin().await?;
+    let sale = CounterSale::create(
+        &mut tx,
         CounterSale {
             number,
             legal_entity_id: new.legal_entity,
@@ -91,7 +92,11 @@ pub async fn open(state: &AppState, cashier: i64, new: NewCounterSale) -> Result
             ..CounterSale::default()
         },
     )
-    .await
+    .await?;
+    // Found by its number from now on (BL-AGT-11).
+    crate::search::index(&mut tx, COUNTER_SALE_SUBJECT_TYPE, sale.id).await?;
+    tx.commit().await?;
+    Ok(sale)
 }
 
 /// Makes the stored totals of the open sale `sale` those of its lines.

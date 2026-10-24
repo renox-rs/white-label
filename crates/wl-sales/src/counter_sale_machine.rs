@@ -97,7 +97,7 @@ impl StateMachine for CounterSale {
             .tone("info")
             .state(Completed)
             .tone("success")
-            .transition(complete())
+            .transition(crate::search::reindex_counter_sale(complete()))
     }
 }
 

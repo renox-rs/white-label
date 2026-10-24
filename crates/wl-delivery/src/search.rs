@@ -105,6 +105,7 @@ pub(crate) fn register() {
     .register();
     for &(source_type, name, label, link) in SOURCES {
         source_relation(source_type, name, label, link);
+        deliveries_of(source_type);
     }
     Relation::has_many(
         RUN_SUBJECT_TYPE,
@@ -115,6 +116,37 @@ pub(crate) fn register() {
     )
     .label("Deliveries")
     .register();
+}
+
+/// `source_type` → its deliveries, from this module's table (a sales
+/// order's, a dispatch's, a shipment's).
+fn deliveries_of(source_type: &'static str) {
+    Relation::new(source_type, "deliveries", DELIVERY_SUBJECT_TYPE)
+        .label("Deliveries")
+        .load(move |db, ids| {
+            Box::pin(async move {
+                let placeholders = vec!["?"; ids.len()].join(", ");
+                let rows = sql(format!(
+                    "SELECT id, source_id FROM wl_delivery_deliveries \
+                     WHERE source_type = ? AND source_id IN ({placeholders}) ORDER BY id"
+                ))
+                .bind(source_type)
+                .bind_all(ids.iter().map(|id| renox::db::DbValue::Integer(*id)))
+                .fetch_all(db)
+                .await?;
+                let mut pairs = Vec::with_capacity(rows.len());
+                for row in &rows {
+                    let delivery: i64 = row.try_get("id")?;
+                    let source: i64 = row.try_get("source_id")?;
+                    pairs.push((
+                        Subject::new(source_type, source),
+                        Subject::new(DELIVERY_SUBJECT_TYPE, delivery),
+                    ));
+                }
+                Ok(pairs)
+            })
+        })
+        .register();
 }
 
 /// delivery → its source of `source_type` (none when the delivery is for

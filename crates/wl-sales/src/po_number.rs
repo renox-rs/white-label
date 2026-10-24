@@ -228,10 +228,11 @@ pub async fn set_reference(
         .await?;
     }
     let value = |text: &str| (!text.trim().is_empty()).then(|| text.trim().to_owned());
+    let mut tx = state.db.begin().await?;
     SalesOrder::query()
         .where_(SalesOrder::ID.eq(id))
         .update(
-            &state.db,
+            &mut tx,
             &[
                 ("customer_po", &value(customer_po)),
                 ("call_off", &value(call_off)),
@@ -239,6 +240,9 @@ pub async fn set_reference(
             ],
         )
         .await?;
+    // The order is found by its new PO reference (BL-AGT-11).
+    crate::search::index(&mut tx, wl_kernel::sales::SALES_ORDER_SUBJECT_TYPE, id).await?;
+    tx.commit().await?;
     SalesOrder::find_or_404(&state.db, id).await
 }
 

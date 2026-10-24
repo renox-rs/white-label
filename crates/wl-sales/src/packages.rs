@@ -143,8 +143,9 @@ pub async fn sell(state: &AppState, new: NewPackage) -> Result<Package> {
     if months < 1 {
         return Err(refused("wl_sales.packages.problem.validity"));
     }
-    Package::create(
-        &state.db,
+    let mut tx = state.db.begin().await?;
+    let package = Package::create(
+        &mut tx,
         Package {
             holder_party_id: new.holder.0,
             payer_party_id: new.payer.map(|p| p.0),
@@ -160,7 +161,11 @@ pub async fn sell(state: &AppState, new: NewPackage) -> Result<Package> {
             ..Package::default()
         },
     )
-    .await
+    .await?;
+    // Found from now on (BL-AGT-11).
+    crate::search::index(&mut tx, wl_kernel::sales::PACKAGE_SUBJECT_TYPE, package.id).await?;
+    tx.commit().await?;
+    Ok(package)
 }
 
 /// Links `invoice` to a package still `pending_payment`.

@@ -228,7 +228,8 @@ fn register_relations() {
         })
         .register();
 
-    // dispatch → its lots, its delivery and the sales order it serves.
+    // dispatch → its lots and the sales order it serves (its deliveries are
+    // declared by the delivery module, from its table).
     Relation::new(DISPATCH_SUBJECT_TYPE, "lots", LOT_SUBJECT_TYPE)
         .label("Lots")
         .load(|db, ids| {
@@ -242,15 +243,20 @@ fn register_relations() {
             )
         })
         .register();
-    Relation::belongs_to(
-        DISPATCH_SUBJECT_TYPE,
-        "delivery",
-        "delivery.delivery",
-        "wl_inventory_dispatches",
-        "delivery_id",
-    )
-    .label("Delivery")
-    .register();
+    // The sales order's dispatches, from this module's table.
+    Relation::new("sales.sales_order", "dispatches", DISPATCH_SUBJECT_TYPE)
+        .label("Dispatches")
+        .load(|db, ids| {
+            pairs_of(
+                db,
+                ids,
+                "SELECT source_id AS from_id, id AS to_id FROM wl_inventory_dispatches \
+                 WHERE source_type = ? AND source_id IN ",
+                vec![DbValue::Text("sales.sales_order".to_owned())],
+                ("sales.sales_order", DISPATCH_SUBJECT_TYPE),
+            )
+        })
+        .register();
     Relation::new(DISPATCH_SUBJECT_TYPE, "order", "sales.sales_order")
         .label("Sales order")
         .load(|db, ids| {

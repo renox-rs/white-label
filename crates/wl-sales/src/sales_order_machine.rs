@@ -342,36 +342,80 @@ impl StateMachine for SalesOrder {
             .state(Cancelled)
             .tone("neutral")
             .terminal()
-            .transition(submit(SUBMIT, "Submit", Confirmed))
-            .transition(submit(SUBMIT_ONLINE, "Submit for payment", AwaitingPayment))
-            .transition(submit(
+            .transition(crate::search::reindex_order(submit(
+                SUBMIT, "Submit", Confirmed,
+            )))
+            .transition(crate::search::reindex_order(submit(
+                SUBMIT_ONLINE,
+                "Submit for payment",
+                AwaitingPayment,
+            )))
+            .transition(crate::search::reindex_order(submit(
                 SUBMIT_FOR_ACCEPTANCE,
                 "Submit for acceptance",
                 PendingAcceptance,
-            ))
-            .transition(confirm_payment(CONFIRM_PAYMENT, Confirmed))
-            .transition(confirm_payment(
+            )))
+            .transition(crate::search::reindex_order(confirm_payment(
+                CONFIRM_PAYMENT,
+                Confirmed,
+            )))
+            .transition(crate::search::reindex_order(confirm_payment(
                 CONFIRM_PAYMENT_FOR_ACCEPTANCE,
                 PendingAcceptance,
-            ))
-            .transition(payment_failed())
-            .transition(accept())
-            .transition(reject())
-            .transition(fulfil(FULFIL, PartiallyFulfilled))
-            .transition(fulfil(FULFIL_LAST, Fulfilled))
-            .transition(reverse(REVERSE_FULFILMENT, PartiallyFulfilled))
-            .transition(reverse(REVERSE_FULFILMENT_ALL, Confirmed))
-            .transition(reverse_held())
-            .transition(close())
-            .transition(submit(SUBMIT_HOLD, "Submit", CreditHold))
-            .transition(accept_hold())
-            .transition(hold())
-            .transition(release(RELEASE, Confirmed, false))
-            .transition(release(RELEASE_PARTLY, PartiallyFulfilled, false))
-            .transition(release(RELEASE_PENDING, PendingAcceptance, false))
-            .transition(release(RELEASE_APPROVED, Confirmed, true))
-            .transition(release(RELEASE_PARTLY_APPROVED, PartiallyFulfilled, true))
-            .transition(release(RELEASE_PENDING_APPROVED, PendingAcceptance, true));
+            )))
+            .transition(crate::search::reindex_order(payment_failed()))
+            .transition(crate::search::reindex_order(accept()))
+            .transition(crate::search::reindex_order(reject()))
+            .transition(crate::search::reindex_order(fulfil(
+                FULFIL,
+                PartiallyFulfilled,
+            )))
+            .transition(crate::search::reindex_order(fulfil(FULFIL_LAST, Fulfilled)))
+            .transition(crate::search::reindex_order(reverse(
+                REVERSE_FULFILMENT,
+                PartiallyFulfilled,
+            )))
+            .transition(crate::search::reindex_order(reverse(
+                REVERSE_FULFILMENT_ALL,
+                Confirmed,
+            )))
+            .transition(crate::search::reindex_order(reverse_held()))
+            .transition(crate::search::reindex_order(close()))
+            .transition(crate::search::reindex_order(submit(
+                SUBMIT_HOLD,
+                "Submit",
+                CreditHold,
+            )))
+            .transition(crate::search::reindex_order(accept_hold()))
+            .transition(crate::search::reindex_order(hold()))
+            .transition(crate::search::reindex_order(release(
+                RELEASE, Confirmed, false,
+            )))
+            .transition(crate::search::reindex_order(release(
+                RELEASE_PARTLY,
+                PartiallyFulfilled,
+                false,
+            )))
+            .transition(crate::search::reindex_order(release(
+                RELEASE_PENDING,
+                PendingAcceptance,
+                false,
+            )))
+            .transition(crate::search::reindex_order(release(
+                RELEASE_APPROVED,
+                Confirmed,
+                true,
+            )))
+            .transition(crate::search::reindex_order(release(
+                RELEASE_PARTLY_APPROVED,
+                PartiallyFulfilled,
+                true,
+            )))
+            .transition(crate::search::reindex_order(release(
+                RELEASE_PENDING_APPROVED,
+                PendingAcceptance,
+                true,
+            )));
         // The changes of a placed order: amend (BL-SAL-05) and cancel a line or
         // the remaining lines (BL-SAL-08, BL-SAL-09).
         let machine = crate::amend::add_to(machine);

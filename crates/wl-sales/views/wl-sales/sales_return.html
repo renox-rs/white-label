@@ -41,5 +41,6 @@
         <rx-entry rx-if="sales_return.closing_reason" :label="tx['returns.closing_reason']" :value="sales_return.closing_reason"/>
       </rx-infolist>
     </rx-card>
+    <div id="sales-return-related" hx-get="/related/sales.sales_return:{{ sales_return.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

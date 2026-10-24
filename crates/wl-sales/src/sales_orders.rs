@@ -238,8 +238,9 @@ pub async fn import(state: &AppState, by: Option<i64>, new: NewSalesOrder) -> Re
     let number = ORDER_SERIES
         .next_allowing_gaps(&state.db, None, None, wl_kernel::documents::today())
         .await?;
+    let mut tx = state.db.begin().await?;
     let created = SalesOrder::create(
-        &state.db,
+        &mut tx,
         SalesOrder {
             number,
             party_id: new.party.0,
@@ -263,8 +264,14 @@ pub async fn import(state: &AppState, by: Option<i64>, new: NewSalesOrder) -> Re
     )
     .await;
     match created {
-        Ok(order) => Ok(Imported::Created(order)),
+        Ok(order) => {
+            // Found by its number from now on (BL-AGT-11).
+            crate::search::index(&mut tx, SALES_ORDER_SUBJECT_TYPE, order.id).await?;
+            tx.commit().await?;
+            Ok(Imported::Created(order))
+        }
         Err(error) if error.is_unique_violation() => {
+            drop(tx);
             // The other of two imports at the same moment won the key.
             if let Some(key) = &key
                 && let Some(found) = SalesOrder::of_external(&state.db, &new.channel, key).await?

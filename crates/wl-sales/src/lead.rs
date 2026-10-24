@@ -410,8 +410,9 @@ pub async fn capture(
             input.legal_entity_id,
         ),
     };
+    let mut tx = state.db.begin().await?;
     let lead = Lead::create(
-        &state.db,
+        &mut tx,
         Lead {
             party_id: input.party.map(|p| p.0),
             contact_name: input.contact_name.trim().to_owned(),
@@ -426,6 +427,9 @@ pub async fn capture(
         },
     )
     .await?;
+    // Found by the contact's name from now on (BL-AGT-11).
+    crate::search::index(&mut tx, wl_kernel::sales::LEAD_SUBJECT_TYPE, lead.id).await?;
+    tx.commit().await?;
     state
         .emit(LeadCreated {
             lead: lead.lead_id(),

@@ -97,12 +97,12 @@ impl StateMachine for Lead {
             .tone("success")
             .state(Lost)
             .tone("neutral")
-            .transition(contact())
-            .transition(qualify())
-            .transition(win())
-            .transition(lose())
-            .transition(reopen())
-            .transition(revert_win())
+            .transition(crate::search::reindex_lead(contact()))
+            .transition(crate::search::reindex_lead(qualify()))
+            .transition(crate::search::reindex_lead(win()))
+            .transition(crate::search::reindex_lead(lose()))
+            .transition(crate::search::reindex_lead(reopen()))
+            .transition(crate::search::reindex_lead(revert_win()))
     }
 }
 

@@ -221,15 +221,24 @@ impl StateMachine for Package {
             .state(Cancelled)
             .tone("neutral")
             .terminal()
-            .transition(activate())
-            .transition(consume(CONSUME, "Consume", Active))
-            .transition(consume(CONSUME_LAST, "Consume the last credits", Completed))
-            .transition(reverse(REVERSE, true))
-            .transition(reverse(REVERSE_SYSTEM, false))
-            .transition(expire())
-            .transition(extend(EXTEND, false))
-            .transition(extend(EXTEND_SYSTEM, true))
-            .transition(cancel())
+            .transition(crate::search::reindex_package(activate()))
+            .transition(crate::search::reindex_package(consume(
+                CONSUME, "Consume", Active,
+            )))
+            .transition(crate::search::reindex_package(consume(
+                CONSUME_LAST,
+                "Consume the last credits",
+                Completed,
+            )))
+            .transition(crate::search::reindex_package(reverse(REVERSE, true)))
+            .transition(crate::search::reindex_package(reverse(
+                REVERSE_SYSTEM,
+                false,
+            )))
+            .transition(crate::search::reindex_package(expire()))
+            .transition(crate::search::reindex_package(extend(EXTEND, false)))
+            .transition(crate::search::reindex_package(extend(EXTEND_SYSTEM, true)))
+            .transition(crate::search::reindex_package(cancel()))
     }
 }
 

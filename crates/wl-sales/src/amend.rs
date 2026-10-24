@@ -557,7 +557,11 @@ pub(crate) fn transitions() -> Vec<Transition<SalesOrder>> {
 
 /// The machine of the order with the amend transitions added.
 pub(crate) fn add_to(machine: Machine<SalesOrder>) -> Machine<SalesOrder> {
-    transitions().into_iter().fold(machine, Machine::transition)
+    transitions()
+        .into_iter()
+        // Each transition writes the order's search document (BL-AGT-11).
+        .map(crate::search::reindex_order)
+        .fold(machine, Machine::transition)
 }
 
 /// The sale line `line` as the revision keeps it.

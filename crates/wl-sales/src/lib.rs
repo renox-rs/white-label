@@ -75,6 +75,7 @@ pub mod sales_orders;
 pub mod sales_return;
 pub mod sales_return_machine;
 pub mod sales_returns;
+pub mod search;
 pub mod seed;
 pub mod segment;
 pub mod segments;
@@ -740,6 +741,9 @@ impl Module for WlSales {
     }
 
     fn register(&self, app: &mut Registry) {
+        // Leads, orders, counter sales, returns and packages in the search
+        // index and the Related panel (BL-AGT-11).
+        search::register();
         // A page that holds only a campaign's id (a permit, a document) shows
         // `SMILE-OCT · Smile month`.
         wl_kernel::documents::register_subject_label(

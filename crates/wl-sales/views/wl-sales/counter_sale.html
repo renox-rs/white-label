@@ -59,5 +59,6 @@
       <rx-column :label="tx['counter.total']">{{ payment.amount }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['counter.no_payments']" icon="wallet"/></rx-slot>
     </rx-table>
+    <div id="counter-sale-related" hx-get="/related/sales.counter_sale:{{ sale.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

@@ -209,5 +209,6 @@
       <rx-column :label="tx['settle.due']" hide-narrow>{{ step.due }}</rx-column>
       <rx-column :label="tx['settle.note']" hide-narrow>{{ step.note }}</rx-column>
     </rx-table>
+    <div id="order-related" hx-get="/related/sales.sales_order:{{ order.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

@@ -132,13 +132,13 @@ impl StateMachine for SalesReturn {
             .state(Rejected)
             .tone("neutral")
             .terminal()
-            .transition(receive())
-            .transition(resolve())
-            .transition(reject())
-            .transition(reverse())
-            .transition(resolve_approved())
-            .transition(resolve_system())
-            .transition(reverse_system())
+            .transition(crate::search::reindex_return(receive()))
+            .transition(crate::search::reindex_return(resolve()))
+            .transition(crate::search::reindex_return(reject()))
+            .transition(crate::search::reindex_return(reverse()))
+            .transition(crate::search::reindex_return(resolve_approved()))
+            .transition(crate::search::reindex_return(resolve_system()))
+            .transition(crate::search::reindex_return(reverse_system()))
     }
 }
 

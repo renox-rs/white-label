@@ -375,8 +375,9 @@ pub async fn request(state: &AppState, new: NewReturn) -> Result<SalesReturn> {
     let number = RETURN_SERIES
         .next_allowing_gaps(&state.db, None, None, today())
         .await?;
+    let mut tx = state.db.begin().await?;
     let created = SalesReturn::create(
-        &state.db,
+        &mut tx,
         SalesReturn {
             number,
             sale_type: new.sale.subject_type.clone(),
@@ -403,7 +404,7 @@ pub async fn request(state: &AppState, new: NewReturn) -> Result<SalesReturn> {
             .find(|(line, _)| *line == line_id)
             .map(|(_, lot)| *lot);
         SalesReturnLine::create(
-            &state.db,
+            &mut tx,
             SalesReturnLine {
                 return_id: created.id,
                 sale_line_id: line_id,
@@ -415,6 +416,9 @@ pub async fn request(state: &AppState, new: NewReturn) -> Result<SalesReturn> {
         )
         .await?;
     }
+    // Found by its number from now on (BL-AGT-11).
+    crate::search::index(&mut tx, SALES_RETURN_SUBJECT_TYPE, created.id).await?;
+    tx.commit().await?;
     Ok(created)
 }
 
