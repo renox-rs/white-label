@@ -12,6 +12,10 @@
         <rx-input name="call_off" :label="tx['po.call_off']" id="create-sales-order-call-off"/>
         <rx-input name="external_number" :label="tx['orders.external_number']" id="create-sales-order-external"/>
         <rx-input name="promo_code" :label="tx['orders.promo_code']" id="create-sales-order-promo"/>
+        <rx-textarea name="delivery_address" :label="tx['delivery.address']" id="create-sales-order-delivery-address"/>
+        <rx-input name="delivery_emirate" :label="tx['delivery.emirate']" id="create-sales-order-delivery-emirate"/>
+        <rx-input name="delivery_country" :label="tx['delivery.country']" id="create-sales-order-delivery-country"/>
+        <rx-select name="delivery_destination" :label="tx['delivery.destination']" :options="delivery_options" :selected="''" :placeholder="tx['delivery.not_stated']" id="create-sales-order-delivery-destination"/>
       </rx-action-sheet>
     </rx-page-header>
     <nav aria-label="{{ tx['orders.title'] }}">

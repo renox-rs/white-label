@@ -52,6 +52,7 @@
 //!   the payment link is paid ([`SaleLine::held_milli`]); see
 //!   [`crate::settle`].
 
+use renox::chrono::NaiveDate;
 use renox::db::Transaction;
 use renox::prelude::*;
 use renox::state_machine::{Machine, Transition, TransitionCtx};
@@ -60,6 +61,7 @@ use wl_kernel::approvals::ApprovalRequest;
 use wl_kernel::sales::{AmendedLine, SALES_ORDER_SUBJECT_TYPE, fulfilment_progress};
 
 use crate::config::config_of;
+use crate::destination::Delivery;
 use crate::order_change::{KIND_AMEND, OrderChange, OrderRevision, RevisionLine};
 use crate::permissions;
 use crate::po_number::{PoKey, Reference};
@@ -106,6 +108,15 @@ pub struct LineChange {
     pub discount: i64,
 }
 
+/// A new promised day for a line (BL-MFG-11).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LinePromise {
+    /// The sale line (its id).
+    pub line: i64,
+    /// The day it is promised for.
+    pub day: NaiveDate,
+}
+
 /// A line the amendment adds, standard-rated.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AddedLine {
@@ -123,6 +134,9 @@ pub struct AddedLine {
     /// taxed as the item it replaces); `None`: standard rated.
     #[serde(default)]
     pub vat_like: Option<i64>,
+    /// The day the new line is promised for.
+    #[serde(default)]
+    pub promised_on: Option<NaiveDate>,
 }
 
 /// What an amendment carries to its guards and effect: what the user asks
@@ -136,6 +150,10 @@ pub struct AmendInput {
     pub changes: Vec<LineChange>,
     /// The lines that are added.
     pub added: Vec<AddedLine>,
+    /// The lines whose promised day changes.
+    pub promises: Vec<LinePromise>,
+    /// The new delivery of the order; `None` leaves it as it is.
+    pub delivery: Option<Delivery>,
     /// The revision the user saw; 0 when not given.
     pub base_revision: i64,
     /// The new customer PO reference; `None` leaves it as it is.
@@ -198,7 +216,28 @@ impl AmendInput {
             unit_price,
             discount: 0,
             vat_like: None,
+            promised_on: None,
         });
+        self
+    }
+
+    /// The line added last is promised for `day`.
+    pub fn promised_on(mut self, day: NaiveDate) -> Self {
+        if let Some(added) = self.added.last_mut() {
+            added.promised_on = Some(day);
+        }
+        self
+    }
+
+    /// Line `line` is promised for `day`.
+    pub fn promise(mut self, line: i64, day: NaiveDate) -> Self {
+        self.promises.push(LinePromise { line, day });
+        self
+    }
+
+    /// The order is delivered as `delivery` says.
+    pub fn delivery(mut self, delivery: Delivery) -> Self {
+        self.delivery = Some(delivery);
         self
     }
 
@@ -272,6 +311,24 @@ fn po_changed(order: &SalesOrder, input: &AmendInput) -> bool {
     let (po, call_off) = po_after(order, input);
     let was = |old: &Option<String>| old.as_deref().unwrap_or_default().trim().to_owned();
     po != was(&order.customer_po) || call_off != was(&order.call_off)
+}
+
+/// The delivery the amendment sets, when it differs from the order's. The
+/// answer is worked out (a contradiction is the problem of the amendment).
+fn delivery_after(
+    order: &SalesOrder,
+    input: &AmendInput,
+) -> Result<Option<(Delivery, Option<String>)>> {
+    let Some(asked) = &input.delivery else {
+        return Ok(None);
+    };
+    let answer = asked.answer()?.map(str::to_owned);
+    let now = Delivery::of_order(order);
+    let same = now.address == asked.address
+        && now.emirate == asked.emirate
+        && now.country == asked.country
+        && now.destination == answer;
+    Ok((!same).then(|| (asked.clone(), answer)))
 }
 
 /// The amendment `asked` checked against the order and its `lines`, with the
@@ -383,10 +440,31 @@ pub fn evaluate(order: &SalesOrder, lines: &[SaleLine], asked: &AmendInput) -> A
             discount: added.discount,
             kind: KIND_ITEM.to_owned(),
             vat_category: like.unwrap_or_default(),
+            promised_on: added.promised_on,
             ..SaleLine::default()
         });
     }
     changed |= po_changed(order, &input);
+    match delivery_after(order, &input) {
+        Ok(delivery) => changed |= delivery.is_some(),
+        Err(Error::Status(_, message)) => first(&mut problem, message),
+        Err(_) => {}
+    }
+    for promise in &input.promises {
+        match revised
+            .iter_mut()
+            .find(|l| l.id == promise.line && l.kind == KIND_ITEM)
+        {
+            Some(line) => {
+                changed |= line.promised_on != Some(promise.day);
+                line.promised_on = Some(promise.day);
+            }
+            None => first(
+                &mut problem,
+                english("wl_sales.orders.problem.unknown_line", &[]),
+            ),
+        }
+    }
     if !changed {
         first(&mut problem, english("wl_sales.amend.problem.nothing", &[]));
     }
@@ -529,6 +607,30 @@ async fn amend_in(tx: &mut Transaction, order: SalesOrder, run: &AmendInput) -> 
     if po_changed(&order, run) {
         move_po(tx, &order, run, &stamp).await?;
     }
+    if let Some((delivery, answer)) = delivery_after(&order, run)? {
+        SalesOrder::query()
+            .where_(SalesOrder::ID.eq(order.id))
+            .update(
+                &mut *tx,
+                &[
+                    ("delivery_address", &delivery.address),
+                    ("delivery_emirate", &delivery.emirate),
+                    ("delivery_country", &delivery.country),
+                    ("delivery_destination", &answer),
+                    ("updated_at", &stamp),
+                ],
+            )
+            .await?;
+    }
+    for promise in &run.promises {
+        SaleLine::query()
+            .where_(SaleLine::ID.eq(promise.line))
+            .update(
+                &mut *tx,
+                &[("promised_on", &Some(promise.day)), ("updated_at", &stamp)],
+            )
+            .await?;
+    }
     let mut report = Vec::new();
     for change in &run.changes {
         let Some(line) = before.iter().find(|l| l.id == change.line) else {
@@ -587,6 +689,7 @@ async fn amend_in(tx: &mut Transaction, order: SalesOrder, run: &AmendInput) -> 
             unit_price: added.unit_price,
             discount: added.discount,
             held_milli: held,
+            promised_on: added.promised_on,
             ..SaleLine::default()
         };
         if let Some(like) = added.vat_like
@@ -732,6 +835,25 @@ pub async fn amend(
     if let Some(problem) = found.problem.clone() {
         return Err(refused(problem));
     }
+    // The vertical's rules on the lines the amendment adds or enlarges, or on
+    // all of them when the delivery changes (07: no *export only* item for a
+    // delivery in the UAE).
+    let delivery = delivery_after(&order, &found)?;
+    let export = match &delivery {
+        Some((_, answer)) => answer.as_deref().map(|a| a == crate::destination::EXPORT),
+        None => crate::destination::is_export(&order),
+    };
+    let mut checked: Vec<&str> = found.added.iter().map(|a| a.item_code.as_str()).collect();
+    for line in lines.iter().filter(|l| l.kind == KIND_ITEM) {
+        let enlarged = found
+            .changes
+            .iter()
+            .any(|c| c.line == line.id && c.quantity_milli > line.quantity_milli);
+        if enlarged || delivery.is_some() {
+            checked.push(line.item_code.as_str());
+        }
+    }
+    crate::destination::ensure_lines_allowed(state, export, checked).await?;
     // The new number must not be held by another order of the customer
     // (BL-SAL-18): this order is the exception.
     if found.keep_po_key && po_changed(&order, &found) {

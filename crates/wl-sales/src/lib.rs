@@ -30,6 +30,7 @@ pub mod customer_account;
 pub mod daily;
 pub mod deliveries;
 pub mod delivery_invoice;
+pub mod destination;
 mod events;
 pub mod expiry;
 pub mod lead;
@@ -79,6 +80,7 @@ pub mod terms;
 mod texts;
 mod texts_changes;
 mod texts_deliveries;
+mod texts_destination;
 mod texts_till;
 pub mod till_session;
 pub mod till_sessions;
@@ -845,6 +847,11 @@ impl Module for WlSales {
         // The 07 vertical's contracts the sales order answers.
         wl_kernel::production::provide_order_lines(app, order_directory::Lines);
         wl_kernel::sales::provide_customer_po_check(app, order_directory::PoCheck);
+        // Where an order is delivered and which day a line is promised for:
+        // the vertical's dispatch guard and the look-ahead of an expiring
+        // document read them (BL-MFG-11).
+        wl_kernel::sales::provide_delivery_destination(app, destination::Destination);
+        wl_kernel::sales::provide_promised_lines(app, destination::PromisedDays);
         // `SAL.RUL.05`: a bounced cheque holds the customer account, and
         // *Clear account hold* with another releaser's approval.
         account_hold::register(app);

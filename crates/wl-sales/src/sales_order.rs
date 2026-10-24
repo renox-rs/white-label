@@ -129,6 +129,15 @@ pub struct SalesOrder {
     pub customer_po: Option<String>,
     /// The call-off number against a blanket PO, as typed.
     pub call_off: Option<String>,
+    /// The delivery address, as typed.
+    pub delivery_address: Option<String>,
+    /// The emirate it is in (UAE deliveries).
+    pub delivery_emirate: Option<String>,
+    /// The ISO country of the delivery, upper case (`AE`).
+    pub delivery_country: Option<String>,
+    /// `domestic` or `export`: the VAT category of the delivery address
+    /// ([`crate::delivery`]); `None` while the order does not say.
+    pub delivery_destination: Option<String>,
     /// The loyalty account attached before the order is fulfilled.
     pub loyalty_account_id: Option<i64>,
     /// The user who attached it.

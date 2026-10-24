@@ -12,12 +12,20 @@
           <rx-input name="description" :label="tx['counter.description']" id="add-order-line-description"/>
           <rx-input name="quantity" :label="tx['counter.quantity']" id="add-order-line-quantity"/>
           <rx-input name="unit_price" :label="tx['counter.unit_price']" id="add-order-line-price" required/>
+          <rx-input name="promised" :label="tx['orders.promised']" :hint="tx['orders.promised_hint']" id="add-order-line-promised"/>
           <rx-checkbox name="loyalty_excluded" :label="tx['counter.loyalty_excluded']" id="add-order-line-excluded"/>
         </rx-action-sheet>
         <rx-action-sheet id="order-reference" :label="tx['po.change']" :action="route('wl_sales.sales_order_reference', order.id)"
                          :title="tx['po.change']" :description="tx['po.change_description']" :submit-label="tx['po.change']" icon="pencil">
           <rx-input name="customer_po" :label="tx['po.customer_po']" id="order-reference-po" :value="po.customer_po"/>
           <rx-input name="call_off" :label="tx['po.call_off']" id="order-reference-call-off" :value="po.call_off"/>
+        </rx-action-sheet>
+        <rx-action-sheet id="order-delivery" :label="tx['delivery.change']" :action="route('wl_sales.sales_order_delivery', order.id)"
+                         :title="tx['delivery.change']" :description="tx['delivery.change_description']" :submit-label="tx['delivery.change']" icon="truck">
+          <rx-textarea name="delivery_address" :label="tx['delivery.address']" id="order-delivery-address" :value="delivery.address"/>
+          <rx-input name="delivery_emirate" :label="tx['delivery.emirate']" id="order-delivery-emirate" :value="delivery.emirate"/>
+          <rx-input name="delivery_country" :label="tx['delivery.country']" id="order-delivery-country" :value="delivery.country"/>
+          <rx-select name="delivery_destination" :label="tx['delivery.destination']" :options="delivery.options" :selected="delivery.destination" :placeholder="tx['delivery.not_stated']" id="order-delivery-destination"/>
         </rx-action-sheet>
         <rx-button rx-if="po.blocked" :label="tx['orders.submit']" icon="check" :disabled-reason="po.blocked"/>
         <rx-confirm rx-else :id="'submit-order-' ~ order.id" :label="tx['orders.submit']" :action="route('wl_sales.sales_order_submit', order.id)" method="POST"
@@ -45,10 +53,16 @@
           <rx-input :name="'line_' ~ line.id ~ '_quantity'" :label="tx['amend.line'] ~ ' ' ~ line.line_no ~ ' ' ~ line.description ~ ': ' ~ tx['amend.quantity']" :value="line.quantity" :hint="tx['amend.current'] ~ ': ' ~ line.quantity" :id="'amend-order-quantity-' ~ line.id"/>
           <rx-input :name="'line_' ~ line.id ~ '_price'" :label="tx['amend.price']" :value="line.price" :id="'amend-order-price-' ~ line.id"/>
           <rx-input :name="'line_' ~ line.id ~ '_discount'" :label="tx['amend.discount']" :value="line.discount" :id="'amend-order-discount-' ~ line.id"/>
+          <rx-input :name="'line_' ~ line.id ~ '_promised'" :label="tx['amend.promised']" :value="line.promised_input" :hint="tx['orders.promised_hint']" :id="'amend-order-promised-' ~ line.id"/>
         </rx-stack>
+        <rx-textarea name="delivery_address" :label="tx['delivery.address']" id="amend-order-delivery-address" :value="delivery.address"/>
+        <rx-input name="delivery_emirate" :label="tx['delivery.emirate']" id="amend-order-delivery-emirate" :value="delivery.emirate"/>
+        <rx-input name="delivery_country" :label="tx['delivery.country']" id="amend-order-delivery-country" :value="delivery.country"/>
+        <rx-select name="delivery_destination" :label="tx['delivery.destination']" :options="delivery.options" :selected="delivery.destination" :placeholder="tx['delivery.not_stated']" id="amend-order-delivery-destination"/>
         <rx-input name="add_item" :label="tx['amend.add_title'] ~ ': ' ~ tx['amend.add_item']" id="amend-order-add-item"/>
         <rx-input name="add_quantity" :label="tx['amend.add_quantity']" id="amend-order-add-quantity"/>
         <rx-input name="add_price" :label="tx['amend.add_price']" id="amend-order-add-price"/>
+        <rx-input name="add_promised" :label="tx['amend.add_promised']" :hint="tx['orders.promised_hint']" id="amend-order-add-promised"/>
       </rx-action-sheet>
       <rx-action-sheet rx-if="can_cancel_order" id="cancel-order" :label="tx['cancelling.order']" :action="route('wl_sales.sales_order_cancel', order.id)"
                        :title="tx['cancelling.order']" :description="tx['cancelling.order_description'] ~ ' ' ~ tx['cancelling.order_approval_hint']" :submit-label="tx['cancelling.order']" icon="x" danger>
@@ -138,6 +152,7 @@
       <rx-column :label="tx['orders.line_no']" hide-narrow>{{ line.line_no }}</rx-column>
       <rx-column :label="tx['counter.description']">{{ line.description }}</rx-column>
       <rx-column :label="tx['counter.quantity']" hide-narrow>{{ line.quantity }}</rx-column>
+      <rx-column :label="tx['orders.promised']" hide-narrow>{{ line.promised }}</rx-column>
       <rx-column :label="tx['orders.fulfilled']" hide-narrow>{{ line.fulfilled }}</rx-column>
       <rx-column :label="tx['progress.label']" hide-narrow>{{ line.progress }}</rx-column>
       <rx-column :label="tx['cancelling.open']" hide-narrow>{{ line.open }}</rx-column>
@@ -155,6 +170,11 @@
         <rx-entry rx-if="order.refunded_amount" :label="tx['returns.refunded']" :value="refunded"/>
         <rx-entry :label="tx['orders.channel']" :value="order.channel"/>
         <rx-entry :label="tx['orders.payment_mode']" :value="payment_mode_label"/>
+        <rx-entry :label="tx['delivery.destination']" :value="delivery.destination_label"/>
+        <rx-entry rx-if="delivery.address" :label="tx['delivery.address']" :value="delivery.address"/>
+        <rx-entry rx-if="delivery.emirate" :label="tx['delivery.emirate']" :value="delivery.emirate"/>
+        <rx-entry rx-if="delivery.country" :label="tx['delivery.country']" :value="delivery.country"/>
+        <rx-entry :label="tx['delivery.vat']" :value="delivery.vat"/>
         <rx-entry rx-if="po.reference" :label="tx['po.customer_po']" :value="po.reference"/>
         <rx-entry rx-if="order.reason" :label="tx['orders.reason']" :value="order.reason"/>
         <rx-entry rx-if="order.external_number" :label="tx['orders.external_number']" :value="order.external_number"/>

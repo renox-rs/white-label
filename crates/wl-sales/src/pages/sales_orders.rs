@@ -39,6 +39,7 @@ use wl_kernel::invoicing::VatCategory;
 use crate::amend::{self, AmendInput, AmendOutcome};
 use crate::cancel_lines::{self, CancelOutcome, WantedLine};
 use crate::config::config_of;
+use crate::destination::{self, Delivery};
 use crate::notices::aed;
 use crate::order_change::{OrderRevision, OrderSettlement, STATUS_EXPIRED};
 use crate::pages::campaigns::parse_fils;
@@ -89,6 +90,8 @@ pub fn routes() -> Routes {
                 .name("wl_sales.sales_order_submit")
                 .post("/sales-orders/{id}/reference", reference)
                 .name("wl_sales.sales_order_reference")
+                .post("/sales-orders/{id}/delivery", delivery)
+                .name("wl_sales.sales_order_delivery")
                 .require_permission(permissions::SALES_ORDERS_CREATE),
         )
         .merge(
@@ -200,6 +203,8 @@ pub(crate) struct IndexPage {
     held_count: i64,
     /// The viewer sees why an order is held.
     can_see_credit: bool,
+    /// The two answers for where an order is delivered, as (value, words).
+    delivery_options: Vec<[String; 2]>,
 }
 
 /// `GET /sales-orders`: the latest orders, newest first. An order waiting for
@@ -262,6 +267,7 @@ async fn index(
         held_only,
         held_count,
         can_see_credit,
+        delivery_options: delivery_view(&lang, &SalesOrder::default()).options,
     }))
 }
 
@@ -294,6 +300,10 @@ pub struct LineRow {
     pub outcome: String,
     /// The line with VAT, `AED 105.00`.
     pub gross: String,
+    /// The day it is promised for, `01 Dec 2026`; empty for none.
+    pub promised: String,
+    /// The promised day as the amend form takes it, `2026-12-01`.
+    pub promised_input: String,
     /// Where its goods are: not dispatched, picked, out for delivery, partly
     /// delivered, delivered or lost (BL-SAL-13).
     pub progress: String,
@@ -356,6 +366,26 @@ pub struct PoView {
     pub clash_number: String,
     /// Why *Submit* is disabled; empty when it is not.
     pub blocked: String,
+}
+
+/// The delivery of an order as its page shows it and its sheets prefill it.
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct DeliveryView {
+    /// The address, in words; empty for none.
+    pub address: String,
+    /// The emirate.
+    pub emirate: String,
+    /// The country code.
+    pub country: String,
+    /// `domestic`, `export` or empty, as the sheets select it.
+    pub destination: String,
+    /// The answer in words: *In the UAE (domestic)*, *Abroad (export)* or
+    /// *Not stated (counts as domestic)*.
+    pub destination_label: String,
+    /// The VAT category that follows, in words.
+    pub vat: String,
+    /// The two choices of the sheets, as (value, words).
+    pub options: Vec<[String; 2]>,
 }
 
 /// One earlier revision as the order page lists it.
@@ -426,6 +456,8 @@ pub(crate) struct ShowPage {
     member: Option<String>,
     hold: Option<HoldView>,
     po: PoView,
+    /// Where the goods go.
+    delivery: DeliveryView,
     /// The customer's name.
     customer: String,
     release: ReleaseView,
@@ -519,6 +551,14 @@ async fn show(
                 .map(|o| text(&lang, &format!("cancelling.outcome.{o}")))
                 .unwrap_or_default(),
             gross: money(line.gross()),
+            promised: line
+                .promised_on
+                .map(|day| day.format("%d %b %Y").to_string())
+                .unwrap_or_default(),
+            promised_input: line
+                .promised_on
+                .map(|day| day.format("%Y-%m-%d").to_string())
+                .unwrap_or_default(),
             progress: progress
                 .get(&line.id)
                 .map(|key| text(&lang, &format!("progress.{key}")))
@@ -629,6 +669,7 @@ async fn show(
     );
     let hold = hold_view(&user, &lang, &order);
     let po = po_view(&state, &lang, &order).await?;
+    let delivery = delivery_view(&lang, &order);
     let release = release_view(&state, &user, &lang, &order).await?;
     let approvals = if order.status == SalesOrderStatus::CreditHold {
         wl_kernel::approvals::cards_for(&state.db, &order.subject(), &user, &lang).await?
@@ -678,6 +719,7 @@ async fn show(
         tx: texts::all(&lang),
         hold,
         po,
+        delivery,
         customer: super::party_name(&state, &lang, order.party_id).await,
         release,
         approvals,
@@ -932,6 +974,88 @@ async fn po_view(state: &AppState, lang: &Lang, order: &SalesOrder) -> Result<Po
     })
 }
 
+/// The delivery of `order` for its page.
+fn delivery_view(lang: &Lang, order: &SalesOrder) -> DeliveryView {
+    let now = Delivery::of_order(order);
+    let destination = now.destination.clone().unwrap_or_default();
+    let export = destination == destination::EXPORT;
+    DeliveryView {
+        address: now.address.unwrap_or_default(),
+        emirate: now.emirate.unwrap_or_default(),
+        country: now.country.unwrap_or_default(),
+        destination_label: text(
+            lang,
+            match destination.as_str() {
+                destination::EXPORT => "delivery.export",
+                destination::DOMESTIC => "delivery.domestic",
+                _ => "delivery.not_stated",
+            },
+        ),
+        vat: text(
+            lang,
+            if export {
+                "delivery.vat_export"
+            } else {
+                "delivery.vat_domestic"
+            },
+        ),
+        destination,
+        options: vec![
+            [
+                destination::DOMESTIC.to_owned(),
+                text(lang, "delivery.domestic"),
+            ],
+            [
+                destination::EXPORT.to_owned(),
+                text(lang, "delivery.export"),
+            ],
+        ],
+    }
+}
+
+/// `POST /sales-orders/{id}/delivery`: where the goods of the draft order go
+/// (`delivery_address`, `delivery_emirate`, `delivery_country`,
+/// `delivery_destination`).
+async fn delivery(
+    State(state): State<AppState>,
+    lang: Lang,
+    Found(order): Found<SalesOrder>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let entered = delivery_of(&form);
+    destination::set(&state, order.id, entered).await?;
+    Ok((
+        Toast::success(text(&lang, "delivery.saved")),
+        Redirect::route("wl_sales.sales_order", &[&order.id])?,
+    )
+        .into_response())
+}
+
+/// The delivery a form carries.
+fn delivery_of(form: &BTreeMap<String, String>) -> Delivery {
+    let get = |key: &str| form.get(key).map_or("", |v| v.trim());
+    Delivery::of(
+        get("delivery_address"),
+        get("delivery_emirate"),
+        get("delivery_country"),
+        get("delivery_destination"),
+    )
+}
+
+/// The day a form field gives, `2026-12-31`; blank is none.
+fn day_of(
+    form: &BTreeMap<String, String>,
+    key: &str,
+    lang: &Lang,
+) -> Result<Option<renox::chrono::NaiveDate>> {
+    match form.get(key).map_or("", |v| v.trim()) {
+        "" => Ok(None),
+        value => renox::chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
+            .map(Some)
+            .map_err(|_| invalid(key, text(lang, "orders.errors.date"), form)),
+    }
+}
+
 /// `POST /sales-orders/{id}/reference`: changes the customer PO number and
 /// call-off number of the draft order (`customer_po`, `call_off`).
 async fn reference(
@@ -1012,6 +1136,7 @@ async fn create(
     if !get("promo_code").is_empty() {
         new = new.promo_code(get("promo_code"));
     }
+    new = new.delivery(delivery_of(&form));
     match sales_orders::import(&state, Some(user.id), new).await? {
         Imported::Created(order) => Ok((
             Toast::success(text(&lang, "orders.created")),
@@ -1069,6 +1194,9 @@ async fn add_line(
     }
     if matches!(get("loyalty_excluded"), "1" | "on") {
         line = line.loyalty_excluded();
+    }
+    if let Some(day) = day_of(&form, "promised", &lang)? {
+        line = line.promised_on(day);
     }
     sales_orders::add_line(&state, order.id, line).await?;
     Ok((
@@ -1377,6 +1505,12 @@ async fn amend_order(
             })?,
         };
         input = input.line(line.id, quantity, price, discount);
+        if let Some(day) = day_of(&form, &format!("line_{}_promised", line.id), &lang)? {
+            input = input.promise(line.id, day);
+        }
+    }
+    if form.contains_key("delivery_destination") {
+        input = input.delivery(delivery_of(&form));
     }
     if form.contains_key("customer_po") {
         input = input.po(
@@ -1395,6 +1529,9 @@ async fn amend_order(
             .filter(|p| *p >= 0)
             .ok_or_else(|| invalid("add_price", text(&lang, "orders.errors.amount"), &form))?;
         input = input.add(get("add_item"), quantity, price);
+        if let Some(day) = day_of(&form, "add_promised", &lang)? {
+            input = input.promised_on(day);
+        }
     }
     let toast = match amend::amend(&state, &user, order.id, input).await? {
         AmendOutcome::Amended(done) => Toast::success(texts::t_with(

@@ -44,6 +44,7 @@ use wl_kernel::{PartyId, Subject};
 use crate::config::config_of;
 use crate::credit;
 use crate::customer_account::CustomerAccount;
+use crate::destination::Delivery;
 use crate::promo_code::PromoCode;
 use crate::sale_line::{KIND_ITEM, NewLine, SaleLine, totals};
 use crate::sales_order::{
@@ -84,6 +85,8 @@ pub struct NewSalesOrder {
     /// The promo code the order uses; a use is taken when it is submitted
     /// (BL-SAL-02) and given back if its online payment fails (BL-SAL-03).
     pub promo_code: Option<String>,
+    /// Where the goods are delivered (BL-MFG-11).
+    pub delivery: Delivery,
 }
 
 impl NewSalesOrder {
@@ -98,7 +101,14 @@ impl NewSalesOrder {
             call_off: None,
             external_number: None,
             promo_code: None,
+            delivery: Delivery::new(),
         }
+    }
+
+    /// Delivered as `delivery` says.
+    pub fn delivery(mut self, delivery: Delivery) -> Self {
+        self.delivery = delivery;
+        self
     }
 
     /// With the customer's PO number (blank for none).
@@ -220,6 +230,7 @@ pub async fn import(state: &AppState, by: Option<i64>, new: NewSalesOrder) -> Re
     {
         return Ok(duplicate(found));
     }
+    let destination = new.delivery.answer()?.map(str::to_owned);
     let promo = match new.promo_code.as_deref().map(str::trim) {
         Some(code) if !code.is_empty() => Some(promo_of(state, code).await?),
         _ => None,
@@ -243,6 +254,10 @@ pub async fn import(state: &AppState, by: Option<i64>, new: NewSalesOrder) -> Re
             external_number: external,
             external_key: key.clone(),
             promo_code_id: promo.map(|p| p.id),
+            delivery_address: new.delivery.address,
+            delivery_emirate: new.delivery.emirate,
+            delivery_country: new.delivery.country,
+            delivery_destination: destination,
             ..SalesOrder::default()
         },
     )
@@ -327,6 +342,15 @@ pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<SalesOrd
     if order.is_on_account() && crate::account_hold::is_on_hold(&state.db, order.party_id).await? {
         return Err(refused("wl_sales.credit.problem.account_on_hold"));
     }
+    // The vertical's rules on each line (07: an *export only* item is not
+    // sold for a delivery in the UAE); an order that does not say where it
+    // goes counts as domestic.
+    crate::destination::ensure_lines_allowed(
+        state,
+        crate::destination::is_export(&order),
+        crate::destination::live_codes(&lines),
+    )
+    .await?;
     let config = config_of(state);
     let online = order.payment_mode == PAYMENT_ONLINE;
     // Paid already (the gateway answered before the order was placed): no wait.

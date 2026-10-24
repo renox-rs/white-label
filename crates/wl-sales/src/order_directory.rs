@@ -10,13 +10,9 @@
 //! - The PO check is [`crate::po_number::buyer_refusal`]: nothing when the
 //!   setting *Unique customer PO number per customer* is off, and only the
 //!   number and status of the existing order otherwise.
-//! - Not provided here (no data to answer from yet, the kernel's default
-//!   stays): `PromisedLines` (a sale line has no promised day),
-//!   `DeliveryDestination` (an order has no delivery address) and, with it,
-//!   the vertical's `OrderLineRules` at `submit` and `amend` (they need to know
-//!   whether the delivery is domestic): wl-sales calls `order_line_rules()`
-//!   nowhere yet. Deferred with BL-MFG-11 point 6 until an order carries its
-//!   delivery address.
+//! - `DeliveryDestination`, `PromisedLines` and the call of the vertical's
+//!   `OrderLineRules` at `submit` and `amend` are in [`crate::destination`]
+//!   (the order's delivery and the line's promised day).
 
 use renox::prelude::*;
 use wl_kernel::PartyId;
