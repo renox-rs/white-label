@@ -268,6 +268,10 @@ pub async fn record(db: &Db, by: Option<i64>, mut profile: TaxProfile) -> Result
     profile.approved_by = by;
     profile.approved_at = Some(now());
     profile.insert(db).await?;
+    // The client's TRN finds its engagements and returns (BL-AGT-12).
+    let mut tx = db.begin().await?;
+    crate::search::index_client_in(&mut tx, profile.client_party_id).await?;
+    tx.commit().await?;
     Ok(profile)
 }
 

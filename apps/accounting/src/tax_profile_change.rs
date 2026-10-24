@@ -277,6 +277,7 @@ fn approve_transition() -> Transition<TaxProfileChange> {
                     ..change.proposed()
                 };
                 profile.insert(&mut *tx).await?;
+                crate::search::index_client_in(&mut *tx, profile.client_party_id).await?;
                 set_change(
                     tx,
                     change.id,

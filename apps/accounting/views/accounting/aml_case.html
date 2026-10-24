@@ -57,5 +57,6 @@
       <rx-column :label="tx['history.by']" hide-narrow>{{ row.by }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['history.empty']" icon="history"/></rx-slot>
     </rx-table>
+    <div id="related-panel" hx-get="/related/accounting.aml_case:{{ id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

@@ -43,6 +43,11 @@ pub async fn open(db: &Db, by: Option<i64>, client: PartyId) -> Result<CddFile> 
     };
     file.insert(&mut tx).await?;
     add_party_in(&mut tx, &file, client, ScreenedRole::Client).await?;
+    wl_kernel::search::index_in(
+        &mut tx,
+        &wl_kernel::Subject::new(crate::cdd::CDD_FILE_SUBJECT_TYPE, file.id),
+    )
+    .await?;
     tx.commit().await?;
     Ok(file)
 }

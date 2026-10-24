@@ -637,7 +637,7 @@ fn correct() -> Transition<Return> {
                     ],
                 )
                 .await?;
-                Return::create(
+                let made = Return::create(
                     &mut *tx,
                     Return {
                         id: 0,
@@ -668,6 +668,11 @@ fn correct() -> Transition<Return> {
                         updated_at: None,
                         ..old
                     },
+                )
+                .await?;
+                wl_kernel::search::index_in(
+                    &mut *tx,
+                    &wl_kernel::Subject::new(crate::tax_return::RETURN_SUBJECT_TYPE, made.id),
                 )
                 .await?;
                 Ok(())

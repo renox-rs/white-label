@@ -113,6 +113,11 @@ async fn insert_case(
         row.case_id = case.id;
         row.insert(&mut tx).await?;
     }
+    wl_kernel::search::index_in(
+        &mut tx,
+        &wl_kernel::Subject::new(crate::aml::AML_CASE_SUBJECT_TYPE, case.id),
+    )
+    .await?;
     tx.commit().await?;
     AmlCase::find_or_404(&state.db, case.id).await
 }

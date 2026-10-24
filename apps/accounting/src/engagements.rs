@@ -65,7 +65,7 @@ pub async fn create(state: &AppState, by: Option<i64>, new: NewEngagement) -> Re
     }
     // No new work for a client whose relationship ended through CDD.
     exits::refuse_new_work(&state.db, new.client).await?;
-    Engagement::create(
+    let made = Engagement::create(
         &state.db,
         Engagement {
             client_party_id: new.client.0,
@@ -78,7 +78,9 @@ pub async fn create(state: &AppState, by: Option<i64>, new: NewEngagement) -> Re
             ..Engagement::default()
         },
     )
-    .await
+    .await?;
+    crate::search::index(&state.db, &made.subject()).await?;
+    Ok(made)
 }
 
 /// `by` records that the client signed the engagement letter on `on`.

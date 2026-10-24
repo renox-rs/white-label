@@ -38,6 +38,7 @@ pub mod return_effects;
 pub mod return_machine;
 pub mod returns;
 pub mod screening;
+pub mod search;
 pub mod seed;
 pub mod settings;
 pub mod suspension;
@@ -155,6 +156,9 @@ impl Module for Accounting {
     }
 
     fn register(&self, app: &mut Registry) {
+        // The records in the global search and the Related panel (BL-AGT-12).
+        search::register();
+        search::listen(app);
         app.view_data::<pages::engagements::IndexPage>()
             .view_data::<pages::engagements::ShowPage>()
             .view_data::<pages::cdd::CddPage>()

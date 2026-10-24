@@ -140,6 +140,11 @@ pub async fn open(state: &AppState, by: Option<i64>, new: NewReturn) -> Result<R
         },
     )
     .await?;
+    crate::search::index(
+        &state.db,
+        &wl_kernel::Subject::new(crate::tax_return::RETURN_SUBJECT_TYPE, opened.id),
+    )
+    .await?;
     // Corrections waiting for a return of this period go into it.
     corrections::attach(state, &opened).await?;
     Ok(opened)

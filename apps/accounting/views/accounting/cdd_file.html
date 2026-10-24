@@ -60,5 +60,6 @@
       <rx-column :label="tx['cdd.party_role']">{{ row.role }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['cdd.parties_empty']" icon="users"/></rx-slot>
     </rx-table>
+    <div id="related-panel" hx-get="/related/accounting.cdd_file:{{ file.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>
