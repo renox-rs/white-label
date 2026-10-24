@@ -248,6 +248,33 @@ impl Tickets {
             .collect())
     }
 
+    /// Ticket `id` with the record it is about and its category.
+    ///
+    /// # Errors
+    ///
+    /// Database errors.
+    pub async fn ticket_about(
+        state: &AppState,
+        id: TicketId,
+    ) -> Result<Option<wl_kernel::tickets::TicketAbout>> {
+        let Some(ticket) = Ticket::find(&state.db, id.0).await? else {
+            return Ok(None);
+        };
+        let Some(category) = Category::find(&state.db, ticket.category_id).await? else {
+            return Ok(None);
+        };
+        Ok(Some(wl_kernel::tickets::TicketAbout {
+            ticket: wl_kernel::tickets::TicketSummary {
+                id: ticket.ticket_id(),
+                number: ticket.number.clone(),
+                title: ticket.title.clone(),
+                status: ticket.status.as_str().to_owned(),
+            },
+            subject: ticket.subject(),
+            category_key: category.key,
+        }))
+    }
+
     /// Resolves ticket `id` for the record that opened it, with `note` as the
     /// resolution. `false` when the ticket is unknown or already resolved,
     /// closed or cancelled.
@@ -345,6 +372,14 @@ impl TaskCreator for Tickets {
         category_key: &'a str,
     ) -> TicketFuture<'a, Vec<wl_kernel::tickets::TicketSummary>> {
         Box::pin(Tickets::tickets_of(state, subject, category_key))
+    }
+
+    fn ticket_about<'a>(
+        &'a self,
+        state: &'a AppState,
+        ticket: TicketId,
+    ) -> TicketFuture<'a, Option<wl_kernel::tickets::TicketAbout>> {
+        Box::pin(Tickets::ticket_about(state, ticket))
     }
 
     fn resolve_from_source<'a>(

@@ -1,0 +1,47 @@
+{#- auto: the estimate sheet of a job card as the customer reads it: the
+    labour and the parts with their condition, the totals with VAT, the day
+    promised, the warranty, and the link to approve. Replace it with
+    resources/views/auto/estimate.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['jobs.estimate_sheet'] ~ ' ' ~ number">
+  <rx-stack>
+    <rx-page-header :title="tx['jobs.estimate_sheet'] ~ ' ' ~ number" :subtitle="plate ~ ' · ' ~ vehicle" :back="route('auto.job_card', id)" :back-label="number"/>
+    <rx-card :title="tx['jobs.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['jobs.customer']" :value="customer"/>
+        <rx-entry :label="tx['jobs.complaint']" :value="complaint"/>
+        <rx-entry :label="tx['jobs.revision']" :value="revision"/>
+        <rx-entry :label="tx['jobs.promised_for']" :value="promised"/>
+        <rx-entry :label="tx['jobs.warranty']" :value="warranty"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['jobs.labour']">
+      <rx-table :rows="labour" as="line" :key="line.id" :caption="tx['jobs.labour']">
+        <rx-column :label="tx['jobs.description']">{{ line.description }}</rx-column>
+        <rx-column :label="tx['jobs.hours']" align="num">{{ line.hours }}</rx-column>
+        <rx-column :label="tx['jobs.rate']" align="num">{{ line.rate }}</rx-column>
+        <rx-column :label="tx['jobs.price']" align="num">{{ line.price }}</rx-column>
+        <rx-column :label="tx['jobs.customer_answer']"><rx-badge :kind="line.approval_kind" :text="line.approval"/></rx-column>
+      </rx-table>
+    </rx-card>
+    <rx-card :title="tx['jobs.parts']">
+      <rx-table :rows="parts" as="part" :key="part.id" :caption="tx['jobs.parts']">
+        <rx-column :label="tx['jobs.description']">{{ part.description }}</rx-column>
+        <rx-column :label="tx['jobs.part_condition']">{{ part.condition }}</rx-column>
+        <rx-column :label="tx['jobs.quantity']" align="num">{{ part.quantity }}</rx-column>
+        <rx-column :label="tx['jobs.unit_price']" align="num">{{ part.unit_price }}</rx-column>
+        <rx-column :label="tx['jobs.price']" align="num">{{ part.price }}</rx-column>
+        <rx-column :label="tx['jobs.customer_answer']"><rx-badge :kind="part.approval_kind" :text="part.approval"/></rx-column>
+      </rx-table>
+    </rx-card>
+    <rx-card :title="tx['jobs.totals']">
+      <rx-infolist columns="3">
+        <rx-entry :label="tx['jobs.net']" :value="net"/>
+        <rx-entry :label="tx['jobs.vat']" :value="vat"/>
+        <rx-entry :label="tx['jobs.gross']" :value="gross"/>
+      </rx-infolist>
+      <template rx-if="link">
+        <p><a href="{{ link }}">{{ tx['jobs.customer_link'] }}: {{ link }}</a></p>
+      </template>
+    </rx-card>
+  </rx-stack>
+</rx-page>

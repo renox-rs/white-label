@@ -121,6 +121,9 @@ pub struct SalesOrder {
     pub revision: i64,
     /// The user who entered it.
     pub created_by: Option<i64>,
+    /// The stock location (`inventory.location` id) the order reserves from;
+    /// set when its lines are first reserved.
+    pub location_id: Option<i64>,
     /// The loyalty account attached before the order is fulfilled.
     pub loyalty_account_id: Option<i64>,
     /// The user who attached it.

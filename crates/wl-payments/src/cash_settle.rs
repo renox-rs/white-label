@@ -16,8 +16,12 @@
 //!   At the final approval the rest is checked again: when a recovery or a
 //!   recount changed it, the request fails and nothing is written off.
 //!
-//! A missing cheque is not a cash shortage and is not handled here
-//! (BL-PAY-18). After the commit `CashShortageSettled` is emitted.
+//! A missing cheque is not a cash shortage and is never written off as cash:
+//! `recover` and `write_off` wait until every cheque ticked missing is found
+//! or returned with the reason "lost" ([`crate::cash_cheques`], BL-PAY-18). A
+//! handover that is short only because of a cheque has a difference of 0:
+//! `recover` and `write_off` then close it with nothing to recover or lose.
+//! After the commit `CashShortageSettled` is emitted.
 
 use renox::db::Transaction;
 use renox::prelude::*;
@@ -32,6 +36,7 @@ use wl_kernel::approvals::{
 use wl_kernel::custody::{CASH_HANDOVER_SUBJECT_TYPE, CashShortageSettled, HandoverStatus};
 use wl_kernel::machines::SubjectMachine;
 
+use crate::cash_cheques;
 use crate::cash_handover::{CashHandover, CashPosting, PostingKind};
 use crate::cash_recovery::{self, CashRecovery};
 use crate::config_of;
@@ -49,6 +54,29 @@ pub const WRITE_OFF_APPROVED: &str = "write_off_approved";
 /// default `payments.write_off`, which is the cheque's.
 pub const ACTION: &str = "payments.cash_write_off";
 
+/// What `recover` runs on: what the cheques of the handover come to.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub(crate) struct SettleInput {
+    /// Cheques ticked missing and not found or returned as lost yet.
+    pub unresolved_cheques: i64,
+    /// Whether a cheque was missing or returned as lost: the handover may be
+    /// short with no cash difference.
+    pub had_missing_cheques: bool,
+}
+
+fn settle_input(ctx: &TransitionCtx) -> Option<SettleInput> {
+    ctx.input_as::<SettleInput>().ok()
+}
+
+/// Why missing cheques stand in the way of closing the handover, if they do.
+pub(crate) fn cheques_problem(unresolved: i64) -> Option<String> {
+    (unresolved > 0).then(|| {
+        format!(
+            "{unresolved} cheque(s) are missing: find them, or return them with the reason \"lost\", first. A missing cheque is never written off as cash."
+        )
+    })
+}
+
 /// What a write-off runs on; it is also the approval request's payload,
 /// which the kernel hands to `write_off_approved`. `amount` is the key the
 /// policy's limit reads.
@@ -58,6 +86,13 @@ pub(crate) struct WriteOffInput {
     pub amount: i64,
     /// Why it is written off.
     pub reason: String,
+    /// Cheques ticked missing and not dealt with yet.
+    #[serde(default)]
+    pub unresolved_cheques: i64,
+    /// Whether the handover is short because of a cheque (its cash difference
+    /// may be 0).
+    #[serde(default)]
+    pub had_missing_cheques: bool,
 }
 
 fn write_off_input(ctx: &TransitionCtx) -> Option<WriteOffInput> {
@@ -66,6 +101,23 @@ fn write_off_input(ctx: &TransitionCtx) -> Option<WriteOffInput> {
 
 /// Why the recoveries do not cover the shortage of `handover`, if they do
 /// not.
+pub(crate) fn recover_problem_with(
+    handover: &CashHandover,
+    input: Option<&SettleInput>,
+) -> Option<String> {
+    let input = input.cloned().unwrap_or_default();
+    if let Some(problem) = cheques_problem(input.unresolved_cheques) {
+        return Some(problem);
+    }
+    if input.had_missing_cheques && handover.difference <= 0 {
+        // Short only because of a cheque that was found or returned as lost.
+        return None;
+    }
+    recover_problem(handover)
+}
+
+/// Why the recoveries do not cover the cash shortage of `handover`, if they
+/// do not.
 pub(crate) fn recover_problem(handover: &CashHandover) -> Option<String> {
     if handover.difference <= 0 {
         return Some("There is no shortage to recover.".to_owned());
@@ -88,7 +140,10 @@ pub(crate) fn write_off_problem(input: Option<&WriteOffInput>) -> Option<String>
     if input.reason.trim().is_empty() {
         return Some("A reason is required.".to_owned());
     }
-    if input.amount <= 0 {
+    if let Some(problem) = cheques_problem(input.unresolved_cheques) {
+        return Some(problem);
+    }
+    if input.amount <= 0 && !input.had_missing_cheques {
         return Some(
             "Nothing is left to write off: record the recovery with `recover`.".to_owned(),
         );
@@ -115,16 +170,19 @@ fn writing_off(transition: Transition<CashHandover>) -> Transition<CashHandover>
                     .where_(CashHandover::ID.eq(id))
                     .update(&mut *tx, &[("written_off", &amount)])
                     .await?;
-                // A loss of the holder's outlet or branch.
-                let mut posting = CashPosting {
-                    handover_id: id,
-                    kind: PostingKind::ShortageLoss,
-                    amount,
-                    location,
-                    legal_entity_id,
-                    ..Default::default()
-                };
-                posting.insert(&mut *tx).await?;
+                // A loss of the holder's outlet or branch; a handover short
+                // only of a cheque loses no cash.
+                if amount > 0 {
+                    let mut posting = CashPosting {
+                        handover_id: id,
+                        kind: PostingKind::ShortageLoss,
+                        amount,
+                        location,
+                        legal_entity_id,
+                        ..Default::default()
+                    };
+                    posting.insert(&mut *tx).await?;
+                }
                 Ok(())
             })
         })
@@ -141,8 +199,8 @@ pub(crate) fn transitions() -> Vec<Transition<CashHandover>> {
             .permission(permissions::CASH_COUNT)
             .guard(
                 "recoveries_cover_the_difference",
-                |handover: &CashHandover, _ctx| {
-                    let problem = recover_problem(handover);
+                |handover: &CashHandover, ctx| {
+                    let problem = recover_problem_with(handover, settle_input(ctx).as_ref());
                     Box::pin(async move { problem.map_or(Ok(()), Err) })
                 },
             ),
@@ -196,7 +254,16 @@ pub async fn recover(
         cash_recovery::record_cash(state, user, handover, amount, None).await?;
     }
     let handover = reload(state, handover).await?;
-    let _outcome = handover.transition(RECOVER).by(user).run(state).await?;
+    let input = SettleInput {
+        unresolved_cheques: cash_cheques::unresolved(&state.db, handover.id).await?,
+        had_missing_cheques: cash_cheques::had_missing(&state.db, handover.id).await?,
+    };
+    let _outcome = handover
+        .transition(RECOVER)
+        .by(user)
+        .input(&input)
+        .run(state)
+        .await?;
     reload(state, &handover).await
 }
 
@@ -229,6 +296,8 @@ pub async fn write_off(
     let input = WriteOffInput {
         amount: handover.rest(),
         reason: reason.trim().to_owned(),
+        unresolved_cheques: cash_cheques::unresolved(&state.db, handover.id).await?,
+        had_missing_cheques: cash_cheques::had_missing(&state.db, handover.id).await?,
     };
     let outcome = handover
         .transition(WRITE_OFF)
@@ -351,6 +420,7 @@ mod tests {
         let ok = WriteOffInput {
             amount: 3_000,
             reason: "Till error".into(),
+            ..Default::default()
         };
         assert_eq!(write_off_problem(Some(&ok)), None);
         let blank = WriteOffInput {

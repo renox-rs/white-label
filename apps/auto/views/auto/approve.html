@@ -1,0 +1,55 @@
+{#- auto: the page the customer opens from the link in the estimate message:
+    no sign-in. It shows the labour and the parts of the round with their
+    condition, the totals with VAT, the day promised and the warranty, and
+    asks for the customer's name, signature and consent to the cost, the time
+    and the warranty, or for a refusal. Replace it with
+    resources/views/auto/approve.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['approve.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['approve.title']" :subtitle="number ~ ' · ' ~ plate ~ ' · ' ~ vehicle"/>
+    <rx-alert rx-if="added_work" kind="info" :message="tx['approve.added_work']"/>
+    <rx-alert rx-if="answered" kind="success" :message="answered"/>
+    <rx-card :title="tx['jobs.labour']">
+      <rx-table :rows="labour" as="line" :key="line.id" :caption="tx['jobs.labour']">
+        <rx-column :label="tx['jobs.description']">{{ line.description }}</rx-column>
+        <rx-column :label="tx['jobs.hours']" align="num">{{ line.hours }}</rx-column>
+        <rx-column :label="tx['jobs.price']" align="num">{{ line.price }}</rx-column>
+      </rx-table>
+    </rx-card>
+    <rx-card :title="tx['jobs.parts']">
+      <rx-table :rows="parts" as="part" :key="part.id" :caption="tx['jobs.parts']">
+        <rx-column :label="tx['jobs.description']">{{ part.description }} <rx-badge rx-if="part.special" kind="info" :text="part.special"/></rx-column>
+        <rx-column :label="tx['jobs.part_condition']">{{ part.condition }}</rx-column>
+        <rx-column :label="tx['jobs.quantity']" align="num">{{ part.quantity }}</rx-column>
+        <rx-column :label="tx['jobs.price']" align="num">{{ part.price }}</rx-column>
+      </rx-table>
+    </rx-card>
+    <rx-card :title="tx['jobs.totals']">
+      <rx-infolist columns="3">
+        <rx-entry :label="tx['jobs.net']" :value="net"/>
+        <rx-entry :label="tx['jobs.vat']" :value="vat"/>
+        <rx-entry :label="tx['jobs.gross']" :value="gross"/>
+      </rx-infolist>
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['jobs.promised_for']" :value="promised"/>
+        <rx-entry :label="tx['jobs.warranty']" :value="warranty"/>
+      </rx-infolist>
+      <p>{{ tx['approve.consent_text'] }}</p>
+    </rx-card>
+    <template rx-if="open">
+      <rx-card :title="tx['approve.your_answer']">
+        <rx-action-sheet id="approve-yes" :label="tx['approve.approve']" :action="route('auto.approve_answer', token)"
+                         :title="tx['approve.approve']" :description="tx['approve.approve_description']" :submit-label="tx['approve.approve']" icon="check">
+          <rx-input name="name" :label="tx['approve.name']" id="approve-name" required/>
+          <rx-input name="signature" :label="tx['approve.signature']" :hint="tx['approve.signature_hint']" id="approve-signature"/>
+          <rx-checkbox name="consent" :label="tx['approve.consent']" id="approve-consent"/>
+        </rx-action-sheet>
+        <rx-action-sheet id="approve-no" :label="tx['approve.decline']" :action="route('auto.approve_decline', token)"
+                         :title="tx['approve.decline']" :description="tx['approve.decline_description']" :submit-label="tx['approve.decline']" icon="x">
+          <rx-input name="name" :label="tx['approve.name']" id="decline-name" required/>
+          <rx-textarea name="reason" :label="tx['approve.reason']" id="decline-reason"/>
+        </rx-action-sheet>
+      </rx-card>
+    </template>
+  </rx-stack>
+</rx-page>

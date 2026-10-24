@@ -92,6 +92,9 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
         super::fnb_seed::FNB => super::fnb_seed::invoicing(module, entities),
         // The 10 money values (BL-EDU-18): see [`super::edtech_money::invoicing`].
         super::edtech_seed::EDTECH => super::edtech_money::invoicing(module, entities),
+        // The 08 money values (BL-AUT-18): see [`super::auto_money::invoicing`].
+        // The invoice of a delivered job card is issued at once.
+        super::auto_seed::AUTO => super::auto_money::invoicing(module, entities),
         // 03 `FIN.ACL.15`, `FIN.RUL.14`, `FIN.RUL.15`, `FIN.RUL.23`,
         // `FIN.RUL.24`, `FIN.ACL.21` and the e-invoicing scope (BL-LOG-26,
         // BL-LOG-25): see [`super::logistics_seed::invoicing`].
@@ -175,6 +178,8 @@ pub fn payments_for(client_app: &str) -> WlPayments {
         // 10: pending payments, late confirmation, refund retry and the desk
         // cash shortage (BL-EDU-18).
         super::edtech_seed::EDTECH => super::edtech_money::payments(module),
+        // 08: cheques, field handover and the cash shortage (BL-AUT-18).
+        super::auto_seed::AUTO => super::auto_money::payments(module),
         _ => module,
     }
 }
@@ -226,6 +231,10 @@ pub fn rows(client_app: &str, entities: &[String]) -> Vec<Row> {
     // The 10 client has its own table too (BL-EDU-18).
     if client_app == super::edtech_seed::EDTECH {
         return super::edtech_money::rows(entities);
+    }
+    // The 08 client has its own table too (BL-AUT-18).
+    if client_app == super::auto_seed::AUTO {
+        return super::auto_money::rows(entities);
     }
     let invoicing = invoicing_for(client_app, entities);
     let invoicing = invoicing.config();

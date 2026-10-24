@@ -1,0 +1,393 @@
+{#- auto: one job card: the vehicle, the customer, where it stands, the intake
+    (complaint, odometer, fuel, condition), the estimate with its labour and
+    parts, the customer's answers, the QC checklist and the history, and the
+    actions of the advisor, the technician and the QC by state. Replace it with
+    resources/views/auto/job_card.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="plate ~ ' · ' ~ vehicle" :badge="status" :badge-kind="status_kind" :back="route('auto.job_cards')" :back-label="tx['jobs.title']">
+      <template rx-if="can_inspect">
+        <rx-confirm :id="'job-inspect-' ~ id" :label="tx['jobs.inspect']" :action="route('auto.job_card_inspect', id)" method="POST"
+                    :title="tx['jobs.inspect']" :message="tx['jobs.inspect_message']" :confirm-label="tx['jobs.inspect']" :cancel-label="tx['button_cancel']" icon="wrench"/>
+      </template>
+      <template rx-if="can_send">
+        <rx-action-sheet :id="'job-send-' ~ id" :label="tx['jobs.send']" :action="route('auto.job_card_send', id)"
+                         :title="tx['jobs.send']" :description="tx['jobs.send_description']" :submit-label="tx['jobs.send']" icon="file-text">
+          <rx-input name="promised_for" type="date" :label="tx['jobs.promised_for']" :hint="tx['jobs.promised_hint']" :id="'job-send-promised-' ~ id"/>
+          <rx-input name="warranty_days" type="number" :label="tx['jobs.warranty']" :hint="tx['jobs.warranty_hint']" value="15" :id="'job-send-warranty-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_approve">
+        <rx-action-sheet :id="'job-approve-' ~ id" :label="tx['jobs.approve']" :action="route('auto.job_card_approve', id)"
+                         :title="tx['jobs.approve']" :description="tx['jobs.approve_description']" :submit-label="tx['jobs.approve']" icon="check">
+          <rx-input name="name" :label="tx['jobs.approver']" :id="'job-approve-name-' ~ id" required/>
+          <rx-select name="method" :label="tx['jobs.method']" :options="[['recorded', tx['jobs.method.recorded']], ['signature', tx['jobs.method.signature']]]" :selected="'recorded'" :id="'job-approve-method-' ~ id"/>
+          <rx-input name="signature" :label="tx['jobs.signature']" :hint="tx['jobs.signature_hint']" :id="'job-approve-signature-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_wait">
+        <rx-confirm :id="'job-wait-' ~ id" :label="tx['jobs.wait_parts']" :action="route('auto.job_card_wait_parts', id)" method="POST"
+                    :title="tx['jobs.wait_parts']" :message="tx['jobs.wait_parts_message']" :confirm-label="tx['jobs.wait_parts']" :cancel-label="tx['button_cancel']" icon="clock"/>
+      </template>
+      <template rx-if="can_finish">
+        <rx-confirm :id="'job-finish-' ~ id" :label="tx['jobs.finish']" :action="route('auto.job_card_finish', id)" method="POST"
+                    :title="tx['jobs.finish']" :message="tx['jobs.finish_message']" :confirm-label="tx['jobs.finish']" :cancel-label="tx['button_cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_qc">
+        <rx-confirm :id="'job-pass-qc-' ~ id" :label="tx['jobs.pass_qc']" :action="route('auto.job_card_pass_qc', id)" method="POST"
+                    :title="tx['jobs.pass_qc']" :message="tx['jobs.pass_qc_message']" :confirm-label="tx['jobs.pass_qc']" :cancel-label="tx['button_cancel']" icon="shield-check"/>
+        <rx-action-sheet :id="'job-fail-qc-' ~ id" :label="tx['jobs.fail_qc']" :action="route('auto.job_card_fail_qc', id)"
+                         :title="tx['jobs.fail_qc']" :description="tx['jobs.fail_qc_description']" :submit-label="tx['jobs.fail_qc']" icon="triangle-alert">
+          <rx-textarea name="findings" :label="tx['jobs.qc_findings']" :id="'job-fail-qc-findings-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_deliver">
+        <rx-action-sheet :id="'job-deliver-' ~ id" :label="tx['jobs.deliver']" :action="route('auto.job_card_deliver', id)"
+                         :title="tx['jobs.deliver']" :description="tx['jobs.deliver_description']" :submit-label="tx['jobs.deliver']" icon="truck">
+          <rx-input name="delivered_to" :label="tx['jobs.delivered_to']" :id="'job-deliver-to-' ~ id" required/>
+          <rx-input name="odometer" type="number" :label="tx['jobs.odometer_out']" :id="'job-deliver-odometer-' ~ id"/>
+          <rx-input name="next_service_date" type="date" :label="tx['jobs.next_service_date']" :id="'job-deliver-next-date-' ~ id"/>
+          <rx-input name="next_service_odometer" type="number" :label="tx['jobs.next_service_odometer']" :id="'job-deliver-next-km-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_invoice">
+        <rx-confirm :id="'job-invoice-' ~ id" :label="tx['jobs.invoice']" :action="route('auto.job_card_invoice', id)" method="POST"
+                    :title="tx['jobs.invoice']" :message="tx['jobs.invoice_message']" :confirm-label="tx['jobs.invoice']" :cancel-label="tx['button_cancel']" icon="receipt"/>
+      </template>
+      <template rx-if="can_decline">
+        <rx-action-sheet :id="'job-decline-' ~ id" :label="tx['jobs.decline']" :action="route('auto.job_card_decline', id)"
+                         :title="tx['jobs.decline']" :description="tx['jobs.decline_description']" :submit-label="tx['jobs.decline']" icon="x">
+          <rx-textarea name="reason" :label="tx['jobs.reason']" :id="'job-decline-reason-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_cancel">
+        <rx-action-sheet :id="'job-cancel-' ~ id" :label="tx['stop.title']" :action="route('auto.job_card_cancel', id)"
+                         :title="tx['stop.title']" :description="tx['stop.description'] ~ ' ' ~ tx['stop.value'] ~ ': ' ~ stop.value" :submit-label="tx['stop.title']" icon="trash" danger>
+          <rx-select name="code" :label="tx['stop.reason']" :options="stop.code_options" :selected="'customer_stopped'" :id="'job-cancel-code-' ~ id"/>
+          <rx-input name="note" :label="tx['stop.note']" :id="'job-cancel-note-' ~ id"/>
+          <template rx-for="row in stop.labour">
+            <rx-select :name="'work_' ~ row.id" :label="row.label" :options="work_options" :selected="row.work" :id="'job-cancel-work-' ~ row.id"/>
+            <rx-input :name="'hours_' ~ row.id" :label="tx['stop.hours']" :value="row.hours" :id="'job-cancel-hours-' ~ row.id"/>
+          </template>
+          <template rx-for="row in stop.parts">
+            <rx-input :name="'fitted_' ~ row.id" :label="row.label" :value="row.fitted" :id="'job-cancel-fitted-' ~ row.id"/>
+          </template>
+          <rx-select name="ack" :label="tx['stop.ack']" :options="stop.ack_options" :selected="'signed'" :id="'job-cancel-ack-' ~ id"/>
+          <rx-input name="ack_name" :label="tx['stop.ack_name']" :id="'job-cancel-ack-name-' ~ id"/>
+          <rx-input name="ack_signature" :label="tx['stop.ack_signature']" :hint="tx['stop.ack_signature_hint']" :id="'job-cancel-ack-signature-' ~ id"/>
+          <rx-input name="ack_witness" :label="tx['stop.ack_witness']" :id="'job-cancel-ack-witness-' ~ id"/>
+          <rx-input name="ack_document" :label="tx['stop.ack_document']" :id="'job-cancel-ack-document-' ~ id"/>
+          <rx-input name="bill" :label="tx['stop.bill']" :hint="tx['stop.bill_hint']" :id="'job-cancel-bill-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="stop.can_release">
+        <rx-action-sheet :id="'job-release-' ~ id" :label="tx['release.title']" :action="route('auto.job_card_release', id)"
+                         :title="tx['release.title']" :description="tx['release.description']" :submit-label="tx['release.title']" icon="truck">
+          <rx-input name="released_to" :label="tx['release.to']" :id="'job-release-to-' ~ id" required/>
+          <rx-select name="condition" :label="tx['release.condition']" :options="stop.release_options" :selected="'safe'" :id="'job-release-condition-' ~ id"/>
+          <rx-input name="signature" :label="tx['release.signature']" :hint="tx['release.signature_hint']" :id="'job-release-signature-' ~ id"/>
+          <template rx-if="stop.needs_instruction">
+            <rx-input name="instruction" :label="tx['release.instruction']" :hint="tx['release.instruction_hint']" :id="'job-release-instruction-' ~ id" required/>
+          </template>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="stop.can_on_account">
+        <rx-action-sheet :id="'job-on-account-' ~ id" :label="tx['release.on_account']" :action="route('auto.job_card_on_account', id)"
+                         :title="tx['release.on_account']" :description="tx['release.on_account_description']" :submit-label="tx['release.on_account']" icon="handshake">
+          <rx-checkbox name="on_account" :label="tx['release.on_account']" :checked="stop.on_account" :id="'job-on-account-box-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_void">
+        <rx-action-sheet :id="'job-void-' ~ id" :label="tx['jobs.void']" :action="route('auto.job_card_void', id)"
+                         :title="tx['jobs.void']" :description="tx['jobs.void_description']" :submit-label="tx['jobs.void']" icon="trash">
+          <rx-textarea name="reason" :label="tx['jobs.reason']" :id="'job-void-reason-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-alert rx-if="stop.collect_failed" kind="warning" :message="tx['decline.message_failed']"/>
+    <rx-alert rx-if="stop.ready_failed" kind="warning" :message="tx['notice.ready_failed']"/>
+    <rx-alert rx-if="cancel_waits" kind="warning" :message="tx['stop.pending_banner']"/>
+    <rx-alert rx-if="customer_on_hold" kind="warning" :message="tx['blocked.banner']"/>
+    <rx-include template="wl-kernel/approval_card.html"/>
+    <rx-alert rx-if="closed_reason" kind="info" :message="tx['jobs.closed_because'] ~ ' ' ~ closed_reason"/>
+    <rx-alert rx-if="qc_findings" kind="warning" :message="tx['jobs.qc_findings'] ~ ': ' ~ qc_findings"/>
+    <rx-alert rx-if="can_invoice" kind="warning" :message="tx['jobs.not_invoiced']"/>
+    <rx-card :title="tx['jobs.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['jobs.customer']" :value="customer"/>
+        <rx-entry :label="tx['jobs.technician']" :value="technician"/>
+        <rx-entry :label="tx['jobs.advisor']" :value="advisor"/>
+        <rx-entry :label="tx['jobs.complaint']" :value="complaint"/>
+        <rx-entry :label="tx['jobs.odometer_in']" :value="odometer_in"/>
+        <rx-entry :label="tx['jobs.fuel_level']" :value="fuel"/>
+        <rx-entry :label="tx['jobs.condition']" :value="condition"/>
+        <rx-entry :label="tx['jobs.acknowledged_by']" :value="acknowledged"/>
+        <rx-entry :label="tx['jobs.accident']" :value="accident"/>
+        <rx-entry :label="tx['jobs.inspection_fee']" :value="inspection_fee"/>
+        <rx-entry :label="tx['jobs.storage_fee']" :value="storage_fee"/>
+        <rx-entry :label="tx['jobs.findings']" :value="findings"/>
+        <rx-entry :label="tx['jobs.promised_for']" :value="promised"/>
+        <rx-entry :label="tx['jobs.warranty']" :value="warranty"/>
+        <rx-entry rx-if="delivered" :label="tx['jobs.delivered_to']" :value="delivered"/>
+        <rx-entry rx-if="invoice" :label="tx['jobs.invoice_ref']" :value="invoice"/>
+      </rx-infolist>
+      <rx-toolbar>
+        <rx-action-sheet rx-if="can_intake" :id="'job-intake-' ~ id" :label="tx['jobs.intake']" :action="route('auto.job_card_intake', id)"
+                         :title="tx['jobs.intake']" :description="tx['jobs.intake_description']" :submit-label="tx['jobs.intake']" icon="pencil">
+          <rx-textarea name="complaint" :label="tx['jobs.complaint']" :value="raw_complaint" :id="'job-intake-complaint-' ~ id" required/>
+          <rx-input name="odometer" type="number" :label="tx['jobs.odometer_in']" :value="raw_odometer" :id="'job-intake-odometer-' ~ id" required/>
+          <rx-select name="fuel" :label="tx['jobs.fuel_level']" :options="fuel_options" :selected="raw_fuel or 'half'" :id="'job-intake-fuel-' ~ id"/>
+          <rx-textarea name="condition" :label="tx['jobs.condition']" :hint="tx['jobs.condition_hint']" :value="raw_condition" :id="'job-intake-condition-' ~ id" required/>
+          <rx-input name="acknowledged_by" :label="tx['jobs.acknowledged_by']" :value="raw_acknowledged" :id="'job-intake-acknowledged-' ~ id"/>
+          <rx-checkbox name="accident" :label="tx['jobs.accident']" :checked="is_accident" :id="'job-intake-accident-' ~ id"/>
+          <rx-input name="police_report" :label="tx['jobs.police_report']" :value="raw_police_report" :id="'job-intake-police-' ~ id"/>
+          <rx-input name="inspection_fee" :label="tx['jobs.inspection_fee']" :hint="tx['jobs.money_hint']" :id="'job-intake-inspection-' ~ id"/>
+          <rx-input name="storage_fee" :label="tx['jobs.storage_fee']" :hint="tx['jobs.money_hint']" :id="'job-intake-storage-' ~ id"/>
+        </rx-action-sheet>
+        <rx-action-sheet rx-if="can_assign" :id="'job-assign-' ~ id" :label="tx['jobs.assign']" :action="route('auto.job_card_assign', id)"
+                         :title="tx['jobs.assign']" :description="tx['jobs.assign_description']" :submit-label="tx['jobs.assign']" icon="user">
+          <rx-select name="technician" :label="tx['jobs.technician']" :options="technician_options" :selected="raw_technician" :id="'job-assign-technician-' ~ id" required/>
+        </rx-action-sheet>
+        <rx-action-sheet rx-if="can_findings" :id="'job-findings-' ~ id" :label="tx['jobs.record_findings']" :action="route('auto.job_card_findings', id)"
+                         :title="tx['jobs.record_findings']" :description="tx['jobs.findings_description']" :submit-label="tx['jobs.record_findings']" icon="pencil">
+          <rx-textarea name="findings" :label="tx['jobs.findings']" :value="raw_findings" :id="'job-findings-text-' ~ id"/>
+        </rx-action-sheet>
+      </rx-toolbar>
+    </rx-card>
+    <rx-card :title="tx['jobs.labour']">
+      <rx-table :rows="labour" as="line" :key="line.id" :caption="tx['jobs.labour']">
+        <rx-column :label="tx['jobs.description']">{{ line.description }}</rx-column>
+        <rx-column :label="tx['jobs.pricing']" hide-narrow>{{ line.pricing }}</rx-column>
+        <rx-column :label="tx['jobs.hours']" align="num" hide-narrow>{{ line.hours }}</rx-column>
+        <rx-column :label="tx['jobs.rate']" align="num" hide-narrow>{{ line.rate }}</rx-column>
+        <rx-column :label="tx['jobs.price']" align="num">{{ line.price }}</rx-column>
+        <rx-column :label="tx['jobs.customer_answer']"><rx-badge :kind="line.approval_kind" :text="line.approval"/></rx-column>
+        <rx-column :label="tx['jobs.work_done']" hide-narrow>{{ line.work }}</rx-column>
+        <rx-row-actions>
+          <rx-action-sheet rx-if="line.can_work" :id="'labour-work-' ~ line.id" :label="tx['jobs.record_work']" :action="route('auto.job_card_work', id, line.id)"
+                           :title="tx['jobs.record_work']" :description="line.description" :submit-label="tx['jobs.record_work']" icon="check">
+            <rx-select name="work" :label="tx['jobs.work_done']" :options="work_options" :selected="'done'" :id="'labour-work-select-' ~ line.id"/>
+            <rx-input name="hours" :label="tx['jobs.hours_done']" :hint="tx['jobs.hours_done_hint']" :id="'labour-work-hours-' ~ line.id"/>
+          </rx-action-sheet>
+          <rx-confirm rx-if="line.can_remove" :id="'labour-remove-' ~ line.id" :label="tx['jobs.remove_line']" :action="route('auto.job_card_labour_remove', id, line.id)" method="POST"
+                      :title="tx['jobs.remove_line']" :message="line.description" :confirm-label="tx['jobs.remove_line']" :cancel-label="tx['button_cancel']" icon="trash"/>
+        </rx-row-actions>
+        <rx-slot name="empty"><rx-empty :title="tx['jobs.labour_empty']" icon="wrench"/></rx-slot>
+      </rx-table>
+      <rx-toolbar>
+        <rx-action-sheet rx-if="can_add" :id="'job-labour-add-' ~ id" :label="tx['jobs.add_labour']" :action="route('auto.job_card_labour', id)"
+                         :title="tx['jobs.add_labour']" :description="tx['jobs.add_labour_description']" :submit-label="tx['jobs.add_labour']" icon="plus">
+          <rx-select name="operation" :label="tx['jobs.operation']" :options="operation_options" :hint="tx['jobs.operation_hint']" :id="'job-labour-operation-' ~ id"/>
+          <rx-input name="description" :label="tx['jobs.description']" :id="'job-labour-description-' ~ id"/>
+          <rx-select name="pricing" :label="tx['jobs.pricing']" :options="pricing_options" :selected="'hourly'" :id="'job-labour-pricing-' ~ id"/>
+          <rx-input name="hours" :label="tx['jobs.hours']" :hint="tx['jobs.hours_hint']" :id="'job-labour-hours-' ~ id" required/>
+          <rx-input name="rate" :label="tx['jobs.rate']" :hint="tx['jobs.money_hint']" :id="'job-labour-rate-' ~ id"/>
+        </rx-action-sheet>
+      </rx-toolbar>
+    </rx-card>
+    <template rx-if="can_safety">
+      <rx-toolbar>
+        <rx-action-sheet :id="'job-safety-' ~ id" :label="tx['blocked.safety']" :action="route('auto.job_card_safety', id)"
+                         :title="tx['blocked.safety']" :description="tx['blocked.safety_description']" :submit-label="tx['blocked.safety']" icon="shield-check">
+          <rx-select name="line" :label="tx['blocked.safety_line']" :options="safety_options" :placeholder="tx['blocked.safety_line_placeholder']" :id="'job-safety-line-' ~ id" required/>
+          <rx-checkbox name="safety" :label="tx['blocked.safety_tick']" :checked="true" :id="'job-safety-tick-' ~ id"/>
+        </rx-action-sheet>
+      </rx-toolbar>
+    </template>
+    <rx-card :title="tx['jobs.parts']">
+      <rx-table :rows="parts" as="part" :key="part.id" :caption="tx['jobs.parts']">
+        <rx-column :label="tx['jobs.description']">{{ part.description }} <rx-badge rx-if="part.special" kind="info" :text="part.special"/></rx-column>
+        <rx-column :label="tx['jobs.part_condition']" hide-narrow>{{ part.condition }}</rx-column>
+        <rx-column :label="tx['jobs.quantity']" align="num" hide-narrow>{{ part.quantity }}</rx-column>
+        <rx-column :label="tx['jobs.unit_price']" align="num" hide-narrow>{{ part.unit_price }}</rx-column>
+        <rx-column :label="tx['jobs.price']" align="num">{{ part.price }}</rx-column>
+        <rx-column :label="tx['jobs.customer_answer']"><rx-badge :kind="part.approval_kind" :text="part.approval"/></rx-column>
+        <rx-column :label="tx['jobs.moved']" align="num" hide-narrow>{{ part.moved }}</rx-column>
+        <rx-row-actions>
+          <rx-action-sheet rx-if="part.can_issue" :id="'part-issue-' ~ part.id" :label="tx['jobs.issue_part']" :action="route('auto.job_card_part_issue', id, part.id)"
+                           :title="tx['jobs.issue_part']" :description="part.description" :submit-label="tx['jobs.issue_part']" icon="package">
+            <rx-input name="quantity" :label="tx['jobs.quantity']" :hint="tx['jobs.quantity_hint']" :id="'part-issue-quantity-' ~ part.id"/>
+          </rx-action-sheet>
+          <rx-action-sheet rx-if="part.can_fit" :id="'part-fit-' ~ part.id" :label="tx['jobs.fit_part']" :action="route('auto.job_card_part_fit', id, part.id)"
+                           :title="tx['jobs.fit_part']" :description="part.description" :submit-label="tx['jobs.fit_part']" icon="check">
+            <rx-input name="quantity" :label="tx['jobs.quantity']" :hint="tx['jobs.quantity_hint']" :id="'part-fit-quantity-' ~ part.id"/>
+          </rx-action-sheet>
+          <rx-confirm rx-if="part.can_return" :id="'part-return-' ~ part.id" :label="tx['jobs.return_part']" :action="route('auto.job_card_part_return', id, part.id)" method="POST"
+                      :title="tx['jobs.return_part']" :message="tx['jobs.return_message']" :confirm-label="tx['jobs.return_part']" :cancel-label="tx['button_cancel']" icon="package"/>
+          <rx-confirm rx-if="part.can_remove" :id="'part-remove-' ~ part.id" :label="tx['jobs.remove_line']" :action="route('auto.job_card_part_remove', id, part.id)" method="POST"
+                      :title="tx['jobs.remove_line']" :message="part.description" :confirm-label="tx['jobs.remove_line']" :cancel-label="tx['button_cancel']" icon="trash"/>
+        </rx-row-actions>
+        <rx-slot name="empty"><rx-empty :title="tx['jobs.parts_empty']" icon="package"/></rx-slot>
+      </rx-table>
+      <rx-toolbar>
+        <rx-action-sheet rx-if="can_add" :id="'job-part-add-' ~ id" :label="tx['jobs.add_part']" :action="route('auto.job_card_part', id)"
+                         :title="tx['jobs.add_part']" :description="tx['jobs.add_part_description']" :submit-label="tx['jobs.add_part']" icon="plus">
+          <rx-input name="description" :label="tx['jobs.description']" :id="'job-part-description-' ~ id" required/>
+          <rx-input name="item_code" :label="tx['jobs.item_code']" :hint="tx['jobs.item_code_hint']" :id="'job-part-item-' ~ id"/>
+          <rx-input name="quantity" :label="tx['jobs.quantity']" value="1" :id="'job-part-quantity-' ~ id" required/>
+          <rx-input name="unit_price" :label="tx['jobs.unit_price']" :hint="tx['jobs.money_hint']" :id="'job-part-price-' ~ id" required/>
+          <rx-select name="condition" :label="tx['jobs.part_condition']" :options="condition_options" :selected="'new'" :id="'job-part-condition-' ~ id"/>
+          <rx-select name="source" :label="tx['parts.source']" :options="source_options" :selected="'stock'" :id="'job-part-source-' ~ id"/>
+          <rx-checkbox name="special_order" :label="tx['jobs.special_order']" :hint="tx['jobs.special_order_hint']" :id="'job-part-special-' ~ id"/>
+        </rx-action-sheet>
+      </rx-toolbar>
+    </rx-card>
+    <rx-card rx-if="wait" :title="tx['parts.wait_title']">
+      <rx-table :rows="wait" as="row" :key="row[0]" :caption="tx['parts.wait_title']">
+        <rx-column :label="tx['jobs.what']">{{ row[0] }}</rx-column>
+        <rx-column :label="tx['stop.entry.value']">{{ row[1] }}</rx-column>
+      </rx-table>
+    </rx-card>
+    <rx-card rx-if="substitute.shown" :title="tx['substitute.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['substitute.status']" :value="substitute.status"/>
+        <rx-entry :label="tx['substitute.plate']" :value="substitute.plate"/>
+        <rx-entry :label="tx['substitute.period']" :value="substitute.period"/>
+      </rx-infolist>
+      <rx-toolbar>
+        <rx-action-sheet rx-if="substitute.can_record" :id="'substitute-record-' ~ id" :label="tx['substitute.record']" :action="route('auto.job_card_substitute', id)"
+                         :title="tx['substitute.record']" :description="tx['substitute.record_description']" :submit-label="tx['substitute.record']" icon="truck">
+          <rx-input name="plate" :label="tx['substitute.plate']" :id="'substitute-plate-' ~ id" required/>
+          <rx-input name="from" type="date" :label="tx['substitute.from']" :value="substitute.today" :id="'substitute-from-' ~ id"/>
+          <rx-input name="to" type="date" :label="tx['substitute.to']" :id="'substitute-to-' ~ id"/>
+        </rx-action-sheet>
+        <rx-action-sheet rx-if="substitute.can_record" :id="'substitute-refuse-' ~ id" :label="tx['substitute.refuse']" :action="route('auto.job_card_substitute_refuse', id)"
+                         :title="tx['substitute.refuse']" :description="tx['substitute.refuse_description']" :submit-label="tx['substitute.refuse']" icon="x">
+          <rx-textarea name="reason" :label="tx['substitute.reason']" :id="'substitute-reason-' ~ id" required/>
+        </rx-action-sheet>
+        <rx-action-sheet rx-if="substitute.can_return" :id="'substitute-return-' ~ id" :label="tx['substitute.return']" :action="route('auto.job_card_substitute_return', id)"
+                         :title="tx['substitute.return']" :description="tx['substitute.return_description']" :submit-label="tx['substitute.return']" icon="check">
+          <rx-input name="to" type="date" :label="tx['substitute.to']" :value="substitute.today" :id="'substitute-return-to-' ~ id"/>
+        </rx-action-sheet>
+      </rx-toolbar>
+    </rx-card>
+    <rx-card rx-if="accident_flag.flagged" :title="tx['police.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['police.report']" :value="accident_flag.report"/>
+        <rx-entry rx-if="accident_flag.waiting" :label="tx['police.clear_waiting']" :value="accident_flag.waiting_text"/>
+      </rx-infolist>
+      <p><a href="{{ accident_flag.documents_link }}">{{ tx['police.documents'] }}</a></p>
+      <rx-toolbar>
+        <rx-action-sheet rx-if="accident_flag.can_ask" :id="'accident-clear-' ~ id" :label="tx['police.clear']" :action="route('auto.job_card_accident_clear', id)"
+                         :title="tx['police.clear']" :description="tx['police.clear_description']" :submit-label="tx['police.clear']" icon="x">
+          <rx-textarea name="reason" :label="tx['police.clear_reason']" :id="'accident-clear-reason-' ~ id" required/>
+        </rx-action-sheet>
+        <rx-action-sheet rx-if="accident_flag.can_decide" :id="'accident-decide-' ~ id" :label="tx['police.decide']" :action="route('auto.job_card_accident_decide', id)"
+                         :title="tx['police.decide']" :description="tx['police.decide_description']" :submit-label="tx['police.decide']" icon="check">
+          <rx-select name="decision" :label="tx['police.decision']" :options="[['approve', tx['police.decision.approve']], ['refuse', tx['police.decision.refuse']]]" :selected="'approve'" :id="'accident-decision-' ~ id"/>
+        </rx-action-sheet>
+      </rx-toolbar>
+    </rx-card>
+    <rx-alert rx-if="care.is_internal" kind="info" :message="tx['incidents.is_internal']"/>
+    <rx-card rx-if="care.drives or care.can_work" :title="tx['drives.title']">
+      <rx-table :rows="care.drives" as="drive" :key="drive.id" :caption="tx['drives.title']">
+        <rx-column :label="tx['drives.driver']">{{ drive.driver }}</rx-column>
+        <rx-column :label="tx['drives.out']" hide-narrow>{{ drive.out }}</rx-column>
+        <rx-column :label="tx['drives.back']" hide-narrow>{{ drive.back }}</rx-column>
+        <rx-column :label="tx['drives.km_out']" align="num">{{ drive.km_out }}</rx-column>
+        <rx-column :label="tx['drives.km_in']" align="num">{{ drive.km_in }}</rx-column>
+        <rx-column :label="tx['drives.distance']" align="num" hide-narrow>{{ drive.distance }}</rx-column>
+        <rx-row-actions>
+          <rx-action-sheet rx-if="drive.open and care.can_back" :id="'drive-finish-' ~ drive.id" :label="tx['drives.finish']" :action="route('auto.test_drive_finish', drive.id)"
+                           :title="tx['drives.finish']" :description="tx['drives.finish_description']" :submit-label="tx['drives.finish']" icon="check">
+            <rx-input name="odometer" :label="tx['drives.km_in']" :id="'drive-finish-km-' ~ drive.id" required/>
+          </rx-action-sheet>
+        </rx-row-actions>
+        <rx-slot name="empty"><rx-empty :title="tx['drives.empty']" icon="truck"/></rx-slot>
+      </rx-table>
+      <rx-toolbar>
+        <rx-action-sheet rx-if="care.can_work" :id="'drive-record-' ~ id" :label="tx['drives.record']" :action="route('auto.job_card_test_drive', id)"
+                         :title="tx['drives.record']" :description="tx['drives.record_description']" :submit-label="tx['drives.record']" icon="truck">
+          <rx-input name="odometer" :label="tx['drives.km_out']" :id="'drive-record-km-' ~ id" required/>
+        </rx-action-sheet>
+      </rx-toolbar>
+    </rx-card>
+    <rx-card rx-if="care.incidents or care.can_work" :title="tx['incidents.title']">
+      <rx-table :rows="care.incidents" as="incident" :key="incident.id" :caption="tx['incidents.title']">
+        <rx-column :label="tx['incidents.number']">{{ incident.number }}</rx-column>
+        <rx-column :label="tx['incidents.description']">{{ incident.description }}</rx-column>
+        <rx-column :label="tx['incidents.road_accident']" hide-narrow>{{ incident.road_accident }}</rx-column>
+        <rx-column :label="tx['incidents.ticket']" hide-narrow>{{ incident.ticket }}</rx-column>
+        <rx-column :label="tx['incidents.liability']">{{ incident.liability }}</rx-column>
+        <rx-column :label="tx['incidents.reason']" hide-narrow>{{ incident.reason }}</rx-column>
+        <rx-column :label="tx['incidents.internal']" hide-narrow>
+          <template rx-if="incident.internal_id"><a href="{{ route('auto.job_card', incident.internal_id) }}">{{ incident.internal }}</a></template>
+          <template rx-else>{{ incident.internal }}</template>
+        </rx-column>
+        <rx-row-actions>
+          <rx-action-sheet rx-if="incident.can_decide" :id="'incident-decide-' ~ incident.id" :label="tx['incidents.decide']" :action="route('auto.incident_decide', incident.id)"
+                           :title="tx['incidents.decide']" :description="tx['incidents.decide_description']" :submit-label="tx['incidents.decide']" icon="check">
+            <rx-select name="liability" :label="tx['incidents.liability']" :options="care.liability_options" :selected="'not_workshop'" :id="'incident-liability-' ~ incident.id"/>
+            <rx-textarea name="reason" :label="tx['incidents.reason']" :id="'incident-reason-' ~ incident.id" required/>
+          </rx-action-sheet>
+        </rx-row-actions>
+        <rx-slot name="empty"><rx-empty :title="tx['incidents.empty']" icon="triangle-alert"/></rx-slot>
+      </rx-table>
+      <rx-toolbar>
+        <rx-action-sheet rx-if="care.can_work" :id="'incident-report-' ~ id" :label="tx['incidents.report']" :action="route('auto.job_card_incident', id)"
+                         :title="tx['incidents.report']" :description="tx['incidents.report_description']" :submit-label="tx['incidents.report']" icon="triangle-alert">
+          <rx-textarea name="description" :label="tx['incidents.description']" :id="'incident-description-' ~ id" required/>
+          <rx-checkbox name="road_accident" :label="tx['incidents.road_accident']" :hint="tx['incidents.road_hint']" :id="'incident-road-' ~ id"/>
+        </rx-action-sheet>
+      </rx-toolbar>
+    </rx-card>
+    <rx-card rx-if="stop.summary" :title="tx['stop.summary']">
+      <rx-table :rows="stop.summary" as="row" :key="row[0]" :caption="tx['stop.summary']">
+        <rx-column :label="tx['jobs.what']">{{ row[0] }}</rx-column>
+        <rx-column :label="tx['stop.entry.value']">{{ row[1] }}</rx-column>
+      </rx-table>
+    </rx-card>
+    <rx-card rx-if="stop.orders" :title="tx['stop.order']">
+      <rx-table :rows="stop.orders" as="row" :key="row.id" :caption="tx['stop.order']">
+        <rx-column :label="tx['jobs.description']">{{ row.description }}</rx-column>
+        <rx-column :label="tx['stop.order_number']">{{ row.order }}</rx-column>
+        <rx-row-actions>
+          <rx-action-sheet :id="'part-order-' ~ row.id" :label="tx['stop.order']" :action="route('auto.job_card_part_order', id, row.id)"
+                           :title="tx['stop.order']" :description="tx['stop.order_description']" :submit-label="tx['stop.order']" icon="package">
+            <rx-input name="order" :label="tx['stop.order_number']" :value="row.raw" :id="'part-order-number-' ~ row.id"/>
+          </rx-action-sheet>
+        </rx-row-actions>
+      </rx-table>
+    </rx-card>
+    <rx-card :title="tx['jobs.totals']">
+      <rx-infolist columns="3">
+        <rx-entry :label="tx['jobs.net']" :value="net"/>
+        <rx-entry :label="tx['jobs.vat']" :value="vat"/>
+        <rx-entry :label="tx['jobs.gross']" :value="gross"/>
+      </rx-infolist>
+      <template rx-if="link">
+        <p><a href="{{ link }}">{{ tx['jobs.customer_link'] }}: {{ link }}</a></p>
+      </template>
+      <p><a href="{{ route('auto.job_card_estimate', id) }}">{{ tx['jobs.estimate_sheet'] }}</a></p>
+    </rx-card>
+    <rx-card rx-if="rounds" :title="tx['jobs.rounds']">
+      <rx-table :rows="rounds" as="round" :key="round.revision" :caption="tx['jobs.rounds']">
+        <rx-column :label="tx['jobs.revision']" align="num">{{ round.revision }}</rx-column>
+        <rx-column :label="tx['jobs.sent']" hide-narrow>{{ round.sent }}</rx-column>
+        <rx-column :label="tx['jobs.net']" align="num">{{ round.total }}</rx-column>
+        <rx-column :label="tx['fields.status']"><rx-badge :kind="round.status_kind" :text="round.status"/></rx-column>
+        <rx-column :label="tx['jobs.answered']" hide-narrow>{{ round.answered }}</rx-column>
+      </rx-table>
+    </rx-card>
+    <rx-card rx-if="show_qc" :title="tx['jobs.qc']">
+      <rx-table :rows="qc" as="check" :key="check.key" :caption="tx['jobs.qc']">
+        <rx-column :label="tx['jobs.qc_check']">{{ check.label }}</rx-column>
+        <rx-column :label="tx['fields.status']">{{ check.done }}</rx-column>
+      </rx-table>
+      <rx-toolbar>
+        <rx-action-sheet rx-if="can_qc" :id="'job-qc-' ~ id" :label="tx['jobs.qc_update']" :action="route('auto.job_card_qc', id)"
+                         :title="tx['jobs.qc_update']" :description="tx['jobs.qc_description']" :submit-label="tx['jobs.qc_update']" icon="clipboard-list">
+          <rx-checkbox-list name="done" :label="tx['jobs.qc_check']" :options="qc_options" :selected="qc_done" :id="'job-qc-checks-' ~ id"/>
+        </rx-action-sheet>
+      </rx-toolbar>
+    </rx-card>
+    <rx-card :title="tx['jobs.history']">
+      <rx-table :rows="steps" as="step" :caption="tx['jobs.history']">
+        <rx-column :label="tx['jobs.when']">{{ step.at }}</rx-column>
+        <rx-column :label="tx['jobs.what']">{{ step.action }}</rx-column>
+        <rx-column :label="tx['jobs.by']" hide-narrow>{{ step.by }}</rx-column>
+        <rx-column :label="tx['jobs.reason']" hide-narrow>{{ step.reason }}</rx-column>
+      </rx-table>
+    </rx-card>
+  </rx-stack>
+</rx-page>

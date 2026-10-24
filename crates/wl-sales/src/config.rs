@@ -197,6 +197,9 @@ pub struct SalesConfig {
     /// The days after the programme is turned off that points can still be
     /// redeemed.
     pub programme_closing_days: i64,
+    /// The order channels whose lines without stock are back-ordered
+    /// (§7 *Back-orders allowed per channel*). Empty: none.
+    pub back_order_channels: Vec<String>,
     /// Whether an external order number may be used once per channel (§7
     /// *Unique external order number per channel*, BL-SAL-01: on).
     pub unique_external_order_number: bool,
@@ -280,6 +283,7 @@ impl Default for SalesConfig {
             segment_clinical_rules: false,
             programme_notice_days: DEFAULT_PROGRAMME_NOTICE_DAYS,
             programme_closing_days: DEFAULT_PROGRAMME_CLOSING_DAYS,
+            back_order_channels: Vec::new(),
             unique_external_order_number: true,
             online_payment_window_minutes: DEFAULT_ONLINE_PAYMENT_WINDOW_MINUTES,
             order_manager_role: String::new(),
@@ -362,6 +366,13 @@ impl SalesConfig {
                 .clinical_items
                 .iter()
                 .any(|c| c.eq_ignore_ascii_case(code.trim()))
+    }
+
+    /// Whether a line without stock is back-ordered on `channel`.
+    pub fn back_orders_allowed(&self, channel: &str) -> bool {
+        self.back_order_channels
+            .iter()
+            .any(|c| c.eq_ignore_ascii_case(channel.trim()))
     }
 
     /// Whether `reason` is one of the lost reasons.

@@ -37,14 +37,17 @@ pub mod recall_close;
 pub mod recall_line;
 pub mod recall_notice;
 mod recall_pages;
+pub mod recall_return;
 mod recall_screens;
 pub mod recall_trace;
 pub mod receipt_post;
 pub mod receipt_reverse;
 mod receipt_screens;
 pub mod reorder;
+pub mod reservation;
 pub mod return_credit;
 pub mod return_dispatch;
+pub mod return_draft;
 pub mod return_note;
 pub mod sales_cancel;
 pub mod scope_stock;
@@ -544,6 +547,7 @@ impl Module for WlInventory {
         app.model::<RecallLine>();
         app.model::<PendingIssue>();
         app.model::<ShortageAlert>();
+        app.model::<reservation::StockReservation>();
         app.model::<price_variance::PriceVariance>();
         app.model::<GoodsReceipt>();
         app.model::<GoodsReceiptLine>();
@@ -659,6 +663,12 @@ impl Module for WlInventory {
         // makes its output lot (06 F&B).
         wl_kernel::inventory::provide_batch_stock(app, batch_stock::InventoryBatches);
         hold_service::register_types();
+        // `SupplierReturnDrafts`: a vertical drafts the Return to supplier of
+        // a failed part it claims from the supplier (08 `AUT.WAR.02`).
+        wl_kernel::inventory::provide_supplier_return_drafts(
+            app,
+            return_draft::InventoryReturnDrafts,
+        );
         // `STK.RUL.06`: the storekeeper is told when stock runs short, and
         // after H hours gets a task and the manager is told.
         shortage_alert::register_types();
@@ -667,6 +677,8 @@ impl Module for WlInventory {
         // short part becomes a pending issue. Clearing one above the value
         // (`STK.ACL.02`) needs a second holder of `stock.approve`.
         wl_kernel::inventory::provide_stock_service(app, stock_service::InventoryStock);
+        // Sales order lines set stock aside (BL-SAL-17).
+        wl_kernel::backorders::provide_stock_reservations(app, reservation::InventoryReservations);
         wl_kernel::SubjectMachine::of::<PendingIssue>(
             wl_kernel::inventory::PENDING_ISSUE_SUBJECT_TYPE,
         )

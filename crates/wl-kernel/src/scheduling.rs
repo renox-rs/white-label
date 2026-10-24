@@ -21,6 +21,9 @@
 //! [`BookingConflict`] is emitted when a new block or a lapsing licence puts
 //! bookings in conflict; [`AvailabilitySource`] supplies other modules' blocks.
 //!
+//! [`BookingGate`] lets a vertical refuse a **new** booking for a subject whose
+//! agreement is on hold (08: a suspended fleet contract).
+//!
 //! [`ResourceEligibility`] answers "may this resource deliver this service at
 //! this time?" (`SCH.ACL.04`). The default says yes; a vertical provides its
 //! own with [`provide_resource_eligibility`] (05 adds the practitioner's
@@ -381,6 +384,170 @@ pub fn work_done_status(state: &AppState) -> Arc<dyn WorkDoneStatus> {
     }
 }
 
+/// What a vertical may do to a booking from its own record (wl-scheduling §8
+/// `Bookings`): link the record it opened at check-in, so that a cancellation
+/// after the check-in asks [`WorkDoneStatus`] about it, and complete the
+/// booking when that record is done (08: the job card is delivered). The
+/// defaults do nothing.
+pub trait BookingActions: Send + Sync + 'static {
+    /// Links `record` (a job card, a visit) as the record that holds the work
+    /// done for `booking`.
+    fn link_work_done<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _booking: BookingId,
+        _record: Subject,
+    ) -> SchedulingFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
+    /// Completes `booking` as the system (`complete`, §4.1): the service took
+    /// place. Refused with a 422 when the booking cannot be completed yet (the
+    /// start has not passed, or it is not checked in).
+    fn complete<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _booking: BookingId,
+    ) -> SchedulingFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
+    /// Books `request` as the system: the first free slot of the service from
+    /// the day asked for (08 `AUT.RUL.04`, a fleet service that falls due).
+    /// Refused with a 422 when the service is unknown or no slot is free in
+    /// the days looked at; the default books nothing and refuses.
+    fn book_service<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: ServiceBooking,
+    ) -> SchedulingFuture<'a, BookingId> {
+        Box::pin(async {
+            Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "bookings are not available, scheduling is not enabled".to_owned(),
+            ))
+        })
+    }
+
+    /// Cancels `booking` as the system with the reason code `reason_code`
+    /// (08: a fleet contract that ended). Answers whether it was cancelled;
+    /// `false` for a booking that cannot be cancelled any more (it started,
+    /// was cancelled or is complete). The default does nothing.
+    fn cancel_booking<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _booking: BookingId,
+        _reason_code: &'a str,
+    ) -> SchedulingFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// When `booking` starts: the day of a fleet service a booking was made
+    /// for, so that a contract that ends can tell the bookings after its last
+    /// day (08 `BL-AUT-12`). `None` for a booking that does not exist; the
+    /// default knows none.
+    fn starts_at<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _booking: BookingId,
+    ) -> SchedulingFuture<'a, Option<DateTime>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Cancels `booking` for the staff user `user_id` with the reason code
+    /// `reason_code`, also after the check-in (`SCH.ACL.06`: a booking in
+    /// `checked_in` or `in_progress` is cancelled by staff only, once the
+    /// record opened at check-in has its work done captured or marked none).
+    /// 08 cancels the booking of a job card that was cancelled, declined or
+    /// voided. Answers whether it was cancelled; `false` for a booking that
+    /// cannot be cancelled any more (it was cancelled, is complete, or its
+    /// record has not said what was done yet). The default does nothing.
+    fn cancel_booking_by_staff<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _booking: BookingId,
+        _reason_code: &'a str,
+        _user_id: i64,
+    ) -> SchedulingFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+}
+
+/// A booking a vertical makes for a party from a schedule, for the first free
+/// slot on or after `from` (08 `AUT.RUL.04`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceBooking {
+    /// Who the booking is for.
+    pub party: PartyId,
+    /// The vehicle, patient or student, if any.
+    pub subject: Option<Subject>,
+    /// The code of the service type.
+    pub service_code: String,
+    /// The earliest start asked for.
+    pub from: DateTime,
+    /// The workshop, branch or campus, if any.
+    pub location: Option<Subject>,
+    /// A note for the desk.
+    pub notes: Option<String>,
+}
+
+impl ServiceBooking {
+    /// A booking of `service_code` for `party` from `from`.
+    pub fn new(party: PartyId, service_code: &str, from: DateTime) -> Self {
+        ServiceBooking {
+            party,
+            subject: None,
+            service_code: service_code.to_owned(),
+            from,
+            location: None,
+            notes: None,
+        }
+    }
+
+    /// For this vehicle, patient or student.
+    #[must_use]
+    pub fn for_subject(mut self, subject: Subject) -> Self {
+        self.subject = Some(subject);
+        self
+    }
+
+    /// At this workshop, branch or campus.
+    #[must_use]
+    pub fn at(mut self, location: Subject) -> Self {
+        self.location = Some(location);
+        self
+    }
+
+    /// With this note.
+    #[must_use]
+    pub fn note(mut self, note: &str) -> Self {
+        self.notes = Some(note.to_owned());
+        self
+    }
+}
+
+/// The actions when no scheduling module is provided: nothing is linked,
+/// nothing is completed or cancelled, and nothing can be booked.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoBookingActions;
+
+impl BookingActions for NoBookingActions {}
+
+/// Makes `actions` the app's [`BookingActions`]; `wl-scheduling` calls it in
+/// `register`.
+pub fn provide_booking_actions(app: &mut Registry, actions: impl BookingActions) {
+    let actions: Arc<dyn BookingActions> = Arc::new(actions);
+    app.provide(actions);
+}
+
+/// The app's [`BookingActions`], or [`NoBookingActions`].
+pub fn booking_actions(state: &AppState) -> Arc<dyn BookingActions> {
+    match state.provided::<Arc<dyn BookingActions>>() {
+        Some(found) => Arc::clone(&found),
+        None => Arc::new(NoBookingActions),
+    }
+}
+
 /// The names of the services a module books, by code, in a language: what a
 /// vertical shows where it has only a booking's service code
 /// (`dental_checkup` is *Dental check-up*). The default knows none, so a code
@@ -613,6 +780,58 @@ pub fn complete_guard(state: &AppState) -> Arc<dyn CompleteGuard> {
     match state.provided::<Arc<dyn CompleteGuard>>() {
         Some(found) => Arc::clone(&found),
         None => Arc::new(NoCompleteGuard),
+    }
+}
+
+/// What a [`BookingGate`] is asked: a new booking for `party`, about
+/// `subject`, of the service `service_code`, starting at `at`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BookingGateQuery {
+    /// Who the booking is for.
+    pub party: PartyId,
+    /// The vehicle, patient or student the booking is about, if any.
+    pub subject: Option<Subject>,
+    /// The code of the service type.
+    pub service_code: String,
+    /// The start asked for.
+    pub at: DateTime,
+}
+
+/// May a new booking be made for this subject (wl-scheduling §4.1 `book`,
+/// `request`)? The vertical answers from the agreement it holds: 08 refuses a
+/// new booking for a vehicle under a fleet contract that is suspended
+/// (`BL-AUT-13`). The answer is a [`CheckInAnswer`]: allowed, or refused with
+/// a text safe to show to whoever books. Only a **new** booking is asked; the
+/// bookings already made, and what follows them, are not. The default allows
+/// every booking.
+pub trait BookingGate: Send + Sync + 'static {
+    /// Whether the booking of `query` may be made.
+    fn check<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _query: BookingGateQuery,
+    ) -> SchedulingFuture<'a, CheckInAnswer> {
+        Box::pin(async { Ok(CheckInAnswer::Allowed) })
+    }
+}
+
+/// The gate when no vertical provides one: every booking is allowed.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoBookingGate;
+
+impl BookingGate for NoBookingGate {}
+
+/// Makes `gate` the app's [`BookingGate`]; a vertical calls it in `register`.
+pub fn provide_booking_gate(app: &mut Registry, gate: impl BookingGate) {
+    let gate: Arc<dyn BookingGate> = Arc::new(gate);
+    app.provide(gate);
+}
+
+/// The app's [`BookingGate`], or [`NoBookingGate`].
+pub fn booking_gate(state: &AppState) -> Arc<dyn BookingGate> {
+    match state.provided::<Arc<dyn BookingGate>>() {
+        Some(found) => Arc::clone(&found),
+        None => Arc::new(NoBookingGate),
     }
 }
 

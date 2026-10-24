@@ -13,7 +13,8 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::inventory::{
-    LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE, RECALL_LINE_SUBJECT_TYPE, TraceMark, TracedHolder,
+    ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE, RECALL_LINE_SUBJECT_TYPE,
+    TraceMark, TracedHolder,
 };
 use wl_kernel::{PartyId, Subject};
 
@@ -81,6 +82,8 @@ pub struct RecallLine {
     pub party_id: Option<i64>,
     /// The lot.
     pub lot_id: Option<i64>,
+    /// The item, for a line of an item not tracked by lot (it names no lot).
+    pub item_id: Option<i64>,
     /// The location the lot left (the outlet of a walk-in count).
     pub location_id: Option<i64>,
     /// The quantity, in thousandths of the base unit.
@@ -125,6 +128,17 @@ impl RecallLine {
         }
     }
 
+    /// How sure the line is: every line of an item not tracked by lot is
+    /// *possible* (no lot proves which unit was used), the others by the kind
+    /// of evidence.
+    pub fn mark(&self) -> TraceMark {
+        if self.lot_id.is_none() && self.item_id.is_some() {
+            TraceMark::Possible
+        } else {
+            self.kind.mark()
+        }
+    }
+
     /// The kernel's view of the line.
     pub fn holder(&self) -> TracedHolder {
         TracedHolder {
@@ -132,13 +146,17 @@ impl RecallLine {
             subject: self.used_by(),
             party: self.party_id.map(PartyId),
             lot: self.lot_id.map(|id| Subject::new(LOT_SUBJECT_TYPE, id)),
+            item: match (self.lot_id, self.item_id) {
+                (None, Some(id)) => Some(Subject::new(ITEM_SUBJECT_TYPE, id)),
+                _ => None,
+            },
             location: self
                 .location_id
                 .map(|id| Subject::new(LOCATION_SUBJECT_TYPE, id)),
             quantity_milli: self.quantity_milli,
             on: self.occurred_on,
             kind: self.kind.as_str().to_owned(),
-            mark: self.kind.mark(),
+            mark: self.mark(),
             sales: self.sales_count,
             delivery_status: self.delivery_status.clone(),
             notice: self.notice_status.as_str().to_owned(),

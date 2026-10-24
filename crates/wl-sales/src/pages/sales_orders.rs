@@ -228,6 +228,8 @@ pub struct LineRow {
     pub quantity: String,
     /// The quantity handed over, in units.
     pub fulfilled: String,
+    /// The quantity waiting for stock, in units (back-orders).
+    pub backordered: String,
     /// The quantity cancelled, in units.
     pub cancelled: String,
     /// The quantity still open, in units.
@@ -374,6 +376,7 @@ async fn show(
             description: line.description.clone(),
             quantity: quantity_text(line.quantity_milli),
             fulfilled: quantity_text(line.fulfilled_milli),
+            backordered: quantity_text(line.backordered_milli),
             cancelled: quantity_text(line.cancelled_milli),
             open: quantity_text(line.open_milli()),
             held: quantity_text(line.held_milli),
