@@ -458,7 +458,11 @@ async fn insert_requested_in(
         .insert_in_state(&mut *tx, RefundStatus::Requested, &reason)
         .await?;
     // Findable from the commit on (BL-AGT-04).
-    wl_kernel::search::index_in(&mut *tx, &refund.subject()).await?;
+    wl_kernel::search::index_in(
+        &mut *tx,
+        &Subject::new(wl_kernel::payments::REFUND_SUBJECT_TYPE, refund.id),
+    )
+    .await?;
     Ok(refund)
 }
 

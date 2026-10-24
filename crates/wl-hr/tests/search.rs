@@ -7,6 +7,7 @@
 mod support;
 
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use wl_hr::employees;
 use wl_hr::{NewEmployee, PayrollLine, PayrollRunStatus, VisaCase, VisaCaseStatus, VisaCaseStep};
 use wl_kernel::related::{self, RelatedGroup};

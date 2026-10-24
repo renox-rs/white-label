@@ -6,7 +6,6 @@
 
 mod support;
 
-use renox::prelude::*;
 use wl_attendance::timesheet::{self, Consumer};
 use wl_attendance::{AttendanceStatus, Timesheet, TimesheetStatus};
 use wl_kernel::Subject;

@@ -122,6 +122,7 @@ async fn next_appointment_in(tx: &mut Transaction, id: i64) -> Result<Option<Dat
     .bind(renox::db::now())
     .scalar::<Option<DateTime>>(&mut *tx)
     .await
+    .map_err(Into::into)
 }
 
 /// The name and file number of patient `id`, read in `tx`.

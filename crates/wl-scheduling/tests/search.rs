@@ -6,7 +6,6 @@
 
 mod support;
 
-use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::parties::PARTY_SUBJECT_TYPE;
 use wl_kernel::related::{self, RelatedGroup};
