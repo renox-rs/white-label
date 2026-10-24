@@ -355,6 +355,7 @@ pub async fn draft_for(
                 ..Remittance::default()
             };
             fresh.insert(&mut tx).await?;
+            wl_kernel::search::index_in(&mut tx, &fresh.subject()).await?;
             (fresh, true)
         }
     };

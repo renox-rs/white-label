@@ -168,5 +168,6 @@
       <rx-column :label="tx['note']" hide-narrow>{{ charge.note }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['no_charges']" icon="receipt"/></rx-slot>
     </rx-table>
+    <div id="shipment-related" hx-get="/related/logistics.shipment:{{ shipment.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

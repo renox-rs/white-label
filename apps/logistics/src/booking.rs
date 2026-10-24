@@ -242,6 +242,7 @@ pub async fn create(
         parcels.push(parcel);
     }
     track(&mut tx, shipment.id, "booked", "", booked_by).await?;
+    wl_kernel::search::index_in(&mut tx, &shipment.subject()).await?;
     tx.commit().await?;
     request_delivery(state, &mut shipment, &parcels).await?;
     Ok(shipment)

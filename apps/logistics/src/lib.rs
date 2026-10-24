@@ -47,6 +47,7 @@ pub mod review;
 pub mod reweigh;
 pub mod scan;
 mod screen_texts;
+pub mod search;
 pub mod seed;
 pub mod shipment;
 pub mod shipment_machine;
@@ -119,6 +120,9 @@ impl Module for Logistics {
     }
 
     fn register(&self, app: &mut Registry) {
+        // The records in the global search and the Related panel (BL-AGT-12).
+        search::register();
+        search::listen(app);
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::ShowPage>()
             .view_data::<remittance_pages::IndexPage>()

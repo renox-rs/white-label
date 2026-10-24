@@ -93,5 +93,6 @@
       </rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['remit_no_adjustments']" icon="receipt"/></rx-slot>
     </rx-table>
+    <div id="remittance-related" hx-get="/related/logistics.remittance:{{ remittance.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

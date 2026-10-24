@@ -29,6 +29,12 @@ pub(crate) async fn link(state: &AppState, id: i64, ticket: i64, number: Option<
             ],
         )
         .await?;
+    // The claim's number finds the shipment (BL-AGT-12).
+    crate::search::index(
+        &state.db,
+        &wl_kernel::Subject::new(crate::shipment::SUBJECT_TYPE, id),
+    )
+    .await?;
     Ok(())
 }
 

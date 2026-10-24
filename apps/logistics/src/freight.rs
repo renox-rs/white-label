@@ -354,6 +354,7 @@ pub async fn create(
     };
     job.insert(&state.db).await?;
     track(&state.db, job.id, "booked", &job.description, opened_by).await?;
+    crate::search::index(&state.db, &job.subject()).await?;
     Ok(job)
 }
 
@@ -415,6 +416,8 @@ pub async fn insert_container(
         ..FreightContainer::default()
     };
     container.insert(&state.db).await?;
+    // The container number finds the job (BL-AGT-12).
+    crate::search::index(&state.db, &Subject::new(SUBJECT_TYPE, container.job_id)).await?;
     Ok(container)
 }
 

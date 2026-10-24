@@ -92,5 +92,6 @@
       <rx-column :label="tx['when']" hide-narrow>{{ margin.at }}</rx-column>
     </rx-table>
     {% endif %}
+    <div rx-if="staff" id="job-related" hx-get="/related/logistics.freight_job:{{ job.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

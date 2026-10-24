@@ -176,6 +176,7 @@ pub(crate) async fn create_return(
     };
     ret.insert_in_state(&mut *tx, ShipmentStatus::Returning, CREATE_RETURN)
         .await?;
+    wl_kernel::search::index_in(&mut *tx, &ret.subject()).await?;
     let mut codes = Vec::new();
     for (parcel, reason) in &moved {
         let reason = Some(reason.clone());
