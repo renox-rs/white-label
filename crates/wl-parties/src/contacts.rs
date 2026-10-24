@@ -169,6 +169,8 @@ pub async fn update_contact(
         .filter(|label| !label.is_empty())
         .map(str::to_owned);
     point.save(&state.db).await?;
+    // The party is found by its contact points (BL-AGT-04).
+    crate::search::index(&state.db, point.party_id).await?;
     Ok(point)
 }
 
@@ -187,6 +189,8 @@ pub async fn verify_contact(state: &AppState, user: &AuthUser, id: i64) -> Resul
     point.verified_at = Some(renox::db::now());
     point.reset_status();
     point.save(&state.db).await?;
+    // The party is found by its contact points (BL-AGT-04).
+    crate::search::index(&state.db, point.party_id).await?;
     Ok(point)
 }
 

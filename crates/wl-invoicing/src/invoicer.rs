@@ -472,6 +472,8 @@ pub async fn create_draft(db: &Db, draft: InvoiceDraft) -> Result<Invoice> {
         line.invoice_id = invoice.id;
         line.insert(&mut tx).await?;
     }
+    // Findable as a draft from the commit on (BL-AGT-04).
+    wl_kernel::search::index_in(&mut tx, &invoice.subject()).await?;
     tx.commit().await?;
     Ok(invoice)
 }
@@ -506,6 +508,10 @@ pub async fn discard_draft_in(tx: &mut renox::db::Transaction, id: InvoiceId) ->
             .bind(id.0)
             .execute(&mut *tx)
             .await?;
+    // A discarded draft leaves the search index with it (BL-AGT-04).
+    if gone > 0 {
+        wl_kernel::search::remove_in(&mut *tx, &id.subject()).await?;
+    }
     Ok(gone > 0)
 }
 

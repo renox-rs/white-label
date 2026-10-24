@@ -61,5 +61,8 @@
       <rx-column :label="tx['history.reason']" hide-narrow>{{ item.body or "" }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['no_history']" icon="history"/></rx-slot>
     </rx-table>
+    {#- The Related panel (wl-kernel, BL-AGT-04): invoices, payments, leases, tickets and documents,
+        loaded in place. -#}
+    <div id="party-related" hx-get="/related/parties.party:{{ party.id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

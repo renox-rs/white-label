@@ -104,6 +104,8 @@ pub async fn create(state: &AppState, new: NewParty) -> Result<Party> {
         contact.value = contact.value.trim().to_owned();
         contact.insert(&mut tx).await?;
     }
+    // Findable from the commit on (BL-AGT-04).
+    wl_kernel::search::index_in(&mut tx, &party.party_id().subject()).await?;
     tx.commit().await?;
 
     state

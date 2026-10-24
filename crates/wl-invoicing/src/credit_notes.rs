@@ -259,6 +259,8 @@ pub(crate) async fn insert_in(
         line.credit_note_id = note.id;
         line.insert(&mut *tx).await?;
     }
+    // Findable as a draft from the commit on (BL-AGT-04).
+    wl_kernel::search::index_in(&mut *tx, &note.subject()).await?;
     Ok((note, lines.len()))
 }
 

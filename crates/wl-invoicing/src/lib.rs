@@ -113,6 +113,7 @@ pub mod recover;
 pub mod recovery;
 pub mod refund;
 pub mod relations;
+pub mod search;
 pub mod reminders;
 pub mod reopen_notices;
 mod report_table;
@@ -993,8 +994,11 @@ impl Module for WlInvoicing {
     }
 
     fn register(&self, app: &mut Registry) {
-        // What the invoice's Related panel lists (BL-AGT-03).
+        // What the invoice's Related panel lists (BL-AGT-03), and the
+        // relations of credit notes and parties (BL-AGT-04).
         relations::register();
+        // Invoices and credit notes in the global search (BL-AGT-04).
+        search::register(app);
         // An invoice is looked after by the people of its scope unit (the
         // building it was billed for): the approvers of its write-off, credit
         // or dispute are looked for there, not only among the holders of a

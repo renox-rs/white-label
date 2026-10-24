@@ -34,6 +34,7 @@ pub mod sanctions_lists;
 pub mod screening;
 pub mod screening_guard;
 pub mod screening_task;
+pub mod search;
 pub mod seed;
 pub mod settings;
 mod texts;
@@ -426,6 +427,8 @@ impl Module for WlParties {
     }
 
     fn register(&self, app: &mut Registry) {
+        // Parties in the global search (BL-AGT-04).
+        search::register(app);
         // A page that holds only a party's id (a ticket, a document) shows its
         // name.
         wl_kernel::documents::register_subject_label(
