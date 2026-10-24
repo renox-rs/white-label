@@ -31,6 +31,7 @@ use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::documents::{subject_label, today};
 
 use crate::balance;
+use crate::grid_sql::{numbers_sql, words_sql};
 
 use crate::item::Item;
 use crate::location::{Location, LocationType};
@@ -258,18 +259,31 @@ pub(crate) fn ids_or_none(mut ids: Vec<i64>) -> Vec<i64> {
     ids
 }
 
+/// The figures of the listed rows of the stock page as the SQL of their
+/// columns (see [`crate::grid_sql`]): worked out per row by the stock
+/// service, then sorted, filtered and exported by the grid like stored
+/// columns.
+pub(crate) struct StockSql {
+    on_hand: String,
+    held: String,
+    reserved: String,
+    available: String,
+    /// `low` for an item at or below its reorder point (items only).
+    level: String,
+}
+
 /// The items grid of the stock page: search on the code and the name,
-/// quantities in the item's unit. The figures of the store are worked out per
-/// item and added to the rows, so they are not sorted or filtered by the grid.
-pub(crate) fn items_grid(lang: &Lang) -> Grid {
-    let quantity = |key: &str, label: &str| {
+/// quantities in the item's unit (`Column::quantity`, 3 decimals), the level
+/// (`low`) a filter. No sums: the items of a store are counted in different
+/// units. No row link: an item has no page of its own here (its lots have).
+pub(crate) fn items_grid(lang: &Lang, figures: &StockSql, can_export: bool) -> Grid {
+    let quantity = |key: &str, label: &str, sql: &str| {
         Column::quantity(key, label)
             .scale(3)
             .unit_from("base_unit")
-            .sortable(false)
-            .filterable(false)
+            .computed(sql)
     };
-    Grid::new("inventory-stock")
+    let grid = Grid::new("inventory-stock")
         .title(&tr(lang, "stock.items"))
         .per_page(25)
         .remember()
@@ -291,36 +305,66 @@ pub(crate) fn items_grid(lang: &Lang) -> Grid {
                 .hidden()
                 .searchable(),
         )
-        .column(quantity("on_hand_milli", &tr(lang, "stock.on_hand")).mobile())
-        .column(quantity("held_milli", &tr(lang, "stock.held")).hidden())
-        .column(quantity("reserved_milli", &tr(lang, "stock.reserved")).hidden())
-        .column(quantity("available_milli", &tr(lang, "stock.available")).mobile())
+        .column(
+            quantity(
+                "on_hand_milli",
+                &tr(lang, "stock.on_hand"),
+                &figures.on_hand,
+            )
+            .mobile(),
+        )
+        .column(quantity("held_milli", &tr(lang, "stock.held"), &figures.held).hidden())
+        .column(
+            quantity(
+                "reserved_milli",
+                &tr(lang, "stock.reserved"),
+                &figures.reserved,
+            )
+            .hidden(),
+        )
+        .column(
+            quantity(
+                "available_milli",
+                &tr(lang, "stock.available"),
+                &figures.available,
+            )
+            .mobile(),
+        )
         .column(
             Column::quantity("reorder_point_milli", &tr(lang, "stock.reorder"))
                 .scale(3)
                 .unit_from("base_unit")
                 .hidden(),
         )
-        .column(Column::custom("level", &tr(lang, "stock.level")).mobile())
+        .column(
+            Column::select(
+                "level",
+                &tr(lang, "stock.level"),
+                vec![("low".to_owned(), tr(lang, "stock.low"))],
+            )
+            .computed(&figures.level)
+            .badges(&[("low", "warning")])
+            .mobile(),
+        )
         .sort_by("name_en")
         .cards_on_mobile()
         .empty_state(
             &tr(lang, "stock.empty"),
             Some(&tr(lang, "stock.empty_hint")),
-        )
+        );
+    if can_export { grid.exports() } else { grid }
 }
 
 /// The lots grid of the stock page: the lots of lot-tracked items with stock
-/// in the store, by expiry and status.
-pub(crate) fn lots_grid(lang: &Lang) -> Grid {
-    let quantity = |key: &str, label: &str| {
+/// in the store, by expiry and status; the quantities in the item's unit.
+pub(crate) fn lots_grid(lang: &Lang, figures: &StockSql, can_export: bool) -> Grid {
+    let quantity = |key: &str, label: &str, sql: &str| {
         Column::quantity(key, label)
             .scale(3)
             .unit_from("unit")
-            .sortable(false)
-            .filterable(false)
+            .computed(sql)
     };
-    Grid::new("inventory-stock-lots")
+    let grid = Grid::new("inventory-stock-lots")
         .title(&tr(lang, "stock.lots"))
         .per_page(25)
         .remember()
@@ -344,15 +388,32 @@ pub(crate) fn lots_grid(lang: &Lang) -> Grid {
             .searchable(),
         )
         .column(
+            Column::related(
+                "unit",
+                &tr(lang, "stock.unit"),
+                "wl_inventory_items",
+                "item_id",
+                "base_unit",
+            )
+            .hidden(),
+        )
+        .column(
             Column::text("supplier_lot", &tr(lang, "stock.supplier_lot"))
                 .hidden()
                 .searchable(),
         )
         .column(Column::date("expiry_date", &tr(lang, "stock.expiry_date")).hidden())
         .column(Column::custom("expiry", &tr(lang, "stock.expiry")).mobile())
-        .column(quantity("here_milli", &tr(lang, "stock.here")).mobile())
-        .column(quantity("held_milli", &tr(lang, "stock.held")).hidden())
-        .column(quantity("reserved_milli", &tr(lang, "stock.reserved")).hidden())
+        .column(quantity("here_milli", &tr(lang, "stock.here"), &figures.on_hand).mobile())
+        .column(quantity("held_milli", &tr(lang, "stock.held"), &figures.held).hidden())
+        .column(
+            quantity(
+                "reserved_milli",
+                &tr(lang, "stock.reserved"),
+                &figures.reserved,
+            )
+            .hidden(),
+        )
         .column(
             Column::select(
                 "status",
@@ -381,11 +442,13 @@ pub(crate) fn lots_grid(lang: &Lang) -> Grid {
             .mobile(),
         )
         .sort_by("expiry_date")
+        .row_url("/stock/lots/{id}")
         .cards_on_mobile()
         .empty_state(
             &tr(lang, "stock.no_lots"),
             Some(&tr(lang, "stock.no_lots_hint")),
-        )
+        );
+    if can_export { grid.exports() } else { grid }
 }
 
 /// `GET /stock`: the items of one store (`?view=lots` for its lots,
@@ -409,6 +472,8 @@ async fn stock(
         .cloned();
     let lots_view = query.view == "lots";
     let low_only = query.level == "low" && !lots_view;
+    // The storekeeper who counts and adjusts the stock exports it.
+    let can_export = user.has_permission_anywhere(permissions::STOCK_ADJUST);
     let here = match &chosen {
         Some(location) => format!("/stock?location={}", location.id),
         None => "/stock".to_owned(),
@@ -461,18 +526,32 @@ async fn stock(
                 }
             }
         }
-        let grid = lots_grid(&lang);
+        let mut here = BTreeMap::new();
+        let mut held = BTreeMap::new();
+        let mut set_aside = BTreeMap::new();
+        for (id, (found, _, reserved)) in &figures {
+            here.insert(*id, found.on_hand_milli);
+            held.insert(*id, found.held_milli);
+            set_aside.insert(*id, *reserved);
+        }
+        let sql = StockSql {
+            on_hand: numbers_sql("id", &here),
+            held: numbers_sql("id", &held),
+            reserved: numbers_sql("id", &set_aside),
+            available: "0".to_owned(),
+            level: "''".to_owned(),
+        };
+        let grid = lots_grid(&lang, &sql, can_export);
         let query = Lot::query().where_(Lot::ID.is_in(ids_or_none(ids)));
+        if let Some(file) = exported(&grid, &query, &request, can_export).await? {
+            return Ok(file);
+        }
         let page = grid.page(query, &request).await?.extend(|lot| {
-            let Some((found, item, reserved)) = figures.get(&lot.id) else {
+            let Some((_, item, _)) = figures.get(&lot.id) else {
                 return json!({});
             };
             let (expiry, expiry_kind) = expiry_of(lot, &lang);
             json!({
-                "here_milli": found.on_hand_milli,
-                "held_milli": found.held_milli,
-                "reserved_milli": reserved,
-                "unit": item.base_unit,
                 "item": item_name(item, &lang),
                 "expiry": expiry,
                 "expiry_kind": expiry_kind,
@@ -499,19 +578,38 @@ async fn stock(
             figures.insert(item.id, (found, low, reserved));
         }
     }
-    let grid = items_grid(&lang);
+    let mut on_hand = BTreeMap::new();
+    let mut held = BTreeMap::new();
+    let mut set_aside = BTreeMap::new();
+    let mut available = BTreeMap::new();
+    let mut level = BTreeMap::new();
+    for (id, (found, low, reserved)) in &figures {
+        on_hand.insert(*id, found.on_hand_milli);
+        held.insert(*id, found.held_milli);
+        set_aside.insert(*id, *reserved);
+        available.insert(*id, found.available_milli());
+        if *low {
+            level.insert(*id, "low".to_owned());
+        }
+    }
+    let sql = StockSql {
+        on_hand: numbers_sql("id", &on_hand),
+        held: numbers_sql("id", &held),
+        reserved: numbers_sql("id", &set_aside),
+        available: numbers_sql("id", &available),
+        level: words_sql("id", &level),
+    };
+    let grid = items_grid(&lang, &sql, can_export);
     let query = Item::query().where_(Item::ID.is_in(ids_or_none(ids)));
+    if let Some(file) = exported(&grid, &query, &request, can_export).await? {
+        return Ok(file);
+    }
     let page = grid.page(query, &request).await?.extend(|item| {
-        let Some((found, low, reserved)) = figures.get(&item.id) else {
+        if !figures.contains_key(&item.id) {
             return json!({});
-        };
+        }
         json!({
             "name_en": item_name(item, &lang),
-            "on_hand_milli": found.on_hand_milli,
-            "held_milli": found.held_milli,
-            "reserved_milli": reserved,
-            "available_milli": found.available_milli(),
-            "low": low,
         })
     });
     Ok(View::typed(page_of(StockRows::Items(page))).into_response())

@@ -16,6 +16,8 @@
 //! above the over-receipt tolerance waits for a second person and shows its
 //! approval card.
 
+use std::collections::BTreeMap;
+
 use renox::chrono::NaiveDate;
 use renox::grid::{Column, Grid, GridRequest};
 use renox::prelude::*;
@@ -28,6 +30,7 @@ use crate::goods_receipt::{
     DraftLine, DraftReceipt, GoodsReceipt, GoodsReceiptLine, GoodsReceiptStatus, create_draft,
     lines_of as receipt_lines,
 };
+use crate::grid_sql::{id_key_sql, options_of, words_sql};
 use crate::item::Item;
 use crate::location::Location;
 use crate::permissions;
@@ -72,6 +75,40 @@ async fn supplier_name(state: &AppState, lang: &Lang, id: i64) -> String {
         .unwrap_or_default()
 }
 
+/// The suppliers of the listed records (`ids`, the supplier parties) with
+/// their names, for the supplier filter and the search on the name.
+async fn suppliers_of(
+    state: &AppState,
+    lang: &Lang,
+    ids: impl IntoIterator<Item = i64>,
+) -> BTreeMap<i64, String> {
+    let mut names = BTreeMap::new();
+    for id in ids {
+        if let std::collections::btree_map::Entry::Vacant(slot) = names.entry(id) {
+            let name = supplier_name(state, lang, id).await;
+            slot.insert(if name.is_empty() { format!("#{id}") } else { name });
+        }
+    }
+    names
+}
+
+/// The supplier columns of the orders and receipts grids: the supplier as a
+/// filter (a select on the party, its name shown and exported) and its name,
+/// hidden, for the search.
+fn supplier_columns(grid: Grid, lang: &Lang, suppliers: &BTreeMap<i64, String>) -> Grid {
+    grid.column(
+        Column::select("supplier", &tr(lang, "orders.supplier"), options_of(suppliers))
+            .computed(&id_key_sql("supplier_party_id"))
+            .mobile(),
+    )
+    .column(
+        Column::text("supplier_name", &tr(lang, "orders.supplier"))
+            .computed(&words_sql("supplier_party_id", suppliers))
+            .hidden()
+            .searchable(),
+    )
+}
+
 /// The sheet that starts the receipt of one order.
 #[derive(Serialize, Debug, Clone)]
 pub struct ReceiveSheet {
@@ -88,10 +125,16 @@ pub(crate) struct OrdersPage {
     sheets: Vec<ReceiveSheet>,
 }
 
-/// The orders grid: search on the number and store. What is still
-/// to come on an order is a list of items with their units, drawn by the
-/// template (`custom`), as is the button that starts or opens a receipt.
-pub(crate) fn orders_grid(lang: &Lang, can_export: bool) -> Grid {
+/// The orders grid: search on the number, supplier and store, filter by
+/// supplier (`suppliers`, those of the listed orders). What is still to come
+/// on an order is a list of items with their units, drawn by the template
+/// (`custom`), as is the button that starts or opens a receipt. No row link:
+/// a purchase order has no page in this module (the receipt has).
+pub(crate) fn orders_grid(
+    lang: &Lang,
+    suppliers: &BTreeMap<i64, String>,
+    can_export: bool,
+) -> Grid {
     let grid = Grid::new("inventory-orders")
         .title(&tr(lang, "orders.title"))
         .per_page(25)
@@ -103,8 +146,8 @@ pub(crate) fn orders_grid(lang: &Lang, can_export: bool) -> Grid {
                 .mobile()
                 .searchable()
                 .copyable(),
-        )
-        .column(Column::custom("supplier", &tr(lang, "orders.supplier")).mobile())
+        );
+    let grid = supplier_columns(grid, lang, suppliers)
         .column(
             Column::related(
                 "location",
@@ -148,11 +191,16 @@ async fn orders(
         return Err(Error::Forbidden);
     }
     let can_export = user.has_permission_anywhere(permissions::GOODS_RECEIPTS_POST);
-    let grid = orders_grid(&lang, can_export);
     let query = PurchaseOrder::query().where_(PurchaseOrder::STATUS.is_in([
         PurchaseOrderStatus::Issued,
         PurchaseOrderStatus::PartiallyReceived,
     ]));
+    let supplier_ids = query
+        .clone()
+        .pluck::<i64, _>(&state.db, "supplier_party_id")
+        .await?;
+    let suppliers = suppliers_of(&state, &lang, supplier_ids).await;
+    let grid = orders_grid(&lang, &suppliers, can_export);
     if let Some(file) = exported(&grid, &query, &request, can_export).await? {
         return Ok(file);
     }
@@ -160,7 +208,6 @@ async fn orders(
     let mut extra = std::collections::HashMap::new();
     let mut sheets = Vec::new();
     for order in page.items() {
-        let supplier = supplier_name(&state, &lang, order.supplier_party_id).await;
         let location = Location::find_or_404(&state.db, order.location_id).await?;
         let mut outstanding = Vec::new();
         for line in lines_of(&state.db, order.id).await? {
@@ -190,7 +237,6 @@ async fn orders(
         extra.insert(
             order.id,
             json!({
-                "supplier": supplier,
                 "outstanding": outstanding.join(", "),
                 "draft": draft,
                 "can_receive": can_receive,
@@ -280,9 +326,14 @@ pub(crate) struct ReceiptsPage {
     rows: renox::grid::GridPage<GoodsReceipt>,
 }
 
-/// The receipts grid: search on the number, order, store and
-/// delivery note, filters by status.
-pub(crate) fn receipts_grid(lang: &Lang, can_export: bool) -> Grid {
+/// The receipts grid: search on the number, order, supplier, store and
+/// delivery note, filters by supplier (`suppliers`, those of the listed
+/// receipts), store and status.
+pub(crate) fn receipts_grid(
+    lang: &Lang,
+    suppliers: &BTreeMap<i64, String>,
+    can_export: bool,
+) -> Grid {
     let grid = Grid::new("inventory-receipts")
         .title(&tr(lang, "receipts.title"))
         .per_page(25)
@@ -304,8 +355,8 @@ pub(crate) fn receipts_grid(lang: &Lang, can_export: bool) -> Grid {
                 "number",
             )
             .searchable(),
-        )
-        .column(Column::custom("supplier", &tr(lang, "orders.supplier")).mobile())
+        );
+    let grid = supplier_columns(grid, lang, suppliers)
         .column(
             Column::related(
                 "location",
@@ -369,32 +420,27 @@ async fn receipts(
         return Err(Error::Forbidden);
     }
     let mut ids = Vec::new();
+    let mut supplier_ids = Vec::new();
     for receipt in GoodsReceipt::query().get(&state.db).await? {
         let seen = user.has_permission_in(permissions::GOODS_RECEIPTS_POST, &receipt.scope())
             || user.has_permission_in(permissions::STOCK_VIEW, &receipt.scope());
         if seen {
             ids.push(receipt.id);
+            supplier_ids.push(receipt.supplier_party_id);
         }
     }
+    let suppliers = suppliers_of(&state, &lang, supplier_ids).await;
     let can_export = user.has_permission_anywhere(permissions::GOODS_RECEIPTS_POST);
-    let grid = receipts_grid(&lang, can_export);
+    let grid = receipts_grid(&lang, &suppliers, can_export);
     let query = GoodsReceipt::query().where_(GoodsReceipt::ID.is_in(ids_or_none(ids)));
     if let Some(file) = exported(&grid, &query, &request, can_export).await? {
         return Ok(file);
     }
     let page = grid.page(query, &request).await?;
-    let mut suppliers = std::collections::HashMap::new();
-    for receipt in page.items() {
-        suppliers.insert(
-            receipt.id,
-            supplier_name(&state, &lang, receipt.supplier_party_id).await,
-        );
-    }
     // A draft has no number yet: the grid names it "Draft receipt".
     let page = page.extend(|receipt| {
         json!({
             "number": receipt_title(&lang, receipt),
-            "supplier": suppliers.get(&receipt.id),
         })
     });
     Ok(View::typed(ReceiptsPage {

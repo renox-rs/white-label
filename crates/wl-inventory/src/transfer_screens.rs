@@ -67,7 +67,12 @@ pub(crate) struct TransfersPage {
     sheets: Vec<TransferSheet>,
 }
 
-/// The transfers grid: search on the number and the stores, filters by status.
+/// The transfers grid: search on the number, the stores and the items, filters
+/// by the stores (from, to) and status. The items in words are drawn by the
+/// template (`custom`); the hidden `items` and `lots` columns carry the item
+/// name and the lot number of the lines (the first by name: the screen's
+/// form makes transfers of one line) for the search and the filter. No row link: a transfer has no page of its own; send and receive
+/// are in the row.
 pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
     let place = |key: &str, label: &str, foreign_key: &str| {
         Column::related(key, label, "wl_inventory_locations", foreign_key, "name_en").searchable()
@@ -87,6 +92,26 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
         .column(place("from", &tr(lang, "transfers.from"), "from_location_id").mobile())
         .column(place("to", &tr(lang, "transfers.to"), "to_location_id").mobile())
         .column(Column::custom("lines", &tr(lang, "transfers.lines")))
+        .column(
+            Column::text("items", &tr(lang, "stock.item"))
+                .computed(
+                    "(SELECT MIN(\"wl_inventory_items\".\"name_en\") FROM \"wl_inventory_items\" \
+                     WHERE \"wl_inventory_items\".\"id\" IN (SELECT \"item_id\" \
+                     FROM \"wl_inventory_transfer_lines\" WHERE \"transfer_id\" = {T}.\"id\"))",
+                )
+                .hidden()
+                .searchable(),
+        )
+        .column(
+            Column::text("lots", &tr(lang, "stock.lot"))
+                .computed(
+                    "(SELECT MIN(\"wl_inventory_lots\".\"number\") FROM \"wl_inventory_lots\" \
+                     WHERE \"wl_inventory_lots\".\"id\" IN (SELECT \"lot_id\" \
+                     FROM \"wl_inventory_transfer_lines\" WHERE \"transfer_id\" = {T}.\"id\"))",
+                )
+                .hidden()
+                .searchable(),
+        )
         .column(
             Column::select(
                 "status",

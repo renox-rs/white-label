@@ -247,7 +247,11 @@ async fn list(
         .into_iter()
         .filter(|dispatch| may_see(&user, dispatch))
         .collect();
-    if !wl_kernel::negotiate::wants_html(&headers) {
+    // A grid refresh (htmx, `Accept: */*`) and an export want the grid too.
+    let wants_grid = wl_kernel::negotiate::wants_html(&headers)
+        || headers.contains_key("hx-request")
+        || request.param("export").is_some();
+    if !wants_grid {
         let mut rows = Vec::new();
         for dispatch in &visible {
             let location = Location::find_or_404(&state.db, dispatch.location_id).await?;

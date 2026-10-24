@@ -903,8 +903,9 @@ async fn list_requests(
     if !may_read(&state, &user).await? {
         return Err(Error::Forbidden);
     }
-    // A browser gets the grid; everything else gets the JSON.
-    if wl_kernel::negotiate::wants_html(&headers) {
+    // A browser gets the grid (a grid refresh with htmx too); everything else
+    // gets the JSON.
+    if wl_kernel::negotiate::wants_html(&headers) || headers.contains_key("hx-request") {
         return crate::screens::requests(&state, &lang, request).await;
     }
     let costs = holds(&state, &user, permissions::STOCK_COST_VIEW).await?;

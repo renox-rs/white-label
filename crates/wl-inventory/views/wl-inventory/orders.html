@@ -7,8 +7,7 @@
     <rx-link-button route="wl_inventory.receipts" :label="tx['receipts.title']" variant="plain"/>
   </rx-page-header>
   <rx-grid :page="rows">
-    <template rx-if="column.key == 'supplier'">{{ row.supplier }}</template>
-    <template rx-elif="column.key == 'outstanding'">{{ row.outstanding }}</template>
+    <template rx-if="column.key == 'outstanding'">{{ row.outstanding }}</template>
     <template rx-elif="column.key == 'actions'">
       <rx-link-button rx-if="row.draft" :href="row.draft" :label="tx['orders.open_draft']" icon="package"/>
       <rx-open-button rx-elif="row.can_receive" id="receive-{{ row.id }}" label="{{ tx['orders.receive'] }}" size="small"/>

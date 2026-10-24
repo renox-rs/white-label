@@ -27,6 +27,7 @@ pub mod dispatch_send;
 mod dispatch_texts;
 mod events;
 pub mod goods_receipt;
+mod grid_sql;
 pub mod hold_decide;
 pub mod hold_line;
 pub mod hold_reminder;

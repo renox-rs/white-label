@@ -482,8 +482,12 @@ async fn list_pending_issues(
     if !user.has_permission_anywhere(permissions::STOCK_ADJUST) {
         return Err(Error::Forbidden);
     }
-    // A browser gets the page; everything else gets the JSON.
-    if wl_kernel::negotiate::wants_html(&headers) {
+    // A browser gets the page (a grid refresh with htmx and an export too);
+    // everything else gets the JSON.
+    if wl_kernel::negotiate::wants_html(&headers)
+        || headers.contains_key("hx-request")
+        || request.param("export").is_some()
+    {
         return crate::stock_screens::pending_page(&state, &user, &lang, request).await;
     }
     let mut rows = Vec::new();

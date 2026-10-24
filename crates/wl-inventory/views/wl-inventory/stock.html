@@ -18,10 +18,7 @@
     <rx-link-button rx-if="not lots_view and not low_only" :href="low_url" :label="tx['stock.low_only']" variant="plain"/>
   </rx-page-header>
   <rx-grid :page="rows">
-    <template rx-if="column.key == 'level'">
-      <rx-badge rx-if="row.low" kind="warning" :text="tx['stock.low']"/>
-    </template>
-    <template rx-elif="column.key == 'expiry'">
+    <template rx-if="column.key == 'expiry'">
       <rx-badge :kind="row.expiry_kind" :text="row.expiry"/>
     </template>
   </rx-grid>
