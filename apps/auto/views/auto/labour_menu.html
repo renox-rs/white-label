@@ -4,30 +4,30 @@
     Replace it with
     resources/views/auto/labour_menu.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['labour.title']">
-    <rx-page-header :title="tx['labour.title']" :subtitle="tx['labour.subtitle']">
-      <template rx-if="can_manage">
-        <rx-action-sheet id="labour-new" :label="tx['labour.new']" :action="route('auto.labour_menu_create')"
-                         :title="tx['labour.new']" :description="tx['labour.new_description']" :submit-label="tx['labour.new']" icon="plus">
-          <rx-input name="code" :label="tx['labour.code']" id="labour-new-code" required/>
-          <rx-input name="name_en" :label="tx['labour.name']" id="labour-new-name" required/>
-          <rx-input name="name_ar" :label="tx['labour.name_ar']" dir="rtl" id="labour-new-name-ar"/>
-          <rx-select name="pricing" :label="tx['labour.pricing']" :options="pricing_options" :selected="'flat_rate'" id="labour-new-pricing"/>
-          <rx-input name="hours" :label="tx['labour.hours']" :hint="tx['labour.hours_hint']" id="labour-new-hours"/>
-          <rx-input name="rate" :label="tx['labour.rate']" :hint="tx['jobs.money_hint']" id="labour-new-rate" required/>
-        </rx-action-sheet>
-      </template>
-    </rx-page-header>
-    <rx-grid :page="operations">
-      <template rx-if="column.key == 'actions' and can_manage"><rx-open-button :id="'labour-switch-' ~ row.id" :label="tx['labour.take_off'] if row.standing == 'on' else tx['labour.put_back']" size="small"/></template>
-    </rx-grid>
+  <rx-page-header :title="tx['labour.title']" :subtitle="tx['labour.subtitle']">
     <template rx-if="can_manage">
-      <template rx-for="sheet in sheets">
-        <rx-confirm rx-if="sheet[2]" :button="false" :id="'labour-switch-' ~ sheet[0]" :label="tx['labour.take_off']" :action="route('auto.labour_menu_active', sheet[0])" method="POST"
-                    :title="tx['labour.take_off']" :message="sheet[1]" :confirm-label="tx['labour.take_off']" :cancel-label="tx['button_cancel']" icon="trash"/>
-        <rx-action-sheet rx-else :button="false" :id="'labour-switch-' ~ sheet[0]" :label="tx['labour.put_back']" :action="route('auto.labour_menu_active', sheet[0])"
-                         :title="tx['labour.put_back']" :description="sheet[1]" :submit-label="tx['labour.put_back']" icon="check">
-          <input type="hidden" name="on" value="1">
-        </rx-action-sheet>
-      </template>
+      <rx-action-sheet id="labour-new" :label="tx['labour.new']" :action="route('auto.labour_menu_create')"
+                       :title="tx['labour.new']" :description="tx['labour.new_description']" :submit-label="tx['labour.new']" icon="plus">
+        <rx-input name="code" :label="tx['labour.code']" id="labour-new-code" required/>
+        <rx-input name="name_en" :label="tx['labour.name']" id="labour-new-name" required/>
+        <rx-input name="name_ar" :label="tx['labour.name_ar']" dir="rtl" id="labour-new-name-ar"/>
+        <rx-select name="pricing" :label="tx['labour.pricing']" :options="pricing_options" :selected="'flat_rate'" id="labour-new-pricing"/>
+        <rx-input name="hours" :label="tx['labour.hours']" :hint="tx['labour.hours_hint']" id="labour-new-hours"/>
+        <rx-input name="rate" :label="tx['labour.rate']" :hint="tx['jobs.money_hint']" id="labour-new-rate" required/>
+      </rx-action-sheet>
     </template>
+  </rx-page-header>
+  <rx-grid :page="operations">
+    <template rx-if="column.key == 'actions' and can_manage"><rx-open-button :id="'labour-switch-' ~ row.id" :label="tx['labour.take_off'] if row.standing == 'on' else tx['labour.put_back']" size="small"/></template>
+  </rx-grid>
+  <template rx-if="can_manage">
+    <template rx-for="sheet in sheets">
+      <rx-confirm rx-if="sheet[2]" :button="false" :id="'labour-switch-' ~ sheet[0]" :label="tx['labour.take_off']" :action="route('auto.labour_menu_active', sheet[0])" method="POST"
+                  :title="tx['labour.take_off']" :message="sheet[1]" :confirm-label="tx['labour.take_off']" :cancel-label="tx['button_cancel']" icon="trash"/>
+      <rx-action-sheet rx-else :button="false" :id="'labour-switch-' ~ sheet[0]" :label="tx['labour.put_back']" :action="route('auto.labour_menu_active', sheet[0])"
+                       :title="tx['labour.put_back']" :description="sheet[1]" :submit-label="tx['labour.put_back']" icon="check">
+        <input type="hidden" name="on" value="1">
+      </rx-action-sheet>
+    </template>
+  </template>
 </rx-page>

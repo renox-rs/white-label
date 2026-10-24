@@ -5,23 +5,23 @@
     card from the pickers). Replace it with resources/views/auto/claims.html in
     the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['claims.title']">
-    <rx-page-header :title="tx['claims.title']" :subtitle="tx['claims.subtitle']">
-      <template rx-if="can_register">
-        <rx-action-sheet id="claim-new" :label="tx['claims.new']" :action="route('auto.claim_create')"
-                         :title="tx['claims.new']" :description="tx['claims.new_description']" :submit-label="tx['claims.new']" icon="plus">
-          <rx-select name="insurer" :label="tx['claims.insurer']" :options="insurer_options" :placeholder="tx['claims.insurer_placeholder']" id="claim-new-insurer" required/>
-          <rx-select name="vehicle" :label="tx['claims.vehicle']" :options="[]" :placeholder="tx['claims.vehicle_placeholder']" options-url="{{ route('auto.claim_vehicle_options') }}" id="claim-new-vehicle" required/>
-          <rx-select name="job_card" :label="tx['claims.job_card']" :hint="tx['claims.job_card_hint']" :options="[]" :placeholder="tx['claims.job_card_placeholder']" options-url="{{ route('auto.claim_job_options') }}" id="claim-new-job"/>
-          <rx-input name="policy_no" :label="tx['claims.policy_no']" id="claim-new-policy" required/>
-          <rx-input name="claim_no" :label="tx['claims.claim_no']" :hint="tx['claims.claim_no_hint']" id="claim-new-claim-no" required/>
-          <rx-input name="accident_date" type="date" :label="tx['claims.accident']" id="claim-new-accident" required/>
-          <rx-input name="police_report_no" :label="tx['claims.police_report']" :hint="tx['claims.police_hint']" id="claim-new-police"/>
-          <rx-input name="police_report_date" type="date" :label="tx['claims.police_date']" id="claim-new-police-date"/>
-          <rx-select name="repair_type" :label="tx['claims.repair']" :options="repair_options" :selected="'non_agency'" id="claim-new-repair"/>
-          <rx-input name="excess" :label="tx['claims.excess']" :hint="tx['claims.money_hint']" id="claim-new-excess"/>
-        </rx-action-sheet>
-      </template>
-    </rx-page-header>
+  <rx-page-header :title="tx['claims.title']" :subtitle="tx['claims.subtitle']">
+    <template rx-if="can_register">
+      <rx-action-sheet id="claim-new" :label="tx['claims.new']" :action="route('auto.claim_create')"
+                       :title="tx['claims.new']" :description="tx['claims.new_description']" :submit-label="tx['claims.new']" icon="plus">
+        <rx-select name="insurer" :label="tx['claims.insurer']" :options="insurer_options" :placeholder="tx['claims.insurer_placeholder']" id="claim-new-insurer" required/>
+        <rx-select name="vehicle" :label="tx['claims.vehicle']" :options="[]" :placeholder="tx['claims.vehicle_placeholder']" options-url="{{ route('auto.claim_vehicle_options') }}" id="claim-new-vehicle" required/>
+        <rx-select name="job_card" :label="tx['claims.job_card']" :hint="tx['claims.job_card_hint']" :options="[]" :placeholder="tx['claims.job_card_placeholder']" options-url="{{ route('auto.claim_job_options') }}" id="claim-new-job"/>
+        <rx-input name="policy_no" :label="tx['claims.policy_no']" id="claim-new-policy" required/>
+        <rx-input name="claim_no" :label="tx['claims.claim_no']" :hint="tx['claims.claim_no_hint']" id="claim-new-claim-no" required/>
+        <rx-input name="accident_date" type="date" :label="tx['claims.accident']" id="claim-new-accident" required/>
+        <rx-input name="police_report_no" :label="tx['claims.police_report']" :hint="tx['claims.police_hint']" id="claim-new-police"/>
+        <rx-input name="police_report_date" type="date" :label="tx['claims.police_date']" id="claim-new-police-date"/>
+        <rx-select name="repair_type" :label="tx['claims.repair']" :options="repair_options" :selected="'non_agency'" id="claim-new-repair"/>
+        <rx-input name="excess" :label="tx['claims.excess']" :hint="tx['claims.money_hint']" id="claim-new-excess"/>
+      </rx-action-sheet>
+    </template>
+  </rx-page-header>
   <rx-grid :page="claims">
     <template rx-if="column.key == 'insurer'">{{ row.insurer }}</template>
   </rx-grid>

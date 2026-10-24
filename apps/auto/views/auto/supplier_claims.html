@@ -5,32 +5,32 @@
     that was closed as accepted. Replace it with
     resources/views/auto/supplier_claims.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['supplier.title']">
-    <rx-page-header :title="tx['supplier.title']" :subtitle="tx['supplier.subtitle']">
-      <rx-action-sheet id="supplier-new" :label="tx['supplier.new']" :action="route('auto.supplier_claim_create')"
-                       :title="tx['supplier.new']" :description="tx['supplier.new_description']" :submit-label="tx['supplier.new']" icon="plus">
-        <rx-select name="job_card" :label="tx['supplier.job_card']" :hint="tx['supplier.job_card_hint']" :options="[]" :placeholder="tx['supplier.job_card_placeholder']" options-url="{{ route('auto.supplier_job_options') }}" id="supplier-new-job" required/>
-        <rx-input name="ticket" :label="tx['supplier.ticket']" :hint="tx['supplier.ticket_hint']" id="supplier-new-ticket" required/>
-        <rx-checkbox name="accepted" :label="tx['supplier.accepted']" :hint="tx['supplier.accepted_hint']" :checked="true" id="supplier-new-accepted"/>
-        <rx-select name="supplier" :label="tx['supplier.supplier']" :options="[]" :placeholder="tx['supplier.supplier_placeholder']" options-url="{{ route('auto.party_options') }}" id="supplier-new-supplier" required/>
-        <rx-input name="part" :label="tx['supplier.part']" id="supplier-new-part" required/>
-        <rx-input name="item_code" :label="tx['supplier.item_code']" id="supplier-new-item"/>
-        <rx-input name="brand" :label="tx['supplier.brand']" id="supplier-new-brand"/>
-        <rx-input name="quantity" :label="tx['supplier.quantity']" value="1" id="supplier-new-quantity"/>
-        <rx-input name="cost" :label="tx['supplier.part_cost']" :hint="tx['supplier.money_hint']" id="supplier-new-cost" required/>
-        <rx-input name="purchase_date" type="date" :label="tx['supplier.purchased']" id="supplier-new-purchased" required/>
-        <rx-input name="warranty_months" type="number" :label="tx['supplier.warranty_months']" id="supplier-new-months" required/>
-        <rx-input name="warranty_km" type="number" :label="tx['supplier.warranty_km']" :hint="tx['supplier.warranty_km_hint']" id="supplier-new-km"/>
-        <rx-checkbox name="labour_included" :label="tx['supplier.labour_included']" :hint="tx['supplier.labour_included_hint']" id="supplier-new-labour-included"/>
-        <rx-input name="labour" :label="tx['supplier.labour']" :hint="tx['supplier.money_hint']" id="supplier-new-labour"/>
-        <rx-select name="fitted_job_card" :label="tx['supplier.fitted_job_card']" :hint="tx['supplier.fitted_hint']" :options="[]" :placeholder="tx['supplier.job_card_placeholder']" options-url="{{ route('auto.supplier_job_options') }}" id="supplier-new-fitted-job"/>
-        <rx-select name="replacement_job_card" :label="tx['supplier.replacement_job_card']" :options="[]" :placeholder="tx['supplier.job_card_placeholder']" options-url="{{ route('auto.supplier_job_options') }}" id="supplier-new-replacement-job"/>
-        <rx-input name="fitted_odometer" type="number" :label="tx['supplier.fitted_odometer']" id="supplier-new-fitted-km"/>
-        <rx-input name="failure_date" type="date" :label="tx['supplier.failure_date']" id="supplier-new-failure" required/>
-        <rx-input name="failure_odometer" type="number" :label="tx['supplier.failure_odometer']" id="supplier-new-failure-km"/>
-        <rx-checkbox name="kept" :label="tx['supplier.part_kept']" :checked="true" id="supplier-new-kept"/>
-      </rx-action-sheet>
-    </rx-page-header>
-    <rx-grid :page="claims">
-      <template rx-if="column.key == 'supplier'">{{ row.supplier }}</template>
-    </rx-grid>
+  <rx-page-header :title="tx['supplier.title']" :subtitle="tx['supplier.subtitle']">
+    <rx-action-sheet id="supplier-new" :label="tx['supplier.new']" :action="route('auto.supplier_claim_create')"
+                     :title="tx['supplier.new']" :description="tx['supplier.new_description']" :submit-label="tx['supplier.new']" icon="plus">
+      <rx-select name="job_card" :label="tx['supplier.job_card']" :hint="tx['supplier.job_card_hint']" :options="[]" :placeholder="tx['supplier.job_card_placeholder']" options-url="{{ route('auto.supplier_job_options') }}" id="supplier-new-job" required/>
+      <rx-input name="ticket" :label="tx['supplier.ticket']" :hint="tx['supplier.ticket_hint']" id="supplier-new-ticket" required/>
+      <rx-checkbox name="accepted" :label="tx['supplier.accepted']" :hint="tx['supplier.accepted_hint']" :checked="true" id="supplier-new-accepted"/>
+      <rx-select name="supplier" :label="tx['supplier.supplier']" :options="[]" :placeholder="tx['supplier.supplier_placeholder']" options-url="{{ route('auto.party_options') }}" id="supplier-new-supplier" required/>
+      <rx-input name="part" :label="tx['supplier.part']" id="supplier-new-part" required/>
+      <rx-input name="item_code" :label="tx['supplier.item_code']" id="supplier-new-item"/>
+      <rx-input name="brand" :label="tx['supplier.brand']" id="supplier-new-brand"/>
+      <rx-input name="quantity" :label="tx['supplier.quantity']" value="1" id="supplier-new-quantity"/>
+      <rx-input name="cost" :label="tx['supplier.part_cost']" :hint="tx['supplier.money_hint']" id="supplier-new-cost" required/>
+      <rx-input name="purchase_date" type="date" :label="tx['supplier.purchased']" id="supplier-new-purchased" required/>
+      <rx-input name="warranty_months" type="number" :label="tx['supplier.warranty_months']" id="supplier-new-months" required/>
+      <rx-input name="warranty_km" type="number" :label="tx['supplier.warranty_km']" :hint="tx['supplier.warranty_km_hint']" id="supplier-new-km"/>
+      <rx-checkbox name="labour_included" :label="tx['supplier.labour_included']" :hint="tx['supplier.labour_included_hint']" id="supplier-new-labour-included"/>
+      <rx-input name="labour" :label="tx['supplier.labour']" :hint="tx['supplier.money_hint']" id="supplier-new-labour"/>
+      <rx-select name="fitted_job_card" :label="tx['supplier.fitted_job_card']" :hint="tx['supplier.fitted_hint']" :options="[]" :placeholder="tx['supplier.job_card_placeholder']" options-url="{{ route('auto.supplier_job_options') }}" id="supplier-new-fitted-job"/>
+      <rx-select name="replacement_job_card" :label="tx['supplier.replacement_job_card']" :options="[]" :placeholder="tx['supplier.job_card_placeholder']" options-url="{{ route('auto.supplier_job_options') }}" id="supplier-new-replacement-job"/>
+      <rx-input name="fitted_odometer" type="number" :label="tx['supplier.fitted_odometer']" id="supplier-new-fitted-km"/>
+      <rx-input name="failure_date" type="date" :label="tx['supplier.failure_date']" id="supplier-new-failure" required/>
+      <rx-input name="failure_odometer" type="number" :label="tx['supplier.failure_odometer']" id="supplier-new-failure-km"/>
+      <rx-checkbox name="kept" :label="tx['supplier.part_kept']" :checked="true" id="supplier-new-kept"/>
+    </rx-action-sheet>
+  </rx-page-header>
+  <rx-grid :page="claims">
+    <template rx-if="column.key == 'supplier'">{{ row.supplier }}</template>
+  </rx-grid>
 </rx-page>

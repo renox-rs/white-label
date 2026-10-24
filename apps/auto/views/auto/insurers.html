@@ -4,18 +4,18 @@
     insurer (the insurance company from the party picker). Replace it with
     resources/views/auto/insurers.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['insurers.title']">
-    <rx-page-header :title="tx['insurers.title']" :subtitle="tx['insurers.subtitle']">
-      <rx-action-sheet id="insurer-new" :label="tx['insurers.new']" :action="route('auto.insurer_create')"
-                       :title="tx['insurers.new']" :description="tx['insurers.new_description']" :submit-label="tx['insurers.new']" icon="plus">
-        <rx-select name="party" :label="tx['insurers.party']" :options="[]" :placeholder="tx['insurers.party_placeholder']" options-url="{{ route('auto.party_options') }}" id="insurer-new-party" required/>
-        <rx-select name="agreement" :label="tx['insurers.agreement']" :hint="tx['insurers.agreement_hint']" :options="[]" :placeholder="tx['insurers.agreement_placeholder']" options-url="{{ route('auto.payer_agreement_options') }}" id="insurer-new-agreement"/>
-        <rx-input name="email" :label="tx['insurers.email']" id="insurer-new-email"/>
-        <rx-textarea name="surveyors" :label="tx['insurers.surveyors']" id="insurer-new-surveyors"/>
-        <rx-input name="terms" type="number" :label="tx['insurers.terms']" :hint="tx['insurers.terms_hint']" value="30" id="insurer-new-terms"/>
-        <rx-input name="labour_rate" :label="tx['insurers.labour_rate']" :hint="tx['insurers.money_hint']" id="insurer-new-labour"/>
-        <rx-input name="storage_rate" :label="tx['insurers.storage_rate']" :hint="tx['insurers.money_hint']" id="insurer-new-storage"/>
-      </rx-action-sheet>
-    </rx-page-header>
+  <rx-page-header :title="tx['insurers.title']" :subtitle="tx['insurers.subtitle']">
+    <rx-action-sheet id="insurer-new" :label="tx['insurers.new']" :action="route('auto.insurer_create')"
+                     :title="tx['insurers.new']" :description="tx['insurers.new_description']" :submit-label="tx['insurers.new']" icon="plus">
+      <rx-select name="party" :label="tx['insurers.party']" :options="[]" :placeholder="tx['insurers.party_placeholder']" options-url="{{ route('auto.party_options') }}" id="insurer-new-party" required/>
+      <rx-select name="agreement" :label="tx['insurers.agreement']" :hint="tx['insurers.agreement_hint']" :options="[]" :placeholder="tx['insurers.agreement_placeholder']" options-url="{{ route('auto.payer_agreement_options') }}" id="insurer-new-agreement"/>
+      <rx-input name="email" :label="tx['insurers.email']" id="insurer-new-email"/>
+      <rx-textarea name="surveyors" :label="tx['insurers.surveyors']" id="insurer-new-surveyors"/>
+      <rx-input name="terms" type="number" :label="tx['insurers.terms']" :hint="tx['insurers.terms_hint']" value="30" id="insurer-new-terms"/>
+      <rx-input name="labour_rate" :label="tx['insurers.labour_rate']" :hint="tx['insurers.money_hint']" id="insurer-new-labour"/>
+      <rx-input name="storage_rate" :label="tx['insurers.storage_rate']" :hint="tx['insurers.money_hint']" id="insurer-new-storage"/>
+    </rx-action-sheet>
+  </rx-page-header>
   <rx-grid :page="insurers">
     <a rx-if="column.key == 'name'" href="{{ route('auto.insurer', row.id) }}">{{ row.name }}</a>
   </rx-grid>

@@ -4,26 +4,26 @@
     registers a vehicle (owner from the party picker). Replace it with
     resources/views/auto/vehicles.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['vehicles.title']">
-    <rx-page-header :title="tx['vehicles.title']" :subtitle="tx['vehicles.subtitle']">
-      <template rx-if="can_manage">
-        <rx-action-sheet id="vehicle-new" :label="tx['vehicles.new']" :action="route('auto.vehicle_create')"
-                         :title="tx['vehicles.new']" :description="tx['vehicles.new_description']" :submit-label="tx['vehicles.new']" icon="plus">
-          <rx-select name="emirate" :label="tx['vehicles.emirate']" :options="emirate_options" :selected="'dubai'" id="vehicle-new-emirate"/>
-          <rx-input name="plate_code" :label="tx['vehicles.plate_code']" :hint="tx['vehicles.plate_code_hint']" id="vehicle-new-code" required/>
-          <rx-input name="plate_number" :label="tx['vehicles.plate_number']" id="vehicle-new-number" required/>
-          <rx-input name="make" :label="tx['vehicles.make']" id="vehicle-new-make" required/>
-          <rx-input name="model_name" :label="tx['vehicles.model']" id="vehicle-new-model" required/>
-          <rx-input name="model_year" type="number" :label="tx['vehicles.year']" id="vehicle-new-year"/>
-          <rx-input name="vin" :label="tx['vehicles.vin']" :hint="tx['vehicles.vin_hint']" id="vehicle-new-vin"/>
-          <rx-input name="engine" :label="tx['vehicles.engine']" id="vehicle-new-engine"/>
-          <rx-input name="colour" :label="tx['vehicles.colour']" id="vehicle-new-colour"/>
-          <rx-select name="owner" :label="tx['vehicles.owner']" :options="[]" :placeholder="tx['vehicles.owner_placeholder']" options-url="{{ route('auto.party_options') }}" id="vehicle-new-owner" required/>
-          <rx-select name="fleet_contract" :label="tx['vehicles.fleet_contract']" :hint="tx['vehicles.fleet_contract_hint']" :options="[]" :placeholder="tx['vehicles.fleet_contract_placeholder']" options-url="{{ route('auto.fleet_contract_options') }}" id="vehicle-new-fleet"/>
-          <rx-input name="odometer" type="number" :label="tx['vehicles.odometer']" id="vehicle-new-odometer"/>
-        </rx-action-sheet>
-      </template>
-    </rx-page-header>
-    <rx-grid :page="vehicles">
-      <template rx-if="column.key == 'owner'">{{ row.owner }}</template>
-    </rx-grid>
+  <rx-page-header :title="tx['vehicles.title']" :subtitle="tx['vehicles.subtitle']">
+    <template rx-if="can_manage">
+      <rx-action-sheet id="vehicle-new" :label="tx['vehicles.new']" :action="route('auto.vehicle_create')"
+                       :title="tx['vehicles.new']" :description="tx['vehicles.new_description']" :submit-label="tx['vehicles.new']" icon="plus">
+        <rx-select name="emirate" :label="tx['vehicles.emirate']" :options="emirate_options" :selected="'dubai'" id="vehicle-new-emirate"/>
+        <rx-input name="plate_code" :label="tx['vehicles.plate_code']" :hint="tx['vehicles.plate_code_hint']" id="vehicle-new-code" required/>
+        <rx-input name="plate_number" :label="tx['vehicles.plate_number']" id="vehicle-new-number" required/>
+        <rx-input name="make" :label="tx['vehicles.make']" id="vehicle-new-make" required/>
+        <rx-input name="model_name" :label="tx['vehicles.model']" id="vehicle-new-model" required/>
+        <rx-input name="model_year" type="number" :label="tx['vehicles.year']" id="vehicle-new-year"/>
+        <rx-input name="vin" :label="tx['vehicles.vin']" :hint="tx['vehicles.vin_hint']" id="vehicle-new-vin"/>
+        <rx-input name="engine" :label="tx['vehicles.engine']" id="vehicle-new-engine"/>
+        <rx-input name="colour" :label="tx['vehicles.colour']" id="vehicle-new-colour"/>
+        <rx-select name="owner" :label="tx['vehicles.owner']" :options="[]" :placeholder="tx['vehicles.owner_placeholder']" options-url="{{ route('auto.party_options') }}" id="vehicle-new-owner" required/>
+        <rx-select name="fleet_contract" :label="tx['vehicles.fleet_contract']" :hint="tx['vehicles.fleet_contract_hint']" :options="[]" :placeholder="tx['vehicles.fleet_contract_placeholder']" options-url="{{ route('auto.fleet_contract_options') }}" id="vehicle-new-fleet"/>
+        <rx-input name="odometer" type="number" :label="tx['vehicles.odometer']" id="vehicle-new-odometer"/>
+      </rx-action-sheet>
+    </template>
+  </rx-page-header>
+  <rx-grid :page="vehicles">
+    <template rx-if="column.key == 'owner'">{{ row.owner }}</template>
+  </rx-grid>
 </rx-page>

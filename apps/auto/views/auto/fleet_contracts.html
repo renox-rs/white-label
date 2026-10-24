@@ -5,24 +5,24 @@
     agrees a contract (the fleet and its contact from the party picker).
     Replace it with resources/views/auto/fleet_contracts.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['fleet.title']">
-    <rx-page-header :title="tx['fleet.title']" :subtitle="tx['fleet.subtitle']">
-      <template rx-if="can_create">
-        <rx-action-sheet id="fleet-new" :label="tx['fleet.new']" :action="route('auto.fleet_create')"
-                         :title="tx['fleet.new']" :description="tx['fleet.new_description']" :submit-label="tx['fleet.new']" icon="plus">
-          <rx-select name="fleet" :label="tx['fleet.fleet']" :options="[]" :placeholder="tx['fleet.fleet_placeholder']" options-url="{{ route('auto.party_options') }}" id="fleet-new-fleet" required/>
-          <rx-select name="contact" :label="tx['fleet.contact']" :options="[]" :placeholder="tx['fleet.contact_placeholder']" options-url="{{ route('auto.party_options') }}" id="fleet-new-contact"/>
-          <rx-input name="title" :label="tx['fleet.name']" id="fleet-new-title" required/>
-          <rx-input name="start_date" type="date" :label="tx['fleet.start']" id="fleet-new-start" required/>
-          <rx-input name="end_date" type="date" :label="tx['fleet.end']" :hint="tx['fleet.end_hint']" id="fleet-new-end" required/>
-          <rx-input name="labour_rate" :label="tx['fleet.labour_rate']" :hint="tx['fleet.money_hint']" id="fleet-new-rate"/>
-          <rx-input name="price_tier" :label="tx['fleet.price_tier']" id="fleet-new-tier"/>
-          <rx-textarea name="inclusions" :label="tx['fleet.inclusions']" id="fleet-new-inclusions"/>
-          <rx-input name="notice_days" type="number" :label="tx['fleet.notice']" value="30" id="fleet-new-notice"/>
-          <rx-input name="fee" :label="tx['fleet.fee']" :hint="tx['fleet.money_hint']" id="fleet-new-fee"/>
-          <rx-input name="renewal_window" type="number" :label="tx['fleet.renewal_window']" value="60" id="fleet-new-window"/>
-        </rx-action-sheet>
-      </template>
-    </rx-page-header>
+  <rx-page-header :title="tx['fleet.title']" :subtitle="tx['fleet.subtitle']">
+    <template rx-if="can_create">
+      <rx-action-sheet id="fleet-new" :label="tx['fleet.new']" :action="route('auto.fleet_create')"
+                       :title="tx['fleet.new']" :description="tx['fleet.new_description']" :submit-label="tx['fleet.new']" icon="plus">
+        <rx-select name="fleet" :label="tx['fleet.fleet']" :options="[]" :placeholder="tx['fleet.fleet_placeholder']" options-url="{{ route('auto.party_options') }}" id="fleet-new-fleet" required/>
+        <rx-select name="contact" :label="tx['fleet.contact']" :options="[]" :placeholder="tx['fleet.contact_placeholder']" options-url="{{ route('auto.party_options') }}" id="fleet-new-contact"/>
+        <rx-input name="title" :label="tx['fleet.name']" id="fleet-new-title" required/>
+        <rx-input name="start_date" type="date" :label="tx['fleet.start']" id="fleet-new-start" required/>
+        <rx-input name="end_date" type="date" :label="tx['fleet.end']" :hint="tx['fleet.end_hint']" id="fleet-new-end" required/>
+        <rx-input name="labour_rate" :label="tx['fleet.labour_rate']" :hint="tx['fleet.money_hint']" id="fleet-new-rate"/>
+        <rx-input name="price_tier" :label="tx['fleet.price_tier']" id="fleet-new-tier"/>
+        <rx-textarea name="inclusions" :label="tx['fleet.inclusions']" id="fleet-new-inclusions"/>
+        <rx-input name="notice_days" type="number" :label="tx['fleet.notice']" value="30" id="fleet-new-notice"/>
+        <rx-input name="fee" :label="tx['fleet.fee']" :hint="tx['fleet.money_hint']" id="fleet-new-fee"/>
+        <rx-input name="renewal_window" type="number" :label="tx['fleet.renewal_window']" value="60" id="fleet-new-window"/>
+      </rx-action-sheet>
+    </template>
+  </rx-page-header>
   <rx-grid :page="contracts">
     <template rx-if="column.key == 'fleet'">{{ row.fleet }}</template>
   </rx-grid>
