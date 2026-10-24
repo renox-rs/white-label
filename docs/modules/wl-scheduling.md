@@ -2,7 +2,7 @@
 
 > Status: specification, partly built; the build ledger is [crates/wl-scheduling/README.md](../../crates/wl-scheduling/README.md) · Last updated: 2026-10-24
 
-**Build status (2026-10-24):** Built: resources, service types, availability rules and blocks, slots, the Booking machine (including check-in, start, complete, no-show, reschedule and reassign), the waiting list, booking deposits, cancellation after check-in, conflicts, the prepayment hold, eligibility re-checks, and the strategy traits `ResourceEligibility`, `BookingActions`, `BookingGate`, `CheckInGuard`, `CompleteGuard`, `WorkDoneStatus`. Partly built: blocks from other modules (leave and sick blocks from `wl-hr` and the class sessions of `apps/edtech` reach it through `AvailabilitySource`; rosters from `wl-attendance` are not built because the Roster entity is not). List screens use the standard Renox grid (`renox::grid::Grid`).
+**Build status (2026-10-24):** Built: resources, service types, availability rules and blocks, slots, the Booking machine (including check-in, start, complete, no-show, reschedule and reassign), the waiting list, booking deposits, cancellation after check-in, conflicts, the prepayment hold, eligibility re-checks, and the strategy traits `ResourceEligibility`, `BookingActions`, `BookingGate`, `CheckInGuard`, `CompleteGuard`, `WorkDoneStatus`. Partly built: blocks from other modules (approved and sick leave from `wl-hr` arrive as the kernel events `LeaveApproved` and `LeaveCancelled`; `apps/edtech` provides class sessions through `AvailabilitySource`; rosters from `wl-attendance` are not built because the Roster entity is not). List screens use the standard Renox grid (`renox::grid::Grid`).
 
 ## 1. Purpose
 
@@ -41,7 +41,7 @@ booking.
 
 **Availability** of a resource at a time = its availability rules − its blocks − its existing
 bookings, intersected for every resource the service type needs. Other modules contribute
-blocks through `AvailabilitySource` (§8): leave from `wl-hr`, rosters from `wl-attendance` (not built: today only leave and sick blocks come from `wl-hr`),
+blocks through `AvailabilitySource` (§8): leave from `wl-hr`, rosters from `wl-attendance` (not built: today only leave and sick blocks come from `wl-hr`, as `LeaveApproved` events),
 class sessions from `apps/edtech`.
 
 **No double-booking:** the module guarantees that two bookings never hold the same resource
@@ -317,7 +317,7 @@ before the start. No fee is invoiced after the event, and it is never billed to 
 | `Availability::is_free(resources, start, end)` | Check a time without booking | `apps/edtech` sessions, verticals |
 | `Bookings::book / cancel / complete` | Create or end bookings from code | verticals (auto job card completes the booking). In `wl-kernel` the part a vertical needs so far is `BookingActions`: `link_work_done` (the record opened at check-in, which `WorkDoneStatus` is asked about), `complete` (as the system), `book_service` (the first free slot from a day for a party, as the system: a fleet service that falls due) `cancel_booking` (as the system, with a reason code) and `cancel_booking_by_staff` (for a staff user, with a reason code, also after the check-in: `SCH.ACL.06`, 08 cancels the booking of a job card that was cancelled, declined or voided) and `starts_at` (when a booking starts: 08 cancels the bookings of a fleet contract that ended after its last day of service). The kernel's `BookingGate` is asked by `book` and `request` before a **new** booking is made (after the eligibility check): a vertical answers *refused* with a text safe to show (08 refuses a new booking for a vehicle of a suspended fleet contract); the bookings already made are not asked again |
 | `Bookings::conflicts(resource?, period?) / bulk_resolve(bookings, action)` | List conflicted bookings; reassign or cancel them in one action, or send their parties a reschedule offer in one action (§5.5 step 2) | front desk, verticals |
-| `AvailabilitySource` (trait implemented by others) | Supply blocks | `wl-hr` (leave), `wl-attendance` (rosters), `apps/edtech` (sessions) |
+| `AvailabilitySource` (trait implemented by others) | Supply blocks | `apps/edtech` (sessions) today; `wl-hr` leave arrives as events, `wl-attendance` rosters are not built |
 
 **Consumes:** `Subject`, numbering, settings and the business calendar from `wl-kernel`.
 Parties from `wl-parties`. Portal pages and portal users from `wl-portal`. Notifications
