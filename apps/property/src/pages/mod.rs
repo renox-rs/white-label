@@ -62,6 +62,18 @@ pub(crate) fn building_name_sql(lang: &Lang, table: &str) -> String {
     }
 }
 
+/// SQL for a grid column: the display name of the party whose id is in the
+/// row's column `column`, read from the parties directory's table
+/// (`wl_parties_parties`, the module every Property client runs). The grid
+/// searches, sorts, filters and exports on it; the cell on screen still shows
+/// the name the directory gives in the page's language.
+pub(crate) fn party_name_sql(column: &str) -> String {
+    format!(
+        "(SELECT \"wl_parties_parties\".\"display_name\" FROM \"wl_parties_parties\" \
+         WHERE \"wl_parties_parties\".\"id\" = {{T}}.\"{column}\")"
+    )
+}
+
 /// The package text `key` (without the `property.` prefix).
 pub(crate) fn text(lang: &Lang, key: &str) -> String {
     texts::t(lang, &format!("property.{key}"))

@@ -33,7 +33,7 @@ use wl_kernel::PartyId;
 use wl_kernel::documents::today;
 
 use super::statements::owner_name;
-use super::{Texts, padded, text};
+use super::{Texts, padded, party_name_sql, text};
 use crate::agreement::{
     self, AGREEMENT_SUBJECT_TYPE, AgreementStatus, AgreementUnit, ManagementAgreement, NewAgreement,
 };
@@ -133,8 +133,9 @@ async fn ensure_in_reach(
     }
 }
 
-/// The agreements grid: search on the number, filter by
-/// status. The owner's name (from the parties directory) and the fee text
+/// The agreements grid: search on the number and the owner, filters by
+/// owner (the hidden *Owner name* column) and status. The owner's name in
+/// the page's language (from the parties directory) and the fee text
 /// (percent and fixed fee) are drawn by the template.
 pub(crate) fn grid(lang: &Lang) -> Grid {
     let t = |key: &str| text(lang, key);
@@ -161,6 +162,12 @@ pub(crate) fn grid(lang: &Lang) -> Grid {
                 .link("/property/agreements/{id}"),
         )
         .column(Column::custom("owner", &t("agreements.owner")).mobile())
+        .column(
+            Column::text("owner_name", &t("agreements.owner_name"))
+                .computed(&party_name_sql("owner_party_id"))
+                .hidden()
+                .searchable(),
+        )
         .column(Column::custom("fee", &t("agreements.fee")).mobile())
         .column(
             Column::money(

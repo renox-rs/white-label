@@ -2289,6 +2289,33 @@ pub const AGENT: &str = perm::LEASING_AGENT_ROLE;
 /// The accountant.
 pub const ACCOUNTANT: &str = perm::ACCOUNTANT_ROLE;
 
+/// The grids search and sort the tenant's and the owner's names in
+/// wl-parties' table, which these tests lack without the real module: a
+/// stand-in holding the two parties of the tests (the names the fake
+/// directory gives them). Left alone when the table is there.
+async fn parties_stand_in(app: &TestApp) {
+    let present = renox::db::sql(r#"SELECT COUNT(*) FROM "wl_parties_parties""#)
+        .scalar::<i64>(app.db())
+        .await
+        .is_ok();
+    if present {
+        return;
+    }
+    renox::db::sql(
+        r#"CREATE TABLE "wl_parties_parties" (id INTEGER PRIMARY KEY, display_name TEXT NOT NULL)"#,
+    )
+    .execute(app.db())
+    .await
+    .expect("the stand-in table");
+    renox::db::sql(format!(
+        r#"INSERT INTO "wl_parties_parties" (id, display_name) VALUES ({}, 'Tariq Hassan'), ({}, 'Blue Dunes LLC')"#,
+        TENANT.0, COMPANY.0
+    ))
+    .execute(app.db())
+    .await
+    .expect("the stand-in rows");
+}
+
 /// Property booted with auth, the kernel and the fakes, and the three roles.
 pub async fn boot() -> Booted {
     boot_with(Real::default()).await
@@ -2418,6 +2445,7 @@ async fn boot_custom(
         .call("wl:install", Vec::<String>::new())
         .await
         .expect("wl:install runs");
+    parties_stand_in(&app).await;
     let manager = [
         perm::UNITS_VIEW,
         perm::UNITS_MANAGE,

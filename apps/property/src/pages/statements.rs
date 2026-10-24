@@ -27,7 +27,7 @@ use wl_kernel::PartyId;
 use wl_kernel::block_guard::{self, ActionKind, GuardedError};
 use wl_kernel::parties::directory;
 
-use super::{Texts, padded, text, user_name};
+use super::{Texts, padded, party_name_sql, text, user_name};
 use crate::agreement::ManagementAgreement;
 use crate::money_text;
 use crate::parse::parse_aed;
@@ -134,6 +134,12 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                 .link("/property/statements/{id}"),
         )
         .column(Column::custom("owner", &t("statements.owner")).mobile())
+        .column(
+            Column::text("owner_name", &t("statements.owner_name"))
+                .computed(&party_name_sql("owner_party_id"))
+                .hidden()
+                .searchable(),
+        )
         .column(Column::date("period_start", &t("statements.period_start")).mobile())
         .column(Column::date("period_end", &t("statements.period_end")))
         .column(

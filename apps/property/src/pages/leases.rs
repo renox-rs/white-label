@@ -47,7 +47,7 @@ use wl_kernel::cheques::ChequeSummary;
 use wl_kernel::invoicing::{InvoiceId, invoicer};
 use wl_kernel::parties::directory;
 
-use super::{Texts, buildings_with, field_error, lease_kind, padded, text};
+use super::{Texts, buildings_with, field_error, lease_kind, padded, party_name_sql, text};
 use crate::arrears::{self, ArrearsDemand, NewPlan, PaymentPlan};
 use crate::building::Building;
 use crate::cancellation::{self, CancelRequest};
@@ -166,8 +166,10 @@ async fn unit_label(state: &AppState, unit_id: i64) -> String {
     }
 }
 
-/// The leases grid: search on the number, unit and Ejari number,
-/// filters by status and version, sum of the annual rent.
+/// The leases grid: search on the number, unit, tenant and Ejari number,
+/// filters by status, version and the end date (a range), sum of the annual
+/// rent. Leases are drafted on an available unit (the building page), so the
+/// list has no *New lease* action of its own.
 pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
     let t = |key: &str| text(lang, key);
     let statuses: Vec<(String, String)> = LeaseStatus::ALL
@@ -218,6 +220,12 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                 .searchable(),
         )
         .column(Column::custom("tenant", &t("leases.tenant")).mobile())
+        .column(
+            Column::text("tenant_name", &t("leases.tenant_name"))
+                .computed(&party_name_sql("tenant_party_id"))
+                .hidden()
+                .searchable(),
+        )
         .column(Column::date("start_date", &t("leases.start_date")))
         .column(Column::date("end_date", &t("leases.end_date")))
         .column(

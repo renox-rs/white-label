@@ -143,6 +143,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("property.leases.unit", "Unit"),
     ("property.leases.tenant", "Tenant"),
+    ("property.leases.tenant_name", "Tenant name"),
     ("property.leases.tenant_number", "Tenant (party number)"),
     (
         "property.leases.tenant_placeholder",
@@ -1323,6 +1324,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.statements.period_end", "Period to"),
     ("property.statements.number", "Statement"),
     ("property.statements.owner", "Owner"),
+    ("property.statements.owner_name", "Owner name"),
     ("property.statements.agreement", "Agreement"),
     ("property.statements.period", "Period"),
     ("property.statements.brought_forward", "Brought forward"),
@@ -1832,6 +1834,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.agreements.last_day", "Last day"),
     ("property.agreements.number", "Agreement"),
     ("property.agreements.owner", "Owner"),
+    ("property.agreements.owner_name", "Owner name"),
     ("property.agreements.fee", "Fee"),
     ("property.agreements.start", "From"),
     ("property.agreements.created", "Agreement drafted."),
