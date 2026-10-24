@@ -9,6 +9,7 @@ use renox::auth::permissions::users_with_role_in;
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::serde_json::json;
+use wl_kernel::document_store::WithAttachments;
 use wl_kernel::notify::{
     self, Category, GROUP_INVOICES, GROUP_PORTAL, GROUP_SIGNATURES, GROUP_STATEMENTS,
     GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRequest,
@@ -542,8 +543,7 @@ fn statement_period(statement: &crate::statement::OwnerStatement) -> String {
 }
 
 /// Sends the tenant of the submitted `lease` its generated `contract` for
-/// signature (BL-PRP-31). The message names the stored document; attaching
-/// the file to the e-mail is wl-notify's (BL-NTF-10).
+/// signature (BL-PRP-31), attached to the e-mail (BL-NTF-10).
 pub async fn contract_for_signature(
     state: &AppState,
     lease: &Lease,
@@ -556,7 +556,11 @@ pub async fn contract_for_signature(
             "lease": lease.number_with_version(),
             "contract": contract.title,
             "document": contract.document_id,
-        }));
+        }))
+        .attach_document(
+            wl_kernel::documents::DocumentId(contract.document_id),
+            &format!("{}.pdf", contract.title),
+        );
     notify::notifier(state).notify(state, request).await?;
     Ok(())
 }
@@ -584,6 +588,13 @@ pub async fn statement_published(
             "lines": lines,
             "document": pdf.map(|pdf| pdf.document_id),
         }));
+    let request = match pdf {
+        Some(pdf) => request.attach_document(
+            wl_kernel::documents::DocumentId(pdf.document_id),
+            &format!("{}.pdf", pdf.title),
+        ),
+        None => request,
+    };
     notify::notifier(state).notify(state, request).await?;
     Ok(())
 }

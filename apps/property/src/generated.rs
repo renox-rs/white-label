@@ -22,12 +22,13 @@
 //! The notification that follows carries the document's id
 //! (`lease.contract_for_signature`, `owner_statement.published`).
 //!
-//! **Who renders and stores it:** a [`PdfDocuments`] generator, set for the
-//! app with [`set_generator`]. Rendering templates into a PDF stored as a
-//! document of the record is wl-documents' (BL-DOC-11) and attaching the file
-//! to the e-mail is wl-notify's (BL-NTF-10); neither has a kernel contract
-//! yet, so no generator is set by default and, without one, nothing is
-//! generated and the transitions behave as before.
+//! **Who renders and stores it:** the kernel's document generator
+//! (wl-documents, BL-DOC-11) through [`KernelPdfs`], with 01's data providers
+//! ([`register_providers`]); [`set_generator`] replaces it (a test). The
+//! messages attach the stored file (wl-notify, BL-NTF-10). The templates
+//! themselves (their English and Arabic text, `property.tenancy_contract` and
+//! `property.owner_statement`) are the client's: until one is registered with
+//! wl-documents, nothing is generated and the transitions behave as before.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -39,6 +40,10 @@ use renox::serde_json::{Value, json};
 use renox::state_machine::{StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
+use wl_kernel::generation::{
+    self, DataProvider, GenerateRefusal, GenerateRequest, GenerationData, GenerationFuture,
+    LanguageMode,
+};
 
 use crate::building::Building;
 use crate::lease::Lease;
@@ -80,11 +85,80 @@ pub struct PdfRequest {
 pub type PdfFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 /// Renders a [`PdfRequest`] and stores the file as a document of its subject,
-/// returning the document's id. wl-documents provides it once BL-DOC-11 is
-/// built; the host sets it with [`set_generator`].
+/// returning the document's id; `None` when nothing is generated (documents
+/// are off, or the client has no template). By default the kernel's
+/// generator ([`KernelPdfs`]); [`set_generator`] replaces it.
 pub trait PdfDocuments: Send + Sync + 'static {
     /// Generates and stores `request`; an error refuses the transition.
-    fn generate<'a>(&'a self, state: &'a AppState, request: PdfRequest) -> PdfFuture<'a, i64>;
+    fn generate<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: PdfRequest,
+    ) -> PdfFuture<'a, Option<i64>>;
+}
+
+/// The kernel's document generator (`DOC.GEN.01`, wl-documents, BL-DOC-11):
+/// the template renders the data 01's data providers give
+/// ([`register_providers`]) in English and Arabic and the PDF is stored as a
+/// generated document of the record. Documents off, or no template of that
+/// key for the client, generates nothing; any other refusal (a render error,
+/// an issued document) is an error.
+pub struct KernelPdfs;
+
+impl PdfDocuments for KernelPdfs {
+    fn generate<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: PdfRequest,
+    ) -> PdfFuture<'a, Option<i64>> {
+        Box::pin(async move {
+            let asked = GenerateRequest::new(request.template, request.subject)
+                .language(LanguageMode::Bilingual);
+            match generation::generator(state).generate(state, asked).await? {
+                Ok(done) => Ok(Some(done.document.0)),
+                Err(GenerateRefusal::Unavailable | GenerateRefusal::UnknownTemplate(_)) => Ok(None),
+                Err(refusal) => Err(refusal.into_error()),
+            }
+        })
+    }
+}
+
+/// 01's data providers for the kernel's generator: a lease version gives its
+/// contract's data, an owner statement its PDF's.
+struct Providers;
+
+impl DataProvider for Providers {
+    fn data<'a>(
+        &'a self,
+        state: &'a AppState,
+        _template: &'a str,
+        subject: &'a Subject,
+    ) -> GenerationFuture<'a, Option<GenerationData>> {
+        Box::pin(async move {
+            if subject.subject_type == crate::lease::LEASE_SUBJECT_TYPE {
+                let Some(lease) = Lease::find(&state.db, subject.subject_id).await? else {
+                    return Ok(None);
+                };
+                let data = contract_data(state, &lease).await?;
+                return Ok(Some(
+                    GenerationData::new(data).title(&contract_title(&lease)),
+                ));
+            }
+            let Some(statement) = OwnerStatement::find(&state.db, subject.subject_id).await? else {
+                return Ok(None);
+            };
+            let data = statement_data(&state.db, &statement).await?;
+            Ok(Some(
+                GenerationData::new(data).title(&statement_title(&statement)),
+            ))
+        })
+    }
+}
+
+/// Registers 01's data providers with the kernel's generator.
+pub fn register_providers() {
+    generation::register_data_provider(crate::lease::LEASE_SUBJECT_TYPE, Providers);
+    generation::register_data_provider(STATEMENT_SUBJECT_TYPE, Providers);
 }
 
 /// Where the app keeps its generator.
@@ -154,7 +228,7 @@ impl GeneratedDocument {
 }
 
 /// The document of `request`: the one generated before, or a new one from the
-/// generator. `None` without a generator.
+/// generator. `None` when the generator generates nothing.
 ///
 /// # Errors
 ///
@@ -165,15 +239,14 @@ pub async fn ensure(state: &AppState, request: PdfRequest) -> Result<Option<Gene
     {
         return Ok(Some(found));
     }
-    let Some(generator) = generator(state) else {
-        return Ok(None);
-    };
     let (subject, template, title) = (
         request.subject.clone(),
         request.template,
         request.title.clone(),
     );
-    let document_id = generator.generate(state, request).await?;
+    let Some(document_id) = generator(state).generate(state, request).await? else {
+        return Ok(None);
+    };
     GeneratedDocument::create(
         &state.db,
         GeneratedDocument {
@@ -245,9 +318,6 @@ pub async fn contract_data(state: &AppState, lease: &Lease) -> Result<Value> {
 ///
 /// The database's errors and the generator's: `submit` is refused then.
 pub async fn contract_for(state: &AppState, lease: &Lease) -> Result<Option<GeneratedDocument>> {
-    if generator(state).is_none() {
-        return Ok(None);
-    }
     let request = PdfRequest {
         template: TENANCY_CONTRACT_TEMPLATE,
         kind: TENANCY_CONTRACT_KIND,
@@ -307,9 +377,6 @@ pub async fn statement_pdf(
     state: &AppState,
     statement: &OwnerStatement,
 ) -> Result<Option<GeneratedDocument>> {
-    if generator(state).is_none() {
-        return Ok(None);
-    }
     let request = PdfRequest {
         template: OWNER_STATEMENT_TEMPLATE,
         kind: OWNER_STATEMENT_KIND,
@@ -352,7 +419,8 @@ pub async fn publish(
         .ok_or(TransitionError::Failed(Error::NotFound))
 }
 
-/// Registers the slot of the generator.
+/// Registers the slot of the generator and 01's data providers.
 pub(crate) fn register(app: &mut Registry) {
     app.provide(GeneratorSlot::default());
+    register_providers();
 }

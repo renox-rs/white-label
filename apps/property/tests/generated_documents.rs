@@ -3,9 +3,10 @@
 //! generates the statement PDF and sends it to the owner; a PDF that cannot be
 //! generated refuses `publish`; a revision gets its own PDF.
 //!
-//! Rendering and storing the PDF (BL-DOC-11) and attaching it to the e-mail
-//! (BL-NTF-10) belong to other modules; a recording generator stands for
-//! them here, set as wl-documents will set its own.
+//! Rendering and storing the PDF is the kernel's generator (wl-documents,
+//! BL-DOC-11); a recording generator stands for it here. The messages carry
+//! the stored file as an attachment (BL-NTF-10); the message log of wl-notify
+//! lists it when the e-mail goes out.
 
 mod support;
 
@@ -44,7 +45,11 @@ impl Pdfs {
 }
 
 impl PdfDocuments for Pdfs {
-    fn generate<'a>(&'a self, _state: &'a AppState, request: PdfRequest) -> PdfFuture<'a, i64> {
+    fn generate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: PdfRequest,
+    ) -> PdfFuture<'a, Option<i64>> {
         Box::pin(async move {
             if *self.1.lock().unwrap() {
                 return Err(Error::Status(
@@ -54,7 +59,7 @@ impl PdfDocuments for Pdfs {
             }
             let mut asked = self.0.lock().unwrap();
             asked.push(request);
-            Ok(899 + i64::try_from(asked.len()).unwrap())
+            Ok(Some(899 + i64::try_from(asked.len()).unwrap()))
         })
     }
 }
@@ -106,6 +111,9 @@ async fn bl_prp_31_submit_generates_the_contract_and_sends_it_for_signature() {
     let sent = t.notices.of_type(CONTRACT_FOR_SIGNATURE);
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].data["document"], contract.document_id);
+    let attached = wl_kernel::document_store::attachments_in(&sent[0].data);
+    assert_eq!(attached.len(), 1, "the contract is attached");
+    assert_eq!(attached[0].document.0, contract.document_id);
     assert_eq!(sent[0].subject, lease.subject());
 
     // A submitted version's contract is never generated again.
@@ -271,6 +279,9 @@ async fn bl_prp_31_publish_generates_the_statement_pdf_and_sends_it() {
     let sent = s.t.notices.of_type(OWNER_STATEMENT);
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].data["document"], pdf.document_id);
+    let attached = wl_kernel::document_store::attachments_in(&sent[0].data);
+    assert_eq!(attached.len(), 1, "the PDF is attached");
+    assert_eq!(attached[0].document.0, pdf.document_id);
     assert_eq!(sent[0].data["balance"], "AED 18,450.00");
 }
 
