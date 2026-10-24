@@ -1662,6 +1662,17 @@ pub async fn boot() -> Booted {
         .call("wl:install", Vec::<String>::new())
         .await
         .expect("wl:install runs");
+    // The grids search the item and list the recalls from wl-inventory's
+    // tables, which this app lacks without the real module: stand-ins.
+    for stand_in in [
+        r#"CREATE TABLE IF NOT EXISTS "wl_inventory_items" (id INTEGER PRIMARY KEY, code TEXT NOT NULL, name_en TEXT NOT NULL, base_unit TEXT NOT NULL DEFAULT 'pcs')"#,
+        r#"CREATE TABLE IF NOT EXISTS "wl_inventory_recalls" (id INTEGER PRIMARY KEY, number TEXT, source TEXT NOT NULL DEFAULT 'internal', reason TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', opened_at TEXT)"#,
+    ] {
+        renox::db::sql(stand_in)
+            .execute(app.db())
+            .await
+            .expect("the stand-in table");
+    }
     let define = |role: &'static str, grants: &'static [&'static str]| {
         let db = app.db().clone();
         async move { permissions::define_role(&db, role, grants).await.unwrap() }

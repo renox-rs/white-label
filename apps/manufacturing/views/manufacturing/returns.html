@@ -1,40 +1,32 @@
 {#- manufacturing: the goods that came back and what sales decides about them
-    (BL-MFG-07, MFG.RUL.10). Replace it with
+    (BL-MFG-07, MFG.RUL.10), a renox::grid that fills the screen; the buttons
+    are a custom column, their sheets follow the grid. Replace it with
     resources/views/manufacturing/returns.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['returns.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['returns.title']" :subtitle="tx['returns.subtitle']"/>
-    <rx-form-errors/>
-    <rx-link-tabs :items="status_tabs" :current="status_current" :label="tx['returns.filter']"/>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['returns.title']" card>
-      <rx-column :label="tx['returns.order']">
-        <rx-stack>
-          <span><a href="{{ row.order_url }}">{{ row.order }}</a> - {{ row.line }}</span>
-          <span>{{ row.item }}</span>
-          <span class="rx-subtitle">{{ row.customer }}</span>
-          <span><rx-badge :kind="row.status_kind" :text="row.status"/> {{ row.closed }}</span>
-        </rx-stack>
-      </rx-column>
-      <rx-column :label="tx['returns.refused']" align="num">{{ row.refused }}</rx-column>
-      <rx-column :label="tx['returns.open']" align="num">{{ row.open }}</rx-column>
-      <rx-column :label="tx['returns.reason']" hide-narrow>{{ row.reason }}</rx-column>
-      <rx-column :label="tx['returns.dispatch']" hide-narrow><a href="{{ row.dispatch_url }}">{{ row.dispatch }}</a></rx-column>
-      <rx-column :label="tx['returns.owner']" hide-narrow>{{ row.owner }}</rx-column>
-      <rx-row-actions>
-        <template rx-if="row.new_dispatch.shown">
-          <template rx-if="row.new_dispatch.blocked">
-            <rx-button :label="tx['returns.new_dispatch']" variant="secondary" icon="truck" :disabled-reason="row.new_dispatch.blocked"/>
-          </template>
-          <template rx-else>
-            <rx-action-sheet :id="'new-dispatch-' ~ row.id" :label="tx['returns.new_dispatch']" :action="route('manufacturing.return_dispatch', row.id)"
-                             :title="tx['returns.new_dispatch']" :description="tx['returns.new_dispatch_hint']" :submit-label="tx['returns.new_dispatch']" icon="truck">
-              <rx-input name="quantity" type="text" :label="tx['returns.quantity']" :hint="tx['returns.quantity_hint']" :value="row.open" :id="'new-dispatch-quantity-' ~ row.id"/>
-            </rx-action-sheet>
-          </template>
-        </template>
-        <rx-link-button rx-if="row.cancel_line.shown" :href="row.order_url" :label="tx['returns.cancel_line']" icon="circle-x"/>
-      </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['returns.empty']" :message="tx['returns.empty_text']" icon="refresh-cw"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['returns.title']" :subtitle="tx['returns.subtitle']">
+    <rx-link-button :href="all_url" :label="tx['filter.all']" :variant="'primary' if current == '' else 'plain'"/>
+    <rx-link-button :href="open_url" :label="tx['return_status.open']" :variant="'primary' if current == 'open' else 'plain'"/>
+    <rx-link-button :href="closed_url" :label="tx['return_status.closed']" :variant="'primary' if current == 'closed' else 'plain'"/>
+  </rx-page-header>
+  <rx-form-errors/>
+  <rx-grid :page="rows">
+    <template rx-if="column.key == 'order'"><a href="{{ row.order_url }}">{{ row.order_number }}</a></template>
+    <template rx-elif="column.key == 'dispatch'">
+      <a rx-if="row.dispatch_url" href="{{ row.dispatch_url }}">{{ row.dispatch_number }}</a>
+      <span rx-else>{{ row.dispatch_number }}</span>
+    </template>
+    <template rx-elif="column.key == 'item'">{{ row.item }}</template>
+    <template rx-elif="column.key == 'customer'">{{ row.customer }}</template>
+    <template rx-elif="column.key == 'actions'">
+      <rx-open-button rx-if="row.can_dispatch" id="new-dispatch-{{ row.id }}" label="{{ tx['returns.new_dispatch'] }}" size="small"/>
+      <rx-button rx-if="row.dispatch_blocked" :label="tx['returns.new_dispatch']" variant="secondary" icon="truck" :disabled-reason="row.dispatch_blocked"/>
+      <rx-link-button rx-if="row.can_cancel" :href="'/sales-orders/' ~ row.order_id" :label="tx['returns.cancel_line']" icon="circle-x"/>
+    </template>
+  </rx-grid>
+  <template rx-for="sheet in sheets">
+    <rx-action-sheet :button="false" :id="'new-dispatch-' ~ sheet.id" :label="tx['returns.new_dispatch']" :action="route('manufacturing.return_dispatch', sheet.id)"
+                     :title="tx['returns.new_dispatch']" :description="tx['returns.new_dispatch_hint']" :submit-label="tx['returns.new_dispatch']" icon="truck">
+      <rx-input name="quantity" type="text" :label="tx['returns.quantity']" :hint="tx['returns.quantity_hint']" :value="sheet.open" :id="'new-dispatch-quantity-' ~ sheet.id"/>
+    </rx-action-sheet>
+  </template>
 </rx-page>

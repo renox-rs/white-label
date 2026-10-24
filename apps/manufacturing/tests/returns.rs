@@ -470,7 +470,7 @@ async fn the_pages_show_the_returns_and_the_inspections_to_the_right_people() {
         "Pass",
         "Fail",
         "Waiting",
-        "The whole dispatch came back",
+        "Whole dispatch",
     ] {
         assert!(text.contains(word), "{word} missing in {text}");
     }
@@ -514,4 +514,147 @@ async fn new_dispatch_asks_the_inventory_for_a_draft_copy_of_the_original() {
     t.post(&sales, &path, &[("quantity", "5")])
         .await
         .assert_status(422);
+}
+
+/// The dispatch of a returned lot is a link only for who may open dispatches
+/// (`stock.view` or `dispatch.manage` where the dispatch is): a QC inspector
+/// of the plant used to get a 403 behind it. The decision list and the grid
+/// filters read the same rows.
+#[renox::test]
+async fn the_dispatch_is_plain_text_for_who_may_not_open_it() {
+    let (t, plant, qc, sales) = scene().await;
+    quarantined(&t, 90, false, None, vec![booked(5, 20, Some("damaged"))]).await;
+    let found = ReturnInspection::query()
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
+    let link = format!("href=\"/dispatches/{}\"", found.dispatch_id);
+
+    let page = t.browse(&qc, "/manufacturing/inspections").await;
+    page.assert_ok();
+    let text = page.text();
+    assert!(text.contains(&found.dispatch_number), "the number is read");
+    assert!(
+        !text.contains(&link),
+        "no link to a page the QC may not open"
+    );
+
+    // Someone who may read stock (here everywhere) gets the link.
+    renox::auth::permissions::define_role(t.db(), "stock_reader", &["stock.view"])
+        .await
+        .unwrap();
+    let reader = t.inspector("Rita", &plant).await;
+    reader.assign_role(t.db(), "stock_reader").await.unwrap();
+    let page = t.browse(&reader, "/manufacturing/inspections").await;
+    let shown = page.text();
+    let at = shown.find(&found.dispatch_number).expect("the number");
+    assert!(
+        shown.contains(&link),
+        "a link for a stock reader: {}",
+        &shown[at.saturating_sub(300)..at + 100]
+    );
+
+    // The returned goods of sales: same rule.
+    let decision = ReturnDecision::query()
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
+    let link = format!("href=\"/dispatches/{}\"", decision.dispatch_id);
+    let page = t.browse(&sales, "/manufacturing/returns").await;
+    page.assert_ok();
+    assert!(page.text().contains(&decision.dispatch_number));
+    assert!(!page.text().contains(&link));
+}
+
+/// The returned lots list pages, sorts and filters like every grid, and
+/// restricts nothing but the permission to open it.
+#[renox::test]
+async fn the_inspection_list_sorts_searches_and_filters() {
+    let (t, _plant, qc, sales) = scene().await;
+    for (dispatch, lot, quantity, reason) in [
+        (90, 5, 20, "damaged"),
+        (91, 6, 7, "wet"),
+        (92, 8, 12, "printing out of register"),
+    ] {
+        t.lots.put(
+            lot,
+            &format!("L{lot}"),
+            None,
+            true,
+            20_000,
+            2_000,
+            "released",
+        );
+        quarantined(
+            &t,
+            dispatch,
+            false,
+            None,
+            vec![booked(lot, quantity, Some(reason))],
+        )
+        .await;
+    }
+    let wet = ReturnInspection::query()
+        .where_(ReturnInspection::LOT_ID.eq(Some(6_i64)))
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
+    t.post(
+        &qc,
+        &format!("/manufacturing/inspections/{}/pass", wet.id),
+        &[("note", "dry")],
+    )
+    .await
+    .assert_status(303);
+
+    let page = t.browse(&qc, "/manufacturing/inspections").await.text();
+    for reason in ["damaged", "wet", "printing out of register"] {
+        assert!(page.contains(reason), "{reason}");
+    }
+    // Sorted by quantity.
+    let up = t
+        .browse(&qc, "/manufacturing/inspections?sort=quantity_milli")
+        .await
+        .text();
+    assert!(up.find("wet").unwrap() < up.find("damaged").unwrap());
+    let down = t
+        .browse(&qc, "/manufacturing/inspections?sort=-quantity_milli")
+        .await
+        .text();
+    assert!(down.find("damaged").unwrap() < down.find("wet").unwrap());
+    // The status link of old and the grid's own filter.
+    for link in ["?status=passed", "?in.status=passed"] {
+        let only = t
+            .browse(&qc, &format!("/manufacturing/inspections{link}"))
+            .await
+            .text();
+        assert!(only.contains("wet") && !only.contains("damaged"), "{link}");
+    }
+    // Search on the reason.
+    let found = t
+        .browse(&qc, "/manufacturing/inspections?search=register")
+        .await
+        .text();
+    assert!(found.contains("printing out of register") && !found.contains("damaged"));
+    // The returned goods list searches and filters too; sales sees every line.
+    let all = t.browse(&sales, "/manufacturing/returns").await.text();
+    assert!(all.contains("damaged") && all.contains("wet"));
+    let some = t
+        .browse(&sales, "/manufacturing/returns?search=wet")
+        .await
+        .text();
+    assert!(some.contains("wet") && !some.contains("damaged"));
+    let open = t
+        .browse(&sales, "/manufacturing/returns?status=open")
+        .await
+        .text();
+    assert!(open.contains("damaged"));
+    let closed = t
+        .browse(&sales, "/manufacturing/returns?status=closed")
+        .await
+        .text();
+    assert!(!closed.contains("damaged"));
 }

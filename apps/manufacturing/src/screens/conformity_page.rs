@@ -3,15 +3,21 @@
 //! certificate to leave the plant), which are export only, which certificate
 //! kinds count for each, and the certificates on file with their expiry. The
 //! sheet *Flag an item* names the item by its code.
+//!
+//! The list is the standard grid over the flagged items (search on the item's
+//! code and name, filters on the three flags); the item and its certificates
+//! are custom cells.
 
 use renox::axum::http::HeaderMap;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::Serialize;
 use wl_kernel::Subject;
 use wl_kernel::documents::{guard, subject_text, today};
 use wl_kernel::inventory::{ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE, stock_service};
 
-use super::{Texts, date_text, done};
+use super::{Texts, date_text, done, exported, with_item_search};
 use crate::conformity::{self, FlagAsk, ItemFlag, KINDS};
 use crate::db::refused;
 use crate::permissions;
@@ -46,9 +52,30 @@ pub(crate) struct Row {
 #[view(template = "manufacturing/conformity.html")]
 pub(crate) struct ConformityPage {
     tx: Texts,
-    rows: Vec<Row>,
+    rows: GridPage<ItemFlag>,
     can_flag: bool,
     kinds: Vec<(String, String)>,
+}
+
+/// The flagged items grid. The item and its certificates are custom cells.
+pub(crate) fn grid(lang: &Lang) -> Grid {
+    let tx = |key: &str| t(lang, &format!("manufacturing.screen.conformity.{key}"));
+    let grid = Grid::new("manufacturing-conformity")
+        .title(&tx("title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(Column::custom("item", &tx("item")).frozen().mobile())
+        .column(Column::bool("regulated", &tx("regulated")).mobile())
+        .column(Column::bool("export_only", &tx("export_only")).mobile())
+        .column(Column::bool("customer_specific", &tx("customer_specific")))
+        .column(Column::custom("accepted", &tx("accepted")).hidden())
+        .column(Column::custom("certificates", &tx("certificates")))
+        .sort_by("item_id")
+        .cards_on_mobile()
+        .exports()
+        .empty_state(&tx("empty"), Some(&tx("empty_text")));
+    with_item_search(grid, lang, "item_id", false)
 }
 
 fn validity_kind(validity: &str) -> &'static str {
@@ -59,12 +86,60 @@ fn validity_kind(validity: &str) -> &'static str {
     }
 }
 
+/// The flags that make an item listed: any of the three.
+fn flagged() -> renox::db::Query<ItemFlag> {
+    ItemFlag::query().where_any(|q| {
+        q.where_(ItemFlag::REGULATED.eq(true))
+            .where_(ItemFlag::EXPORT_ONLY.eq(true))
+            .where_(ItemFlag::CUSTOMER_SPECIFIC.eq(true))
+    })
+}
+
+/// The certificates on file of a flagged item.
+async fn certificates_of(
+    state: &AppState,
+    lang: &Lang,
+    flag: &ItemFlag,
+) -> Result<Vec<Certificate>> {
+    let subject = flag.subject();
+    let mut certificates = Vec::new();
+    for line in guard(state)
+        .documents_of(&state.db, &subject, today(), &lang.locale)
+        .await?
+    {
+        certificates.push(Certificate {
+            kind: line.kind,
+            number: line.number.unwrap_or_default(),
+            valid_to: line
+                .valid_to
+                .map_or_else(|| t(lang, "manufacturing.screen.not_set"), date_text),
+            validity: word(lang, "doc_validity", &line.validity),
+            validity_kind: validity_kind(&line.validity),
+        });
+    }
+    Ok(certificates)
+}
+
+/// The kinds a regulated item accepts, in words.
+fn accepted_text(lang: &Lang, flag: &ItemFlag) -> String {
+    if flag.regulated {
+        flag.accepted()
+            .iter()
+            .map(|kind| word(lang, "conformity_kind", kind))
+            .collect::<Vec<_>>()
+            .join(", ")
+    } else {
+        String::new()
+    }
+}
+
 /// `GET /manufacturing/conformity`.
 pub(crate) async fn show(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     headers: HeaderMap,
+    request: GridRequest,
 ) -> Result<Response> {
     let can_flag = conformity::may_flag(&user);
     if !can_flag
@@ -73,63 +148,44 @@ pub(crate) async fn show(
     {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
-    for flag in ItemFlag::query()
-        .order_by(ItemFlag::ITEM_ID)
-        .get(&state.db)
-        .await?
-        .into_iter()
-        .filter(|flag| flag.regulated || flag.export_only || flag.customer_specific)
-    {
-        let subject = flag.subject();
-        let mut certificates = Vec::new();
-        for line in guard(&state)
-            .documents_of(&state.db, &subject, today(), &lang.locale)
-            .await?
-        {
-            certificates.push(Certificate {
-                kind: line.kind,
-                number: line.number.unwrap_or_default(),
-                valid_to: line
-                    .valid_to
-                    .map_or_else(|| t(&lang, "manufacturing.screen.not_set"), date_text),
-                validity: word(&lang, "doc_validity", &line.validity),
-                validity_kind: validity_kind(&line.validity),
+    let yes = t(&lang, "manufacturing.screen.conformity.yes");
+    let no = t(&lang, "manufacturing.screen.conformity.no");
+    let word_of = |on: bool| if on { yes.clone() } else { no.clone() };
+    if !wl_kernel::negotiate::wants_html(&headers) {
+        let mut rows = Vec::new();
+        for flag in flagged().order_by(ItemFlag::ITEM_ID).get(&state.db).await? {
+            rows.push(Row {
+                item: subject_text(&state.db, &flag.subject()).await?,
+                regulated: word_of(flag.regulated),
+                export_only: word_of(flag.export_only),
+                customer_specific: word_of(flag.customer_specific),
+                accepted: accepted_text(&lang, &flag),
+                certificates: certificates_of(&state, &lang, &flag).await?,
             });
         }
-        let yes = t(&lang, "manufacturing.screen.conformity.yes");
-        let no = t(&lang, "manufacturing.screen.conformity.no");
-        rows.push(Row {
-            item: subject_text(&state.db, &subject).await?,
-            regulated: if flag.regulated {
-                yes.clone()
-            } else {
-                no.clone()
-            },
-            export_only: if flag.export_only {
-                yes.clone()
-            } else {
-                no.clone()
-            },
-            customer_specific: if flag.customer_specific { yes } else { no },
-            accepted: if flag.regulated {
-                flag.accepted()
-                    .iter()
-                    .map(|kind| word(&lang, "conformity_kind", kind))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            } else {
-                String::new()
-            },
-            certificates,
-        });
-    }
-    if !wl_kernel::negotiate::wants_html(&headers) {
         return Ok(Json(&rows).into_response());
     }
+    let grid = grid(&lang);
+    let query = flagged();
+    if let Some(file) = exported(&grid, &query, &request, true).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut extra = std::collections::HashMap::new();
+    for flag in page.items() {
+        extra.insert(
+            flag.id,
+            json!({
+                "item": subject_text(&state.db, &flag.subject()).await?,
+                "accepted": accepted_text(&lang, flag),
+                "certificates": certificates_of(&state, &lang, flag).await?,
+            }),
+        );
+    }
+    let page = page.extend(|flag| extra.get(&flag.id).cloned().unwrap_or_else(|| json!({})));
     Ok(View::typed(ConformityPage {
         tx: screen_texts(&lang),
-        rows,
+        rows: page,
         can_flag,
         kinds: KINDS
             .iter()

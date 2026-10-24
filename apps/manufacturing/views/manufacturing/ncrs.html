@@ -1,34 +1,22 @@
-{#- manufacturing: the non-conformance reports the person may see, with the lot,
-    the quantity, the cause, the disposition and the status. Replace it with
+{#- manufacturing: the non-conformance reports the person may see, a renox::grid that
+    fills the screen (search on the number, lot and defect; filters by status,
+    cause, disposition and date). Replace it with
     resources/views/manufacturing/ncrs.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['ncrs.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['ncrs.title']" :subtitle="tx['ncrs.subtitle']"/>
-    <rx-row rx-if="can_raise">
-      <rx-action-sheet id="raise-ncr" :label="tx['ncrs.new']" :action="route('manufacturing.ncr_create')"
-                       :title="tx['ncrs.new']" :description="tx['ncrs.new_hint']" :submit-label="tx['ncrs.new_save']" variant="primary" icon="plus">
-        <rx-select name="plant_id" :label="tx['form.plant']" :options="form.plants" :selected="form.plant_selected"/>
-        <rx-input name="lot_id" type="number" :label="tx['ncrs.form.lot']" :hint="tx['ncrs.form.lot_hint']" id="raise-ncr-lot"/>
-        <rx-input name="item_id" type="number" :label="tx['form.item']" :hint="tx['ncrs.form.item_hint']" id="raise-ncr-item"/>
-        <rx-input name="quantity" type="text" :label="tx['form.quantity']" :hint="tx['form.quantity_hint']" id="raise-ncr-quantity" required/>
-        <rx-textarea name="defect" :label="tx['ncrs.form.defect']" id="raise-ncr-defect" required/>
-        <rx-select name="cause" :label="tx['ncrs.form.cause']" :options="form.causes" :selected="form.cause_selected"/>
-      </rx-action-sheet>
-    </rx-row>
-    <rx-link-tabs :items="status_tabs" :current="status_current" :label="tx['ncrs.filter']"/>
-    <rx-table :rows="rows" as="ncr" :key="ncr.id" :caption="tx['ncrs.title']" card>
-      <rx-column :label="tx['ncrs.ncr']">
-        <rx-stack>
-          <span><a href="{{ ncr.url }}">{{ ncr.number }}</a> - {{ ncr.item }}</span>
-          <span class="rx-subtitle">{{ ncr.lot }}</span>
-          <span><rx-badge :kind="ncr.status_kind" :text="ncr.status"/></span>
-        </rx-stack>
-      </rx-column>
-      <rx-column :label="tx['ncrs.quantity']" align="num">{{ ncr.quantity }}</rx-column>
-      <rx-column :label="tx['ncrs.cause']" hide-narrow>{{ ncr.cause }}</rx-column>
-      <rx-column :label="tx['ncrs.disposition']" hide-narrow>{{ ncr.disposition }}</rx-column>
-      <rx-column :label="tx['ncrs.raised']" hide-narrow>{{ ncr.raised }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['ncrs.empty']" :message="tx['ncrs.empty_text']" icon="clipboard-list"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['ncrs.title']" :subtitle="tx['ncrs.subtitle']">
+    <rx-link-button :href="all_url" :label="tx['filter.all']" :variant="'plain' if active_now else 'primary'"/>
+    <rx-link-button :href="active_url" :label="tx['ncrs.to_work_on']" :variant="'primary' if active_now else 'plain'"/>
+    <rx-action-sheet rx-if="can_raise" id="raise-ncr" :label="tx['ncrs.new']" :action="route('manufacturing.ncr_create')"
+                     :title="tx['ncrs.new']" :description="tx['ncrs.new_hint']" :submit-label="tx['ncrs.new_save']" variant="primary" icon="plus">
+      <rx-select name="plant_id" :label="tx['form.plant']" :options="form.plants" :selected="form.plant_selected"/>
+      <rx-input name="lot_id" type="number" :label="tx['ncrs.form.lot']" :hint="tx['ncrs.form.lot_hint']" id="raise-ncr-lot"/>
+      <rx-input name="item_id" type="number" :label="tx['form.item']" :hint="tx['ncrs.form.item_hint']" id="raise-ncr-item"/>
+      <rx-input name="quantity" type="text" :label="tx['form.quantity']" :hint="tx['form.quantity_hint']" id="raise-ncr-quantity" required/>
+      <rx-textarea name="defect" :label="tx['ncrs.form.defect']" id="raise-ncr-defect" required/>
+      <rx-select name="cause" :label="tx['ncrs.form.cause']" :options="form.causes" :selected="form.cause_selected"/>
+    </rx-action-sheet>
+  </rx-page-header>
+  <rx-grid :page="rows">
+    <template rx-if="column.key == 'item'">{{ row.item }}</template>
+  </rx-grid>
 </rx-page>
