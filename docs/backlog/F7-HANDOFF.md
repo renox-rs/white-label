@@ -56,7 +56,6 @@ Map of IDs to numbers: `docs/backlog/github-issues.md`. Issue text: `docs/backlo
 | # | Issue, point | What is missing | Provider | Why not now |
 |---|---|---|---|---|
 | 6 | BL-SAL-13 (#132) / BL-MFG-14: delivery after the invoice was issued | not billed (one invoice per order, accountant task) | wl-sales / client billing | open decision |
-| 7 | BL-MFG-14 (#395) late entry for the inspections of returned goods | the limits are installed for production reports and goods receipts (`enter_arrival`, no page yet); an inspection has no business time | this app | needs a business time and a form on the inspection |
 | 8 | BL-MFG-14 calibration certificates kind | no kind, no equipment record | later issue | no entity |
 | 12 | BL-MFG-14 signed checklists `WRK.CHK.01` (onboarding, returned goods inspection) | wl-ticketing has only the kernel contract `Checklists` | wl-ticketing | no provider |
 | 13 | BL-MFG-09 (#390) scanner/import entry | no scanner or import entry in the app | later issue | nothing to test |
