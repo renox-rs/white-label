@@ -18,7 +18,11 @@
 //! the schedule, the demographics and the cover, never a visit reason or
 //! billing codes (`CLN.ACL.02`), and never the card image (`CLN.ACL.12`).
 
+use std::collections::BTreeMap;
+
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 
 use super::{Texts, invalid, parse_id, party_name, require, text};
@@ -113,47 +117,68 @@ fn auth_line(
     }
 }
 
-/// One appointment of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct AppointmentRow {
-    /// The booking.
-    pub booking: i64,
-    /// The patient's name.
-    pub patient: String,
-    /// The service code.
-    pub service: String,
-    /// The start (Asia/Dubai).
-    pub starts: String,
-    /// Where the cover stands, in the page's language.
-    pub cover: String,
-    /// The badge kind.
-    pub cover_kind: &'static str,
-    /// The open flags, comma separated (`CLN.RUL.07`, `CLN.RUL.09`,
-    /// `CLN.RUL.10`), or a dash.
-    pub flags: String,
-}
-
 /// What the list page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "clinics/appointments.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    appointments: Vec<AppointmentRow>,
+    appointments: GridPage<Appointment>,
+}
+
+/// The appointments grid: filters by start and service. The patient, the
+/// cover and the open flags are drawn by the template (`custom`); no export,
+/// the list names patients.
+pub(crate) fn grid(lang: &Lang, names: &std::collections::BTreeMap<String, String>) -> Grid {
+    let services: Vec<(String, String)> = names
+        .iter()
+        .map(|(code, name)| (code.clone(), name.clone()))
+        .collect();
+    Grid::new("clinics-appointments")
+        .title(&text(lang, "appointments.list_title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::datetime("starts_at", &text(lang, "appointments.when"))
+                .frozen()
+                .mobile(),
+        )
+        .column(Column::custom("patient", &text(lang, "appointments.patient")).mobile())
+        .column(Column::select(
+            "service_code",
+            &text(lang, "appointments.service"),
+            services,
+        ))
+        .column(Column::custom("cover", &text(lang, "appointments.cover")).mobile())
+        .column(Column::custom("flags", &text(lang, "flags.title")).mobile())
+        .column(
+            Column::custom("open", &text(lang, "appointments.title"))
+                .frozen_right(),
+        )
+        .sort_by("starts_at")
+        .cards_on_mobile()
+        .empty_state(
+            &text(lang, "appointments.empty"),
+            Some(&text(lang, "appointments.list_subtitle")),
+        )
 }
 
 /// `GET /clinics/appointments`: the appointments from today on, soonest first,
 /// with where the cover of each insured one stands.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
     require(&user, permissions::VISITS_VIEW)?;
-    let all = Appointment::query()
-        .where_(Appointment::VISIT_DATE.gte(wl_kernel::documents::today()))
-        .where_(Appointment::CANCELLED_ON.is_null())
-        .order_by(Appointment::STARTS_AT)
-        .get(&state.db)
-        .await?;
     let service_names = service_names::names(&state, &lang.locale).await?;
-    let mut rows = Vec::with_capacity(all.len());
-    for appointment in &all {
+    let query = Appointment::query()
+        .where_(Appointment::VISIT_DATE.gte(wl_kernel::documents::today()))
+        .where_(Appointment::CANCELLED_ON.is_null());
+    let page = grid(&lang, &service_names).page(query, &request).await?;
+    let mut shown = BTreeMap::new();
+    for appointment in page.items() {
         let visit = Visit::of_booking(&state.db, appointment.booking_id).await?;
         let pending = PendingCheckIn::active_of(&state.db, appointment.booking_id).await?;
         let (cover, kind) = if visit.is_some() {
@@ -166,26 +191,35 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             (text(&lang, "coverage.waiting"), "warning")
         };
         let flags = flag_labels(&state, &lang, appointment.booking_id).await?;
-        rows.push(AppointmentRow {
-            booking: appointment.booking_id,
-            patient: match appointment.patient_party_id {
-                Some(id) => party_name(&state, &lang, wl_kernel::PartyId(id)).await,
-                None => text(&lang, "none"),
-            },
-            service: service_names::name_of(&service_names, &appointment.service_code),
-            starts: wl_kernel::documents::dubai_text(appointment.starts_at),
-            cover,
-            cover_kind: kind,
-            flags: if flags.is_empty() {
-                text(&lang, "none")
-            } else {
-                flags.join(", ")
-            },
-        });
+        let patient = match appointment.patient_party_id {
+            Some(id) => party_name(&state, &lang, wl_kernel::PartyId(id)).await,
+            None => text(&lang, "none"),
+        };
+        shown.insert(
+            appointment.booking_id,
+            json!({
+                "booking": appointment.booking_id,
+                "url": format!("/clinics/appointments/{}", appointment.booking_id),
+                "patient": patient,
+                "cover": cover,
+                "cover_kind": kind,
+                "flags": if flags.is_empty() {
+                    text(&lang, "none")
+                } else {
+                    flags.join(", ")
+                },
+            }),
+        );
     }
+    let page = page.extend(|appointment| {
+        shown
+            .get(&appointment.booking_id)
+            .cloned()
+            .unwrap_or_default()
+    });
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        appointments: rows,
+        appointments: page,
     }))
 }
 
