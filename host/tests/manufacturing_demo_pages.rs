@@ -143,6 +143,8 @@ async fn sales_and_qc_work_the_returned_goods() {
         "select id from manufacturing_return_inspections order by id",
     )
     .await;
+    let passed = "select count(*) from manufacturing_return_inspections where status = 'passed'";
+    let passed_before = scalar(&app, passed).await;
     post(
         &app,
         QC_EMAIL,
@@ -151,14 +153,7 @@ async fn sales_and_qc_work_the_returned_goods() {
     )
     .await
     .assert_status(303);
-    assert_eq!(
-        scalar(
-            &app,
-            "select count(*) from manufacturing_return_inspections where status = 'passed'"
-        )
-        .await,
-        1
-    );
+    assert_eq!(scalar(&app, passed).await, passed_before + 1);
     // Sales may not record the result.
     post(
         &app,
@@ -195,6 +190,8 @@ async fn the_production_manager_approves_the_abort_the_planner_asked_for() {
         "select id from wl_approval_requests where action = 'manufacturing.abort' and status = 'pending'",
     )
     .await;
+    let aborted = "select count(*) from manufacturing_work_orders where status = 'aborted'";
+    let aborted_before = scalar(&app, aborted).await;
     let planner = as_user(&app, PLANNER_EMAIL).await;
     let own = wl_kernel::approvals::approve(app.state(), request, &planner, "").await;
     assert!(own.is_err(), "the requester cannot approve");
@@ -202,14 +199,7 @@ async fn the_production_manager_approves_the_abort_the_planner_asked_for() {
     wl_kernel::approvals::approve(app.state(), request, &manager, "agreed")
         .await
         .unwrap();
-    assert_eq!(
-        scalar(
-            &app,
-            "select count(*) from manufacturing_work_orders where status = 'aborted'"
-        )
-        .await,
-        1
-    );
+    assert_eq!(scalar(&app, aborted).await, aborted_before + 1);
 }
 
 /// The recall of the liner lot reaches the work order and the page of the

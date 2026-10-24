@@ -142,3 +142,42 @@ async fn the_demo_company_has_every_state_the_screens_show() {
     assert!(count(&app, "select count(*) from wl_sales_customer_accounts").await >= 5);
     assert!(count(&app, "select count(*) from wl_portal_access_grants").await >= 1);
 }
+
+/// What the lists and the platform screens of F7 need to show paging and
+/// every state: a decided inspection (one passed, one failed, one waiting), an
+/// aborted work order, more than one page of work orders, a goods receipt, a
+/// purchase order, a stock transfer, a budget, a ticket and a recall that
+/// reaches a lot already shipped (the dispatch that has not left is flagged for
+/// a re-pick).
+#[renox::test]
+async fn the_demo_company_fills_the_lists_and_the_platform_screens() {
+    let app = demo().await;
+    has_states(
+        &app,
+        "manufacturing_return_inspections",
+        &["open", "passed", "failed"],
+    )
+    .await;
+    has_states(&app, "manufacturing_work_orders", &["aborted"]).await;
+    assert!(
+        count(&app, "select count(*) from manufacturing_work_orders").await > 25,
+        "more than a page of work orders"
+    );
+    assert!(count(&app, "select count(*) from wl_inventory_goods_receipts").await >= 1);
+    has_states(&app, "wl_inventory_purchase_orders", &["issued"]).await;
+    assert!(count(&app, "select count(*) from wl_inventory_transfers").await >= 2);
+    assert!(count(&app, "select count(*) from wl_invoicing_company_budgets").await >= 1);
+    assert!(
+        count(
+            &app,
+            "select count(*) from wl_ticketing_tickets t join wl_ticketing_categories c on c.id = t.category_id where c.key = 'delivery_claim'"
+        )
+        .await
+            >= 1
+    );
+    assert!(count(&app, "select count(*) from wl_inventory_recalls").await >= 2);
+    assert!(
+        count(&app, "select count(*) from manufacturing_repick_flags").await >= 1,
+        "a recall reached a dispatch that has not left"
+    );
+}

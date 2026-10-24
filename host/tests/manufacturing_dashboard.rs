@@ -67,11 +67,11 @@ async fn the_production_manager_sees_the_plant_tiles_each_linking_to_its_page() 
     );
     assert_tile(
         &html,
-        "Work order to release",
+        "Work orders to release",
         "/manufacturing/work-orders?status=planned",
     );
-    assert_tile(&html, "Open non-conformance", "/manufacturing/ncrs");
-    assert_tile(&html, "Returned line to decide", "/manufacturing/returns");
+    assert_tile(&html, "Open non-conformances", "/manufacturing/ncrs");
+    assert_tile(&html, "Returned lines to decide", "/manufacturing/returns");
     assert_tile(
         &html,
         "Certificate ending within 30 days",
@@ -85,7 +85,7 @@ async fn the_production_manager_sees_the_plant_tiles_each_linking_to_its_page() 
 async fn qc_sees_the_ncrs_and_the_returned_lots() {
     let app = demo().await;
     let html = dashboard(&app, QC_EMAIL).await;
-    assert_tile(&html, "Open non-conformance", "/manufacturing/ncrs");
+    assert_tile(&html, "Open non-conformances", "/manufacturing/ncrs");
     assert_tile(
         &html,
         "Returned lot to inspect",
@@ -101,13 +101,13 @@ async fn qc_sees_the_ncrs_and_the_returned_lots() {
 async fn sales_sees_the_returned_line_and_the_order_on_credit_hold() {
     let app = demo().await;
     let html = dashboard(&app, SALES_EMAIL).await;
-    assert_tile(&html, "Returned line to decide", "/manufacturing/returns");
+    assert_tile(&html, "Returned lines to decide", "/manufacturing/returns");
     assert_tile(
         &html,
         "Order on credit hold",
         "/sales-orders?in.status=credit_hold",
     );
-    assert!(tile(&html, "Open non-conformance").is_none());
+    assert!(tile(&html, "Open non-conformances").is_none());
 }
 
 /// The accountant sees the overdue invoices and the export without evidence.
@@ -135,11 +135,11 @@ async fn the_planner_and_the_owner_see_their_figures() {
     let html = dashboard(&app, PLANNER_EMAIL).await;
     assert_tile(
         &html,
-        "Work order to release",
+        "Work orders to release",
         "/manufacturing/work-orders?status=planned",
     );
     let html = dashboard(&app, OWNER_EMAIL).await;
-    assert_tile(&html, "Open recall", "/recalls");
+    assert_tile(&html, "Open recalls", "/recalls");
 }
 
 /// The storekeeper, the operator and the customer's buyer open the page
@@ -149,7 +149,7 @@ async fn others_see_no_tile_that_is_not_theirs() {
     let app = demo().await;
     for email in [STORE_EMAIL, OPERATOR_EMAIL, BUYER_EMAIL] {
         let html = dashboard(&app, email).await;
-        assert!(tile(&html, "Open non-conformance").is_none(), "{email}");
+        assert!(tile(&html, "Open non-conformances").is_none(), "{email}");
         assert!(tile(&html, "Order on credit hold").is_none(), "{email}");
         assert!(tile(&html, "Overdue invoices").is_none(), "{email}");
     }
