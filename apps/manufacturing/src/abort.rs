@@ -626,6 +626,16 @@ pub async fn after_abort(state: &AppState, id: i64) -> Result<bool> {
     let output_lot = order
         .output_lot_id
         .map(|lot| Subject::new(wl_kernel::inventory::LOT_SUBJECT_TYPE, lot));
+    // The output of an aborted work order goes to QC, not to the line.
+    if let (Some(lot), Some(sales), Some(line)) =
+        (&output_lot, order.order(), order.sales_order_line_id)
+    {
+        let mut tx = state.db.begin().await?;
+        wl_kernel::production::production_stock(state)
+            .release_reservation(&mut tx, lot, sales, line)
+            .await?;
+        tx.commit().await?;
+    }
     if order.good_milli > 0 {
         let subject = output_lot.clone().unwrap_or_else(|| order.subject());
         role_tasks::open(

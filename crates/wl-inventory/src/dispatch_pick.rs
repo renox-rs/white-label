@@ -31,6 +31,7 @@ use crate::dispatch::{Dispatch, DispatchLine, DispatchStatus, lines_of, refused}
 use crate::item::{Item, quantity_text};
 use crate::lot::{Lot, LotStatus};
 use crate::permissions;
+use crate::reservation;
 use crate::texts::said;
 
 /// The `pick` transition's name.
@@ -117,6 +118,7 @@ pub async fn gather(
         return Ok(found);
     }
     let mut claimed: BTreeMap<(i64, Option<i64>), i64> = BTreeMap::new();
+    let mut reserved_own: BTreeMap<(i64, Option<i64>), i64> = BTreeMap::new();
     for line in &lines {
         let position = line.position.to_string();
         let item = Item::find_or_404(&mut *tx, line.item_id).await?;
@@ -131,7 +133,25 @@ pub async fn gather(
         let needed = *needed;
         let at =
             balance::balance(&mut *tx, line.item_id, dispatch.location_id, line.lot_id).await?;
-        let own = if counted { needed } else { 0 };
+        // The reservation the order itself holds for the line is the
+        // dispatch's to take (no other order's pick can).
+        if let (Some(sale_line), true) = (line.sale_line_id(), dispatch.is_sales_order()) {
+            let held = reservation::own_in(
+                &mut *tx,
+                dispatch.source_id,
+                sale_line,
+                line.item_id,
+                dispatch.location_id,
+                line.lot_id,
+            )
+            .await?;
+            *reserved_own.entry((line.item_id, line.lot_id)).or_insert(0) += held;
+        }
+        let reserved_own_here = reserved_own
+            .get(&(line.item_id, line.lot_id))
+            .copied()
+            .unwrap_or(0);
+        let own = reserved_own_here + if counted { needed } else { 0 };
         let available = (at.on_hand_milli - at.reserved_milli - at.held_milli + own).max(0);
         if available >= needed || found.stock_problem.is_some() {
             continue;
@@ -183,6 +203,26 @@ fn with_problem(
 /// The effect of `pick`: the stock is reserved (its lines count as reserved
 /// while the dispatch is `picked`).
 async fn pick_in(tx: &mut Transaction, dispatch: Dispatch, by: Option<i64>) -> Result {
+    // The reservation the order holds for its lines becomes the dispatch's.
+    if dispatch.is_sales_order() {
+        for line in lines_of(&mut *tx, dispatch.id).await? {
+            if let Some(sale_line) = line.sale_line_id() {
+                let place = reservation::Place {
+                    item_id: line.item_id,
+                    lot_id: line.lot_id,
+                    location_id: dispatch.location_id,
+                };
+                reservation::consume(
+                    tx,
+                    dispatch.source_id,
+                    sale_line,
+                    &place,
+                    line.quantity_milli,
+                )
+                .await?;
+            }
+        }
+    }
     // Stock may have moved or been held since the guards looked.
     let found = gather(tx, &dispatch, by, true).await?;
     if let Some(problem) = found.first_problem() {

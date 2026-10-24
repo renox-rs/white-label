@@ -30,6 +30,7 @@ use wl_kernel::{Subject, SubjectMachine};
 use crate::abort;
 use crate::cost::value_of;
 use crate::db::{answer, lock_order, refused, set_order};
+use crate::output_reservation;
 use crate::permissions;
 use crate::plant::Line;
 use crate::texts::english;
@@ -339,6 +340,9 @@ pub(crate) async fn post(
         return Err(refused(english("manufacturing.report.no_location", &[])));
     }
     let stock = production_stock(state);
+    // The line is another module's: its open quantity is read before the
+    // transaction opens.
+    let open = output_reservation::open_of(state, &order).await?;
     let mut tx = state.db.begin().await?;
     let order = lock_order(&mut tx, id).await?;
     if order.status != WorkOrderStatus::InProgress {
@@ -395,10 +399,23 @@ pub(crate) async fn post(
         &[
             ("good_milli", &(order.good_milli + ask.good_milli)),
             ("scrap_milli", &(order.scrap_milli + ask.scrap_milli)),
-            ("output_lot_id", &lot.map(|lot| lot.subject_id)),
+            ("output_lot_id", &lot.as_ref().map(|lot| lot.subject_id)),
         ],
     )
     .await?;
+    // The output of a work order serving a sale line is set aside for it.
+    if ask.good_milli > 0 {
+        output_reservation::sync(
+            state,
+            &mut tx,
+            &order,
+            order.good_milli + ask.good_milli,
+            lot.as_ref(),
+            finished.as_ref(),
+            open,
+        )
+        .await?;
+    }
     tx.commit().await?;
     Ok(report)
 }
@@ -518,6 +535,7 @@ pub async fn after_void(state: &AppState, id: i64) -> Result<bool> {
         (void.reason, Some(void.voided_by))
     });
     let stock = production_stock(state);
+    let open = output_reservation::open_of(state, &order).await?;
     let mut tx = state.db.begin().await?;
     let claimed = ProductionReport::query()
         .where_(ProductionReport::ID.eq(id))
@@ -543,6 +561,23 @@ pub async fn after_void(state: &AppState, id: i64) -> Result<bool> {
                 },
             )
             .await?;
+        // The reversed output is no longer set aside for the line.
+        output_reservation::sync(
+            state,
+            &mut tx,
+            &order,
+            order.good_milli,
+            report
+                .lot_id
+                .map(|lot| Subject::new(LOT_SUBJECT_TYPE, lot))
+                .as_ref(),
+            report
+                .location_id
+                .map(|id| Subject::new(LOCATION_SUBJECT_TYPE, id))
+                .as_ref(),
+            open,
+        )
+        .await?;
     }
     if report.scrap_milli > 0 {
         let mut waste = scrap_of(&report, &order, "Void of the scrap".to_owned());

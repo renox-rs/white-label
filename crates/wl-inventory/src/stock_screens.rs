@@ -198,6 +198,7 @@ pub struct ItemRow {
     code: String,
     on_hand: String,
     held: String,
+    reserved: String,
     available: String,
     reorder: String,
     low: bool,
@@ -216,6 +217,7 @@ pub struct LotRow {
     status_kind: &'static str,
     here: String,
     held: String,
+    reserved: String,
 }
 
 /// What the stock page needs.
@@ -282,6 +284,10 @@ async fn stock(
             code: item.code.clone(),
             on_hand: amount(figures.on_hand_milli, &item.base_unit),
             held: amount(figures.held_milli, &item.base_unit),
+            reserved: amount(
+                crate::reservation::reserved_in(&state.db, item.id, chosen.id, None, None).await?,
+                &item.base_unit,
+            ),
             available: amount(figures.available_milli(), &item.base_unit),
             reorder: if item.reorder_point_milli > 0 {
                 amount(item.reorder_point_milli, &item.base_unit)
@@ -315,6 +321,17 @@ async fn stock(
                 status_kind: lot_kind(lot.status),
                 here: amount(here.on_hand_milli, &item.base_unit),
                 held: amount(here.held_milli, &item.base_unit),
+                reserved: amount(
+                    crate::reservation::reserved_in(
+                        &state.db,
+                        item.id,
+                        chosen.id,
+                        Some(lot.id),
+                        None,
+                    )
+                    .await?,
+                    &item.base_unit,
+                ),
             });
         }
     }
@@ -337,6 +354,7 @@ async fn stock(
 pub struct WhereRow {
     location: String,
     quantity: String,
+    reserved: String,
 }
 
 /// One movement of a lot.
@@ -425,6 +443,17 @@ async fn lot(
             places.push(WhereRow {
                 location: location_name(&location),
                 quantity: amount(quantity, &item.base_unit),
+                reserved: amount(
+                    crate::reservation::reserved_in(
+                        &state.db,
+                        item.id,
+                        location.id,
+                        Some(lot.id),
+                        None,
+                    )
+                    .await?,
+                    &item.base_unit,
+                ),
             });
         }
     }

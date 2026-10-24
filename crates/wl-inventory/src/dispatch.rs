@@ -225,6 +225,12 @@ impl Dispatch {
         Subject::new(&self.source_type, self.source_id)
     }
 
+    /// Whether it fulfils a sales order (whose lines may hold a
+    /// [`crate::reservation`]).
+    pub fn is_sales_order(&self) -> bool {
+        self.source_type == wl_kernel::sales::SALES_ORDER_SUBJECT_TYPE
+    }
+
     /// Who may pick and dispatch it: the scope of its location.
     pub fn scope(&self) -> Scope {
         scope_of(self.scope_type.as_deref(), self.scope_id)

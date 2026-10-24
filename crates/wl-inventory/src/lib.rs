@@ -62,6 +62,7 @@ pub mod receipt_post;
 pub mod receipt_reverse;
 mod receipt_screens;
 pub mod reorder;
+pub mod reservation;
 pub mod return_credit;
 pub mod return_dispatch;
 pub mod return_note;
@@ -790,6 +791,8 @@ impl Module for WlInventory {
         dispatch_reverse::register(app);
         // BL-STK-26: a cancelled order line gives its goods back or scraps them.
         sales_cancel::register(app);
+        // BL-SAL-11: a confirmed order reserves its lines; cancelling gives them back.
+        reservation::register(app);
         // A discarded perishable delivery is wastage with the source as reference.
         wl_kernel::delivery::provide_delivery_wastage(app, delivery_wastage::InventoryWastage);
         hold_decide::register(app);

@@ -35,8 +35,11 @@
 //! - **Scrap with part of the line still open**: a started work order that
 //!   made nothing yet keeps its quantity, flagged *for stock*; one with work in
 //!   progress gets the abort task, as the spec says. The *for stock* output
-//!   is not reserved to the line by wl-inventory (no reservation exists to
-//!   release); it is only flagged.
+//!   is flagged on the work order; wl-inventory reserves the output lot for
+//!   the line only up to the line's open quantity less the part for stock
+//!   ([`crate::output_reservation`]), so that part is free stock as soon as
+//!   it is reported, and the reservation shrinks when the flag is set after
+//!   the output was reported.
 //! - The abort task is one per work order and closes when the abort is final.
 //!   Its text carries the reason to type into the abort sheet, which the work
 //!   order's page fills in.

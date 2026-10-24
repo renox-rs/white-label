@@ -343,6 +343,9 @@ pub async fn complete(state: &AppState, by: &AuthUser, id: i64) -> Result<WorkOr
     let order = load(state, id).await?;
     allow(&order, by, permissions::WORK_ORDERS_REPORT)?;
     let done = run(state, by, order, COMPLETE, OrderInput::default(), None).await?;
+    // The finished lot stays set aside for the line it serves (it is in
+    // quarantine until QC releases it).
+    crate::output_reservation::resync(state, &done).await?;
     let lot = done
         .output_lot_id
         .map(|lot| Subject::new(LOT_SUBJECT_TYPE, lot));
@@ -564,6 +567,9 @@ pub async fn set_for_stock_by_system(
     let mut tx = state.db.begin().await?;
     crate::db::set_order(&mut tx, id, &[("quantity_for_stock_milli", &wanted)]).await?;
     tx.commit().await?;
+    // What is for stock is free stock: the reservation of the output already
+    // reported shrinks with it.
+    crate::output_reservation::resync(state, &load(state, id).await?).await?;
     Ok(true)
 }
 

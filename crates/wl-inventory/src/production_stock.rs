@@ -21,23 +21,32 @@
 //!   location (moved, issued or picked); the `wastage` of the scrap is
 //!   reversed with an `adjust` that has no location, as the wastage had none.
 //!
+//! - `reserve_output` and `release_reservation` set the output lot aside for
+//!   the sale line the work order serves, and give it back (`unlink`,
+//!   `abort`, BL-MFG-02 point 5, BL-MFG-03): a [`crate::reservation`] of
+//!   source `work_order`, which counts as reserved (another order's pick
+//!   cannot take the lot) but is no obstacle to a void of the work order's own
+//!   report. `release_reservation` answers `true` when a reservation was
+//!   active.
+//!
 //! Decisions where the spec is silent: the output lot is numbered by the
-//! caller (`F-WO-2026-0001`); reservations of output lots for order lines
-//! are not kept by this module yet, so `release_reservation` answers `false`
-//! (the dispatch pick reserves, not the work order).
+//! caller (`F-WO-2026-0001`).
 
 use renox::db::Transaction;
 use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::inventory::LOT_SUBJECT_TYPE;
 use wl_kernel::production::{
-    ProduceOutput, ProductionFuture, ProductionStock, ReturnMaterial, VoidOutput, WasteMaterial,
+    ProduceOutput, ProductionFuture, ProductionStock, ReserveOutput, ReturnMaterial, VoidOutput,
+    WasteMaterial,
 };
+use wl_kernel::sales::SalesOrderId;
 
 use crate::balance;
 use crate::item::{Item, quantity_text, value_of};
 use crate::lot::{Lot, LotStatus};
 use crate::movement::{MovementType, StockMovement};
+use crate::reservation;
 
 /// A 422 with `message`.
 fn refused(message: impl Into<String>) -> Error {
@@ -149,7 +158,8 @@ pub async fn produce(tx: &mut Transaction, request: ProduceOutput) -> Result<Opt
 }
 
 /// What of the output lot (of the item when it has none) is at `location`
-/// and not reserved, in thousandths.
+/// and not reserved by anything but the work orders' own reservations for
+/// sale lines, in thousandths.
 ///
 /// # Errors
 ///
@@ -160,14 +170,26 @@ pub async fn output_available<'c>(
     lot: Option<&Subject>,
     location: &Subject,
 ) -> Result<i64> {
+    let mut conn = db.into_conn();
+    let lot_id = lot.map(|lot| lot.subject_id);
     let found = balance::balance(
-        db,
+        conn.reborrow(),
         item.subject_id,
         location.subject_id,
-        lot.map(|lot| lot.subject_id),
+        lot_id,
     )
     .await?;
-    Ok((found.on_hand_milli - found.reserved_milli).max(0))
+    // What the work orders themselves set aside of their output for a sale
+    // line is no obstacle to taking a report back.
+    let own = reservation::reserved_in(
+        conn.reborrow(),
+        item.subject_id,
+        location.subject_id,
+        lot_id,
+        Some(reservation::SOURCE_WORK_ORDER),
+    )
+    .await?;
+    Ok((found.on_hand_milli - found.reserved_milli + own).max(0))
 }
 
 /// Takes the good output of a voided report out of the lot (see the module).
@@ -242,6 +264,56 @@ pub async fn void_waste(tx: &mut Transaction, request: WasteMaterial) -> Result 
     Ok(())
 }
 
+/// Sets the output lot aside for the sale line (see the module).
+///
+/// # Errors
+///
+/// A database error.
+pub async fn reserve_output(tx: &mut Transaction, request: ReserveOutput) -> Result<bool> {
+    let place = reservation::Place {
+        item_id: request.item.subject_id,
+        lot_id: Some(request.lot.subject_id),
+        location_id: request.location.subject_id,
+    };
+    reservation::set(
+        tx,
+        &place,
+        reservation::ForLine {
+            order: request.order.0,
+            line: request.line,
+            source: reservation::SOURCE_WORK_ORDER,
+            source_ref: Some(format!(
+                "{}:{}",
+                request.source.subject_type, request.source.subject_id
+            )),
+        },
+        request.quantity_milli,
+        reservation::WORK_ORDER_RELEASED,
+    )
+    .await
+}
+
+/// Gives the output lot back to free stock (see the module).
+///
+/// # Errors
+///
+/// A database error.
+pub async fn release_reservation(
+    tx: &mut Transaction,
+    lot: &Subject,
+    order: SalesOrderId,
+    line: i64,
+) -> Result<bool> {
+    reservation::release(
+        tx,
+        order.0,
+        Some(line),
+        Some(lot.subject_id),
+        reservation::WORK_ORDER_RELEASED,
+    )
+    .await
+}
+
 /// The module's [`ProductionStock`].
 #[derive(Debug, Clone, Copy, Default)]
 pub struct InventoryProduction;
@@ -299,5 +371,23 @@ impl ProductionStock for InventoryProduction {
         request: WasteMaterial,
     ) -> ProductionFuture<'a, ()> {
         Box::pin(async move { void_waste(tx, request).await })
+    }
+
+    fn reserve_output<'a>(
+        &'a self,
+        tx: &'a mut Transaction,
+        request: ReserveOutput,
+    ) -> ProductionFuture<'a, bool> {
+        Box::pin(async move { reserve_output(tx, request).await })
+    }
+
+    fn release_reservation<'a>(
+        &'a self,
+        tx: &'a mut Transaction,
+        lot: &'a Subject,
+        order: SalesOrderId,
+        line: i64,
+    ) -> ProductionFuture<'a, bool> {
+        Box::pin(async move { release_reservation(tx, lot, order, line).await })
     }
 }

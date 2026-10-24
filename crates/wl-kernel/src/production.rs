@@ -240,6 +240,26 @@ pub struct VoidOutput {
     pub user: Option<i64>,
 }
 
+/// The output lot of a work order set aside for a line of the sales order it
+/// serves (`reserve_output`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReserveOutput {
+    /// The work order, `manufacturing.work_order:5`.
+    pub source: Subject,
+    /// The finished item, `inventory.item:9`.
+    pub item: Subject,
+    /// The output lot, `inventory.lot:4`.
+    pub lot: Subject,
+    /// Where the finished goods are, `inventory.location:2`.
+    pub location: Subject,
+    /// The sales order the work order serves.
+    pub order: SalesOrderId,
+    /// The sale line (its id in `wl-sales`).
+    pub line: i64,
+    /// The quantity to hold for the line, in thousandths.
+    pub quantity_milli: i64,
+}
+
 /// The stock movements of a work order, posted inside the caller's
 /// transaction (07 §7.1 *Work order*: `abort` posts them in one transaction
 /// at the final approval; a production report posts its `produce`).
@@ -311,10 +331,23 @@ pub trait ProductionStock: Send + Sync + 'static {
         Box::pin(async { Ok(()) })
     }
 
+    /// Sets the output lot of a work order aside for `line` of the sales
+    /// order, for exactly `request.quantity_milli` (a smaller or larger
+    /// quantity changes the reservation made before; 0 gives it back).
+    /// Returns whether a reservation is active afterwards: `false` when the
+    /// module is off.
+    fn reserve_output<'a>(
+        &'a self,
+        _tx: &'a mut Transaction,
+        _request: ReserveOutput,
+    ) -> ProductionFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
     /// Frees the output lot `lot` from the reservation for `line` of the
-    /// sales order (`unlink`, `MFG.RUL.09`). Returns whether a reservation
-    /// was released. wl-inventory does not reserve output lots to order
-    /// lines yet, so its answer is `false`.
+    /// sales order (`unlink`, `MFG.RUL.09`, or the abort of the work order).
+    /// Returns whether a reservation was released: `false` when there was
+    /// none (or the module is off).
     fn release_reservation<'a>(
         &'a self,
         _tx: &'a mut Transaction,

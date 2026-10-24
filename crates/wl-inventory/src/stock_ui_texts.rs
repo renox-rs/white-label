@@ -13,6 +13,7 @@ pub(crate) const STOCK_TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.stock.stock.item", "Item"),
     ("wl_inventory.stock.stock.on_hand", "On hand"),
     ("wl_inventory.stock.stock.held", "On hold"),
+    ("wl_inventory.stock.stock.reserved", "Reserved for orders"),
     ("wl_inventory.stock.stock.available", "Available"),
     ("wl_inventory.stock.stock.reorder", "Reorder at"),
     ("wl_inventory.stock.stock.level", "Level"),

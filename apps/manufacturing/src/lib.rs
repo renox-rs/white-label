@@ -17,6 +17,7 @@ pub mod ncrs;
 pub mod notices;
 pub mod order_changes;
 pub mod outcome_proposals;
+pub mod output_reservation;
 pub mod pages;
 pub mod permissions;
 pub mod pick_list;
