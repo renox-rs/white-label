@@ -36,6 +36,10 @@ pub const ISSUE: &str = "issue";
 /// The system twin of [`ISSUE`]: no user, and only for a source the module is
 /// set to issue automatically.
 pub const ISSUE_SYSTEM: &str = "issue_system";
+/// The run the kernel makes once an `issue` held for approval is approved
+/// (an issue over the user's limit, when the client stores an
+/// `invoicing.issue` approval policy; BL-AGT-08). The same guards and effect.
+pub const ISSUE_APPROVED: &str = "issue_approved";
 
 /// What an issue run carries to its guards and effect, gathered by
 /// [`issue`].
@@ -67,10 +71,16 @@ pub(crate) struct IssueInput {
     /// (#69): the system twin does not issue it while the review is open.
     #[serde(default)]
     pub held_by_review: bool,
+    /// The invoice's total in AED fils, which an `invoicing.issue` approval
+    /// policy's amount condition reads (`amount`): the same limit applies on
+    /// the screen and through an agent (BL-AGT-08).
+    #[serde(default)]
+    pub amount: i64,
 }
 
-/// The `issue` transition and its system twin, for the machine.
-pub(crate) fn transitions() -> [Transition<Invoice>; 2] {
+/// The `issue` transition, its system twin and its approved run, for the
+/// machine.
+pub(crate) fn transitions() -> [Transition<Invoice>; 3] {
     [
         rules(
             Transition::new(ISSUE)
@@ -104,6 +114,11 @@ pub(crate) fn transitions() -> [Transition<Invoice>; 2] {
                 }
             })
         }),
+        rules(
+            Transition::new(ISSUE_APPROVED)
+                .label("Issue (approved)")
+                .system(),
+        ),
     ]
 }
 
@@ -254,8 +269,23 @@ fn due_date(
     })
 }
 
+/// The invoice's total in AED fils: its gross total, converted with its
+/// exchange rate when it is in another currency.
+pub(crate) fn amount_in_aed(invoice: &Invoice) -> i64 {
+    if invoice.currency == "AED" {
+        return invoice.gross_total;
+    }
+    match invoice.aed_rate() {
+        Some(rate) if rate > 0 => {
+            let aed = i128::from(invoice.gross_total) * i128::from(rate) / 1_000_000;
+            i64::try_from(aed).unwrap_or(i64::MAX)
+        }
+        _ => invoice.gross_total,
+    }
+}
+
 /// What the guards and the effect of issuing `invoice` need.
-async fn gather(state: &AppState, invoice: &Invoice) -> Result<IssueInput> {
+pub(crate) async fn gather(state: &AppState, invoice: &Invoice) -> Result<IssueInput> {
     let lines = lines_of(&state.db, invoice.id).await?;
     let entity = match invoice.legal_entity_id {
         Some(id) => LegalEntity::find(&state.db, id).await?,
@@ -280,6 +310,7 @@ async fn gather(state: &AppState, invoice: &Invoice) -> Result<IssueInput> {
             .auto_issue_sources
             .contains(&invoice.source_type),
         held_by_review: crate::delivery_dispute::held_by_review(&state.db, &lines).await?,
+        amount: amount_in_aed(invoice),
     })
 }
 
@@ -377,6 +408,7 @@ mod tests {
             einvoice: Default::default(),
             auto_issue: false,
             held_by_review: false,
+            amount: 105_000,
         }
     }
 

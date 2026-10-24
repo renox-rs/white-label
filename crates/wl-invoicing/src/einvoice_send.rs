@@ -48,7 +48,10 @@ use crate::einvoice::{
 use crate::einvoice_adapter::{AspAnswer, AspError, Submission, adapter_of, scope_of};
 use crate::einvoice_payload::{self as payload, Document};
 use crate::invoice::Invoice;
-use crate::issue::{ISSUE as INVOICE_ISSUE, ISSUE_SYSTEM as INVOICE_ISSUE_SYSTEM};
+use crate::issue::{
+    ISSUE as INVOICE_ISSUE, ISSUE_APPROVED as INVOICE_ISSUE_APPROVED,
+    ISSUE_SYSTEM as INVOICE_ISSUE_SYSTEM,
+};
 #[cfg(test)]
 use crate::texts;
 use wl_kernel::invoicing::{CreditNoteStatus, InvoiceStatus};
@@ -769,7 +772,9 @@ pub fn queue_banner(template: &str, count: i64) -> Option<String> {
 /// command.
 pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: Transitioned<Invoice>, state: AppState| async move {
-        if event.transition != INVOICE_ISSUE && event.transition != INVOICE_ISSUE_SYSTEM {
+        if ![INVOICE_ISSUE, INVOICE_ISSUE_SYSTEM, INVOICE_ISSUE_APPROVED]
+            .contains(&event.transition.as_str())
+        {
             return Ok(());
         }
         let Some(invoice) = Invoice::find(&state.db, event.key).await? else {

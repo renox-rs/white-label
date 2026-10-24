@@ -584,8 +584,13 @@ async fn show(
     let mut approval_cards = approvals::cards_for(&db, &subject, &user, &lang).await?;
     approval_cards.extend(dispute_cards);
     let history = state_machine::history(&db, Invoice::TABLE, invoice.id).await?;
-    let mut timeline =
-        state_machine::timeline(&history, Some(&state_machine::info_of::<Invoice>()));
+    // "by Budi via Claude" for what an assistant did (BL-AGT-08).
+    let mut timeline = wl_kernel::agent::history::timeline(
+        &db,
+        &history,
+        Some(&state_machine::info_of::<Invoice>()),
+    )
+    .await?;
     timeline.extend(approvals::timeline_for(&db, &subject, &lang).await?);
     timeline.sort_by(|a, b| a["time"].as_str().cmp(&b["time"].as_str()));
     // `issue`, `write_off` and `credit` have their own buttons.

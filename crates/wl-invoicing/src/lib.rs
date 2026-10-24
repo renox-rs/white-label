@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 pub mod ageing;
+mod agent;
 mod ageing_pages;
 pub mod allocate;
 pub mod allocation;
@@ -997,6 +998,9 @@ impl Module for WlInvoicing {
         // What the invoice's Related panel lists (BL-AGT-03), and the
         // relations of credit notes and parties (BL-AGT-04).
         relations::register();
+        // What an AI assistant may do with an invoice, previewed and
+        // confirmed by the user (BL-AGT-08).
+        agent::register();
         // Invoices and credit notes in the global search (BL-AGT-04).
         search::register(app);
         // An invoice is looked after by the people of its scope unit (the
