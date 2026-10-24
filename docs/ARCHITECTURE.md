@@ -1,7 +1,7 @@
 # White-Label UAE SME Platform — Architecture
 
 > Status: **approved; F1–F10 built** ([decision 0004](decisions/0004-start-f1-build.md), [0005](decisions/0005-phases-follow-vertical-numbers.md)). The
-> code follows the layout in [§7](#7-repository-layout) (directories marked "planned" do not exist yet).
+> code follows the layout in [§7](#7-repository-layout) (directories marked "planned" do not exist yet: `operator/` and `deploy/rollout`).
 
 ## 1. Agreed decisions
 
@@ -134,6 +134,8 @@ in our layouts.
 
 ### 4b. Business modules (private, `white-label`)
 
+Planned: global search and agent access in `wl-kernel` ([decision 0006](decisions/0006-search-and-ai-agents.md)), no new crate.
+
 | Module | Contents | First used by |
 |---|---|---|
 | `wl-kernel` | Enabled-module manifest, business calendar (working days, UAE public holidays, Ramadan hours), branding from settings, sequential document numbers (`INV-2026-0001`), custom fields (JSON values + a definitions table, Renox #41), cross-module traits, polymorphic `Subject` reference; legal entities and per-entity numbering, data import, global search, notes and mentions, report library, signed admin API and entitlements | all |
@@ -244,7 +246,8 @@ white-label/
 │       ├── client.toml        # app, modules, branding, locales, TRN
 │       ├── resources/views/   # view overrides (optional)
 │       └── ext/               # extension crate (optional)
-├── deploy/                    # planned (rollout track): build, migrate, rollout, backup
+├── deploy/                    # Dockerfile, systemd, Litestream, Caddy, runbook (README.md);
+│                              # `deploy/rollout` (automatic rollout) is still planned
 └── docs/
 ```
 
@@ -298,9 +301,11 @@ extension gets its own binary: `host` + the `ext/` crate linked at build time.
   under stricter DHA/DoH rules).
 - **Per client:** 1 systemd unit + 1 SQLite file + a Litestream replica. A reverse proxy
   (Caddy) handles automatic TLS for each client domain.
-- **Fleet upgrades:** `deploy/rollout` builds once, then rolls out client by client.
-  Migrations run on boot, followed by a health check and automatic rollback on failure. A
-  canary client (the internal demo) is always updated first.
+- **Fleet upgrades:** target: `deploy/rollout` (**not built**) builds once, then rolls out
+  client by client. Migrations run on boot, followed by a health check and automatic rollback
+  on failure. A canary client (the internal demo) is always updated first. Today the rollout
+  is a manual checklist ([deploy/README.md](../deploy/README.md) §5-6, [OPERATIONS.md](OPERATIONS.md) §12);
+  `.github/workflows/release-main.yml` builds one artifact per push to main for the public demos.
 - **Cost:** one small VPS (2 vCPU/4 GB) is expected to host dozens of SME clients, given
   Renox's footprint of about 12 MiB per process. To be measured in phase F1.
 - **Details:** environments, release waves, backups and restore drills, monitoring, support
@@ -324,7 +329,7 @@ open.
 | **F5 — Clinics** | `wl-scheduling` (resources, bookings, reminders) + `apps/clinics` | Appointment to invoice, with licence expiry blocks |
 | **F6 — F&B** | Recipes and lots in `wl-inventory`, orders and POS in `wl-sales`, aggregator integrations + `apps/fnb` | Order to dispatch to food-safety log. Validate partner API access first |
 | **F7 — Manufacturing** | BOMs, lots and quality in `wl-inventory` + `apps/manufacturing` | Work order to finished stock with landed cost |
-| **F8 — Auto** (**built**: `apps/auto`, `clients/demo-auto`, the settings of `host/src/app/auto_*.rs`; the demo command `auto:demo` is future work and not built) | Orders and POS in `wl-sales` (if not done in F6), job cards + `apps/auto`; back-orders in `wl-sales` and reservations in `wl-inventory` | Job card to invoice, insurance repair |
+| **F8 — Auto** (**built**: `apps/auto`, `clients/demo-auto`, the settings of `host/src/app/auto_*.rs`, the demo command `auto:demo` in `host/src/app/auto_demo/`) | Orders and POS in `wl-sales` (if not done in F6), job cards + `apps/auto`; back-orders in `wl-sales` and reservations in `wl-inventory` | Job card to invoice, insurance repair |
 | **F9 — Manpower** | The rest of `wl-hr` (visas, leave, payroll, WPS, final settlement) + `apps/manpower` | Deployment to client timesheet to WPS payroll |
 | **F10 — EdTech** (**built**: `apps/edtech`, `clients/demo-edtech`, the settings of `host/src/app/edtech_*.rs`; the demo command `edtech:demo` in `host/src/app/edtech_demo`) | Batches, enrolments, tutors, certificates on `wl-scheduling` + `apps/edtech` | Enrolment to attendance to certificate |
 | **Rollout track** (after F1, before the second paying client) | `deploy/rollout`, tested backup/restore, R8 `rnx new --from`, client onboarding in < 1 day | A new client goes live from `client.toml` alone |
