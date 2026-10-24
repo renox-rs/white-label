@@ -28,9 +28,6 @@ use crate::permissions;
 pub const NUMBER_ON_ISSUE: &str =
     "Assigned when issued: the next number of the invoice series (none is reserved before)";
 
-/// The key of the issue action.
-pub const ISSUE_ACTION: &str = "invoicing.invoice.issue";
-
 /// The key of the create-draft action.
 pub const CREATE_DRAFT_ACTION: &str = "invoicing.invoice.create_draft";
 

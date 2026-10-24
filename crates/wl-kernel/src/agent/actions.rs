@@ -857,14 +857,23 @@ where
             description: self.description,
             arguments: self.arguments,
             needs_record: true,
-            preview: Arc::new(move |call, record, args| {
+            preview: Arc::new(
+                move |call: AgentCall,
+                      record: Option<i64>,
+                      args: Value|
+                      -> BoxFuture<'static, Result<Planned>> {
                 let spec = Arc::clone(&for_preview);
                 Box::pin(async move {
                     let id = record.unwrap_or_default();
                     plan(&spec, &call, id, &args).await.map(|(_, _, planned)| planned)
                 })
             }),
-            confirm: Arc::new(move |call, record, args, fingerprint| {
+            confirm: Arc::new(
+                move |call: AgentCall,
+                      record: Option<i64>,
+                      args: Value,
+                      fingerprint: String|
+                      -> BoxFuture<'static, Result<Confirmed>> {
                 let spec = Arc::clone(&for_confirm);
                 Box::pin(async move {
                     run(&spec, &call, record.unwrap_or_default(), &args, &fingerprint).await
