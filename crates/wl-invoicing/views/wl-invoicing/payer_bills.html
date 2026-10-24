@@ -1,18 +1,12 @@
-{#- wl-invoicing: the payer bills (§4 *Payer bill*): number, payer, customer,
-    source, state and open amount; a row opens the bill. Replace it with
+{#- wl-invoicing: the payer bills (§4 *Payer bill*), a renox::grid (search on
+    the number, filters by state, sums of the claimed and
+    open amounts) that fills the screen; a row opens the bill. Replace it with
     resources/views/wl-invoicing/payer_bills.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['payer_bill.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['payer_bill.title']" :subtitle="tx['payer_bill.subtitle']"/>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['payer_bill.title']" card>
-      <rx-column :label="tx['payer_bill.fields.number']"><a href="{{ row.link }}">{{ row.number }}</a></rx-column>
-      <rx-column :label="tx['payer_bill.fields.payer']">{{ row.payer }}</rx-column>
-      <rx-column :label="tx['payer_bill.fields.customer']" hide-narrow>{{ row.customer }}</rx-column>
-      <rx-column :label="tx['payer_bill.fields.source']" hide-narrow>{{ row.source }}</rx-column>
-      <rx-column :label="tx['payer_bill.fields.status']">{{ row.status }}</rx-column>
-      <rx-column :label="tx['payer_bill.fields.claimed']" hide-narrow>{{ row.claimed }}</rx-column>
-      <rx-column :label="tx['payer_bill.fields.open']">{{ row.open }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['payer_bill.empty']" icon="receipt"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['payer_bill.title']" :subtitle="tx['payer_bill.subtitle']"/>
+  <rx-grid :page="rows">
+    <template rx-if="column.key == 'payer'">{{ row.payer }}</template>
+    <template rx-elif="column.key == 'customer'">{{ row.customer }}</template>
+    <template rx-elif="column.key == 'source'">{{ row.source }}</template>
+  </rx-grid>
 </rx-page>

@@ -3,7 +3,10 @@
     variance in AED and %, marked when unfavourable; the operating result; the
     owner drawings below it (their total only, unless the user holds
     drawings.approve); the result after drawings. Replace it with
-    resources/views/wl-invoicing/budget_report.html in the app. -#}
+    resources/views/wl-invoicing/budget_report.html in the app.
+    Left as a table on purpose (#525): the rows are computed in Rust and carry
+    headings, subtotals and the result, not records of a model, so the
+    standard grid cannot draw it. -#}
 <rx-page layout="layouts/app.html" :title="tx['budget.report.title']">
   <rx-stack>
     <rx-page-header :title="tx['budget.report.title']" :subtitle="tx['budget.report.subtitle']"/>
