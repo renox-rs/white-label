@@ -228,7 +228,15 @@ pub fn grid(state: &AppState, lang: &Lang, can_export: bool, source_types: &[Str
                 .searchable()
                 .link("/deadline-tasks/{id}"),
         )
-        .column(Column::text("task_type", &text(lang, "deadline.fields.type")).searchable().hidden())
+        // The type key in words (`vat_return` reads "Vat return"), never the key.
+        .column(
+            Column::text("task_type", &text(lang, "deadline.fields.type"))
+                .computed(
+                    "UPPER(SUBSTR({T}.\"task_type\", 1, 1)) || REPLACE(SUBSTR({T}.\"task_type\", 2), '_', ' ')",
+                )
+                .searchable()
+                .hidden(),
+        )
         .column(
             Column::text("source", &text(lang, "deadline.fields.source"))
                 .computed(&wl_kernel::subject::words_sql("subject_type", "subject_id", source_types))
