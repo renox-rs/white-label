@@ -1,6 +1,6 @@
 # Backlog — Negative Flows
 
-> Status: draft · Last updated: 2026-10-23 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-24 · Spec version: same commit as this file
 
 GitHub issues for building the negative flows fixed in the
 [negative-flow review](../reviews/2026-10-15-negative-flows.md). They were **created on GitHub
@@ -44,6 +44,7 @@ specification before this backlog was written.
 | [modules/wl-scheduling.md](modules/wl-scheduling.md) | Cancel after check-in, business cancel, bulk move, eligibility conflicts, last seat |
 | [modules/wl-attendance.md](modules/wl-attendance.md) | Adjustment timesheets, flags, deemed approval, payroll at cut-off |
 | [modules/wl-hr.md](modules/wl-hr.md) | Payroll return and WPS rejection, correction runs, employee exits, settlement dispute, pay account control |
+| [modules/wl-agents.md](modules/wl-agents.md) | Global search, related records and AI agents ([decision 0006](../decisions/0006-search-and-ai-agents.md)); not from a review |
 | [verticals/01-property.md](verticals/01-property.md) … [verticals/10-edtech.md](verticals/10-edtech.md) | The vertical's own negative flows and its settings for the shared ones |
 
 ## 3. Issue IDs, labels and milestones
@@ -65,6 +66,7 @@ issues are created on GitHub, the IDs stay in the title prefix so links can be r
 | `DLV` | wl-delivery | `EDU` | 10 EdTech |
 | `STK` | wl-inventory | | |
 | `SCH` | wl-scheduling | | |
+| `AGT` | Search and AI agents (wl-kernel, wl-portal, wl-notify) | | |
 | `ATT` | wl-attendance | | |
 | `HRM` | wl-hr | | |
 
@@ -75,6 +77,7 @@ issues are created on GitHub, the IDs stay in the title prefix so links can be r
 | `module:<name>` or `vertical:<NN-name>` | Where the work lives |
 | `area:negative-flow` | Issues from the [negative-flow review](../reviews/2026-10-15-negative-flows.md) |
 | `area:sme-gap` | Issues for capabilities G1–G7 added from the [SME problem map](../reviews/2026-10-16-sme-problem-map.md) |
+| `area:ai-agents` | Search, related records and AI agents ([decision 0006](../decisions/0006-search-and-ai-agents.md)) |
 | `priority:high` / `priority:medium` | From the review's impact: money, legal or data loss = high |
 | `blocked:open-item` | Waits for an answer in [OPEN-ITEMS.md](../OPEN-ITEMS.md); the default in the issue may be built, the open part is flagged |
 | `size:s` / `size:m` | s = one transition or rule; m = a small state machine or several linked transitions. Nothing larger: split it |
@@ -175,7 +178,9 @@ test of the F9 app found missing, so the backlog has 464 issues (BL-MPW-33, the 
 translation, is created but not built in the same round). They use `area:sme-gap` as the
 closest existing area label; there is no `area:screens`. Added on 2026-10-23: BL-MPW-34 (#518,
 Launch 09), the pay accounts waiting for approval in the approvals inbox, so the backlog has 465
-issues. Links between issues
+issues. Added on 2026-10-24 from [decision 0006](../decisions/0006-search-and-ai-agents.md): the
+epic #540 and BL-AGT-01 to BL-AGT-10 (#541–#550: five Build 1, five Later), label
+`area:ai-agents`, so the backlog has 475 issues. Links between issues
 use the GitHub numbers.
 The mapping from backlog ID to issue is in [github-issues.md](github-issues.md). When a backlog
 file changes, update the matching GitHub issue too.
