@@ -9,14 +9,13 @@
 //!
 //! A successful action answers a redirect (303) with a toast.
 
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use serde::Serialize;
 
 use crate::pages::{Texts, tx};
 use crate::permissions;
-use crate::rates::aed;
 use crate::reversal::{self, Reversal};
-use crate::shipment::Shipment;
 use crate::texts::t;
 
 /// The templates, compiled in.
@@ -37,15 +36,40 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
-/// One task of the list.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct Row {
-    id: i64,
-    shipment_id: i64,
-    number: String,
-    reason: String,
-    amount: String,
-    driver: String,
+/// The tasks grid: the open reversals with the shipment, cash and driver. The
+/// two actions are drawn by the template (`custom`).
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let text = |key: &str| crate::pages::text(lang, key);
+    let grid = Grid::new("logistics-reversals")
+        .title(&text("rev_title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::related(
+                "number",
+                &text("number"),
+                "logistics_shipments",
+                "shipment_id",
+                "number",
+            )
+            .frozen()
+            .mobile()
+            .searchable(),
+        )
+        .column(
+            Column::money("cash_amount", &text("rev_amount"))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(Column::number("driver_user_id", &text("rev_driver")).mobile())
+        .column(Column::text("reason", &text("reason")).searchable())
+        .column(Column::custom("actions", &text("actions")).mobile())
+        .sort_by("id")
+        .row_url("/shipments/{shipment_id}")
+        .cards_on_mobile()
+        .empty_state(&text("rev_empty"), Some(&text("rev_empty_text")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list needs.
@@ -53,38 +77,25 @@ pub(crate) struct Row {
 #[view(template = "logistics/reversals.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    rows: Vec<Row>,
+    rows: GridPage<Reversal>,
 }
 
 /// `GET /reversals`: the tasks waiting for the operations manager.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<Response> {
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
     if !user.has_permission(permissions::SHIPMENTS_MANAGE) {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
-    for reversal in reversal::open_tasks(&state.db).await? {
-        let shipment = Shipment::find_or_404(&state.db, reversal.shipment_id).await?;
-        rows.push(row_of(&reversal, &shipment));
+    let grid = grid(&lang, true);
+    let query = Reversal::query().where_(Reversal::TASK_STATUS.eq(reversal::TASK_OPEN));
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
     }
+    let rows = grid.page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: tx(&lang),
         rows,
     })
     .into_response())
-}
-
-fn row_of(reversal: &Reversal, shipment: &Shipment) -> Row {
-    Row {
-        id: reversal.id,
-        shipment_id: shipment.id,
-        number: shipment.number.clone(),
-        reason: reversal.reason.clone(),
-        amount: aed(reversal.cash_amount),
-        driver: reversal
-            .driver_user_id
-            .map(|driver| format!("#{driver}"))
-            .unwrap_or_default(),
-    }
 }
 
 fn back(lang: &Lang, key: &str) -> Result<Response> {

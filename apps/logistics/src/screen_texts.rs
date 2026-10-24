@@ -407,6 +407,7 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
         "The client is on hold. The company admin, not you, approves a one-off exception.",
     ),
     ("logistics.screen.remit_number", "Remittance"),
+    ("logistics.screen.remit_period", "Period end"),
     ("logistics.screen.remit_cod", "COD"),
     ("logistics.screen.remit_fees", "Fees"),
     ("logistics.screen.remit_fee", "Fee"),
