@@ -176,12 +176,10 @@ pub async fn lease_ended(state: &AppState, tenant: PartyId, reason: &str) -> Res
 
 /// The order and permission of the tenant section `key`, from [`SECTIONS`].
 fn placed(key: &str) -> (i32, &'static str) {
-    SECTIONS
-        .iter()
-        .find(|(k, _, _)| *k == key)
-        .map_or((wl_portal::sections::DEFAULT_ORDER, ""), |(_, order, permission)| {
-            (*order, *permission)
-        })
+    SECTIONS.iter().find(|(k, _, _)| *k == key).map_or(
+        (wl_portal::sections::DEFAULT_ORDER, ""),
+        |(_, order, permission)| (*order, *permission),
+    )
 }
 
 /// The portal rows of `rows`.
@@ -265,7 +263,10 @@ impl PortalSection for ChequesSection {
 /// # Errors
 ///
 /// The database's errors.
-pub async fn tenant_documents(db: &Db, party: PartyId) -> Result<Vec<(Document, DocumentKind, Lease)>> {
+pub async fn tenant_documents(
+    db: &Db,
+    party: PartyId,
+) -> Result<Vec<(Document, DocumentKind, Lease)>> {
     let mut kinds = Vec::new();
     for key in TENANT_DOCUMENT_KINDS {
         if let Some(kind) = DocumentKind::by_key(db, key).await? {

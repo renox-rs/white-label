@@ -371,7 +371,10 @@ pub async fn money_problem(
                     .sum();
                 let left = line.gross - credited;
                 if net > left {
-                    let number = invoice.number.clone().unwrap_or_else(|| format!("#{invoice_id}"));
+                    let number = invoice
+                        .number
+                        .clone()
+                        .unwrap_or_else(|| format!("#{invoice_id}"));
                     return Ok(Some(english(
                         "property.terminate.credit_too_large",
                         &[

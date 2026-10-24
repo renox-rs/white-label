@@ -145,7 +145,11 @@ async fn prp29_the_owner_disputes_a_statement_line_from_the_portal() {
         .get(&format!("/portal/{}/owner_statements", s.owner.0))
         .await;
     page.assert_ok();
-    assert!(page.text().contains(&s.statement.number()), "{}", page.text());
+    assert!(
+        page.text().contains(&s.statement.number()),
+        "{}",
+        page.text()
+    );
 
     s.dispute().await.assert_ok();
 
@@ -192,7 +196,10 @@ async fn prp29_an_owner_cannot_dispute_another_owners_statement() {
     let foreign = s
         .app
         .htmx()
-        .post(&s.dispute_path(), &[("line", &line), ("comment", "Not mine")])
+        .post(
+            &s.dispute_path(),
+            &[("line", &line), ("comment", "Not mine")],
+        )
         .await;
     assert_eq!(foreign.status, StatusCode::FORBIDDEN);
     assert!(s.disputes().await.is_empty());
@@ -219,7 +226,9 @@ async fn prp29_after_the_agreement_ends_the_owner_reads_for_90_days_then_the_por
         }))
         .await
         .unwrap();
-    let grant = AccessGrant::find_or_404(s.app.db(), s.grant.id).await.unwrap();
+    let grant = AccessGrant::find_or_404(s.app.db(), s.grant.id)
+        .await
+        .unwrap();
     assert_eq!(grant.status, GrantStatus::ReadOnly);
     assert_eq!(grant.ended_on, Some(ended_on));
 
@@ -238,7 +247,9 @@ async fn prp29_after_the_agreement_ends_the_owner_reads_for_90_days_then_the_por
 
     travel_to(&s.app, "2028-09-29");
     s.app.run_scheduled(wl_portal::CLOSE_TASK).await.unwrap();
-    let grant = AccessGrant::find_or_404(s.app.db(), s.grant.id).await.unwrap();
+    let grant = AccessGrant::find_or_404(s.app.db(), s.grant.id)
+        .await
+        .unwrap();
     assert_eq!(grant.status, GrantStatus::Closed);
     s.app.acting_as(&s.hessa);
     let closed = s

@@ -175,9 +175,15 @@ async fn bl_prp_34_a_ticket_bill_is_an_expense_of_the_period_it_was_approved_in(
     let lines = s.expenses_of(&draft).await;
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].amount, -aed(350));
-    assert!(lines[0].description.contains("CoolAir"), "{}", lines[0].description);
     assert!(
-        lines[0].description.contains(&format!("TKT-{ticket} (unit 1204)")),
+        lines[0].description.contains("CoolAir"),
+        "{}",
+        lines[0].description
+    );
+    assert!(
+        lines[0]
+            .description
+            .contains(&format!("TKT-{ticket} (unit 1204)")),
         "{}",
         lines[0].description
     );
@@ -276,7 +282,11 @@ async fn bl_prp_34_a_bill_held_as_a_possible_duplicate_is_not_listed() {
             ymd(2026, 10, 18),
             Subject::new("property.unit", s.unit.id),
         )
-        .line(DraftLine::new("Chiller repair", aed(350), VatCategory::Exempt))
+        .line(DraftLine::new(
+            "Chiller repair",
+            aed(350),
+            VatCategory::Exempt,
+        ))
     };
     let bills = supplier_bills(s.t.state());
     let first = bills
@@ -297,7 +307,11 @@ async fn bl_prp_34_a_bill_held_as_a_possible_duplicate_is_not_listed() {
     let original = s.approved(first.0, 350, Subject::new(TICKET_SUBJECT_TYPE, ticket));
     let made = s.post(&original, ymd(2026, 10, 20)).await;
     assert_eq!(made.len(), 1);
-    assert!(made[0].description.contains("B-101"), "{}", made[0].description);
+    assert!(
+        made[0].description.contains("B-101"),
+        "{}",
+        made[0].description
+    );
 
     let draft = s.draft(ymd(2026, 10, 1), ymd(2026, 10, 31)).await;
     assert_eq!(s.expenses_of(&draft).await.len(), 1);

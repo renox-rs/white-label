@@ -100,9 +100,12 @@ pub fn set_generator(state: &AppState, generator: Arc<dyn PdfDocuments>) {
 
 /// The app's generator, if one is set.
 fn generator(state: &AppState) -> Option<Arc<dyn PdfDocuments>> {
-    state
-        .provided::<GeneratorSlot>()
-        .and_then(|slot| slot.0.read().unwrap_or_else(PoisonError::into_inner).clone())
+    state.provided::<GeneratorSlot>().and_then(|slot| {
+        slot.0
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    })
 }
 
 /// A document 01 generated for a record.
@@ -157,7 +160,8 @@ impl GeneratedDocument {
 ///
 /// The database's errors and the generator's.
 pub async fn ensure(state: &AppState, request: PdfRequest) -> Result<Option<GeneratedDocument>> {
-    if let Some(found) = GeneratedDocument::of(&state.db, &request.subject, request.template).await?
+    if let Some(found) =
+        GeneratedDocument::of(&state.db, &request.subject, request.template).await?
     {
         return Ok(Some(found));
     }

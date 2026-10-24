@@ -182,9 +182,9 @@ pub async fn tenant_cheques(state: &AppState, party: PartyId) -> Result<Vec<Port
 ///
 /// The database's errors.
 pub async fn lease_of_tenant(db: &Db, party: PartyId, lease_id: i64) -> Result<bool> {
-    Ok(Lease::find(db, lease_id)
-        .await?
-        .is_some_and(|lease| lease.tenant_party_id == party.0 && lease.status != LeaseStatus::Draft))
+    Ok(Lease::find(db, lease_id).await?.is_some_and(|lease| {
+        lease.tenant_party_id == party.0 && lease.status != LeaseStatus::Draft
+    }))
 }
 
 /// The statements the owner `party` sees: published or settled, of the

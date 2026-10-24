@@ -30,7 +30,12 @@ async fn portal_user(app: &TestApp, name: &str, party: PartyId, role: &str) -> (
 
 /// A document of `kind` on the lease version `lease`, accepted, with a stored
 /// file holding `content`.
-async fn lease_document(app: &TestApp, lease: &property::Lease, kind: &str, content: &'static [u8]) -> Document {
+async fn lease_document(
+    app: &TestApp,
+    lease: &property::Lease,
+    kind: &str,
+    content: &'static [u8],
+) -> Document {
     let kind = DocumentKind::by_key(app.db(), kind)
         .await
         .unwrap()
@@ -135,7 +140,8 @@ async fn scene() -> Scene {
         .execute(app.db())
         .await
         .unwrap();
-    let other_document = lease_document(&app, &other_lease, "ejari_certificate", b"%PDF-other").await;
+    let other_document =
+        lease_document(&app, &other_lease, "ejari_certificate", b"%PDF-other").await;
     let (sara, sara_grant) = portal_user(&app, "Sara", party, "primary_contact").await;
     Scene {
         app,

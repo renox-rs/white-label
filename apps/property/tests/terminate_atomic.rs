@@ -199,7 +199,10 @@ impl Scene {
         assert!(self.t.deposits.started().is_empty());
         // No "finish by hand" task, no event.
         assert!(
-            self.t.tasks.with_key("property.terminate_problems").is_empty(),
+            self.t
+                .tasks
+                .with_key("property.terminate_problems")
+                .is_empty(),
             "{:?}",
             self.t.tasks.open()
         );
@@ -266,7 +269,11 @@ async fn bl_prp_33_a_credit_that_would_fail_refuses_terminate_and_changes_nothin
         refused.text()
     );
     s.nothing_changed().await;
-    assert_eq!(s.notes_of(june).await, 0, "the first credit note does not exist");
+    assert_eq!(
+        s.notes_of(june).await,
+        0,
+        "the first credit note does not exist"
+    );
     assert_eq!(s.notes_of(july).await, 1, "only the earlier one");
 }
 

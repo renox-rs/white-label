@@ -64,7 +64,10 @@ use crate::unit::{UNIT_SUBJECT_TYPE, Unit};
 
 /// A building a service contract covers.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "property_contract_buildings", unique(contract_id, building_id))]
+#[model(
+    table = "property_contract_buildings",
+    unique(contract_id, building_id)
+)]
 pub struct ContractBuilding {
     /// The primary key.
     pub id: i64,
@@ -148,12 +151,7 @@ async fn building_area(db: &Db, building: i64) -> Result<i64> {
 
 /// `amount` fils of `building` spread over its units by area, summed per
 /// agreement that covers the unit on `day`.
-async fn by_owner(
-    db: &Db,
-    building: i64,
-    amount: i64,
-    day: NaiveDate,
-) -> Result<Vec<(i64, i64)>> {
+async fn by_owner(db: &Db, building: i64, amount: i64, day: NaiveDate) -> Result<Vec<(i64, i64)>> {
     let units = units_of(db, building).await?;
     let weights: Vec<i64> = units.iter().map(area_of).collect();
     let mut owners: Vec<(i64, i64)> = Vec::new();
@@ -189,11 +187,7 @@ pub async fn shares(
     let text = bill_text(state, event).await?;
     let bill = Subject::new("invoicing.supplier_bill", event.bill.0);
     let weights: Vec<i64> = event.cost_objects.iter().map(|c| c.amount).collect();
-    for (object, portion) in event
-        .cost_objects
-        .iter()
-        .zip(split(event.amount, &weights))
-    {
+    for (object, portion) in event.cost_objects.iter().zip(split(event.amount, &weights)) {
         let cost = &object.cost_object;
         if cost.subject_type == TICKET_SUBJECT_TYPE {
             let Some(about) = task_creator(state)
@@ -207,7 +201,8 @@ pub async fn shares(
                 let Some(unit) = Unit::find(&state.db, subject.subject_id).await? else {
                     continue;
                 };
-                let Some(agreement) = ManagementAgreement::for_unit(&state.db, unit.id, day).await?
+                let Some(agreement) =
+                    ManagementAgreement::for_unit(&state.db, unit.id, day).await?
                 else {
                     continue;
                 };
@@ -297,13 +292,17 @@ async fn bill_text(state: &AppState, event: &SupplierBillApproved) -> Result<Bil
 /// Whether the bill of `event` may be listed: wl-invoicing does not report it
 /// as a draft, held (a possible duplicate) or void.
 async fn listable(state: &AppState, event: &SupplierBillApproved) -> Result<bool> {
-    Ok(match supplier_bills(state).find(&state.db, event.bill).await? {
-        Some(bill) => !matches!(
-            bill.status,
-            SupplierBillStatus::Draft | SupplierBillStatus::Exception | SupplierBillStatus::Void
-        ),
-        None => true,
-    })
+    Ok(
+        match supplier_bills(state).find(&state.db, event.bill).await? {
+            Some(bill) => !matches!(
+                bill.status,
+                SupplierBillStatus::Draft
+                    | SupplierBillStatus::Exception
+                    | SupplierBillStatus::Void
+            ),
+            None => true,
+        },
+    )
 }
 
 /// Puts the bill of `event`, approved on `day`, on the owner statements of
@@ -384,9 +383,11 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: SupplierBillApproved, state: AppState| async move {
         post_bill(&state, &event, today()).await.map(drop)
     });
-    app.listen(|event: ServiceContractActivated, state: AppState| async move {
-        contract_activated(&state, &event).await
-    });
+    app.listen(
+        |event: ServiceContractActivated, state: AppState| async move {
+            contract_activated(&state, &event).await
+        },
+    );
 }
 
 #[cfg(test)]

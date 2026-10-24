@@ -97,7 +97,12 @@ async fn bl_prp_31_submit_generates_the_contract_and_sends_it_for_signature() {
     assert_eq!(asked[0].languages, vec!["en", "ar"]);
     assert_eq!(asked[0].kind, generated::TENANCY_CONTRACT_KIND);
     assert_eq!(asked[0].data["lease"], lease.number_with_version());
-    assert!(asked[0].data["title"]["ar"].as_str().unwrap().contains("عقد"));
+    assert!(
+        asked[0].data["title"]["ar"]
+            .as_str()
+            .unwrap()
+            .contains("عقد")
+    );
     let sent = t.notices.of_type(CONTRACT_FOR_SIGNATURE);
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].data["document"], contract.document_id);
