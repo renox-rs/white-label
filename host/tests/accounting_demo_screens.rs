@@ -79,8 +79,14 @@ fn no_raw_words(html: &str, url: &str) {
 }
 
 /// A bare `None` (an empty value printed as a word) is never read on a page.
+/// The grid's own "Freeze: None" choice of the column picker is kit text, not
+/// a value, so it is left out.
 fn no_none(html: &str, url: &str) {
-    let text = visible(html);
+    let text = visible(
+        &html
+            .replace("<option value=\"\">None</option>", "")
+            .replace("<option value=\"\" selected>None</option>", ""),
+    );
     let bare = text
         .split(|c: char| !c.is_alphanumeric())
         .any(|word| word == "None");
@@ -155,7 +161,8 @@ async fn every_screen_of_the_map_opens_for_its_owner_in_words() {
         if screen.url.starts_with("/accounting/") {
             assert_eq!(
                 html.matches("<table").count(),
-                html.matches("rx-table-wrap").count(),
+                // A grid's table scrolls inside the grid's own box.
+                html.matches("rx-table-wrap").count() + html.matches("rx-grid__scroll").count(),
                 "{}: every table scrolls inside its own box",
                 screen.url
             );

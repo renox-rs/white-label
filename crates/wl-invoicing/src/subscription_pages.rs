@@ -94,9 +94,22 @@ pub(crate) struct IndexPage {
     rows: GridPage<Subscription>,
 }
 
+/// The source types the subscriptions have, once each.
+pub async fn source_types(db: &Db) -> Result<Vec<String>> {
+    let mut types: Vec<String> = Subscription::query()
+        .pluck::<String, _>(db, "source_type")
+        .await?;
+    types.sort();
+    types.dedup();
+    Ok(types)
+}
+
 /// The subscriptions grid: search on the plan, filters by
 /// state and cycle, the price in each subscription's currency.
-pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+/// `source_types` are the source types the source column names in words
+/// ("Engagement #9", never `accounting.engagement:9`), read with
+/// [`source_types`].
+pub fn grid(lang: &Lang, can_export: bool, source_types: &[String]) -> Grid {
     let statuses: Vec<(String, String)> = SubscriptionStatus::ALL
         .iter()
         .map(|s| {
@@ -131,7 +144,11 @@ pub fn grid(lang: &Lang, can_export: bool) -> Grid {
         .column(Column::custom("party", &text(lang, "subscription.fields.party")).mobile())
         .column(
             Column::text("source", &text(lang, "subscription.fields.source"))
-                .computed("{T}.\"source_type\" || ':' || {T}.\"source_id\"")
+                .computed(&wl_kernel::subject::words_sql(
+                    "source_type",
+                    "source_id",
+                    source_types,
+                ))
                 .searchable(),
         )
         .column(
@@ -184,7 +201,8 @@ async fn index(
     request: GridRequest,
 ) -> Result<Response> {
     let can_export = crate::may_export(&user, permissions::SUBSCRIPTIONS_MANAGE);
-    let grid = grid(&lang, can_export);
+    let types = source_types(&state.db).await?;
+    let grid = grid(&lang, can_export, &types);
     if request.param("export").is_some() && !can_export {
         return Err(Error::Forbidden);
     }
@@ -306,7 +324,7 @@ async fn show(
         ),
         status_kind: status_kind(subscription.status),
         party: party_name(&state, subscription.party()).await?,
-        source: subscription.source().to_string(),
+        source: subscription.source().words(),
         price: amount_text(&subscription.currency, subscription.unit_price),
         cycle: text(
             &lang,
