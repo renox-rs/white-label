@@ -1,9 +1,11 @@
 {#- logistics: the COD remittances, a renox::grid (search on the number and
     client, filters by status, sums of the money) that fills the screen. The
-    bank account changes that wait for a decision sit above it. Replace it
-    with resources/views/logistics/remittances.html in the app. -#}
+    bank account changes that wait for a decision have their own page, linked
+    from the header with their number. Replace it with
+    resources/views/logistics/remittances.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['remit_title']">
   <rx-page-header :title="tx['remit_title']" :subtitle="tx['remit_subtitle']">
+    <rx-link-button :href="route('logistics.account_changes')" :label="tx['account_changes_open'] ~ ' (' ~ open_account_changes ~ ')'" variant="secondary" icon="banknote"/>
     <rx-action-sheet rx-if="can_build" id="build-remittance" :label="tx['remit_build']" :action="route('logistics.remittance_build')"
                      :title="tx['remit_build_title']" :description="tx['remit_build_description']" :submit-label="tx['remit_build']" icon="banknote">
       <rx-input name="client_party_id" :label="tx['client']" id="build-remittance-client" required/>
@@ -22,18 +24,5 @@
       <rx-input name="account" :label="tx['remit_account']" id="request-account-iban" required/>
     </rx-action-sheet>
   </rx-page-header>
-  <rx-table rx-if="account_changes" :rows="account_changes" as="change" :key="change.id" :caption="tx['account_changes']">
-    <rx-column :label="tx['client']">{{ change.client_party_id }}</rx-column>
-    <rx-column :label="tx['remit_account']">{{ change.account }}</rx-column>
-    <rx-column :label="tx['state']"><rx-badge :kind="change.status_kind" :text="change.status"/></rx-column>
-    <rx-column :label="tx['actions']" hide-narrow>
-      <rx-confirm rx-if="change.can_decide" :id="'approve-account-' ~ change.id" :label="tx['account_approve']" :action="route('logistics.account_approve', change.id)" method="POST"
-                  :title="tx['account_approve']" :message="tx['account_approve_message']" :confirm-label="tx['account_approve']"/>
-      <rx-confirm rx-if="change.can_decide" :id="'reject-account-' ~ change.id" :label="tx['account_reject']" :action="route('logistics.account_reject', change.id)" method="POST"
-                  :title="tx['account_reject']" :message="tx['account_reject_message']" :confirm-label="tx['account_reject']"/>
-      <rx-confirm rx-if="change.can_withdraw" :id="'withdraw-account-' ~ change.id" :label="tx['account_withdraw']" :action="route('logistics.account_withdraw', change.id)" method="POST"
-                  :title="tx['account_withdraw']" :message="tx['account_withdraw_message']" :confirm-label="tx['account_withdraw']"/>
-    </rx-column>
-  </rx-table>
   <rx-grid :page="remittances"/>
 </rx-page>

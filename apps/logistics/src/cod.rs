@@ -316,9 +316,24 @@ pub fn routes() -> Routes {
 }
 
 /// The COD differences grid: the shipments with a difference, searchable on
-/// the number, client, reason and instruction, with sums of the money.
+/// the number, client, reason and instruction, filtered by who absorbed it
+/// (in words), with sums of the money.
 pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
     let text = |key: &str| crate::pages::text(lang, key);
+    let absorbers: Vec<(String, String)> = [
+        CodAbsorber::Customer,
+        CodAbsorber::Client,
+        CodAbsorber::Business,
+        CodAbsorber::Driver,
+    ]
+    .into_iter()
+    .map(|absorber| {
+        (
+            absorber.as_str().to_owned(),
+            text(&format!("absorber.{}", absorber.as_str())),
+        )
+    })
+    .collect();
     let grid = Grid::new("logistics-cod-differences")
         .title(&text("cod_title"))
         .per_page(25)
@@ -361,7 +376,16 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
             .mobile()
             .summary(Summary::Sum),
         )
-        .column(Column::text("cod_absorbed_by", &text("cod_absorbed_by")).mobile())
+        .column(
+            Column::select("cod_absorbed_by", &text("cod_absorbed_by"), absorbers)
+                .badges(&[
+                    ("customer", "info"),
+                    ("client", "info"),
+                    ("business", "warning"),
+                    ("driver", "warning"),
+                ])
+                .mobile(),
+        )
         .column(
             Column::text("cod_difference_reason", &text("reason"))
                 .searchable()
@@ -409,7 +433,13 @@ async fn index(
         return Ok(file);
     }
     let rows = grid.page(query, &request).await?;
-    let (totals, _) = report(&state.db).await?;
+    let (mut totals, _) = report(&state.db).await?;
+    // The header's totals name who absorbed them in words, as the grid does.
+    for total in &mut totals {
+        if let Some(absorber) = CodAbsorber::parse(&total.absorber) {
+            total.absorber = crate::pages::text(&lang, &format!("absorber.{}", absorber.as_str()));
+        }
+    }
     Ok(View::typed(IndexPage {
         tx: tx(&lang),
         totals,

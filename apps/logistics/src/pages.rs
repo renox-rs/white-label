@@ -181,8 +181,9 @@ pub(crate) fn text(lang: &Lang, key: &str) -> String {
     t(lang, &format!("logistics.screen.{key}"))
 }
 
-/// The shipments grid: search on the number, reference, recipient, area and
-/// client, a filter by status, the sum of the COD. The *client on hold* badge
+/// The shipments grid: search on the number, reference, recipient, phone,
+/// area and client, filters by status and by the day booked or delivered (a
+/// range), the sum of the COD. The *client on hold* badge
 /// is drawn by the template (`custom`).
 pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
     use ShipmentStatus::{
@@ -227,6 +228,11 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                 .mobile()
                 .searchable(),
         )
+        .column(
+            Column::text("recipient_phone", &text(lang, "phone"))
+                .hidden()
+                .searchable(),
+        )
         .column(Column::text("area", &text(lang, "area")).searchable())
         .column(
             Column::related(
@@ -265,6 +271,8 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                 ])
                 .mobile(),
         )
+        .column(Column::datetime("created_at", &text(lang, "booked_at")))
+        .column(Column::datetime("delivered_at", &text(lang, "delivered_at")).hidden())
         .column(Column::custom("hold", &text(lang, "client_on_hold")))
         .sort_by("-number")
         .row_url("/shipments/{id}")

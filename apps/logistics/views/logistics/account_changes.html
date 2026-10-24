@@ -1,0 +1,21 @@
+{#- logistics: the bank account changes of the COD remittances that wait
+    (pending, approved or confirmed), a renox::grid (search on the client and
+    the account, filter by state) that fills the screen. Approve, reject (with
+    a note) and withdraw are in each row's menu. Replace it with
+    resources/views/logistics/account_changes.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['account_changes']">
+  <rx-page-header :title="tx['account_changes']" :subtitle="tx['account_changes_subtitle']" :back="route('logistics.remittances')" :back-label="tx['remit_title']">
+    <rx-action-sheet rx-if="can_request_account" id="request-account" :label="tx['account_request']" :action="route('logistics.account_request')"
+                     :title="tx['account_request_title']" :description="tx['account_request_description']" :submit-label="tx['account_request']" icon="banknote">
+      <rx-input name="client_party_id" :label="tx['client']" id="request-account-client" required/>
+      <rx-input name="account" :label="tx['remit_account']" id="request-account-iban" required/>
+    </rx-action-sheet>
+  </rx-page-header>
+  <rx-grid :page="changes"/>
+  {#- The row menu's "reject" opens this sheet; the grid points its form at the change. -#}
+  <template rx-if="can_decide">
+    <rx-action-sheet id="reject-account" :label="tx['account_reject']" action="" :title="tx['account_reject']" :description="tx['account_reject_message']" :submit-label="tx['account_reject']" icon="x" :button="false" danger>
+      <rx-textarea name="note" :label="tx['account_reject_note']" id="reject-account-note"/>
+    </rx-action-sheet>
+  </template>
+</rx-page>

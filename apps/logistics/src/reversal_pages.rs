@@ -4,12 +4,13 @@
 //! | Route | Name | Needs |
 //! |---|---|---|
 //! | `GET /reversals` | `logistics.reversals` | `shipments.manage` |
+//! | `GET /reversals/{id}/shipment` | `logistics.reversal_shipment` | `shipments.manage`: opens the shipment of the reversal |
 //! | `POST /reversals/{id}/raise-shortage` | `logistics.reversal_shortage` | `shipments.manage` (and `cash.count` in payments) |
 //! | `POST /reversals/{id}/hr-case` | `logistics.reversal_hr_case` | `shipments.manage` |
 //!
 //! A successful action answers a redirect (303) with a toast.
 
-use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
+use renox::grid::{Action, Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use serde::Serialize;
 
@@ -29,6 +30,8 @@ pub fn routes() -> Routes {
     Routes::new()
         .get("/reversals", index)
         .name("logistics.reversals")
+        .get("/reversals/{id}/shipment", open_shipment)
+        .name("logistics.reversal_shipment")
         .post("/reversals/{id}/raise-shortage", raise_shortage)
         .name("logistics.reversal_shortage")
         .post("/reversals/{id}/hr-case", hr_case)
@@ -36,8 +39,10 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
-/// The tasks grid: the open reversals with the shipment, cash and driver. The
-/// two actions are drawn by the template (`custom`).
+/// The tasks grid: the open reversals with the shipment, cash, driver and
+/// reason. The two decisions are in each row's menu (a grid row action asks
+/// first, then posts); a row opens its shipment through
+/// `/reversals/{id}/shipment`, as the grid's links put the row's id only.
 pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
     let text = |key: &str| crate::pages::text(lang, key);
     let grid = Grid::new("logistics-reversals")
@@ -55,18 +60,37 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
             )
             .frozen()
             .mobile()
-            .searchable(),
+            .searchable()
+            .link("/reversals/{id}/shipment"),
         )
         .column(
             Column::money("cash_amount", &wl_kernel::money_label(&text("rev_amount")))
                 .mobile()
                 .summary(Summary::Sum),
         )
-        .column(Column::number("driver_user_id", &text("rev_driver")).mobile())
+        .column(
+            Column::related(
+                "driver",
+                &text("rev_driver"),
+                "users",
+                "driver_user_id",
+                "name",
+            )
+            .mobile()
+            .searchable(),
+        )
         .column(Column::text("reason", &text("reason")).searchable())
-        .column(Column::custom("actions", &text("actions")).mobile())
+        .column(Column::datetime("created_at", &text("rev_raised_at")).hidden())
+        .row_action(
+            Action::new(&text("rev_shortage"), "/reversals/{id}/raise-shortage")
+                .confirm(&text("rev_shortage_message")),
+        )
+        .row_action(
+            Action::new(&text("rev_hr"), "/reversals/{id}/hr-case")
+                .confirm(&text("rev_hr_message")),
+        )
         .sort_by("id")
-        .row_url("/shipments/{shipment_id}")
+        .row_url("/reversals/{id}/shipment")
         .cards_on_mobile()
         .empty_state(&text("rev_empty"), Some(&text("rev_empty_text")));
     if can_export { grid.exports() } else { grid }
@@ -96,6 +120,20 @@ async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Respo
         rows,
     })
     .into_response())
+}
+
+/// `GET /reversals/{id}/shipment`: the shipment of reversal `id`, for the
+/// grid's row link.
+async fn open_shipment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    if !user.has_permission(permissions::SHIPMENTS_MANAGE) {
+        return Err(Error::Forbidden);
+    }
+    let found = Reversal::find_or_404(&state.db, id).await?;
+    Ok(Redirect::route("logistics.shipment", &[&found.shipment_id])?.into_response())
 }
 
 fn back(lang: &Lang, key: &str) -> Result<Response> {

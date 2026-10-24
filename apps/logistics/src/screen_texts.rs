@@ -742,4 +742,29 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
         "logistics.screen.job_field.pod_reference",
         "Proof of delivery",
     ),
+    // The grids of the lists (#533).
+    ("logistics.screen.booked_at", "Booked"),
+    ("logistics.screen.delivered_at", "Delivered"),
+    ("logistics.screen.absorber.customer", "Customer"),
+    ("logistics.screen.absorber.client", "Client"),
+    ("logistics.screen.absorber.business", "Business"),
+    ("logistics.screen.absorber.driver", "Driver"),
+    ("logistics.screen.rev_raised_at", "Reversed"),
+    (
+        "logistics.screen.account_changes_subtitle",
+        "Another user approves a new remittance bank account and the client confirms it from its e-mail on record.",
+    ),
+    (
+        "logistics.screen.account_changes_empty",
+        "No bank account change waiting",
+    ),
+    (
+        "logistics.screen.account_changes_empty_text",
+        "A change asked from this page or the client portal appears here until it is active, rejected, withdrawn or lapsed.",
+    ),
+    ("logistics.screen.account_changes_open", "Bank account changes"),
+    ("logistics.screen.account_via", "Asked through"),
+    ("logistics.screen.account_requested_at", "Asked"),
+    ("logistics.screen.account_expires_at", "Lapses"),
+    ("logistics.screen.account_reject_note", "Why it is rejected"),
 ];

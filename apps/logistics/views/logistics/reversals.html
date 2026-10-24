@@ -1,15 +1,9 @@
 {#- logistics: the tasks of the operations manager for a reversed delivery
     whose driver is liable (a renox::grid that fills the screen): raise a
-    later shortage against the driver or open an HR case. Replace it with
+    later shortage against the driver or open an HR case, from each row's
+    menu. A row opens its shipment. Replace it with
     resources/views/logistics/reversals.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['rev_title']">
   <rx-page-header :title="tx['rev_title']" :subtitle="tx['rev_subtitle']"/>
-  <rx-grid :page="rows">
-    <template rx-if="column.key == 'actions'">
-      <rx-confirm :id="'shortage-' ~ row.id" :label="tx['rev_shortage']" :action="route('logistics.reversal_shortage', row.id)" method="POST"
-                  :title="tx['rev_shortage']" :message="tx['rev_shortage_message']" :confirm-label="tx['rev_shortage']"/>
-      <rx-confirm :id="'hr-' ~ row.id" :label="tx['rev_hr']" :action="route('logistics.reversal_hr_case', row.id)" method="POST"
-                  :title="tx['rev_hr']" :message="tx['rev_hr_message']" :confirm-label="tx['rev_hr']"/>
-    </template>
-  </rx-grid>
+  <rx-grid :page="rows"/>
 </rx-page>

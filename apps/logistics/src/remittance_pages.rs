@@ -4,6 +4,7 @@
 //! | Route | Name | Needs |
 //! |---|---|---|
 //! | `GET /remittances` | `logistics.remittances` | `remittances.view` |
+//! | `GET /remittances/accounts` | `logistics.account_changes` | `remittances.view`: the bank account changes waiting |
 //! | `GET /remittances/{id}` | `logistics.remittance` | `remittances.view` |
 //! | `POST /remittances/build` | `logistics.remittance_build` | `remittances.prepare` |
 //! | `POST /remittances/{id}/approve` | `logistics.remittance_approve` | `remittances.approve` |
@@ -26,7 +27,7 @@
 //! A successful action answers a redirect (303) with a toast. A refused
 //! action answers 422 with the reason (403 without the permission).
 
-use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
+use renox::grid::{Action, Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use serde::Serialize;
@@ -54,6 +55,10 @@ pub(crate) const VIEWS: &[(&str, &str)] = &[
         "logistics/remittance.html",
         include_str!("../views/logistics/remittance.html"),
     ),
+    (
+        "logistics/account_changes.html",
+        include_str!("../views/logistics/account_changes.html"),
+    ),
 ];
 
 /// The routes.
@@ -61,6 +66,8 @@ pub fn routes() -> Routes {
     Routes::new()
         .get("/remittances", index)
         .name("logistics.remittances")
+        .get("/remittances/accounts", account_changes)
+        .name("logistics.account_changes")
         .get("/remittances/{id}", show)
         .name("logistics.remittance")
         .post("/remittances/build", build)
@@ -132,19 +139,6 @@ fn back_to(lang: &Lang, key: &str, id: i64) -> Result<Response> {
         Redirect::route("logistics.remittance", &[&id])?,
     )
         .into_response())
-}
-
-/// A bank account change of the list.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct ChangeRow {
-    id: i64,
-    client_party_id: i64,
-    account: String,
-    status: String,
-    status_kind: &'static str,
-    via: String,
-    can_decide: bool,
-    can_withdraw: bool,
 }
 
 /// The remittances grid (draft, approved, paid and returned in one list):
@@ -231,7 +225,7 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
 pub(crate) struct IndexPage {
     tx: Texts,
     remittances: GridPage<Remittance>,
-    account_changes: Vec<ChangeRow>,
+    open_account_changes: u64,
     can_build: bool,
     can_add_adjustment: bool,
     can_request_account: bool,
@@ -255,38 +249,131 @@ async fn index(
         return Ok(file);
     }
     let remittances = grid.page(Remittance::query(), &request).await?;
-    let open = AccountChange::query()
+    // The bank account changes waiting have a page of their own; the header
+    // links to it with their number.
+    let open_account_changes = AccountChange::query()
         .where_(AccountChange::STATUS.is_in(AccountChangeStatus::OPEN))
-        .order_by_desc(AccountChange::ID)
-        .limit(50)
-        .get(&state.db)
+        .count(&state.db)
         .await?;
-    let account_changes = open
-        .iter()
-        .map(|change| ChangeRow {
-            id: change.id,
-            client_party_id: change.client_party_id,
-            account: change.account.clone(),
-            status: t(
-                &lang,
-                &format!("logistics.screen.account_status.{}", change.status.as_str()),
-            ),
-            status_kind: "warning",
-            via: change.via.clone(),
-            can_decide: user.has_permission(permissions::REMITTANCES_APPROVE)
-                && change.requested_by != user.id
-                && change.status != AccountChangeStatus::Approved,
-            can_withdraw: user.has_permission(permissions::REMITTANCES_REQUEST_ACCOUNT)
-                && change.requested_by == user.id,
-        })
-        .collect();
     Ok(View::typed(IndexPage {
         tx: tx(&lang),
         remittances,
-        account_changes,
+        open_account_changes,
         can_request_account: user.has_permission(permissions::REMITTANCES_REQUEST_ACCOUNT),
         can_build: user.has_permission(permissions::REMITTANCES_PREPARE),
         can_add_adjustment: user.has_permission(permissions::REMITTANCES_PREPARE),
+    })
+    .into_response())
+}
+
+/// The grid of the bank account changes waiting (pending, approved or
+/// confirmed): search on the client and the account, a filter by state. The
+/// decisions are in each row's menu, for the roles that may take them; the
+/// server still refuses one the user may not take on that row (their own
+/// request). Not exported: the rows carry bank accounts. A change has no
+/// page of its own, so the rows link nowhere.
+pub(crate) fn account_grid(lang: &Lang, can_decide: bool, can_withdraw: bool) -> Grid {
+    let text = |key: &str| crate::pages::text(lang, key);
+    let statuses: Vec<(String, String)> = AccountChangeStatus::OPEN
+        .iter()
+        .map(|status| {
+            (
+                status.as_str().to_owned(),
+                t(
+                    lang,
+                    &format!("logistics.screen.account_status.{}", status.as_str()),
+                ),
+            )
+        })
+        .collect();
+    let mut grid = Grid::new("logistics-account-changes")
+        .title(&text("account_changes"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::related(
+                "client",
+                &text("client"),
+                "wl_parties_parties",
+                "client_party_id",
+                "display_name",
+            )
+            .frozen()
+            .mobile()
+            .searchable(),
+        )
+        .column(
+            Column::text("account", &text("remit_account"))
+                .mobile()
+                .searchable()
+                .copyable(),
+        )
+        .column(
+            Column::select("status", &text("state"), statuses)
+                .badges(&[
+                    ("pending", "warning"),
+                    ("approved", "info"),
+                    ("confirmed", "info"),
+                ])
+                .mobile(),
+        )
+        .column(Column::text("via", &text("account_via")).hidden())
+        .column(Column::datetime("requested_at", &text("account_requested_at")).mobile())
+        .column(Column::datetime("expires_at", &text("account_expires_at")).hidden())
+        .sort_by("-id")
+        .cards_on_mobile()
+        .empty_state(
+            &text("account_changes_empty"),
+            Some(&text("account_changes_empty_text")),
+        );
+    if can_decide {
+        grid = grid
+            .row_action(
+                Action::new(&text("account_approve"), "/remittances/accounts/{id}/approve")
+                    .confirm(&text("account_approve_message")),
+            )
+            .row_action(
+                Action::new(&text("account_reject"), "/remittances/accounts/{id}/reject")
+                    .sheet("reject-account"),
+            );
+    }
+    if can_withdraw {
+        grid = grid.row_action(
+            Action::new(&text("account_withdraw"), "/remittances/accounts/{id}/withdraw")
+                .confirm(&text("account_withdraw_message"))
+                .danger(),
+        );
+    }
+    grid
+}
+
+/// What the page of the bank account changes needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "logistics/account_changes.html")]
+pub(crate) struct AccountChangesPage {
+    tx: Texts,
+    changes: GridPage<AccountChange>,
+    can_decide: bool,
+    can_request_account: bool,
+}
+
+/// `GET /remittances/accounts`: the bank account changes waiting.
+async fn account_changes(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
+    if !user.has_permission(permissions::REMITTANCES_VIEW) {
+        return Err(Error::Forbidden);
+    }
+    let can_decide = user.has_permission(permissions::REMITTANCES_APPROVE);
+    let can_request_account = user.has_permission(permissions::REMITTANCES_REQUEST_ACCOUNT);
+    let grid = account_grid(&lang, can_decide, can_request_account);
+    let query =
+        AccountChange::query().where_(AccountChange::STATUS.is_in(AccountChangeStatus::OPEN));
+    let changes = grid.page(query, &request).await?;
+    Ok(View::typed(AccountChangesPage {
+        tx: tx(&lang),
+        changes,
+        can_decide,
+        can_request_account,
     })
     .into_response())
 }
@@ -660,7 +747,7 @@ async fn request_account(
     account::request(&state, &user, PartyId(client), &field(&form, "account"))
         .await
         .map_err(answer)?;
-    back_to_list(&lang, "logistics.account_requested")
+    back_to_changes(&lang, "logistics.account_requested")
 }
 
 /// `POST /remittances/accounts/{id}/approve`.
@@ -673,7 +760,7 @@ async fn approve_account(
     account::approve_change(&state, &user, id)
         .await
         .map_err(answer)?;
-    back_to_list(&lang, "logistics.account_approved")
+    back_to_changes(&lang, "logistics.account_approved")
 }
 
 /// `POST /remittances/accounts/{id}/reject`: `note`.
@@ -687,7 +774,7 @@ async fn reject_account(
     account::reject_change(&state, &user, id, &field(&form, "note"))
         .await
         .map_err(answer)?;
-    back_to_list(&lang, "logistics.account_rejected")
+    back_to_changes(&lang, "logistics.account_rejected")
 }
 
 /// `POST /remittances/accounts/{id}/withdraw`.
@@ -700,7 +787,7 @@ async fn withdraw_account(
     account::withdraw_change(&state, &user, id)
         .await
         .map_err(answer)?;
-    back_to_list(&lang, "logistics.account_withdrawn")
+    back_to_changes(&lang, "logistics.account_withdrawn")
 }
 
 /// A whole number from a form; blank is none, anything else that is not a
@@ -723,6 +810,15 @@ fn bad_input(lang: &Lang) -> Error {
 }
 
 /// A redirect to the remittance list with a toast.
+/// A redirect to the bank account changes, with a toast `key`.
+fn back_to_changes(lang: &Lang, key: &str) -> Result<Response> {
+    Ok((
+        Toast::success(t(lang, key)),
+        Redirect::route("logistics.account_changes", &[])?,
+    )
+        .into_response())
+}
+
 fn back_to_list(lang: &Lang, key: &str) -> Result<Response> {
     Ok((
         Toast::success(t(lang, key)),
