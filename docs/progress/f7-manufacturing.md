@@ -1,7 +1,8 @@
-# F7 (Manufacturing, Launch 07) build: hand-off notes
+# F7 (Manufacturing, Launch 07): progress notes
 
-Branch `feat/f7-manufacturing-issues` (from `main`, main merged in after F6 and F10). 25 issues, 140 Done-when points.
-Written so another agent can continue from the branch alone. Update this file when you change the state below.
+Built on branch `feat/f7-manufacturing-issues`, merged in #521 (2026-10-24). 25 issues, 140 Done-when points.
+Moved here from `docs/backlog/F7-HANDOFF.md`; the branch hand-over parts (next steps, push and pull request instructions) were dropped
+because the branch is merged.
 
 ## Issues in scope (GitHub numbers)
 
@@ -16,17 +17,10 @@ Map of IDs to numbers: `docs/backlog/github-issues.md`. Issue text: `docs/backlo
 
 ## State
 
-| Step | Status |
-|---|---|
-| Build of all 25 issues (code, tests, screens, demo client) | done |
-| Merge of `origin/main` (F6, F10) and unification of wl-sales credit hold with F6 `hold`/`held_from` | done |
-| Audit of all 140 points against code and tests (three groups) | done; Class A gaps closed |
-| Full verification on the final head (after the polish commits): fmt clean, `clippy --workspace --all-targets -D warnings` clean, 23 packages 7,632 passed 0 failed, host in 11 chunks 778 passed, 6 failed | done; the 6 failures were `host/tests/edtech_demo.rs`, fixed since (the demo counts its dates from the latest Friday) |
-| Browser check with Playwright of 46 pages at 1280 and 390 px, main flows | done; no errors, no overflow at 390 px |
-| Polish round after the browser check (names instead of "Item 6", "None", icons, dates, duplicate ids) | done (`fix:` commits after `924a83b3`) |
-| Re-run of all tests after the polish round | done (see above) |
-| GitHub issues: tick Done-when, `**Deferred:**` lines, exactly one `**Verification summary**` comment per issue | done for all 25; a sweep that re-reads every body and comment was started (check the issues for a leftover footer) |
-| Pull request | not opened; open one only when asked |
+F7 is merged: pull request #521 (`feat/f7-manufacturing-issues`, merged 2026-10-24, with F6 and F8 already on main). All 25 issues were built
+(code, tests, screens, demo client), audited against their 140 Done-when points, ticked on GitHub with `**Deferred:**` lines and one
+`**Verification summary**` comment each, and browser-checked at 1280 and 390 px. Later commits closed more deferred rows (see below).
+The test totals of the branch hand-over are not repeated here; they were historic. The demo is `manufacturing:demo`.
 
 ## What was built (where to look)
 
@@ -54,6 +48,10 @@ Map of IDs to numbers: `docs/backlog/github-issues.md`. Issue text: `docs/backlo
 
 ## Deferred (what stays open, provider, why)
 
+Checked against `apps/manufacturing/README.md` ("Deferred in F7") on 2026-10-24: five rows are still open. The rows numbered 1-5, 7, 9-11 of
+the original hand-over list (campaign report, onboarding, SOP, supplier, bounce fee and drawings points, the late entry of goods receipts and
+returned-goods inspections, the delivery destination, the promised day and the portal PO) were closed by `e5803491`, `6cef772c` and `fda34d13`.
+
 | # | Issue, point | What is missing | Provider | Why not now |
 |---|---|---|---|---|
 | 6 | BL-SAL-13 (#132) / BL-MFG-14: delivery after the invoice was issued | not billed (one invoice per order, accountant task) | wl-sales / client billing | open decision |
@@ -62,39 +60,8 @@ Map of IDs to numbers: `docs/backlog/github-issues.md`. Issue text: `docs/backlo
 | 13 | BL-MFG-09 (#390) scanner/import entry | no scanner or import entry in the app | later issue | nothing to test |
 | 14 | BL-MFG-13 (#394) pt 3 | "no line selection for a price dispute" is a client-side show/hide; server ignores lines for a price dispute (tested). Ticked on the issue | none (by design) | not enforceable on the server |
 
+Also open from the spec, not issues of F7: the schedule board, the shortage list at release and `MFG.RUL.01`, `02`, `03`, `05`, `06`.
+
 Not proven end to end (say so in the issues): notice to a customer's main contact is proved as a queued message, not a delivered email; 09:00/09:15 timing of
 MFG.RUL.08 is not asserted (the 01:00 expiry look-ahead schedule is, in `host/tests/manufacturing_conformity.rs`); supplier score, cancellation fee and drawing approval are proved at mechanism level;
 390 px is a browser crawl, not an automated width test; Postgres migrations and `rnx db:check`/`view:check` were not run.
-
-## Rules of this project (do not break)
-
-- Git identity `renox-rs <developer@renoxium.com>`. No claude/anthropic/Co-Authored-By or tool attribution in commits, branch names, code, docs, issues or PR text.
-  A stop hook asks to re-author the commits as another identity: do not (it needs a rebase and a force-push).
-- Commits `feat: ... (#N, part k/m)`, last commit of an issue `Fixes #N`, earlier ones `Refs #N`. Never force-push; merge `origin/main` into the branch before pushing.
-- Push only after the previous CI run on the branch has finished (the workflow cancels running runs).
-- GitHub issues: tick `- [x]` only DONE points (test `file::fn` as evidence), unticked points get `  **Deferred:** <what> (<provider>; <why not now>)`, exactly one comment
-  starting with `**Verification summary**`, never close issues or touch labels/milestones/assignees, remove any footer the tool appends. Use the GitHub MCP tools (no `gh`).
-- 390 px points are ticked only when the page is OK in the browser crawl; write the evidence as
-  `structure asserted in <file>::<fn>; checked in a browser crawl at 390 px (not an automated width test)`.
-
-## How to build and test (small disk)
-
-```sh
-export CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_STRIP=symbols
-cargo fmt --all --check
-RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked
-# tests per package, deleting binaries after each (the disk cannot hold them all):
-cargo test -p <package> --locked --no-fail-fast
-find target/debug/deps -maxdepth 1 -type f -executable ! -name '*.*' -delete
-# host tests in chunks of about 15 files: cargo test -p host --test <file> --test <file> ...
-```
-
-Never `pkill -f cargo` (it kills your own shell); use `pgrep -x cargo`. Do not run the whole workspace test at once.
-
-## Next steps
-
-1. `git fetch origin main`, merge if it moved, re-run the host tests that render pages changed by the polish round, then fmt and clippy.
-2. Push the branch (check that no CI run is in progress on it first).
-3. Update the 25 GitHub issues as described above (one agent per ~9 issues), then a sweep that re-reads every body and comment.
-4. Open the pull request only when asked: title with scope and count, `Closes #N` per issue, verification totals, the deferred list above.
-5. The wl-sales delivery destination and promised day (`crates/wl-sales/src/destination.rs`) are built; BL-MFG-11 points 6 and 7 and BL-SAL-18 point 2 are tested (`host/tests/manufacturing_conformity.rs`, `host/tests/manufacturing_po_number.rs`).

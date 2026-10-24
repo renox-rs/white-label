@@ -85,6 +85,23 @@ The operator console ([`wl-operator`](modules/wl-operator.md), `OPS.DMO.01`):
 Each vertical's demo generator is versioned with the vertical app, so the data always matches
 the current state machines and rules. A demo that fails to generate blocks the release.
 
+**Commands that exist today (verified against `DEMO_COMMANDS` in `host/src/lib.rs`).**
+
+| Vertical | Client | Command | Notes |
+|---|---|---|---|
+| 01 Property | `clients/demo-properties` | `property:demo` | *Palm Grove Properties LLC* |
+| 02 Construction | `clients/demo-construction` | `construction:demo` | *Al Waha Interiors & Fit-out LLC* |
+| 03 Logistics | `clients/demo-logistics` | `logistics:demo` | *Najm Express Cargo LLC* |
+| 04 Accounting | `clients/demo-accounting` | none | F4 has a demo client but no demo command |
+| 05 Clinics | `clients/demo-clinics` | `clinics:demo` | *Palm Grove Clinic LLC* |
+| 06 F&B | `clients/demo-fnb` | `fnb:demo` | *Zaatar & Co. Kitchens LLC* |
+| 07 Manufacturing | `clients/demo-manufacturing` | `manufacturing:demo` | *Emirates Pack Industries LLC* |
+| 08 Auto | `clients/demo-auto` | `auto:demo` | *Al Noor Auto Parts & Garage LLC* |
+| 09 Manpower | `clients/demo-manpower` | `manpower:demo` | *Desert Star Manpower Services LLC* |
+| 10 EdTech | `clients/demo-edtech` | `edtech:demo` | *Gulf Skills Training Centre LLC* |
+
+`db:seed` runs the demo of the booted client in `local`. `migrate:fresh` and `db:seed` are in `DEMO_COMMANDS` too, and all of them are refused in production.
+
 ### 1.7 Per-vertical template
 
 Each section below has: **company profile**, **demo users**, **volumes**, **triggers**
@@ -98,6 +115,8 @@ moments, and **must not appear**.
 **Profile.** Dubai, RERA-licensed manager. 32 staff, 4 buildings (2 residential towers in
 "Jumeirah Village", 1 mixed-use in "Business Bay", 1 warehouse block in "Al Quoz"), 412 units.
 Manages for 38 owners. One legal entity.
+
+**Implemented as** `clients/demo-properties/client.toml` and `host/src/app/demo_data/` (*Palm Grove Properties LLC*, a smaller company than the profile above; see *The local demo* below).
 
 **Demo users.** Company admin · Property manager (Tower A and B) · Property manager (Business
 Bay) · Leasing agent · Accountant · Maintenance coordinator · Technician (PWA) · Vendor
@@ -173,6 +192,8 @@ bounce, and the property manager records the notice, the inspection and the move
 projects (offices, a mall unit, a clinic, a restaurant), contract values AED 0.6m–9m. One
 legal entity.
 
+**Implemented as** `clients/demo-construction/client.toml` and `host/src/app/construction_demo/` (*Al Waha Interiors & Fit-out LLC*, as named here; the modules are parties, documents, notify, invoicing, ticketing, payments, hr, attendance, inventory and portal, without `sales`). `APP_ENV=local CLIENT_CONFIG=clients/demo-construction/client.toml cargo run -p host -- migrate`, then `-- construction:demo` (or `-- db:seed`, which runs it in `local` only), then `-- serve`; the logins are on the login page, password `password123`. Seeding twice changes nothing. The command is refused when `APP_ENV` is production. Every date is relative to today. Each step is a request to the app's own router as the demo user who takes it (project manager, QS, supervisor, storekeeper, accountant), so permissions, guards and machines are the real ones; a status is never written, and where a module has no path to a state the record is inserted in it and the place says why. The command ends by printing the screen map (URLs with real ids; sign in as `admin@alwaha.example`). Test: `host/tests/construction_demo.rs`.
+
 **Demo users.** MD · Project manager · Quantity surveyor · Site supervisor (PWA) ·
 Storekeeper · Procurement officer · Accountant · HR/PRO · Client contact (Later portal).
 
@@ -212,6 +233,8 @@ with no daily report yesterday.
 **Profile.** Dubai last-mile courier with a freight forwarding desk in Jebel Ali. 140 staff,
 65 vans and 8 trucks, 2 hubs. B2B clients are online shops. One legal entity.
 
+**Implemented as** `clients/demo-logistics/client.toml` and `host/src/app/logistics_demo.rs` (*Najm Express Cargo LLC*, as named here: the people of the company, one online-shop client with its prices and a few booked shipments). `APP_ENV=local CLIENT_CONFIG=clients/demo-logistics/client.toml cargo run -p host -- migrate`, then `-- logistics:demo` (or `-- db:seed`, which runs it in `local` only), then `-- serve`; the logins are on the login page, password `password123`. Seeding twice changes nothing. The command is refused when `APP_ENV` is production. The shipments are booked through the app's own booking service, so the numbering, the labels and the delivery request are the real ones; a shipment whose client reference is used is not booked again. Logins such as `operations@najm.example`, `dispatcher@najm.example`, `driver@najm.example`, `cashier@najm.example` and the client `shop@souqexpress.example`.
+
 **Demo users.** Operations manager · Dispatcher · Hub staff · Driver (PWA) · Documentation
 officer · Fleet manager · Accountant · Customer service · Client user (online shop) ·
 Recipient (tracking link).
@@ -246,6 +269,8 @@ awaiting reattempt · a vehicle grounded by an expired registration.
 
 **Profile.** Dubai firm, FTA-registered tax agency, 22 staff, 180 SME clients on monthly
 retainers. One legal entity.
+
+**Not implemented: no demo command in F4.** `clients/demo-accounting/client.toml` (*Falcon Ledger Accountants LLC*, not *Bayan*) boots the app with the modules parties, documents, notify, invoicing, ticketing, payments, sales, hr and portal, but there is no `accounting:demo` and no `host/src/app/accounting_demo`; `db:seed` creates only the base logins. The data of this section is therefore a specification, not something the host seeds yet.
 
 **Demo users.** Partner · Manager · Accountant · Tax specialist · MLRO · Billing admin ·
 Client owner (portal) · Client finance contact (portal).
@@ -328,6 +353,8 @@ DHA licence numbers.
 **Profile.** A cloud kitchen group in Dubai and Sharjah: 3 kitchens, 5 virtual brands, 1
 central production kitchen, 1 takeaway counter (dine-in is Later). **Two legal entities** (Dubai LLC and Sharjah
 LLC), each with its own TRN and numbering.
+
+**Implemented as** `clients/demo-fnb/client.toml` and `host/src/app/fnb_demo.rs` (*Zaatar & Co. Kitchens LLC*, as named here: the people of the company, a kitchen with its stock, brands, outlets and menu, three customers and orders in every state a person clicks through). `APP_ENV=local CLIENT_CONFIG=clients/demo-fnb/client.toml cargo run -p host -- migrate`, then `-- fnb:demo` (or `-- db:seed`, which runs it in `local` only), then `-- serve`; the logins are on the login page, password `password123`. Seeding twice changes nothing. The command is refused when `APP_ENV` is production. An order in the middle of its life can only be reached through people's actions, so the rows are stored in the state of the story (placed, preparing, ready, completed, two `delivery_failed`, a closed one for a refund request, and a customer whose cash on delivery is off after two failures); an order whose external number is used is not made again. Logins such as `director@zaatar.example` and `area@zaatar.example`.
 
 **Demo users.** Operations director · Area manager · Kitchen manager · Head chef · Line cook
 (KDS) · Cashier · Storekeeper · Menu manager · Accountant · Rider · Customer.

@@ -298,8 +298,8 @@ settings pages.
 - **Cash-flow forecast** (`cash_forecast`): the COD remittances owed to clients
   are payments in the forecast of wl-invoicing, a draft at the next Monday run.
 - **Prices** (`rates`): the cancellation fee and the return charge are read
-  from `ClientRate` rows until the rate cards of wl-invoicing (`FIN.RAT.01`)
-  exist; `rates::price` is the one place to change. The zone prices by weight
+  from `ClientRate` rows; the rate cards of wl-invoicing (`FIN.RAT.01`) exist
+  but are not used here yet; `rates::price` is the one place to change. The zone prices by weight
   (`WeightBand`, `rates::band_price`) and the re-weigh terms (`ClientTerms`) are
   stand-ins in the same way.
 
@@ -323,13 +323,12 @@ holds everything.
 
 ## Seams
 
-What the app needs from modules that are not built is a trait in `wl-kernel`
-and a stand-in here, so the module can replace the stand-in: the quotation
+What the app needs from other modules is a trait in `wl-kernel`
+and, where the module is not built or not used yet, a stand-in here, so the module can replace the stand-in: the quotation
 terms (`wl_kernel::quotations`, `FreightQuotation`), rate cards (`rates`),
 job costing, supplier bills allocated to a job and disbursements
 (`freight_costing`, `freight_free_time::add_bill_cost`), usage billing (the
-invoicer's drafts), the first invoice of a job. Each is listed with its
-provider in the deferred notes of the build.
+invoicer's drafts), the first invoice of a job. The rate cards of wl-invoicing exist (manpower uses them), but logistics still prices from its `ClientRate` stand-in; switching `rates::price` to `RateCards` is open. Not built (MVP items of the spec §12, see [`docs/verticals/STATUS.md`](../../docs/verticals/STATUS.md)): the vehicle register (services, daily checks, fines, tolls, odometer CSV), the public tracking link, `LOG.RUL.04` and `LOG.RUL.05`, and a per-client switch for freight forwarding (today only the `freight.*` permissions).
 
 ## Tests
 

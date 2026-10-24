@@ -1,5 +1,6 @@
 # The demo client of F10 (10 EdTech): a licensed training centre in Dubai.
-# Data is fictional. Boot it with CLIENT_CONFIG=clients/demo-edtech/client.toml.
+# Data is fictional. Boot it with CLIENT_CONFIG=clients/demo-edtech/client.toml;
+# `edtech:demo` (and `db:seed` in local) fills it with the demo company.
 
 [client]
 name    = "Gulf Skills Training Centre LLC"

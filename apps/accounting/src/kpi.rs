@@ -12,9 +12,9 @@
 //! [`crate::kpi_machine`]; the services that run it are in
 //! [`crate::kpi_packs`].
 //!
-//! Decision: the live ledger connectors and the presets for Zoho Books, Xero,
-//! QuickBooks and Tally (`ACC.KPI.02`, Later) are not built; the import reads
-//! pasted CSV in the generic layout `code, name, debit, credit` (or `code,
+//! Decision: the presets for Zoho Books, Xero, QuickBooks and Tally (part of
+//! `ACC.KPI.01`, MVP) and the live ledger connectors (`ACC.KPI.02`, Later) are
+//! not built; the import reads pasted CSV in the generic layout `code, name, debit, credit` (or `code,
 //! name, balance`).
 
 use renox::chrono::NaiveDate;
