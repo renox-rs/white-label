@@ -31,6 +31,7 @@ pub mod report;
 pub mod responsible;
 pub mod returns;
 mod screens;
+pub mod search;
 mod texts;
 pub mod unlink;
 pub mod work_order;
@@ -76,6 +77,9 @@ impl Module for Manufacturing {
     }
 
     fn register(&self, app: &mut Registry) {
+        // The records in the global search and the Related panel (BL-AGT-13).
+        search::register();
+        search::listen(app);
         app.view_data::<screens::work_orders_page::WorkOrdersPage>()
             .view_data::<screens::work_order_page::WorkOrderPage>()
             .view_data::<screens::ncrs_page::NcrsPage>()

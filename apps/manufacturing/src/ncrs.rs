@@ -264,6 +264,7 @@ async fn insert(state: &AppState, plant: &Plant, new: NewNcr, by: Option<i64>) -
         },
     )
     .await?;
+    crate::search::index(&state.db, &ncr.subject()).await?;
     state
         .emit(NcrRaised {
             ncr: ncr.subject(),

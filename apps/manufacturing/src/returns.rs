@@ -402,6 +402,11 @@ async fn inspect(
         },
     )
     .await?;
+    crate::search::index(
+        &state.db,
+        &Subject::new(crate::late_inspection::INSPECTION_SUBJECT_TYPE, row.id),
+    )
+    .await?;
     let on = line.lot.clone().unwrap_or_else(|| line.item.clone());
     let run = checklists(state)
         .start(state, INSPECTION_TEMPLATE, on.clone())
@@ -886,6 +891,11 @@ async fn finish(
             .await?;
     }
     comment(state, found.complaint_id, said).await?;
+    crate::search::index(
+        &state.db,
+        &Subject::new(crate::late_inspection::INSPECTION_SUBJECT_TYPE, found.id),
+    )
+    .await?;
     ReturnInspection::find_or_404(&state.db, found.id).await
 }
 

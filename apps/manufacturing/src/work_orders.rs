@@ -186,7 +186,7 @@ async fn insert(
         Some((order, line)) => (WorkOrderSource::SalesOrder, Some(order), Some(line)),
         None => (WorkOrderSource::Stock, None, None),
     };
-    WorkOrder::create(
+    let made = WorkOrder::create(
         &state.db,
         WorkOrder {
             number,
@@ -204,7 +204,13 @@ async fn insert(
             ..WorkOrder::default()
         },
     )
-    .await
+    .await?;
+    crate::search::index(
+        &state.db,
+        &wl_kernel::Subject::new(crate::work_order::SUBJECT_TYPE, made.id),
+    )
+    .await?;
+    Ok(made)
 }
 
 /// The checks that fail for releasing `order`, one English line each, and the
