@@ -1,6 +1,6 @@
 # White-Label UAE SME Platform — Architecture
 
-> Status: **approved; F1 in progress** ([decision 0004](decisions/0004-start-f1-build.md)). The
+> Status: **approved; F1–F10 built** ([decision 0004](decisions/0004-start-f1-build.md), [0005](decisions/0005-phases-follow-vertical-numbers.md)). The
 > code follows the layout in [§7](#7-repository-layout) (directories marked "planned" do not exist yet).
 
 ## 1. Agreed decisions
@@ -231,11 +231,13 @@ white-label/
 │   └── ...
 ├── apps/
 │   ├── property/              # library crate: the property domain as a Module
-│   ├── construction/, logistics/, accounting/, clinics/, manpower/, edtech/, auto/
-│   └── ...                    # one per vertical (§9); F6 and F7 are not built yet
+│   ├── construction/, logistics/, accounting/, clinics/, fnb/, manufacturing/, auto/,
+│   └── manpower/, edtech/     # one per vertical (§9), all ten built
 ├── host/                      # binary: reads client.toml, assembles the App from enabled modules
 ├── operator/                  # planned (rollout track): our control plane (wl-operator)
 ├── clients/
+│   ├── demo-accounting/, demo-clinics/, demo-construction/, demo-fnb/, demo-logistics/,
+│   ├── demo-manpower/, demo-manufacturing/   # the demo clients of F2–F7 and F9
 │   ├── demo-auto/             # the F8 demo client: a parts trader with a workshop
 │   ├── demo-edtech/           # the F10 demo client: a training centre
 │   └── demo-properties/       # the F1 demo client
@@ -307,6 +309,10 @@ extension gets its own binary: `host` + the `ext/` crate linked at build time.
   [wl-operator](modules/wl-operator.md).
 
 ## 9. Roadmap
+
+F1–F10 are built (all merged by 2026-10-24): each vertical has its `apps/*` crate and a demo
+client in `clients/`. The rows below keep the scope each phase had; the rollout track is still
+open.
 
 | Phase | Scope | Done when |
 |---|---|---|

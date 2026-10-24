@@ -512,3 +512,6 @@
 | BL-AGT-08 | [#548](https://github.com/renox-rs/white-label/issues/548) |
 | BL-AGT-09 | [#549](https://github.com/renox-rs/white-label/issues/549) |
 | BL-AGT-10 | [#550](https://github.com/renox-rs/white-label/issues/550) |
+| BL-AGT-11 | [#552](https://github.com/renox-rs/white-label/issues/552) |
+| BL-AGT-12 | [#553](https://github.com/renox-rs/white-label/issues/553) |
+| BL-AGT-13 | [#554](https://github.com/renox-rs/white-label/issues/554) |

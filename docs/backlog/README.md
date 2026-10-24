@@ -180,7 +180,9 @@ closest existing area label; there is no `area:screens`. Added on 2026-10-23: BL
 Launch 09), the pay accounts waiting for approval in the approvals inbox, so the backlog has 465
 issues. Added on 2026-10-24 from [decision 0006](../decisions/0006-search-and-ai-agents.md): the
 epic #540 and BL-AGT-01 to BL-AGT-10 (#541–#550: five Build 1, five Later), label
-`area:ai-agents`, so the backlog has 475 issues. Links between issues
+`area:ai-agents`, so the backlog has 475 issues. Added the same day, after F1–F10 were merged:
+BL-AGT-11 to BL-AGT-13 (#552–#554, Launch 02 and Launch 06), the search registrations of the
+modules and verticals built in F2–F10, so the backlog has 478 issues. Links between issues
 use the GitHub numbers.
 The mapping from backlog ID to issue is in [github-issues.md](github-issues.md). When a backlog
 file changes, update the matching GitHub issue too.
