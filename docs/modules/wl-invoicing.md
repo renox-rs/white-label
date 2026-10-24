@@ -1141,7 +1141,7 @@ claim, insurance claim).
 
 `quotations.view`, `quotations.create`, `quotations.send`, `quotations.accept`,
 `charges.manage`, `charges.waive`, `subscriptions.view`, `subscriptions.manage`,
-`rate_cards.view`, `rate_cards.manage`, `rate_cards.approve`, `payer_agreements.manage`, `payer_bills.view`,
+`rate_cards.view`, `rate_cards.manage`, `rate_cards.approve` (approve a rate card version dated in the past, `MPW.ACL.16`), `payer_agreements.manage`, `payer_bills.view`,
 `payer_bills.issue`, `payer_bills.reconcile`, `payer_bills.write_off`, `invoices.view`,
 `invoices.create`,
 `invoices.issue`, `invoices.credit`, `invoices.write_off`, `invoices.dispute`,
