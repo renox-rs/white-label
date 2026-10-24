@@ -1,0 +1,33 @@
+{#- wl-kernel: one rule run (wl-kernel §4.2), linked from the daily digest of
+    failed runs (PLT.RUL.03): the rule, the record, the state, the last error
+    and each time it failed or stopped; holders of automations.retry run a
+    failed run again. Replace it with resources/views/wl-kernel/rule_run.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="heading">
+  <rx-stack>
+    <rx-page-header :title="heading" :subtitle="rule">
+      <rx-badge :text="status_label" :kind="status_kind"/>
+      <template rx-if="can_rerun">
+        <rx-action-sheet id="rerun-run" :label="tx['rerun']" :action="route('wl_kernel.rule_run.rerun', run_id)" :title="tx['rerun_title']" :submit-label="tx['rerun']" icon="refresh-cw" variant="primary">
+          <rx-alert kind="info" :message="tx['rerun_message']"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-infolist columns="2">
+      <rx-entry :label="tx['rule']" :value="rule"/>
+      <rx-entry :label="tx['subject']" :value="record"/>
+      <rx-entry :label="tx['occurrence']" :value="occurrence"/>
+      <rx-entry :label="tx['attempts']" :value="attempts"/>
+      <rx-entry :label="tx['error']" :value="last_error"/>
+      <rx-entry :label="tx['started_at']" :value="started_at"/>
+      <rx-entry :label="tx['finished_at']" :value="finished_at"/>
+    </rx-infolist>
+    <h2>{{ tx['failures'] }}</h2>
+    <rx-table :rows="failures" as="failure" :key="failure.id" :caption="tx['failures']" card>
+      <rx-column :label="tx['failure_at']">{{ failure.at }}</rx-column>
+      <rx-column :label="tx['failure_kind']">{{ failure.kind }}</rx-column>
+      <rx-column :label="tx['error']" hide-narrow>{{ failure.error }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['failures_empty']" icon="inbox"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

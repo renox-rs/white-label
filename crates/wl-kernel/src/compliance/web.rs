@@ -45,6 +45,10 @@ pub fn routes() -> Routes {
         .post("/compliance-alerts/{id}/close", close)
         .name(CLOSE_ROUTE)
         .require_auth()
+        // The page of a rule run, which the alerts and the daily digest of
+        // failed runs (PLT.RUL.03) link to; served with these routes so the
+        // kernel's route list stays as it is.
+        .merge(crate::automation::web::routes())
 }
 
 /// The page's texts.

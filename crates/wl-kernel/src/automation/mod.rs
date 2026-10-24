@@ -1,10 +1,17 @@
 //! Automation rules (wl-kernel §4.2, §5.3, rule runs): the [`RuleRun`] record
 //! and its machine, [`run_rule`] which runs an action once per occurrence key
 //! with retries, and [`AutomationFailed`], which a module that runs a rule
-//! itself (e.g. wl-notify `NTF.RUL.01`) emits after the last attempt. The
-//! rule catalogue and the admin page come later.
+//! itself (e.g. wl-notify `NTF.RUL.01`) emits after the last attempt.
+//! Each failure is recorded ([`RuleRunFailure`]) for the daily digest of
+//! failed runs to the company admin ([`failed_digest`], `PLT.RUL.03`), whose
+//! lines open the run's page ([`web`]). The rule catalogue comes later.
 
+pub mod failed_digest;
+pub mod failures;
 pub mod run;
+pub mod web;
+
+pub use failures::{FailureKind, RuleRunFailure};
 
 pub use run::{
     MAX_ATTEMPTS, MAX_CHAIN_DEPTH, RuleRun, RuleRunSpec, RuleRunStatus, RunOutcome, backoff,
@@ -16,10 +23,25 @@ use serde::{Deserialize, Serialize};
 
 use crate::subject::Subject;
 
-/// Registers the rule run model and its machine.
+/// Registers the rule run model and its machine, the failures, the run's
+/// page and the daily digest of failed runs.
 pub(crate) fn register(app: &mut Registry) {
-    app.model::<RuleRun>();
+    app.model::<RuleRun>()
+        .model::<RuleRunFailure>()
+        .view_data::<web::RuleRunPage>();
     renox::state_machine::register::<RuleRun>();
+    failed_digest::schedule(app);
+    app.templates(|env| {
+        // The app's own file of that name wins.
+        if env.get_template(web::TEMPLATE).is_err() {
+            renox::view::add_template(
+                env,
+                web::TEMPLATE,
+                include_str!("../../views/wl-kernel/rule_run.html"),
+            )
+            .expect("a built-in template compiles");
+        }
+    });
 }
 
 /// A rule run failed after its last attempt, or was stopped.

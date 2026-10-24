@@ -27,6 +27,7 @@ use renox::state_machine::{Machine, StateMachine, Transition, TransitionError};
 use serde::{Deserialize, Serialize};
 
 use super::AutomationFailed;
+use super::failures::{self, FailureKind};
 use crate::compliance::{self, AlertKind};
 use crate::subject::Subject;
 
@@ -273,7 +274,11 @@ impl StateMachine for RuleRun {
                     })
                     .effect(|run: &RuleRun, _ctx, tx| {
                         let id = run.id;
-                        Box::pin(async move { finish(tx, id).await })
+                        Box::pin(async move {
+                            finish(tx, id).await?;
+                            // For the daily digest of failed runs (PLT.RUL.03).
+                            failures::record(tx, id, FailureKind::Failed).await
+                        })
                     }),
             )
             .transition(
@@ -294,7 +299,10 @@ impl StateMachine for RuleRun {
                     })
                     .effect(|run: &RuleRun, _ctx, tx| {
                         let id = run.id;
-                        Box::pin(async move { finish(tx, id).await })
+                        Box::pin(async move {
+                            finish(tx, id).await?;
+                            failures::record(tx, id, FailureKind::Stopped).await
+                        })
                     }),
             )
             .transition(
