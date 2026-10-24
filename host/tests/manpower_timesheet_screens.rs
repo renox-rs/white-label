@@ -67,7 +67,8 @@ async fn the_list_shows_the_demo_timesheets_in_words_and_narrows_by_status() {
             "56.00 h",
             "58.00 h",
             &day(0).format("%b %Y").to_string(),
-            "rx-segmented",
+            // The status tabs are the grid's filter now.
+            "rx-grid__scroll",
         ],
     );
     assert!(!html.trim_start().starts_with('{'), "a page, not JSON");

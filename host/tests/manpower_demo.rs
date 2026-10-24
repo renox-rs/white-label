@@ -21,6 +21,28 @@ async fn count(app: &TestApp, query: &str) -> i64 {
         .unwrap()
 }
 
+/// The text a person reads on `html`: without tags (and so without the
+/// attributes, where a grid keeps the keys of its filter options) and scripts.
+fn shown(html: &str) -> String {
+    let mut out = String::new();
+    let mut rest = html;
+    while let Some(open) = rest.find('<') {
+        out.push_str(&rest[..open]);
+        rest = &rest[open..];
+        let close = ["script", "style"]
+            .iter()
+            .find(|tag| rest[1..].starts_with(**tag))
+            .map(|tag| format!("</{tag}>"));
+        rest = match close {
+            Some(close) => rest.find(&close).map_or("", |at| &rest[at + close.len()..]),
+            None => rest.find('>').map_or("", |at| &rest[at + 1..]),
+        };
+        out.push(' ');
+    }
+    out.push_str(rest);
+    out
+}
+
 async fn booted() -> TestApp {
     let config = ClientConfig::load(CLIENT).expect("the demo client of the Manpower vertical");
     let app = TestApp::new(host::app_for(config).expect("the app")).await;
@@ -286,7 +308,7 @@ async fn the_demo_pages_show_words_not_keys() {
         page.assert_ok();
         let html = page.text();
         assert!(html.contains(wanted), "{path} has no `{wanted}`");
-        assert!(!html.contains("security_guard"), "{path} shows a key");
+        assert!(!shown(&html).contains("security_guard"), "{path} shows a key");
         assert!(!html.contains("None."), "{path} shows `None.`");
     }
     let settlement = count(&app, "select min(id) from wl_hr_final_settlements").await;

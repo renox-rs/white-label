@@ -79,7 +79,16 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
             .link("/hr/settlements/{id}"),
         )
         .column(Column::custom("employee", &t("settlement.list.employee")).mobile())
-        .column(Column::text("reason", &t("settlement.reason")).searchable())
+        // The reason in words (`end_of_contract` reads *End of contract*), as SQL
+        // so that search, sort and export see the words too.
+        .column(
+            Column::text("reason_words", &t("settlement.reason"))
+                .computed(
+                    "UPPER(SUBSTR(REPLACE({T}.\"reason\", '_', ' '), 1, 1)) \
+                     || SUBSTR(REPLACE({T}.\"reason\", '_', ' '), 2)",
+                )
+                .searchable(),
+        )
         .column(
             Column::select("status", &t("fields.status"), statuses)
                 .badges(&[

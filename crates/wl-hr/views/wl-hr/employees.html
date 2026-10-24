@@ -11,6 +11,7 @@
       <a href="{{ route('wl_hr.employee', row.id) }}">{{ row.name }}</a>
       <div rx-if="row.documents_ending" class="rx-subtitle">{{ tx['employees.documents_ending'] }}: {{ row.documents_ending }}</div>
     </template>
+    <template rx-elif="column.key == 'hire_date_text'">{{ row.hire_date_text }}</template>
     <template rx-elif="column.key == 'progress'">{{ row.progress }}</template>
   </rx-grid>
 </rx-page>

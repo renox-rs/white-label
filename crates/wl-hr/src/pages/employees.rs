@@ -234,8 +234,14 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                 .link("/hr/employees/{id}"),
         )
         .column(Column::custom("name", &t("employees.name")).mobile())
+        // The role in words (`security_guard` reads *Security guard*), as SQL
+        // so that search, sort and export see the words too.
         .column(
-            Column::text("job_role", &t("employees.job_role"))
+            Column::text("role_words", &t("employees.job_role"))
+                .computed(
+                    "UPPER(SUBSTR(REPLACE({T}.\"job_role\", '_', ' '), 1, 1)) \
+                     || SUBSTR(REPLACE({T}.\"job_role\", '_', ' '), 2)",
+                )
                 .mobile()
                 .searchable(),
         )
@@ -250,7 +256,8 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                 .searchable(),
         )
         .column(Column::select("employment_type", &t("employees.employment_type"), types).hidden())
-        .column(Column::date("hire_date", &t("employees.hire_date")))
+        // The hire date as `01 Nov 2026` (drawn by the template, like the page).
+        .column(Column::custom("hire_date_text", &t("employees.hire_date")))
         .column(Column::date("last_working_day", &t("employees.last_working_day")).hidden())
         .column(Column::custom("progress", &t("employees.progress")))
         .column(
@@ -370,6 +377,7 @@ async fn index(
         renox::serde_json::json!({
             "name": name,
             "progress": progress,
+            "hire_date_text": super::payroll::date_text(employee.hire_date),
             "documents_ending": ending.get(&employee.id).cloned().unwrap_or_default(),
         })
     });

@@ -17,7 +17,7 @@ use renox::prelude::*;
 use renox::serde_json::{Value, json};
 use serde::Serialize;
 
-use super::{Texts, date_text, options, request_page, role_text};
+use super::{Texts, date_or, date_text, options, request_page, role_text};
 use crate::contract::ClientContract;
 use crate::deployment::Deployment;
 use crate::documents::DeploymentDocumentFlag;
@@ -108,10 +108,18 @@ fn contracts_grid(lang: &Lang, can_export: bool) -> Grid {
             &text(lang, "contracts.billing"),
             options(lang, "billing", &["monthly", "fortnightly", "weekly"]),
         ))
-        .column(Column::bool(
-            "cover_required",
-            &text(lang, "contracts.cover"),
-        ))
+        // The obligation in words (*Cover required* / *Not required*), not a tick.
+        .column(
+            Column::select(
+                "cover",
+                &text(lang, "contracts.cover"),
+                [
+                    ("1", text(lang, "contracts.cover_required")),
+                    ("0", text(lang, "contracts.cover_none")),
+                ],
+            )
+            .computed("CASE WHEN {T}.\"cover_required\" THEN '1' ELSE '0' END"),
+        )
         .column(Column::custom("hold", &text(lang, "contracts.hold")))
         .column(Column::date("signed_on", &text(lang, "contracts.signed_on")).hidden())
         .sort_by("reference")
@@ -265,7 +273,8 @@ fn requests_grid(lang: &Lang, can_export: bool) -> Grid {
             options(lang, "shift", &request_page::SHIFTS),
         ))
         .column(Column::date("start_date", &text(lang, "form.start_date")))
-        .column(Column::date("end_date", &text(lang, "form.end_date")))
+        // The end date, or *Open-ended* for a request with none (`custom`).
+        .column(Column::custom("end_text", &text(lang, "form.end_date")))
         .column(Column::datetime("submitted_at", &text(lang, "requests.submitted")).hidden())
         .sort_by("-start_date")
         .row_url("/manpower/requests/{id}")
@@ -311,7 +320,13 @@ pub(crate) async fn requests(
             party_name(state, lang, item.client_party_id).await,
         );
     }
-    let page = page.extend(|item| json!({ "client": clients.get(&item.client_party_id) }));
+    let open_ended = text(lang, "open_ended");
+    let page = page.extend(|item| {
+        json!({
+            "client": clients.get(&item.client_party_id),
+            "end_text": date_or(item.end_date, &open_ended),
+        })
+    });
     let form = request_page::new_request_form(state, user, lang).await?;
     Ok(View::typed(RequestsPage {
         tx: screen_texts(lang),

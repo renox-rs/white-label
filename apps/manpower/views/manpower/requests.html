@@ -22,5 +22,6 @@
   </rx-page-header>
   <rx-grid :page="requests">
     <template rx-if="column.key == 'client'">{{ row.client }}</template>
+    <template rx-elif="column.key == 'end_text'">{{ row.end_text }}</template>
   </rx-grid>
 </rx-page>

@@ -244,7 +244,11 @@ async fn index(
         .order_by(Course::CODE)
         .get(&state.db)
         .await?;
-    let tutors = resource_choices(&state, ResourceChoiceKind::Person).await;
+    let mut tutors = resource_choices(&state, ResourceChoiceKind::Person).await;
+    // A tutor's tutor filter names only themselves, never the other tutors.
+    if let Some(employee) = own {
+        tutors.retain(|c| c.employee_id == Some(employee));
+    }
     let rooms = resource_choices(&state, ResourceChoiceKind::Room).await;
     let can_export = user.has_permission(permissions::BATCHES_MANAGE);
     let grid = grid(

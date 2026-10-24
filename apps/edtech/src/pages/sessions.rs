@@ -246,7 +246,11 @@ async fn index(
     require(&user, permissions::SESSIONS_VIEW)?;
     let own = sessions::assigned_scope(&state, &user).await?;
     let batches = Batch::query().order_by(Batch::ID).get(&state.db).await?;
-    let tutors = resource_choices(&state, ResourceChoiceKind::Person).await;
+    let mut tutors = resource_choices(&state, ResourceChoiceKind::Person).await;
+    // A tutor's tutor filter names only themselves, never the other tutors.
+    if let Some(employee) = own {
+        tutors.retain(|c| c.employee_id == Some(employee));
+    }
     let rooms = resource_choices(&state, ResourceChoiceKind::Room).await;
     let options = |choices: Vec<ResourceChoice>| -> Vec<(String, String)> {
         choices
