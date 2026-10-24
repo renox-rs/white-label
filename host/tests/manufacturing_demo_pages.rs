@@ -243,3 +243,183 @@ async fn the_recall_and_the_credit_hold_show_on_their_pages() {
         .assert_ok()
         .assert_see("Sahara Retail");
 }
+
+// ------------------------------------------------ late decision on a returned lot
+
+/// The local form value of `minutes` ago.
+fn ago(minutes: i64) -> String {
+    let at = renox::db::now() - renox::chrono::Duration::minutes(minutes);
+    wl_kernel::BusinessCalendar::default()
+        .local(at)
+        .format("%Y-%m-%dT%H:%M")
+        .to_string()
+}
+
+async fn the_inspection(app: &TestApp) -> i64 {
+    scalar(
+        app,
+        "select id from manufacturing_return_inspections order by id",
+    )
+    .await
+}
+
+/// BL-MFG-14 and BL-MFG-07 with the 07 limits: a result entered 10 minutes
+/// after the goods were looked at is on time, needs no reason, and is stamped
+/// with the time the inspector gave.
+#[renox::test]
+async fn a_result_entered_within_30_minutes_is_on_time() {
+    let app = demo().await;
+    let id = the_inspection(&app).await;
+    post(
+        &app,
+        QC_EMAIL,
+        &format!("/manufacturing/inspections/{id}/pass"),
+        &[("note", "fine"), ("occurred_at", &ago(10))],
+    )
+    .await
+    .assert_status(303);
+    assert_eq!(
+        scalar(
+            &app,
+            "select count(*) from manufacturing_return_inspections where status = 'passed' and decided_at < datetime('now', '-5 minutes')"
+        )
+        .await,
+        1,
+        "the inspection keeps the time of the decision"
+    );
+    assert_eq!(
+        scalar(
+            &app,
+            "select count(*) from manufacturing_late_inspections where late = 1"
+        )
+        .await,
+        0
+    );
+}
+
+/// 5 hours late: 422 in the sheet without a reason and nothing changes; with a
+/// reason the lot is released, the flag shows on the page with its reason and
+/// the decision is at the business time.
+#[renox::test]
+async fn a_result_entered_5_hours_late_needs_a_reason_and_carries_the_flag() {
+    let app = demo().await;
+    let id = the_inspection(&app).await;
+    let path = format!("/manufacturing/inspections/{id}/pass");
+    let at = ago(300);
+    let refused = post(&app, QC_EMAIL, &path, &[("occurred_at", &at)]).await;
+    refused.assert_status(422);
+    assert!(
+        refused.text().contains("reason"),
+        "the sheet says a reason is needed: {}",
+        refused.text()
+    );
+    assert_eq!(
+        scalar(
+            &app,
+            "select count(*) from manufacturing_return_inspections where status = 'open'"
+        )
+        .await,
+        1
+    );
+    post(
+        &app,
+        QC_EMAIL,
+        &path,
+        &[
+            ("occurred_at", &at),
+            ("late_reason", "Tablet down, inspected on paper"),
+            ("outage_reference", "OUT-12"),
+        ],
+    )
+    .await
+    .assert_status(303);
+    assert_eq!(
+        scalar(
+            &app,
+            "select count(*) from manufacturing_return_inspections where status = 'passed' and decided_at < datetime('now', '-4 hours')"
+        )
+        .await,
+        1
+    );
+    browse(&app, QC_EMAIL, "/manufacturing/inspections")
+        .await
+        .assert_ok()
+        .assert_see("Entered late: Tablet down, inspected on paper");
+}
+
+/// 30 hours late: the failed result waits for the production manager. The
+/// inspection stays open and the buttons say why they are off; nobody else
+/// decides it meanwhile; when the manager approves, the NCR is raised and
+/// the inspection is failed at the business time.
+#[renox::test]
+async fn a_result_entered_30_hours_late_waits_for_the_production_manager() {
+    let app = demo().await;
+    let id = the_inspection(&app).await;
+    post(
+        &app,
+        QC_EMAIL,
+        &format!("/manufacturing/inspections/{id}/fail"),
+        &[
+            ("defect", "Seal broken"),
+            ("occurred_at", &ago(30 * 60)),
+            ("late_reason", "Weekend, nobody to enter it"),
+        ],
+    )
+    .await
+    .assert_status(303);
+    let ncrs = "select count(*) from manufacturing_ncrs";
+    let before = scalar(&app, ncrs).await;
+    assert_eq!(
+        scalar(
+            &app,
+            "select count(*) from manufacturing_return_inspections where status = 'open'"
+        )
+        .await,
+        1,
+        "nothing applies before the approval"
+    );
+    browse(&app, QC_EMAIL, "/manufacturing/inspections")
+        .await
+        .assert_ok()
+        .assert_see("Waiting for the production manager to approve the fail")
+        .assert_see("The result you entered waits for the production manager");
+    post(
+        &app,
+        QC_EMAIL,
+        &format!("/manufacturing/inspections/{id}/pass"),
+        &[],
+    )
+    .await
+    .assert_status(422);
+    let request = scalar(
+        &app,
+        "select id from wl_approval_requests where subject_type = 'kernel.late_entry' and status = 'pending'",
+    )
+    .await;
+    post(
+        &app,
+        QC_EMAIL,
+        &format!("/approvals/{request}/approve"),
+        &[("comment", "ok")],
+    )
+    .await
+    .assert_forbidden();
+    post(
+        &app,
+        MANAGER_EMAIL,
+        &format!("/approvals/{request}/approve"),
+        &[("comment", "agreed")],
+    )
+    .await
+    .assert_ok();
+    assert_eq!(scalar(&app, ncrs).await, before + 1);
+    assert_eq!(
+        scalar(
+            &app,
+            "select count(*) from manufacturing_return_inspections where status = 'failed' and decided_at < datetime('now', '-29 hours')"
+        )
+        .await,
+        1,
+        "the decision keeps its business time"
+    );
+}
