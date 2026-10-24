@@ -386,9 +386,17 @@ async fn show(State(state): State<AppState>, request: GridRequest) -> Result<Res
     } else if settings.client_app == super::fnb_seed::FNB {
         // The 06 client has its own table (BL-FNB-17).
         super::fnb_settings::compliance_rows(&settings.owner_role)
+    } else if settings.client_app == super::manufacturing_seed::MANUFACTURING {
+        // The 07 client has its own table (BL-MFG-14).
+        super::manufacturing_settings::compliance_rows(&settings.owner_role)
     } else if settings.client_app == super::edtech_seed::EDTECH {
         // The 10 client has its own table too (BL-EDU-17).
         super::edtech_settings::rows(&settings.owner_role)
+    } else if settings.client_app == super::auto_seed::AUTO {
+        // The 08 client too (BL-AUT-18), with the rows kept in the database.
+        let mut rows = super::auto_settings::rows(&settings.owner_role);
+        rows.extend(super::auto_settings::stored_rows(&state.db).await?);
+        rows
     } else {
         rows(&settings.client_app, &settings.owner_role)
     };

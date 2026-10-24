@@ -1,6 +1,6 @@
 # Open Items Register
 
-> Status: draft · Last updated: 2026-10-20
+> Status: draft · Last updated: 2026-10-24
 
 Every fact the documents could not settle from public sources (`⚠ open: <owner>`) and every
 business decision still to take (`⚠ decide`), in one place. The marker in the source document
@@ -24,17 +24,17 @@ here as `~~question~~ Answered (date): ...`.
 | Owner | Items | Build 1 | Client 1 | Outreach | Launch | Onboarding | Later |
 |---|---|---|---|---|---|---|---|
 | Owner decision (`D`) | 5 (all decided) | — | 0 | — | — | — | — |
-| Lawyer (`L`) | 39 | 1 | 5 | 1 | 30 | 1 | 1 |
+| Lawyer (`L`) | 40 | 1 | 5 | 1 | 30 | 1 | 2 |
 | Accountant (`A`) | 16 | — | — | — | 15 | 1 | — |
 | Authority (`AU`) | 25 | — | — | — | 21 | 2 | 2 |
 | Client (`C`) | 3 | — | — | — | 1 | 2 | — |
 | Onboarding (`O`) | 4 | — | 2 | — | — | 2 | — |
-| **Total open** | **87** | **1** | **7** | **1** | **67** | **8** | **3** |
+| **Total open** | **88** | **1** | **7** | **1** | **67** | **8** | **4** |
 
 **Before Build 1:** L-10. **Before Launch 02 (attendance):** L-05. **Before outreach at scale:** L-18. **Before Client 1:**
 L-01, L-02, L-03, L-11, L-13, O-01, O-02. The owner decisions D-01 to D-05 were taken on 2026-10-15.
 The items added from the negative-flow pass (L-19 to L-37, A-04 to A-14, AU-20 to AU-25, C-03)
-and from the SME gaps (L-38, L-39, A-15, A-16)
+and from the SME gaps (L-38, L-39, A-15, A-16), and L-40 from decision 0006 (agent access stays off by default),
 are not needed before Build 1: each has a safe default in its document (the stricter
 choice, off by default, or a configurable parameter).
 
@@ -93,6 +93,7 @@ The prices themselves are filled in [PRICING.md](PRICING.md) by the owner.
 | L-37 | Construction: does retention become due when a contract is terminated (unless the contract says otherwise)? May a subcontractor suspend work for non-payment? How does a subcontractor claim against an insolvent main contractor? | [02-construction.md](verticals/02-construction.md) §4, §9 | 02 | Launch 02 |
 | L-38 | Clinics: do health regulators limit loyalty rewards or discounts on medical services, and does campaign content for a clinic need their approval? | [05-clinics.md](verticals/05-clinics.md) §7.2 | 05 | Launch 05 |
 | L-39 | Loyalty programmes: may a business shorten the validity of points already earned, devalue them or end the programme, and with how much notice to members? | [wl-sales](modules/wl-sales.md) §10 | 05, 06, 08, 10 | Launch 05 |
+| L-40 | AI assistants (decision 0006): on what PDPL basis may a client let staff send records to an AI provider outside the UAE (Claude, ChatGPT) through the app's connector; is the admin's acceptance of a notice enough, or is a transfer agreement or the data subjects' consent needed; and may health data ever be sent? | [decision 0006](decisions/0006-search-and-ai-agents.md) point 7; [backlog BL-AGT-06](backlog/modules/wl-agents.md) | all; 05 locked off | Later |
 
 ## 4. Accountant
 

@@ -61,7 +61,8 @@ use wl_kernel::sales::{
 use wl_kernel::tickets::{self, Assignee, OpenTicket, TASK_CATEGORY};
 
 use crate::balance;
-use crate::dispatch::{Dispatch, DispatchLine, DispatchStatus, cancel_by_system, lines_of};
+use crate::dispatch::{Dispatch, DispatchLine, DispatchStatus, SALE_LINE_SUBJECT_TYPE, lines_of};
+use crate::dispatch_pick::cancel_by_system;
 use crate::item::{Item, value_of};
 use crate::location::Location;
 use crate::movement::{MovementType, StockMovement};
@@ -183,7 +184,8 @@ async fn take_off_lines(
     reason: &str,
 ) -> Result<Taken> {
     let rows = DispatchLine::query()
-        .where_(DispatchLine::SALE_LINE_ID.eq(Some(line)))
+        .where_(DispatchLine::SOURCE_LINE_TYPE.eq(Some(SALE_LINE_SUBJECT_TYPE.to_owned())))
+        .where_(DispatchLine::SOURCE_LINE_ID.eq(Some(line)))
         .order_by(DispatchLine::ID)
         .get(&mut *tx)
         .await?;
@@ -469,7 +471,7 @@ async fn dispatcher_task(state: &AppState, dispatch: &Dispatch, request: &LineRe
     if creator.find_open(state, &key).await?.is_some() {
         return Ok(());
     }
-    let number = dispatch.number();
+    let number = dispatch.number.clone().unwrap_or_default();
     let line = request.line.to_string();
     let status = dispatch.status.as_str();
     let title = said(
@@ -616,7 +618,8 @@ async fn reserve_more(
     }
     let mut tx = state.db.begin().await?;
     let rows = DispatchLine::query()
-        .where_(DispatchLine::SALE_LINE_ID.eq(Some(line)))
+        .where_(DispatchLine::SOURCE_LINE_TYPE.eq(Some(SALE_LINE_SUBJECT_TYPE.to_owned())))
+        .where_(DispatchLine::SOURCE_LINE_ID.eq(Some(line)))
         .order_by_desc(DispatchLine::ID)
         .get(&mut tx)
         .await?;

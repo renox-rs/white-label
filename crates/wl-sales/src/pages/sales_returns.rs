@@ -343,7 +343,8 @@ async fn show(
 /// `POST /sales-returns`: requests a return. Fields: `sale_type`
 /// (`counter_sale` or `sales_order`), `sale_id`, `kind` (`goods` or
 /// `no_goods`), `reason` and `lines` as `line id:quantity` pairs separated
-/// by commas (`12:1, 13:2.5`).
+/// by commas (`12:1, 13:2.5`), with the lot the customer shows after a second
+/// colon (`12:2:7`).
 async fn request(
     State(state): State<AppState>,
     user: AuthUser,
@@ -375,13 +376,25 @@ async fn request(
         .reason(get("reason"))
         .requested_by(user.id);
     for pair in get("lines").split(',').filter(|p| !p.trim().is_empty()) {
-        let parsed = pair.split_once(':').and_then(|(line, quantity)| {
-            Some((line.trim().parse::<i64>().ok()?, parse_milli(quantity)?))
+        // `line:quantity` or `line:quantity:lot` (the lot the customer shows).
+        let parsed = pair.split_once(':').and_then(|(line, rest)| {
+            let (quantity, lot) = match rest.split_once(':') {
+                Some((quantity, lot)) => (quantity, Some(lot.trim().parse::<i64>().ok()?)),
+                None => (rest, None),
+            };
+            Some((
+                line.trim().parse::<i64>().ok()?,
+                parse_milli(quantity)?,
+                lot,
+            ))
         });
-        let Some((line, quantity)) = parsed else {
+        let Some((line, quantity, lot)) = parsed else {
             return Err(invalid("lines", text(&lang, "returns.errors.lines"), &form));
         };
         new = new.line(line, quantity);
+        if let Some(lot) = lot {
+            new = new.lot(line, lot);
+        }
     }
     let created = sales_returns::request(&state, new).await?;
     Ok((

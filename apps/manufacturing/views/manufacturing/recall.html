@@ -1,0 +1,59 @@
+{#- manufacturing: one recall by customer (docs/UX.md section 2.2, BL-MFG-10):
+    what each customer got, shipped or not shipped, the dispatches to bring
+    back and the ones flagged for a re-pick. Replace it with
+    resources/views/manufacturing/recall.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['recall.title'] ~ ': ' ~ number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="subtitle" :badge="status" :badge-kind="status_kind"
+                    :back="route('manufacturing.recalls')" :back-label="tx['recalls.title']"/>
+    <rx-alert rx-for="line in summary" kind="info" :message="line"/>
+    <rx-alert rx-if="bring_back" kind="warning" :message="tx['recall.bring_back_alert']"/>
+    <rx-row>
+      <rx-link-button :href="recall_url" :label="tx['recall.open_recall']"/>
+    </rx-row>
+    <rx-tabs id="recall-tabs" selected="customers" :label="tx['recall.title']">
+      <rx-tab key="customers" :label="tx['recall.tab.customers']">
+        <rx-table :rows="lines" as="line" :key="line.record ~ line.lot" :caption="tx['recall.tab.customers']" card>
+          <rx-column :label="tx['recall.customer']">
+            <rx-stack>
+              <span>{{ line.customer }}</span>
+              <span class="rx-subtitle"><a href="{{ line.record_url }}">{{ line.record }}</a> - {{ line.lot }}</span>
+              <span><rx-badge :kind="line.status_kind" :text="line.status"/></span>
+            </rx-stack>
+          </rx-column>
+          <rx-column :label="tx['recall.quantity']" align="num">{{ line.quantity }}</rx-column>
+          <rx-column :label="tx['recall.day']" hide-narrow>{{ line.day }}</rx-column>
+          <rx-column :label="tx['recall.notice']" hide-narrow>{{ line.notice }}</rx-column>
+          <rx-column :label="tx['recall.note']" hide-narrow>{{ line.note }}</rx-column>
+          <rx-slot name="empty"><rx-empty :title="tx['recall.empty']" :message="tx['recall.empty_text']" icon="users"/></rx-slot>
+        </rx-table>
+      </rx-tab>
+      <rx-tab key="bring_back" :label="tx['recall.tab.bring_back']">
+        <rx-table :rows="bring_back" as="line" :key="line.record ~ line.lot" :caption="tx['recall.tab.bring_back']" card>
+          <rx-column :label="tx['recall.customer']">
+            <rx-stack>
+              <span>{{ line.customer }}</span>
+              <span class="rx-subtitle"><a href="{{ line.record_url }}">{{ line.record }}</a> - {{ line.lot }}</span>
+            </rx-stack>
+          </rx-column>
+          <rx-column :label="tx['recall.quantity']" align="num">{{ line.quantity }}</rx-column>
+          <rx-column :label="tx['recall.day']" hide-narrow>{{ line.day }}</rx-column>
+          <rx-slot name="empty"><rx-empty :title="tx['recall.bring_back_empty']" :message="tx['recall.bring_back_empty_text']" icon="truck"/></rx-slot>
+        </rx-table>
+      </rx-tab>
+      <rx-tab key="repick" :label="tx['recall.tab.repick']">
+        <rx-table :rows="repick" as="line" :key="line.record ~ line.lot" :caption="tx['recall.tab.repick']" card>
+          <rx-column :label="tx['recall.customer']">
+            <rx-stack>
+              <span>{{ line.customer }}</span>
+              <span class="rx-subtitle"><a href="{{ line.record_url }}">{{ line.record }}</a> - {{ line.lot }}</span>
+            </rx-stack>
+          </rx-column>
+          <rx-column :label="tx['recall.quantity']" align="num">{{ line.quantity }}</rx-column>
+          <rx-column :label="tx['recall.note']" hide-narrow>{{ line.note }}</rx-column>
+          <rx-slot name="empty"><rx-empty :title="tx['recall.repick_empty']" :message="tx['recall.repick_empty_text']" icon="package"/></rx-slot>
+        </rx-table>
+      </rx-tab>
+    </rx-tabs>
+  </rx-stack>
+</rx-page>

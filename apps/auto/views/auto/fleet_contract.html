@@ -1,0 +1,187 @@
+{#- auto: one fleet service contract: the fleet and its contact, the term, the
+    rates and what is included, the signed contract, the vehicles under
+    contract, their service plans, the bookings already made, the job cards
+    with the fleet's PO references, and the periods invoiced; the actions of
+    the fleet account manager and the accountant by state. Replace it with
+    resources/views/auto/fleet_contract.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="title ~ ' · ' ~ fleet" :badge="status" :badge-kind="status_kind" :back="route('auto.fleet_contracts')" :back-label="tx['fleet.title']">
+      <template rx-if="can_edit">
+        <rx-action-sheet :id="'fleet-edit-' ~ id" :label="tx['fleet.edit']" :action="route('auto.fleet_update', id)"
+                         :title="tx['fleet.edit']" :description="tx['fleet.edit_description']" :submit-label="tx['fleet.edit']" icon="pencil">
+          <rx-select name="fleet" :label="tx['fleet.fleet']" :options="fleet_options" :selected="raw_fleet" options-url="{{ route('auto.party_options') }}" :id="'fleet-edit-fleet-' ~ id"/>
+          <rx-select name="contact" :label="tx['fleet.contact']" :options="contact_options" :selected="raw_contact" :placeholder="tx['fleet.contact_placeholder']" options-url="{{ route('auto.party_options') }}" :id="'fleet-edit-contact-' ~ id"/>
+          <rx-input name="title" :label="tx['fleet.name']" :value="title" :id="'fleet-edit-title-' ~ id" required/>
+          <rx-input name="start_date" type="date" :label="tx['fleet.start']" :value="raw_start" :id="'fleet-edit-start-' ~ id" required/>
+          <rx-input name="end_date" type="date" :label="tx['fleet.end']" :hint="tx['fleet.end_hint']" :value="raw_end" :id="'fleet-edit-end-' ~ id" required/>
+          <rx-input name="labour_rate" :label="tx['fleet.labour_rate']" :hint="tx['fleet.money_hint']" :value="raw_labour_rate" :id="'fleet-edit-rate-' ~ id"/>
+          <rx-input name="price_tier" :label="tx['fleet.price_tier']" :value="raw_tier" :id="'fleet-edit-tier-' ~ id"/>
+          <rx-textarea name="inclusions" :label="tx['fleet.inclusions']" :value="raw_inclusions" :id="'fleet-edit-inclusions-' ~ id"/>
+          <rx-input name="notice_days" type="number" :label="tx['fleet.notice']" :value="raw_notice" :id="'fleet-edit-notice-' ~ id"/>
+          <rx-input name="fee" :label="tx['fleet.fee']" :hint="tx['fleet.money_hint']" :value="raw_fee" :id="'fleet-edit-fee-' ~ id"/>
+          <rx-input name="renewal_window" type="number" :label="tx['fleet.renewal_window']" :value="raw_window" :id="'fleet-edit-window-' ~ id"/>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'fleet-document-' ~ id" :label="tx['fleet.document']" :action="route('auto.fleet_document', id)"
+                         :title="tx['fleet.document']" :description="tx['fleet.document_description']" :submit-label="tx['fleet.document']" icon="file-text">
+          <rx-input name="document" :label="tx['fleet.signed']" :hint="tx['fleet.document_hint']" :id="'fleet-document-ref-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_activate">
+        <rx-confirm :id="'fleet-activate-' ~ id" :label="tx['fleet.activate']" :action="route('auto.fleet_activate', id)" method="POST"
+                    :title="tx['fleet.activate']" :message="tx['fleet.activate_message']" :confirm-label="tx['fleet.activate']" :cancel-label="tx['button_cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_suspend">
+        <rx-action-sheet :id="'fleet-suspend-' ~ id" :label="tx['fleet.suspend']" :action="route('auto.fleet_suspend', id)"
+                         :title="tx['fleet.suspend']" :description="tx['fleet.suspend_description']" :submit-label="tx['fleet.suspend']" icon="clock">
+          <rx-textarea name="reason" :label="tx['fleet.reason']" :hint="tx['fleet.reason_hint']" :id="'fleet-suspend-reason-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_resume">
+        <rx-confirm :id="'fleet-resume-' ~ id" :label="tx['fleet.resume']" :action="route('auto.fleet_resume', id)" method="POST"
+                    :title="tx['fleet.resume']" :message="tx['fleet.resume_message']" :confirm-label="tx['fleet.resume']" :cancel-label="tx['button_cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_renew">
+        <rx-action-sheet :id="'fleet-renew-' ~ id" :label="tx['fleet.renew']" :action="route('auto.fleet_renew', id)"
+                         :title="tx['fleet.renew']" :description="tx['fleet.renew_description']" :submit-label="tx['fleet.renew']" icon="refresh-cw">
+          <rx-input name="end_date" type="date" :label="tx['fleet.new_end']" :id="'fleet-renew-end-' ~ id" required/>
+          <rx-input name="labour_rate" :label="tx['fleet.labour_rate']" :hint="tx['fleet.rate_blank_hint']" :id="'fleet-renew-rate-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_terminate">
+        <rx-action-sheet :id="'fleet-terminate-' ~ id" :label="tx['fleet.terminate']" :action="route('auto.fleet_terminate', id)"
+                         :title="tx['fleet.terminate']" :description="tx['fleet.terminate_description']" :submit-label="tx['fleet.terminate_submit']" icon="x">
+          <rx-select name="reason" :label="tx['fleet.reason']" :options="reason_options" :placeholder="tx['fleet.reason_placeholder']" :id="'fleet-terminate-reason-' ~ id" required/>
+          <rx-textarea name="note" :label="tx['fleet.reason_note']" :id="'fleet-terminate-note-' ~ id"/>
+          <rx-input name="notice_date" type="date" :label="tx['fleet.notice_date']" :hint="tx['fleet.notice_date_hint']" :value="today" :id="'fleet-terminate-notice-' ~ id" required/>
+          <rx-input name="effective_date" type="date" :label="tx['fleet.effective_date']" :hint="tx['fleet.effective_date_hint']" :id="'fleet-terminate-effective-' ~ id" required/>
+          <template rx-if="fee_waivable">
+            <rx-checkbox name="waive_fee" :label="tx['fleet.waive_fee']" :hint="tx['fleet.waive_fee_hint']" :id="'fleet-terminate-waive-' ~ id"/>
+          </template>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_invoice">
+        <rx-action-sheet :id="'fleet-invoice-' ~ id" :label="tx['fleet.invoice']" :action="route('auto.fleet_invoice', id)"
+                         :title="tx['fleet.invoice']" :description="tx['fleet.invoice_description']" :submit-label="tx['fleet.invoice']" icon="receipt">
+          <rx-input name="from" type="date" :label="tx['fleet.from']" :value="previous_from" :id="'fleet-invoice-from-' ~ id" required/>
+          <rx-input name="to" type="date" :label="tx['fleet.to']" :value="previous_to" :id="'fleet-invoice-to-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-alert rx-if="suspended_reason" kind="warning" :message="tx['fleet.suspended_because'] ~ ' ' ~ suspended_reason"/>
+    <rx-alert rx-if="termination_pending" kind="info" :message="tx['fleet.termination_pending']"/>
+    <rx-include template="wl-kernel/approval_card.html"/>
+    <template rx-if="termination_scheduled">
+      <rx-alert kind="warning" :message="tx['fleet.termination_scheduled'] ~ ' ' ~ termination"/>
+    </template>
+    <rx-card :title="tx['fleet.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fleet.fleet']" :value="fleet"/>
+        <rx-entry :label="tx['fleet.contact']" :value="contact"/>
+        <rx-entry :label="tx['fleet.term']" :value="term"/>
+        <rx-entry :label="tx['fleet.labour_rate']" :value="labour_rate"/>
+        <rx-entry :label="tx['fleet.price_tier']" :value="price_tier"/>
+        <rx-entry :label="tx['fleet.inclusions']" :value="inclusions"/>
+        <rx-entry :label="tx['fleet.notice']" :value="notice"/>
+        <rx-entry :label="tx['fleet.fee']" :value="fee"/>
+        <rx-entry :label="tx['fleet.renewal_window']" :value="renewal_window"/>
+        <rx-entry :label="tx['fleet.signed']" :value="signed"/>
+        <rx-entry :label="tx['fleet.invoiced_through']" :value="invoiced_through"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['fleet.vehicles']">
+      <template rx-if="can_edit">
+        <rx-toolbar>
+          <rx-action-sheet :id="'fleet-vehicle-add-' ~ id" :label="tx['fleet.vehicle_add']" :action="route('auto.fleet_vehicle_add', id)"
+                           :title="tx['fleet.vehicle_add']" :description="tx['fleet.vehicle_add_description']" :submit-label="tx['fleet.vehicle_add']" icon="plus">
+            <rx-select name="vehicle" :label="tx['fleet.vehicle']" :options="[]" :placeholder="tx['fleet.vehicle_placeholder']" options-url="{{ route('auto.fleet_vehicle_options') }}" :id="'fleet-vehicle-add-pick-' ~ id" required/>
+          </rx-action-sheet>
+          <rx-action-sheet :id="'fleet-vehicle-remove-' ~ id" :label="tx['fleet.vehicle_remove']" :action="route('auto.fleet_vehicle_remove', id)"
+                           :title="tx['fleet.vehicle_remove']" :description="tx['fleet.vehicle_remove_description']" :submit-label="tx['fleet.vehicle_remove']" icon="trash">
+            <rx-select name="vehicle" :label="tx['fleet.vehicle']" :options="vehicle_options" :placeholder="tx['fleet.vehicle_placeholder']" :id="'fleet-vehicle-remove-pick-' ~ id" required/>
+          </rx-action-sheet>
+        </rx-toolbar>
+      </template>
+      <rx-table :rows="vehicles" as="row" :key="row.id" :caption="tx['fleet.vehicles']">
+        <rx-column :label="tx['vehicles.plate']"><a href="{{ route('auto.vehicle', row.id) }}">{{ row.plate }}</a></rx-column>
+        <rx-column :label="tx['vehicles.make']" hide-narrow>{{ row.vehicle }}</rx-column>
+        <rx-column :label="tx['vehicles.odometer']" align="num">{{ row.odometer }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['fleet.vehicles_empty']" icon="truck"/></rx-slot>
+      </rx-table>
+    </rx-card>
+    <rx-card :title="tx['fleet.plans']">
+      <template rx-if="can_edit">
+        <rx-toolbar>
+          <rx-action-sheet :id="'fleet-plan-add-' ~ id" :label="tx['fleet.plan_add']" :action="route('auto.fleet_plan_add', id)"
+                           :title="tx['fleet.plan_add']" :description="tx['fleet.plan_add_description']" :submit-label="tx['fleet.plan_add']" icon="plus">
+            <rx-select name="vehicle" :label="tx['fleet.vehicle']" :options="vehicle_options" :placeholder="tx['fleet.vehicle_placeholder']" :id="'fleet-plan-vehicle-' ~ id" required/>
+            <rx-input name="service" :label="tx['fleet.service']" :hint="tx['fleet.service_hint']" value="periodic_service" :id="'fleet-plan-service-' ~ id" required/>
+            <rx-input name="interval_km" type="number" :label="tx['fleet.interval_km']" :id="'fleet-plan-km-' ~ id"/>
+            <rx-input name="interval_months" type="number" :label="tx['fleet.interval_months']" :id="'fleet-plan-months-' ~ id"/>
+            <rx-input name="last_date" type="date" :label="tx['fleet.last_date']" :id="'fleet-plan-last-date-' ~ id"/>
+            <rx-input name="last_km" type="number" :label="tx['fleet.last_km']" :id="'fleet-plan-last-km-' ~ id"/>
+          </rx-action-sheet>
+        </rx-toolbar>
+      </template>
+      <rx-table :rows="plans" as="row" :key="row.id" :caption="tx['fleet.plans']">
+        <rx-column :label="tx['vehicles.plate']">{{ row.plate }}</rx-column>
+        <rx-column :label="tx['fleet.service']">{{ row.service }}</rx-column>
+        <rx-column :label="tx['fleet.interval']" hide-narrow>{{ row.interval }}</rx-column>
+        <rx-column :label="tx['fleet.next_due']">{{ row.next_due }}</rx-column>
+        <rx-column :label="tx['fleet.booking']" hide-narrow>{{ row.booking }}</rx-column>
+        <rx-column :label="tx['fields.status']">{{ row.active }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['fleet.plans_empty']" icon="calendar-check"/></rx-slot>
+      </rx-table>
+    </rx-card>
+    <rx-card :title="tx['fleet.bookings']">
+      <rx-table :rows="bookings" as="row" :key="row.id" :caption="tx['fleet.bookings']">
+        <rx-column :label="tx['vehicles.plate']">{{ row.plate }}</rx-column>
+        <rx-column :label="tx['fleet.service']">{{ row.service }}</rx-column>
+        <rx-column :label="tx['fleet.booking']">{{ row.booking }}</rx-column>
+        <rx-column :label="tx['fields.status']" hide-narrow>{{ row.confirmed }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['fleet.bookings_empty']" icon="calendar-check"/></rx-slot>
+      </rx-table>
+      <rx-alert rx-if="is_suspended" kind="warning" :message="tx['fleet.bookings_suspended']"/>
+      <template rx-if="can_decide_bookings">
+        <rx-stack rx-for="row in bookings">
+          <template rx-if="row.unconfirmed">
+            <rx-confirm :id="'fleet-booking-confirm-' ~ row.id" :label="tx['fleet.booking_confirm'] ~ ' ' ~ row.plate" :action="route('auto.fleet_booking_confirm', row.id)" method="POST"
+                        :title="tx['fleet.booking_confirm']" :message="tx['fleet.booking_confirm_message']" :confirm-label="tx['fleet.booking_confirm']" :cancel-label="tx['button_cancel']" icon="check"/>
+            <rx-confirm :id="'fleet-booking-cancel-' ~ row.id" :label="tx['fleet.booking_cancel'] ~ ' ' ~ row.plate" :action="route('auto.fleet_booking_cancel', row.id)" method="POST"
+                        :title="tx['fleet.booking_cancel']" :message="tx['fleet.booking_cancel_message']" :confirm-label="tx['fleet.booking_cancel']" :cancel-label="tx['button_cancel']" icon="x"/>
+          </template>
+        </rx-stack>
+      </template>
+    </rx-card>
+    <rx-card :title="tx['fleet.jobs']">
+      <rx-table :rows="jobs" as="row" :key="row.job_card_id" :caption="tx['fleet.jobs']">
+        <rx-column :label="tx['jobs.number']"><a href="{{ route('auto.job_card', row.job_card_id) }}">{{ row.number }}</a></rx-column>
+        <rx-column :label="tx['vehicles.plate']" hide-narrow>{{ row.plate }}</rx-column>
+        <rx-column :label="tx['fleet.po']">{{ row.po }}</rx-column>
+        <rx-column :label="tx['fields.status']">{{ row.status }}</rx-column>
+        <rx-column :label="tx['fleet.invoice_ref']" hide-narrow>{{ row.invoice }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['fleet.jobs_empty']" icon="wrench"/></rx-slot>
+      </rx-table>
+      <template rx-if="can_po">
+        <rx-stack rx-for="job in jobs">
+          <template rx-if="job.open">
+            <rx-action-sheet :id="'fleet-po-' ~ job.job_card_id" :label="tx['fleet.po_set'] ~ ' ' ~ job.number" :action="route('auto.fleet_po', job.job_card_id)"
+                             :title="tx['fleet.po_set'] ~ ' ' ~ job.number" :description="tx['fleet.po_description']" :submit-label="tx['fleet.po_set']" icon="pencil">
+              <rx-input name="po" :label="tx['fleet.po']" :value="job.raw_po" :id="'fleet-po-ref-' ~ job.job_card_id"/>
+            </rx-action-sheet>
+          </template>
+        </rx-stack>
+      </template>
+    </rx-card>
+    <rx-card :title="tx['fleet.invoices']">
+      <rx-table :rows="invoices" as="row" :key="row.period" :caption="tx['fleet.invoices']">
+        <rx-column :label="tx['fleet.period']">{{ row.period }}</rx-column>
+        <rx-column :label="tx['fleet.invoice_kind']" hide-narrow>{{ row.kind }}</rx-column>
+        <rx-column :label="tx['fleet.jobs']" align="num">{{ row.jobs }}</rx-column>
+        <rx-column :label="tx['fleet.net']" align="num">{{ row.net }}</rx-column>
+        <rx-column :label="tx['fleet.invoice_ref']">{{ row.invoice }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['fleet.invoices_empty']" icon="receipt"/></rx-slot>
+      </rx-table>
+    </rx-card>
+  </rx-stack>
+</rx-page>

@@ -308,7 +308,7 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
     ),
     // The credit check an amendment re-runs.
     (
-        "wl_sales.credit.hold_reason",
+        "wl_sales.credit.amend_hold_reason",
         "Credit limit exceeded by an amendment.",
     ),
     (
@@ -317,7 +317,7 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wl_sales.credit.task_body",
-        "An amendment raised order :number to :total and the customer's credit limit is exceeded. Review the account and release the order or ask for payment.",
+        "Order :number (:total) is on credit hold (:reason). Review the account and release the order or ask for payment.",
     ),
     // The money of a change (BL-SAL-06 and the cancellations).
     ("wl_sales.settle.title", "Money of the changes"),
@@ -428,13 +428,5 @@ pub(crate) const CHANGE_TEXTS: &[(&str, &str)] = &[
     (
         "wl_sales.notices.order_lines_cancelled_body",
         "{{ lines }} line(s) of order {{ number }} were cancelled, worth {{ value }}. Any cancellation fee is {{ fee }}; the rest of what you paid is being refunded.",
-    ),
-    (
-        "wl_sales.notices.order_credit_hold_subject",
-        "Order on credit hold",
-    ),
-    (
-        "wl_sales.notices.order_credit_hold_body",
-        "Order {{ number }} ({{ total }}) is on credit hold after an amendment: the customer's exposure would be {{ exposure }}.",
     ),
 ];

@@ -12,9 +12,9 @@
       <rx-alert rx-if="approval.subject_moved" kind="warning" :message="approval.subject_moved"/>
       <rx-infolist columns="2">
         <rx-entry :label="approval.labels.requester" :value="approval.requester"/>
-        <rx-entry :label="approval.labels.requested_at" :value="approval.created_at" format="datetime"/>
+        <rx-entry :label="approval.labels.requested_at" :value="approval.created_text"/>
         <rx-entry :label="approval.labels.current_step" :value="approval.step_label"/>
-        <rx-entry :label="approval.labels.expires_at" :value="approval.expires_at" format="datetime"/>
+        <rx-entry :label="approval.labels.expires_at" :value="approval.expires_text"/>
       </rx-infolist>
       <rx-simple-table :head="[approval.labels.step, approval.labels.approvers, approval.labels.status]" :caption="approval.labels.steps">
         <tr rx-for="step in approval.steps">
@@ -29,7 +29,7 @@
           <td><rx-badge :text="decision.decision_label" :kind="decision.kind"/></td>
           <td>{{ decision.approver }}</td>
           <td>{{ decision.comment or "—" }}</td>
-          <td>{{ decision.at | date("%Y-%m-%d %H:%M") if decision.at else "—" }}</td>
+          <td>{{ decision.at_text or "—" }}</td>
         </tr>
       </rx-simple-table>
       <rx-alert rx-if="approval.task_open" kind="warning" :message="approval.labels.task_open"/>

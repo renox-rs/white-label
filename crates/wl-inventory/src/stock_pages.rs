@@ -289,6 +289,27 @@ pub struct RecallForm {
     /// The supplier lot numbers recalled, of each item named.
     #[validate(max = 500)]
     pub supplier_lots: Option<String>,
+    /// For items not tracked by lot: the first day goods were received
+    /// (`2026-08-01`), with `received_to`; the supplier above is the one whose
+    /// receipts count.
+    #[validate(max = 10)]
+    pub received_from: Option<String>,
+    /// For items not tracked by lot: the last day goods were received.
+    #[validate(max = 10)]
+    pub received_to: Option<String>,
+    /// For items not tracked by lot: the day the trace ends; today when empty.
+    #[validate(max = 10)]
+    pub trace_end: Option<String>,
+}
+
+/// The day in `field` (`2026-08-31`), `None` when empty.
+fn day_of(field: &Option<String>) -> Result<Option<renox::chrono::NaiveDate>> {
+    match field.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        None => Ok(None),
+        Some(value) => renox::chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
+            .map(Some)
+            .map_err(|_| refused("a date is like 2026-08-31")),
+    }
 }
 
 /// `POST /recalls`: opens a recall and holds every lot in its scope at every
@@ -304,7 +325,22 @@ async fn open_recall(
         .ok_or_else(|| refused(text(&lang, "recall.bad_source")))?;
     let items = ids(&form.items).ok_or_else(bad)?;
     let mut scope = Vec::new();
+    let supplier_party_id = id_of(&form.supplier)?;
+    let received = (day_of(&form.received_from)?, day_of(&form.received_to)?);
+    let trace_end = day_of(&form.trace_end)?;
     for item_id in items {
+        if received != (None, None) {
+            let (Some(from), Some(to)) = received else {
+                return Err(refused(text(&lang, "recall.bad_dates")));
+            };
+            scope.push(ScopeEntry::by_receipts(
+                item_id,
+                supplier_party_id,
+                from,
+                to,
+                trace_end,
+            ));
+        }
         for number in words(&form.lot_numbers) {
             scope.push(ScopeEntry::lot(item_id, &number));
         }
@@ -312,7 +348,6 @@ async fn open_recall(
             scope.push(ScopeEntry::supplier_lot(item_id, &number));
         }
     }
-    let supplier_party_id = id_of(&form.supplier)?;
     crate::recall::open(
         &state,
         &user,

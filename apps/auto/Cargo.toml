@@ -1,0 +1,19 @@
+[package]
+name = "auto"
+description = "Auto: the vertical app for auto parts suppliers and fleet and workshop services (vehicles, job cards with estimates, insurance repairs, fleet contracts)."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../../crates/wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"
+# The real scheduling module in the integration tests: the workshop bookings
+# whose check-in opens a job card.
+wl-scheduling = { path = "../../crates/wl-scheduling" }

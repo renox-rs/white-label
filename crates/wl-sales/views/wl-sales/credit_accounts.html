@@ -1,0 +1,24 @@
+{#- wl-sales: the customer accounts: what each customer may owe and owes now.
+    Replace it with resources/views/wl-sales/credit_accounts.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['credit.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['credit.title']" :subtitle="tx['credit.subtitle']">
+      <rx-action-sheet rx-if="can_edit" id="new-credit-account" :label="tx['credit.new']" :action="route('wl_sales.credit_account_save')"
+                       :title="tx['credit.new']" :description="tx['credit.new_description']" :submit-label="tx['credit.save']" variant="primary" icon="plus">
+        <rx-input name="party_id" :label="tx['orders.customer']" id="new-credit-account-party" required/>
+        <rx-input name="credit_limit" :label="tx['credit.limit']" id="new-credit-account-limit"/>
+        <rx-input name="payment_terms_days" :label="tx['credit.terms']" id="new-credit-account-terms"/>
+        <rx-input name="grace_days" :label="tx['credit.grace']" id="new-credit-account-grace"/>
+        <rx-input name="sales_rep" :label="tx['credit.sales_rep']" id="new-credit-account-rep"/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-table :rows="accounts" as="account" :key="account.party" :caption="tx['credit.title']" card>
+      <rx-column :label="tx['orders.customer']"><a href="{{ route('wl_sales.credit_account', account.party) }}">{{ account.name }}</a></rx-column>
+      <rx-column :label="tx['credit.limit']">{{ account.limit }}</rx-column>
+      <rx-column :label="tx['credit.owes']">{{ account.owes }}</rx-column>
+      <rx-column :label="tx['credit.terms']" hide-narrow>{{ account.terms }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ account.flag }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['credit.empty']" icon="inbox"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

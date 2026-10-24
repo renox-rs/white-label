@@ -15,9 +15,11 @@ wl-kernel = { path = "../crates/wl-kernel" }
 property = { path = "../apps/property" }
 construction = { path = "../apps/construction" }
 manpower = { path = "../apps/manpower" }
+manufacturing = { path = "../apps/manufacturing" }
 accounting = { path = "../apps/accounting" }
 clinics = { path = "../apps/clinics" }
 edtech = { path = "../apps/edtech" }
+auto = { path = "../apps/auto" }
 logistics = { path = "../apps/logistics" }
 fnb = { path = "../apps/fnb" }
 wl-parties = { path = "../crates/wl-parties" }

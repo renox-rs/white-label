@@ -26,6 +26,7 @@ use wl_kernel::scopes::COMPANY_ADMIN_ROLE;
 use wl_kernel::tickets::{self, Assignee, OpenTicket, TASK_CATEGORY};
 
 use crate::cash_handover::{CashHandover, CashHolder};
+use crate::cheque::Cheque;
 use crate::config_of;
 use crate::followup::money_text;
 use crate::texts::english;
@@ -35,6 +36,9 @@ pub const CASH_SHORTAGE: &str = "payments.cash_shortage";
 
 /// The type of the notice of a task about a handover.
 pub const CASH_TASK: &str = "payments.cash_task";
+
+/// The type of the request to a party to replace a cheque lost in custody.
+pub const CHEQUE_REPLACEMENT: &str = "payments.cheque_replacement";
 
 /// The type of the notice of cash moved between drivers on a hand-over.
 pub const CASH_HANDED_OVER: &str = "payments.cash_handed_over";
@@ -52,6 +56,19 @@ pub fn shortage_type() -> NotificationTypeDef {
             "en",
             Some(english("wl_payments.cash_shortage.subject")),
             english("wl_payments.cash_shortage.body"),
+        )
+}
+
+/// The notification type [`CHEQUE_REPLACEMENT`].
+pub fn replacement_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(CHEQUE_REPLACEMENT, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.cheque_replacement.subject")),
+            english("wl_payments.cheque_replacement.body"),
         )
 }
 
@@ -86,6 +103,24 @@ pub(crate) fn register_types() {
     notify::register_type(shortage_type());
     notify::register_type(task_type());
     notify::register_type(handed_over_type());
+    notify::register_type(replacement_type());
+}
+
+/// Asks the party of `cheque`, lost in custody, for a replacement.
+///
+/// # Errors
+///
+/// A notice that failed.
+pub(crate) async fn ask_replacement(state: &AppState, cheque: &Cheque) -> Result {
+    let request = NotifyRequest::new(CHEQUE_REPLACEMENT, cheque.subject())
+        .to_party(wl_kernel::PartyId(cheque.party_id))
+        .data(json!({
+            "number": cheque.number,
+            "bank": cheque.bank,
+            "amount": money_text(&cheque.currency, cheque.amount),
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
 }
 
 /// The name of the user `id` for a notice, else `#id`.

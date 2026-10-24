@@ -1,0 +1,34 @@
+{#- auto: the labour menu: the flat-rate and hourly operations an estimate is
+    drafted from, with the standard hours and the price; the action that puts
+    an operation on the menu. Replace it with
+    resources/views/auto/labour_menu.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['labour.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['labour.title']" :subtitle="tx['labour.subtitle']">
+      <template rx-if="can_manage">
+        <rx-action-sheet id="labour-new" :label="tx['labour.new']" :action="route('auto.labour_menu_create')"
+                         :title="tx['labour.new']" :description="tx['labour.new_description']" :submit-label="tx['labour.new']" icon="plus">
+          <rx-input name="code" :label="tx['labour.code']" id="labour-new-code" required/>
+          <rx-input name="name_en" :label="tx['labour.name']" id="labour-new-name" required/>
+          <rx-input name="name_ar" :label="tx['labour.name_ar']" dir="rtl" id="labour-new-name-ar"/>
+          <rx-select name="pricing" :label="tx['labour.pricing']" :options="pricing_options" :selected="'flat_rate'" id="labour-new-pricing"/>
+          <rx-input name="hours" :label="tx['labour.hours']" :hint="tx['labour.hours_hint']" id="labour-new-hours"/>
+          <rx-input name="rate" :label="tx['labour.rate']" :hint="tx['jobs.money_hint']" id="labour-new-rate" required/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['labour.title']" card>
+      <rx-column :label="tx['labour.code']">{{ row.code }}</rx-column>
+      <rx-column :label="tx['labour.name']">{{ row.name }}</rx-column>
+      <rx-column :label="tx['labour.pricing']" hide-narrow>{{ row.pricing }}</rx-column>
+      <rx-column :label="tx['labour.hours']" align="num" hide-narrow>{{ row.hours }}</rx-column>
+      <rx-column :label="tx['labour.rate']" align="num">{{ row.rate }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ row.active }}</rx-column>
+      <rx-row-actions>
+        <rx-confirm rx-if="can_manage and row.is_active" :id="'labour-off-' ~ row.id" :label="tx['labour.take_off']" :action="route('auto.labour_menu_active', row.id)" method="POST"
+                    :title="tx['labour.take_off']" :message="row.name" :confirm-label="tx['labour.take_off']" :cancel-label="tx['button_cancel']" icon="trash"/>
+      </rx-row-actions>
+      <rx-slot name="empty"><rx-empty :title="tx['labour.empty']" icon="clipboard-list"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

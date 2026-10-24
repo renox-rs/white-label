@@ -4,11 +4,27 @@
 mod arrival;
 pub mod balance;
 pub mod batch_stock;
+pub mod bom;
+mod bom_screens;
+mod bom_texts;
 pub mod chase;
 pub mod config;
 pub mod delivery_wastage;
 pub mod dispatch;
+pub mod dispatch_deliver;
+mod dispatch_deliver_pages;
+pub mod dispatch_directory;
+pub mod dispatch_discard;
+mod dispatch_events;
+pub mod dispatch_guard;
+pub mod dispatch_loss;
+mod dispatch_pages;
+pub mod dispatch_pick;
+pub mod dispatch_return;
+pub mod dispatch_reverse;
 mod dispatch_screens;
+pub mod dispatch_send;
+mod dispatch_texts;
 mod events;
 pub mod goods_receipt;
 pub mod hold_decide;
@@ -22,14 +38,17 @@ pub mod landed_cost;
 pub mod landed_draft;
 pub mod location;
 pub mod lot;
+pub mod lot_disposal;
 pub mod match_source;
 pub mod movement;
 pub mod pages;
+pub mod pending_events;
 pub mod pending_issue;
 pub mod po_issue;
 pub mod po_revise;
 pub mod preferred_change;
 pub mod price_variance;
+pub mod production_stock;
 pub mod purchase_order;
 pub mod purchase_request;
 pub mod recall;
@@ -37,14 +56,17 @@ pub mod recall_close;
 pub mod recall_line;
 pub mod recall_notice;
 mod recall_pages;
+pub mod recall_return;
 mod recall_screens;
 pub mod recall_trace;
 pub mod receipt_post;
 pub mod receipt_reverse;
 mod receipt_screens;
 pub mod reorder;
+pub mod reservation;
 pub mod return_credit;
 pub mod return_dispatch;
+pub mod return_draft;
 pub mod return_note;
 pub mod sales_cancel;
 pub mod scope_stock;
@@ -71,7 +93,13 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
+pub use bom::{Bom, BomLine, BomStatus, InventoryBoms};
 pub use config::{InventoryConfig, RejectionReason, ScoreSettings};
+pub use dispatch::{
+    Dispatch, DispatchLine, DispatchStatus, Handover, NewDispatch, NewDispatchLine,
+    create_draft as create_dispatch,
+};
+pub use dispatch_send::HandoverChoice;
 pub use goods_receipt::{
     DraftLine, DraftReceipt, GoodsReceipt, GoodsReceiptLine, GoodsReceiptStatus,
 };
@@ -127,6 +155,11 @@ pub mod permissions {
     pub const GOODS_RECEIPTS_POST: &str = "goods_receipts.post";
     /// Reverse a posted goods receipt.
     pub const GOODS_RECEIPTS_REVERSE: &str = "goods_receipts.reverse";
+    /// Pick, dispatch, cancel and confirm dispatches at the user's own
+    /// locations; record the refused goods received back (`STK.DSP.01`), and
+    /// be given the task when a sales cancellation arrives for a dispatch that
+    /// has left.
+    pub const DISPATCH_MANAGE: &str = "dispatch.manage";
     /// Manage returns to supplier.
     pub const SUPPLIER_RETURNS_MANAGE: &str = "supplier_returns.manage";
     /// List, rank and deactivate the suppliers of an item (`STK.SUP.01`).
@@ -155,15 +188,18 @@ pub mod permissions {
     pub const STOCK_HOLD: &str = "stock.hold";
     /// Decide the lines of a stock hold, and be told when one is placed.
     pub const LOTS_RELEASE: &str = "lots.release";
-    /// Pick, cancel and follow dispatches in the scope of their location
-    /// (wl-inventory §4 *Dispatch*), and be given the task when a
-    /// cancellation arrives for one that has left.
-    pub const DISPATCH_MANAGE: &str = "dispatch.manage";
     /// Open, trace, notify and close recalls.
     pub const RECALLS_MANAGE: &str = "recalls.manage";
     /// See the recalls and how far each is (the lots, where they are, the
     /// hold, how many were told), without naming anyone.
     pub const RECALLS_VIEW: &str = "recalls.view";
+    /// See the bills of materials (`STK.BOM.01`).
+    pub const BOMS_VIEW: &str = "boms.view";
+    /// Start, change and copy a draft bill of materials.
+    pub const BOMS_MANAGE: &str = "boms.manage";
+    /// Release a version of a bill of materials and make one obsolete
+    /// (`MFG.ACL.06`).
+    pub const BOMS_RELEASE: &str = "boms.release";
 }
 
 /// The inventory module. The host adds it with
@@ -320,6 +356,15 @@ impl WlInventory {
         self
     }
 
+    /// The notification type the notices of a recall go out under, in place
+    /// of the module's own three (07 `mfg.recall_notice`): no group, urgency
+    /// `urgent`, so a notice that gives up gives the recall owner a task
+    /// (wl-notify §5.4, *Urgent types*).
+    pub fn recall_notice_key(mut self, key: &str) -> Self {
+        self.config.recall_notice_key = Some(key.trim().to_owned());
+        self
+    }
+
     /// The settings of the supplier score: weights, caps, grace days, window,
     /// minimum receipts and the threshold (defaults in [`ScoreSettings`]).
     pub fn supplier_score(mut self, settings: ScoreSettings) -> Self {
@@ -378,8 +423,11 @@ impl Module for WlInventory {
             .merge(stock_screens::routes())
             .merge(recall_screens::routes())
             .merge(transfer_screens::routes())
-            .merge(dispatch_screens::routes())
             .merge(receipt_screens::routes())
+            .merge(dispatch_pages::routes())
+            .merge(dispatch_deliver_pages::routes())
+            .merge(dispatch_screens::routes())
+            .merge(bom_screens::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -387,6 +435,7 @@ impl Module for WlInventory {
     }
 
     fn register(&self, app: &mut Registry) {
+        goods_receipt::register_late_entry();
         app.view_data::<screens::SuppliersPage>()
             .view_data::<screens::ReorderPage>()
             .view_data::<screens::ScorePage>()
@@ -399,16 +448,20 @@ impl Module for WlInventory {
             .view_data::<recall_screens::RecallsPage>()
             .view_data::<recall_screens::RecallPage>()
             .view_data::<transfer_screens::TransfersPage>()
-            .view_data::<dispatch_screens::DispatchesPage>()
             .view_data::<receipt_screens::OrdersPage>()
             .view_data::<receipt_screens::ReceiptsPage>()
-            .view_data::<receipt_screens::ReceiptPage>();
+            .view_data::<receipt_screens::ReceiptPage>()
+            .view_data::<dispatch_screens::DispatchesPage>()
+            .view_data::<dispatch_screens::DispatchPage>()
+            .view_data::<bom_screens::BomsPage>()
+            .view_data::<bom_screens::BomPage>();
         app.templates(|env| {
             for (name, source) in screens::VIEWS
                 .iter()
                 .chain(stock_screens::VIEWS)
                 .chain(recall_screens::VIEWS)
                 .chain(dispatch_screens::VIEWS)
+                .chain(bom_screens::VIEWS)
             {
                 // The app's own file of that name wins.
                 if env.get_template(name).is_err() {
@@ -439,7 +492,7 @@ impl Module for WlInventory {
         // The stock screens, in the app group of the sidebar for those who
         // hold the permission of each somewhere; the labels are the app's
         // `nav.stock`, `nav.receive_stock`, `nav.stock_transfers`,
-        // `nav.stock_holds` and `nav.pending_issues` texts.
+        // `nav.stock_holds`, `nav.pending_issues` and `nav.dispatches` texts.
         for (route, label, icon, order, held) in [
             (
                 "wl_inventory.stock",
@@ -489,6 +542,17 @@ impl Module for WlInventory {
                 "triangle-alert",
                 69,
                 &[permissions::RECALLS_VIEW, permissions::RECALLS_MANAGE][..],
+            ),
+            (
+                "wl_inventory.boms",
+                "nav.boms",
+                "clipboard-list",
+                71,
+                &[
+                    permissions::BOMS_VIEW,
+                    permissions::BOMS_MANAGE,
+                    permissions::BOMS_RELEASE,
+                ][..],
             ),
         ] {
             app.nav(
@@ -544,6 +608,11 @@ impl Module for WlInventory {
         app.model::<RecallLine>();
         app.model::<PendingIssue>();
         app.model::<ShortageAlert>();
+        app.model::<Bom>();
+        app.model::<BomLine>();
+        app.model::<Dispatch>();
+        app.model::<DispatchLine>();
+        app.model::<reservation::StockReservation>();
         app.model::<price_variance::PriceVariance>();
         app.model::<GoodsReceipt>();
         app.model::<GoodsReceiptLine>();
@@ -554,9 +623,10 @@ impl Module for WlInventory {
         renox::state_machine::register::<PurchaseRequest>();
         renox::state_machine::register::<StockCount>();
         renox::state_machine::register::<GoodsReceipt>();
+        renox::state_machine::register::<Dispatch>();
+        renox::state_machine::register::<Bom>();
         renox::state_machine::register::<Lot>();
         renox::state_machine::register::<Transfer>();
-        renox::state_machine::register::<dispatch::Dispatch>();
         renox::state_machine::register::<StockHold>();
         renox::state_machine::register::<StockHoldLine>();
         renox::state_machine::register::<Recall>();
@@ -655,10 +725,28 @@ impl Module for WlInventory {
         // `StockHoldService`: a vertical automation places a hold on the
         // stock at a location (06: an out-of-range reading).
         wl_kernel::inventory::provide_stock_hold_service(app, hold_service::InventoryHolds);
+        // 07 Manufacturing: an NCR returns, scraps or releases a failed lot.
+        lot_disposal::register(app);
+        wl_kernel::inventory::provide_dispatch_directory(
+            app,
+            dispatch_directory::InventoryDispatches,
+        );
+        // A vertical delivers returned goods again from a copy of the
+        // dispatch they came back from (07 `MFG.RUL.10`).
+        wl_kernel::inventory::provide_dispatch_maker(
+            app,
+            dispatch_directory::InventoryDispatchMaker,
+        );
         // `BatchStock`: a production batch consumes its ingredient lots and
         // makes its output lot (06 F&B).
         wl_kernel::inventory::provide_batch_stock(app, batch_stock::InventoryBatches);
         hold_service::register_types();
+        // `SupplierReturnDrafts`: a vertical drafts the Return to supplier of
+        // a failed part it claims from the supplier (08 `AUT.WAR.02`).
+        wl_kernel::inventory::provide_supplier_return_drafts(
+            app,
+            return_draft::InventoryReturnDrafts,
+        );
         // `STK.RUL.06`: the storekeeper is told when stock runs short, and
         // after H hours gets a task and the manager is told.
         shortage_alert::register_types();
@@ -667,6 +755,13 @@ impl Module for WlInventory {
         // short part becomes a pending issue. Clearing one above the value
         // (`STK.ACL.02`) needs a second holder of `stock.approve`.
         wl_kernel::inventory::provide_stock_service(app, stock_service::InventoryStock);
+        // 07 Manufacturing: the movements of a work order (return, wastage,
+        // output) post inside the transaction of its transition.
+        wl_kernel::production::provide_production_stock(app, production_stock::InventoryProduction);
+        // The BOM version a work order is made from (`STK.BOM.01`).
+        wl_kernel::production::provide_boms(app, bom::InventoryBoms);
+        // Sales order lines set stock aside (BL-SAL-17).
+        wl_kernel::backorders::provide_stock_reservations(app, reservation::InventoryReservations);
         wl_kernel::SubjectMachine::of::<PendingIssue>(
             wl_kernel::inventory::PENDING_ISSUE_SUBJECT_TYPE,
         )
@@ -699,8 +794,17 @@ impl Module for WlInventory {
             .step_permission(permissions::LOTS_RELEASE)
             .register();
         events::register(app);
+        pending_events::register(app);
+        dispatch_events::register(app);
+        dispatch_deliver::register(app);
+        dispatch_loss::register(app);
+        dispatch_discard::register(app);
+        dispatch_return::register(app);
+        dispatch_reverse::register(app);
         // BL-STK-26: a cancelled order line gives its goods back or scraps them.
         sales_cancel::register(app);
+        // BL-SAL-11: a confirmed order reserves its lines; cancelling gives them back.
+        reservation::register(app);
         // A discarded perishable delivery is wastage with the source as reference.
         wl_kernel::delivery::provide_delivery_wastage(app, delivery_wastage::InventoryWastage);
         hold_decide::register(app);
@@ -712,7 +816,7 @@ impl Module for WlInventory {
         recall::register_types();
         // The trace of a recall (who got the goods), its notices to the
         // parties and its close with the report.
-        recall_notice::register_types();
+        recall_notice::register_types(&self.config);
         recall_notice::register(app);
         recall_trace::register(app);
         recall_close::register(app);

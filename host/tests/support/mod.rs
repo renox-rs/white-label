@@ -4,6 +4,8 @@
 
 #![allow(dead_code)]
 
+pub mod autofx;
+
 use renox::chrono::{Days, NaiveDate, NaiveDateTime};
 use renox::prelude::*;
 use renox::testing::TestApp;
@@ -260,11 +262,61 @@ pub async fn edtech_booted() -> TestApp {
     app
 }
 
+/// The demo Auto client (08 Auto).
+const AUTO_CLIENT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../clients/demo-auto/client.toml"
+);
+
+/// The Auto host, with `wl:install` and the seeds run as the demo does.
+pub async fn auto_booted() -> TestApp {
+    let config = wl_kernel::ClientConfig::load(AUTO_CLIENT).expect("the auto client");
+    let app = TestApp::new(
+        host::app_for(config)
+            .expect("the app")
+            .provide(noon_clock())
+            .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
 /// The demo logistics client (03 Logistics).
 const LOGISTICS_CLIENT: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../clients/demo-logistics/client.toml"
 );
+
+/// The demo manufacturing client (07 Light Manufacturing).
+const MANUFACTURING_CLIENT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../clients/demo-manufacturing/client.toml"
+);
+
+/// The manufacturing host, with `wl:install` and the seeds run as the demo
+/// does (the clock at noon).
+pub async fn manufacturing_booted() -> TestApp {
+    let config =
+        wl_kernel::ClientConfig::load(MANUFACTURING_CLIENT).expect("the manufacturing client");
+    let app = TestApp::new(
+        host::app_for(config)
+            .expect("the app")
+            .provide(noon_clock())
+            .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
 
 /// The demo F&B client (06 F&B).
 const FNB_CLIENT: &str = concat!(
@@ -402,6 +454,36 @@ pub async fn tenant(app: &TestApp, name: &str) -> PartyId {
             legal_name_en: name.into(),
             person: Some(PersonDetails::default()),
             contacts: vec![email_of(name)],
+            source: "back_office".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .party_id()
+}
+
+/// A person party with a primary mobile number (a customer who gets SMS).
+pub async fn tenant_with_mobile(app: &TestApp, name: &str, mobile: &str) -> PartyId {
+    create(
+        app.state(),
+        NewParty {
+            kind: PartyKind::Person,
+            legal_name_en: name.into(),
+            person: Some(PersonDetails::default()),
+            contacts: vec![
+                ContactPoint {
+                    verified_at: Some(renox::db::now()),
+                    ..email_of(name)
+                },
+                ContactPoint {
+                    contact_type: ContactType::Mobile,
+                    value: mobile.into(),
+                    is_primary: true,
+                    verified_at: Some(renox::db::now()),
+                    ..Default::default()
+                },
+            ],
             source: "back_office".into(),
             ..Default::default()
         },

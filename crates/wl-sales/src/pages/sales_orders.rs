@@ -9,17 +9,21 @@
 //! | `POST /sales-orders` | `wl_sales.sales_order_create` | `sales_orders.create` (fields `external_number`, `promo_code`) |
 //! | `POST /sales-orders/{id}/lines` | `wl_sales.sales_order_line` | `sales_orders.create` |
 //! | `POST /sales-orders/{id}/submit` | `wl_sales.sales_order_submit` | `sales_orders.create` |
+//! | `POST /sales-orders/{id}/reference` | `wl_sales.sales_order_reference` | `sales_orders.create` |
+//! | `POST /sales-orders/{id}/accept` | `wl_sales.sales_order_accept` | `sales_orders.accept` |
+//! | `POST /sales-orders/{id}/release` | `wl_sales.sales_order_release` | `credit.release` |
 //! | `POST /sales-orders/{id}/cancel` | `wl_sales.sales_order_cancel` | `sales_orders.cancel` (fields `reason`, `line_<id>_outcome`, `line_<id>_fee`, `line_<id>_waive`): the whole order |
 //! | `POST /sales-orders/{id}/cancel-line` | `wl_sales.sales_order_cancel_line` | `sales_orders.cancel` (fields `line_no`, `quantity`, `reason`, `outcome`, `fee`, `waive_fee`) |
 //! | `POST /sales-orders/{id}/cancel-remaining` | `wl_sales.sales_order_cancel_remaining` | `sales_orders.cancel` (fields `reason`, `line_<id>_outcome`, `line_<id>_fee`, `line_<id>_waive`) |
 //! | `POST /sales-orders/{id}/refund` | `wl_sales.sales_order_refund` | `returns.request` (fields `reason`, `category`, `party`, `ticket`, `line_<id>_refund`): a refund after completion with nothing returned (`SAL.ACL.06`) |
-//! | `POST /sales-orders/{id}/amend` | `wl_sales.sales_order_amend` | `sales_orders.amend` (fields `revision`, `reason`, `line_<id>_quantity`, `_price`, `_discount`, `add_item`, `add_quantity`, `add_price`) |
+//! | `POST /sales-orders/{id}/amend` | `wl_sales.sales_order_amend` | `sales_orders.amend` (fields `revision`, `reason`, `line_<id>_quantity`, `_price`, `_discount`, `add_item`, `add_quantity`, `add_price`, `customer_po`, `call_off`) |
 //! | `GET /sales-orders/{id}/revisions/{revision}` | `wl_sales.sales_order_revision` | `sales_orders.view`: an earlier revision, read-only |
 //! | `POST /sales-orders/{id}/resend-link` | `wl_sales.sales_order_resend_link` | `sales_orders.amend` |
 //! | `POST /sales-orders/{id}/amend-back` | `wl_sales.sales_order_amend_back` | `sales_orders.amend` |
 //!
-//! `accept` and `reject` run through the kernel's generic transition route,
-//! with the reason the form gives; `cancel` needs the plan of its outcomes and
+//! `reject` runs through the kernel's generic transition route, with the reason
+//! the form gives; `accept` has its own route because the credit check of an
+//! order on account runs first; `cancel` needs the plan of its outcomes and
 //! has the page's own form (BL-SAL-07). The system transitions
 //! (`fulfil`, `confirm_payment`...) are not reachable from a page.
 
@@ -36,13 +40,18 @@ use wl_kernel::invoicing::VatCategory;
 use crate::amend::{self, AmendInput, AmendOutcome};
 use crate::cancel_lines::{self, CancelOutcome, WantedLine};
 use crate::config::config_of;
+use crate::destination::{self, Delivery};
 use crate::notices::aed;
 use crate::order_change::{OrderRevision, OrderSettlement, STATUS_EXPIRED};
 use crate::pages::campaigns::parse_fils;
 use crate::pages::counter_sales::parse_milli;
 use crate::sale_line::{KIND_ITEM, NewLine, SaleLine, totals};
 use crate::sales_order::{OrderPayment, SalesOrder, SalesOrderStatus};
-use crate::sales_order_machine::{SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_ONLINE};
+use crate::sales_order_machine::{
+    ACCEPT, ACCEPT_HOLD, RELEASE, RELEASE_APPROVED, RELEASE_PARTLY, RELEASE_PARTLY_APPROVED,
+    RELEASE_PENDING, RELEASE_PENDING_APPROVED, SUBMIT, SUBMIT_FOR_ACCEPTANCE, SUBMIT_HOLD,
+    SUBMIT_ONLINE,
+};
 use crate::sales_orders::{self, Imported, NewSalesOrder};
 use crate::{permissions, texts};
 use wl_kernel::approvals::ApprovalRequest;
@@ -80,7 +89,23 @@ pub fn routes() -> Routes {
                 .name("wl_sales.sales_order_line")
                 .post("/sales-orders/{id}/submit", submit)
                 .name("wl_sales.sales_order_submit")
+                .post("/sales-orders/{id}/reference", reference)
+                .name("wl_sales.sales_order_reference")
+                .post("/sales-orders/{id}/delivery", delivery)
+                .name("wl_sales.sales_order_delivery")
                 .require_permission(permissions::SALES_ORDERS_CREATE),
+        )
+        .merge(
+            Routes::new()
+                .post("/sales-orders/{id}/accept", accept)
+                .name("wl_sales.sales_order_accept")
+                .require_permission(permissions::SALES_ORDERS_ACCEPT),
+        )
+        .merge(
+            Routes::new()
+                .post("/sales-orders/{id}/release", release)
+                .name("wl_sales.sales_order_release")
+                .require_permission(permissions::CREDIT_RELEASE),
         )
         .merge(
             Routes::new()
@@ -143,8 +168,16 @@ fn status_kind(status: SalesOrderStatus) -> &'static str {
 
 /// The orders grid: search on the number, customer, channel and the
 /// channel's own number, filters by status and channel, sum of the totals.
-/// `can_export` adds the export menu.
-pub(crate) fn grid(lang: &Lang, can_export: bool, awaiting: bool) -> Grid {
+/// `can_export` adds the export menu. `can_see_credit` (holder of
+/// `credit.view`) adds the column with the reason of a credit hold; `held_only`
+/// is the *orders on credit hold* tab, oldest first.
+pub(crate) fn grid(
+    lang: &Lang,
+    can_export: bool,
+    awaiting: bool,
+    can_see_credit: bool,
+    held_only: bool,
+) -> Grid {
     let t = |key: &str| text(lang, key);
     let statuses: Vec<(String, String)> = SalesOrderStatus::ALL
         .iter()
@@ -155,7 +188,7 @@ pub(crate) fn grid(lang: &Lang, can_export: bool, awaiting: bool) -> Grid {
             )
         })
         .collect();
-    let grid = Grid::new("sales-orders")
+    let mut grid = Grid::new("sales-orders")
         .title(&t("orders.title"))
         .per_page(25)
         .remember()
@@ -208,7 +241,7 @@ pub(crate) fn grid(lang: &Lang, can_export: bool, awaiting: bool) -> Grid {
                 .mobile(),
         )
         .column(Column::datetime("created_at", &t("orders.created_at")).hidden())
-        .sort_by("-created_at")
+        .sort_by(if held_only { "created_at" } else { "-created_at" })
         .row_url("/sales-orders/{id}")
         .cards_on_mobile()
         .empty_state(
@@ -219,6 +252,18 @@ pub(crate) fn grid(lang: &Lang, can_export: bool, awaiting: bool) -> Grid {
             }),
             Some(&t("orders.empty_hint")),
         );
+    if can_see_credit {
+        let reasons: Vec<(String, String)> = ["limit", "overdue", "account_on_hold"]
+            .iter()
+            .map(|reason| {
+                (
+                    (*reason).to_owned(),
+                    crate::pages::credit::hold_reason_text(lang, Some(reason)),
+                )
+            })
+            .collect();
+        grid = grid.column(Column::select("hold_reason", &t("credit.hold_reason"), reasons));
+    }
     if can_export { grid.exports() } else { grid }
 }
 
@@ -231,12 +276,21 @@ pub(crate) struct IndexPage {
     can_create: bool,
     awaiting: bool,
     awaiting_count: i64,
+    /// Only the orders on credit hold are listed.
+    held_only: bool,
+    /// How many orders are on credit hold.
+    held_count: i64,
+    /// The viewer sees why an order is held.
+    can_see_credit: bool,
+    /// The two answers for where an order is delivered, as (value, words).
+    delivery_options: Vec<[String; 2]>,
 }
 
 /// `GET /sales-orders`: the orders, newest first. An order waiting for
 /// its online payment is not in the list; `?awaiting=1` lists those instead
 /// (BL-SAL-02: they are invisible to fulfilment until the payment is
-/// confirmed).
+/// confirmed). `?view=credit_hold` lists the orders on credit hold, oldest
+/// hold first, for the accountant and the sales rep.
 async fn index(
     State(state): State<AppState>,
     user: AuthUser,
@@ -245,17 +299,25 @@ async fn index(
 ) -> Result<Response> {
     let db = &state.db;
     let awaiting = matches!(request.param("awaiting"), Some("1"));
+    let held_only = request.param("view") == Some("credit_hold");
+    let can_see_credit = user.has_permission(permissions::CREDIT_VIEW);
     let awaiting_count = SalesOrder::query()
         .where_(SalesOrder::STATUS.eq(SalesOrderStatus::AwaitingPayment))
         .count(db)
         .await? as i64;
-    let query = if awaiting {
+    let held_count = SalesOrder::query()
+        .where_(SalesOrder::STATUS.eq(SalesOrderStatus::CreditHold))
+        .count(db)
+        .await? as i64;
+    let query = if held_only {
+        SalesOrder::query().where_(SalesOrder::STATUS.eq(SalesOrderStatus::CreditHold))
+    } else if awaiting {
         SalesOrder::query().where_(SalesOrder::STATUS.eq(SalesOrderStatus::AwaitingPayment))
     } else {
         SalesOrder::query().where_(SalesOrder::STATUS.ne(SalesOrderStatus::AwaitingPayment))
     };
     let can_export = user.has_permission(permissions::SALES_ORDERS_APPROVE);
-    let grid = grid(&lang, can_export, awaiting);
+    let grid = grid(&lang, can_export, awaiting, can_see_credit, held_only);
     if request.param("export").is_some() && !can_export {
         return Err(Error::Forbidden);
     }
@@ -269,6 +331,10 @@ async fn index(
         can_create: user.has_permission(permissions::SALES_ORDERS_CREATE),
         awaiting,
         awaiting_count,
+        held_only,
+        held_count,
+        can_see_credit,
+        delivery_options: delivery_view(&lang, &SalesOrder::default()).options,
     })
     .into_response())
 }
@@ -286,6 +352,8 @@ pub struct LineRow {
     pub quantity: String,
     /// The quantity handed over, in units.
     pub fulfilled: String,
+    /// The quantity waiting for stock, in units (back-orders).
+    pub backordered: String,
     /// The quantity cancelled, in units.
     pub cancelled: String,
     /// The quantity still open, in units.
@@ -302,6 +370,92 @@ pub struct LineRow {
     pub outcome: String,
     /// The line with VAT, `AED 105.00`.
     pub gross: String,
+    /// The day it is promised for, `01 Dec 2026`; empty for none.
+    pub promised: String,
+    /// The promised day as the amend form takes it, `2026-12-01`.
+    pub promised_input: String,
+    /// Where its goods are: not dispatched, picked, out for delivery, partly
+    /// delivered, delivered or lost (BL-SAL-13).
+    pub progress: String,
+    /// The outcome the vertical proposes if this line is cancelled after its
+    /// goods started (07: *finish to stock*, *scrap* for a customer-specific
+    /// item); empty when it proposes none.
+    pub proposed: String,
+}
+
+/// The credit hold of an order as its page shows it. The reason and the
+/// figures are for a holder of `credit.view`; everyone else sees only that
+/// the order is on hold.
+#[derive(Serialize, Debug, Clone)]
+pub struct HoldView {
+    /// The viewer may see the reason and the figures.
+    pub detail: bool,
+    /// Why, in words.
+    pub reason: String,
+    /// The state the order returns to, in words.
+    pub returns_to: String,
+    /// What the customer owes with this order counted.
+    pub owes: String,
+    /// The overdue balance.
+    pub overdue: String,
+    /// The limit checked against.
+    pub limit: String,
+    /// When it was put on hold, `18 Oct 2026`.
+    pub held_on: String,
+}
+
+/// The release of a held order as its page offers it (`SAL.ACL.03`).
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct ReleaseView {
+    /// The viewer holds `credit.release` and the order is on hold.
+    pub shown: bool,
+    /// Why the button is disabled, if it is.
+    pub blocked: String,
+    /// What the sheet says, with the account hold warning when it applies.
+    pub description: String,
+    /// The customer account is on hold: the sheet offers to ask for the
+    /// clearing in the same action.
+    pub account_on_hold: bool,
+    /// The reasons a clearing can give, as (value, words).
+    pub kinds: Vec<(String, String)>,
+}
+
+/// The customer PO number of an order as its page shows it.
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct PoView {
+    /// The reference and call-off number in words; empty for none.
+    pub reference: String,
+    /// The reference as typed, for the edit sheet.
+    pub customer_po: String,
+    /// The call-off number as typed.
+    pub call_off: String,
+    /// The existing order that already holds the number: its id, number and
+    /// status in words, while the draft cannot be submitted.
+    pub clash_id: Option<i64>,
+    /// The existing order's number.
+    pub clash_number: String,
+    /// Why *Submit* is disabled; empty when it is not.
+    pub blocked: String,
+}
+
+/// The delivery of an order as its page shows it and its sheets prefill it.
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct DeliveryView {
+    /// The address, in words; empty for none.
+    pub address: String,
+    /// The emirate.
+    pub emirate: String,
+    /// The country code.
+    pub country: String,
+    /// `domestic`, `export` or empty, as the sheets select it.
+    pub destination: String,
+    /// The answer in words: *In the UAE (domestic)*, *Abroad (export)* or
+    /// *Not stated (counts as domestic)*.
+    pub destination_label: String,
+    /// The VAT category that follows, in words.
+    pub vat: String,
+    /// The two choices of the sheets, as (value, words).
+    pub options: Vec<[String; 2]>,
 }
 
 /// One earlier revision as the order page lists it.
@@ -370,7 +524,16 @@ pub(crate) struct ShowPage {
     lines: Vec<LineRow>,
     actions: Vec<Available>,
     member: Option<String>,
+    hold: Option<HoldView>,
+    po: PoView,
+    /// Where the goods go.
+    delivery: DeliveryView,
+    /// The customer's name.
+    customer: String,
+    release: ReleaseView,
+    approvals: Vec<wl_kernel::approvals::ApprovalCard>,
     can_edit: bool,
+    can_accept: bool,
     can_attach: bool,
     can_cancel_line: bool,
     can_amend: bool,
@@ -424,6 +587,20 @@ async fn show(
     let started = fulfilment_progress(&state)
         .started_lines(&state, order.order_id(), &item_ids)
         .await?;
+    let progress = crate::progress::of_lines(&state, &order, &lines).await?;
+    let proposals = wl_kernel::sales::outcome_proposals(&state);
+    let mut proposed: BTreeMap<i64, String> = BTreeMap::new();
+    for line in lines.iter().filter(|l| l.kind == KIND_ITEM) {
+        if !started.contains(&line.id) && line.open_milli() <= 0 {
+            continue;
+        }
+        if let Some(kind) = proposals
+            .proposed(&state, order.order_id(), line.id, &line.item_code)
+            .await?
+        {
+            proposed.insert(line.id, kind.as_str().to_owned());
+        }
+    }
     let rows = lines
         .iter()
         .map(|line| LineRow {
@@ -432,6 +609,7 @@ async fn show(
             description: line.description.clone(),
             quantity: quantity_text(line.quantity_milli),
             fulfilled: quantity_text(line.fulfilled_milli),
+            backordered: quantity_text(line.backordered_milli),
             cancelled: quantity_text(line.cancelled_milli),
             open: quantity_text(line.open_milli()),
             held: quantity_text(line.held_milli),
@@ -444,6 +622,19 @@ async fn show(
                 .map(|o| text(&lang, &format!("cancelling.outcome.{o}")))
                 .unwrap_or_default(),
             gross: money(line.gross()),
+            promised: line
+                .promised_on
+                .map(|day| day.format("%d %b %Y").to_string())
+                .unwrap_or_default(),
+            promised_input: line
+                .promised_on
+                .map(|day| day.format("%Y-%m-%d").to_string())
+                .unwrap_or_default(),
+            progress: progress
+                .get(&line.id)
+                .map(|key| text(&lang, &format!("progress.{key}")))
+                .unwrap_or_default(),
+            proposed: proposed.get(&line.id).cloned().unwrap_or_default(),
         })
         .collect();
     // Submitting takes the page's own button, which reads the lines; the
@@ -453,7 +644,21 @@ async fn show(
         .await?
         .into_iter()
         .filter(|a| {
-            ![SUBMIT, SUBMIT_ONLINE, SUBMIT_FOR_ACCEPTANCE].contains(&a.name.as_str())
+            ![
+                SUBMIT,
+                SUBMIT_ONLINE,
+                SUBMIT_FOR_ACCEPTANCE,
+                SUBMIT_HOLD,
+                ACCEPT,
+                ACCEPT_HOLD,
+                RELEASE,
+                RELEASE_PARTLY,
+                RELEASE_PENDING,
+                RELEASE_APPROVED,
+                RELEASE_PARTLY_APPROVED,
+                RELEASE_PENDING_APPROVED,
+            ]
+            .contains(&a.name.as_str())
                 && !crate::order_changes::is_change(&a.name)
         })
         .collect();
@@ -533,6 +738,15 @@ async fn show(
             | SalesOrderStatus::Cancelled
             | SalesOrderStatus::Rejected
     );
+    let hold = hold_view(&user, &lang, &order);
+    let po = po_view(&state, &lang, &order).await?;
+    let delivery = delivery_view(&lang, &order);
+    let release = release_view(&state, &user, &lang, &order).await?;
+    let approvals = if order.status == SalesOrderStatus::CreditHold {
+        wl_kernel::approvals::cards_for(&state.db, &order.subject(), &user, &lang).await?
+    } else {
+        Vec::new()
+    };
     let payments = OrderPayment::of_order(&state.db, order.id)
         .await?
         .into_iter()
@@ -574,6 +788,12 @@ async fn show(
         awaiting_hint,
         payments,
         tx: texts::all(&lang),
+        hold,
+        po,
+        delivery,
+        customer: super::party_name(&state, &lang, order.party_id).await,
+        release,
+        approvals,
         title: order.number.clone(),
         status_label: text(&lang, &format!("orders.status.{}", order.status.as_str())),
         status_kind: status_kind(order.status),
@@ -659,8 +879,296 @@ async fn show(
         revisions,
         settlements,
         can_edit: order.is_draft() && user.has_permission(permissions::SALES_ORDERS_CREATE),
+        can_accept: order.status == SalesOrderStatus::PendingAcceptance
+            && user.has_permission(permissions::SALES_ORDERS_ACCEPT),
         order,
     }))
+}
+
+/// What the release button of `order` shows `user`: nothing for someone
+/// without `credit.release`, a disabled button with the reason for the
+/// order's creator or while a release waits for approval, else the sheet,
+/// which warns when the customer account is on hold.
+async fn release_view(
+    state: &AppState,
+    user: &AuthUser,
+    lang: &Lang,
+    order: &SalesOrder,
+) -> Result<ReleaseView> {
+    if order.status != SalesOrderStatus::CreditHold
+        || !user.has_permission(permissions::CREDIT_RELEASE)
+    {
+        return Ok(ReleaseView::default());
+    }
+    let waiting = !wl_kernel::ApprovalRequest::pending_about(&state.db, &order.subject())
+        .await?
+        .iter()
+        .all(|request| request.action != crate::policy::RELEASE_ACTION);
+    let blocked = if order.created_by == Some(user.id) {
+        text(lang, "credit.release_creator")
+    } else if waiting {
+        text(lang, "credit.release_waiting")
+    } else {
+        String::new()
+    };
+    let on_hold = match crate::customer_account::CustomerAccount::of_party(
+        &state.db,
+        order.party_id,
+    )
+    .await?
+    {
+        Some(account) => account.is_on_hold(&state.db).await?,
+        None => false,
+    };
+    let mut description = text(lang, "credit.release_description");
+    if on_hold {
+        description = format!(
+            "{} {}",
+            text(lang, "credit.release_account_on_hold"),
+            description
+        );
+    }
+    let kinds = crate::account_hold_clearing::KINDS
+        .iter()
+        .map(|kind| {
+            (
+                (*kind).to_owned(),
+                text(lang, &format!("credit.kind.{kind}")),
+            )
+        })
+        .collect();
+    Ok(ReleaseView {
+        shown: true,
+        blocked,
+        description,
+        account_on_hold: on_hold,
+        kinds,
+    })
+}
+
+/// `POST /sales-orders/{id}/release`: a credit releaser asks to release the
+/// held order; another one approves it.
+async fn release(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(order): Found<SalesOrder>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let get = |key: &str| form.get(key).map_or("", |v| v.trim());
+    // The same action may ask to clear the account hold too; its reason is
+    // checked before anything is requested.
+    let clear = matches!(get("clear_hold"), "1" | "on");
+    if clear {
+        if !crate::account_hold_clearing::KINDS.contains(&get("kind")) {
+            return Err(invalid("kind", text(&lang, "orders.errors.choice"), &form));
+        }
+        if get("kind") == crate::account_hold_clearing::KIND_OTHER && get("clear_note").is_empty() {
+            return Err(invalid(
+                "clear_note",
+                text(&lang, "orders.errors.reason"),
+                &form,
+            ));
+        }
+    }
+    let (_, done) = sales_orders::release(&state, &user, order.id, get("note")).await?;
+    if clear
+        && user.has_permission(permissions::CREDIT_RELEASE)
+        && let Some(account) =
+            crate::customer_account::CustomerAccount::of_party(&state.db, order.party_id).await?
+    {
+        for source in account.open_sources(&state.db).await? {
+            // A source whose clearing already waits is left alone.
+            match crate::account_hold::request_clearing(
+                &state,
+                user.id,
+                account.id,
+                source.id,
+                get("kind"),
+                get("clear_note"),
+            )
+            .await
+            {
+                Ok(_) | Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _)) => {}
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    let key = if done {
+        "credit.released"
+    } else {
+        "credit.release_requested"
+    };
+    Ok((
+        Toast::success(text(&lang, key)),
+        Redirect::route("wl_sales.sales_order", &[&order.id])?,
+    )
+        .into_response())
+}
+
+/// The PO number of `order` for its page, and the order that clashes with it.
+async fn po_view(state: &AppState, lang: &Lang, order: &SalesOrder) -> Result<PoView> {
+    let customer_po = order.customer_po.clone().unwrap_or_default();
+    let call_off = order.call_off.clone().unwrap_or_default();
+    let reference = match (customer_po.is_empty(), call_off.is_empty()) {
+        (true, _) => String::new(),
+        (false, true) => customer_po.clone(),
+        (false, false) => texts::t_with(
+            lang,
+            "wl_sales.po.with_call_off",
+            &[("po", &customer_po), ("call_off", &call_off)],
+        ),
+    };
+    let clash = crate::po_number::clash_of(state, order).await?;
+    let (clash_id, clash_number, blocked) = match &clash {
+        Some(other) => {
+            let status = text(lang, &format!("orders.status.{}", other.status.as_str()));
+            (
+                Some(other.id),
+                other.number.clone(),
+                texts::t_with(
+                    lang,
+                    "wl_sales.po.submit_blocked",
+                    &[("number", &other.number), ("status", &status)],
+                ),
+            )
+        }
+        None => (None, String::new(), String::new()),
+    };
+    Ok(PoView {
+        reference,
+        customer_po,
+        call_off,
+        clash_id,
+        clash_number,
+        blocked,
+    })
+}
+
+/// The delivery of `order` for its page.
+fn delivery_view(lang: &Lang, order: &SalesOrder) -> DeliveryView {
+    let now = Delivery::of_order(order);
+    let destination = now.destination.clone().unwrap_or_default();
+    let export = destination == destination::EXPORT;
+    DeliveryView {
+        address: now.address.unwrap_or_default(),
+        emirate: now.emirate.unwrap_or_default(),
+        country: now.country.unwrap_or_default(),
+        destination_label: text(
+            lang,
+            match destination.as_str() {
+                destination::EXPORT => "delivery.export",
+                destination::DOMESTIC => "delivery.domestic",
+                _ => "delivery.not_stated",
+            },
+        ),
+        vat: text(
+            lang,
+            if export {
+                "delivery.vat_export"
+            } else {
+                "delivery.vat_domestic"
+            },
+        ),
+        destination,
+        options: vec![
+            [
+                destination::DOMESTIC.to_owned(),
+                text(lang, "delivery.domestic"),
+            ],
+            [
+                destination::EXPORT.to_owned(),
+                text(lang, "delivery.export"),
+            ],
+        ],
+    }
+}
+
+/// `POST /sales-orders/{id}/delivery`: where the goods of the draft order go
+/// (`delivery_address`, `delivery_emirate`, `delivery_country`,
+/// `delivery_destination`).
+async fn delivery(
+    State(state): State<AppState>,
+    lang: Lang,
+    Found(order): Found<SalesOrder>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let entered = delivery_of(&form);
+    destination::set(&state, order.id, entered).await?;
+    Ok((
+        Toast::success(text(&lang, "delivery.saved")),
+        Redirect::route("wl_sales.sales_order", &[&order.id])?,
+    )
+        .into_response())
+}
+
+/// The delivery a form carries.
+fn delivery_of(form: &BTreeMap<String, String>) -> Delivery {
+    let get = |key: &str| form.get(key).map_or("", |v| v.trim());
+    Delivery::of(
+        get("delivery_address"),
+        get("delivery_emirate"),
+        get("delivery_country"),
+        get("delivery_destination"),
+    )
+}
+
+/// The day a form field gives, `2026-12-31`; blank is none.
+fn day_of(
+    form: &BTreeMap<String, String>,
+    key: &str,
+    lang: &Lang,
+) -> Result<Option<renox::chrono::NaiveDate>> {
+    match form.get(key).map_or("", |v| v.trim()) {
+        "" => Ok(None),
+        value => renox::chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
+            .map(Some)
+            .map_err(|_| invalid(key, text(lang, "orders.errors.date"), form)),
+    }
+}
+
+/// `POST /sales-orders/{id}/reference`: changes the customer PO number and
+/// call-off number of the draft order (`customer_po`, `call_off`).
+async fn reference(
+    State(state): State<AppState>,
+    lang: Lang,
+    Found(order): Found<SalesOrder>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let get = |key: &str| form.get(key).map_or("", |v| v.trim());
+    crate::po_number::set_reference(&state, order.id, get("customer_po"), get("call_off")).await?;
+    Ok((
+        Toast::success(text(&lang, "po.saved")),
+        Redirect::route("wl_sales.sales_order", &[&order.id])?,
+    )
+        .into_response())
+}
+
+/// The credit hold card of `order`, if it is on credit hold.
+fn hold_view(user: &AuthUser, lang: &Lang, order: &SalesOrder) -> Option<HoldView> {
+    if order.status != SalesOrderStatus::CreditHold {
+        return None;
+    }
+    Some(HoldView {
+        detail: user.has_permission(permissions::CREDIT_VIEW),
+        reason: crate::pages::credit::hold_reason_text(lang, order.hold_reason.as_deref()),
+        returns_to: text(
+            lang,
+            &format!(
+                "orders.status.{}",
+                order.held_from.as_deref().unwrap_or("confirmed")
+            ),
+        ),
+        owes: money(order.hold_open_balance.unwrap_or_default()),
+        overdue: money(order.hold_overdue.unwrap_or_default()),
+        limit: order
+            .hold_limit
+            .map_or_else(|| text(lang, "credit.no_limit"), money),
+        held_on: order
+            .held_at
+            .map(|at| at.format("%-d %b %Y").to_string())
+            .unwrap_or_default(),
+    })
 }
 
 /// `POST /sales-orders`: enters a draft order for the customer `party_id`.
@@ -690,12 +1198,16 @@ async fn create(
         }
         new = new.payment_mode(get("payment_mode"));
     }
+    new = new
+        .customer_po(get("customer_po"))
+        .call_off(get("call_off"));
     if !get("external_number").is_empty() {
         new = new.external_number(get("external_number"));
     }
     if !get("promo_code").is_empty() {
         new = new.promo_code(get("promo_code"));
     }
+    new = new.delivery(delivery_of(&form));
     match sales_orders::import(&state, Some(user.id), new).await? {
         Imported::Created(order) => Ok((
             Toast::success(text(&lang, "orders.created")),
@@ -754,6 +1266,9 @@ async fn add_line(
     if matches!(get("loyalty_excluded"), "1" | "on") {
         line = line.loyalty_excluded();
     }
+    if let Some(day) = day_of(&form, "promised", &lang)? {
+        line = line.promised_on(day);
+    }
     sales_orders::add_line(&state, order.id, line).await?;
     Ok((
         Toast::success(text(&lang, "orders.line_added")),
@@ -772,6 +1287,27 @@ async fn submit(
     sales_orders::submit(&state, &user, order.id).await?;
     Ok((
         Toast::success(text(&lang, "orders.submitted")),
+        Redirect::route("wl_sales.sales_order", &[&order.id])?,
+    )
+        .into_response())
+}
+
+/// `POST /sales-orders/{id}/accept`: the seller accepts the order; an order
+/// on account whose customer fails the credit check goes on credit hold.
+async fn accept(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(order): Found<SalesOrder>,
+) -> Result<Response> {
+    let accepted = sales_orders::accept(&state, &user, order.id).await?;
+    let key = if accepted.status == SalesOrderStatus::CreditHold {
+        "orders.accepted_held"
+    } else {
+        "orders.accepted"
+    };
+    Ok((
+        Toast::success(text(&lang, key)),
         Redirect::route("wl_sales.sales_order", &[&order.id])?,
     )
         .into_response())
@@ -1005,7 +1541,8 @@ async fn cancel_remaining(
 /// Fields: `revision` (the one the form was opened on), `reason`, per item
 /// line `line_<id>_quantity` (units), `line_<id>_price` and
 /// `line_<id>_discount` (AED), and optionally a line to add: `add_item`,
-/// `add_quantity`, `add_price`.
+/// `add_quantity`, `add_price`; and `customer_po` (with `call_off`) to change the
+/// customer PO number.
 async fn amend_order(
     State(state): State<AppState>,
     user: AuthUser,
@@ -1039,6 +1576,18 @@ async fn amend_order(
             })?,
         };
         input = input.line(line.id, quantity, price, discount);
+        if let Some(day) = day_of(&form, &format!("line_{}_promised", line.id), &lang)? {
+            input = input.promise(line.id, day);
+        }
+    }
+    if form.contains_key("delivery_destination") {
+        input = input.delivery(delivery_of(&form));
+    }
+    if form.contains_key("customer_po") {
+        input = input.po(
+            get("customer_po"),
+            form.contains_key("call_off").then(|| get("call_off")),
+        );
     }
     if !get("add_item").is_empty() {
         let quantity = match get("add_quantity") {
@@ -1051,6 +1600,9 @@ async fn amend_order(
             .filter(|p| *p >= 0)
             .ok_or_else(|| invalid("add_price", text(&lang, "orders.errors.amount"), &form))?;
         input = input.add(get("add_item"), quantity, price);
+        if let Some(day) = day_of(&form, "add_promised", &lang)? {
+            input = input.promised_on(day);
+        }
     }
     let toast = match amend::amend(&state, &user, order.id, input).await? {
         AmendOutcome::Amended(done) => Toast::success(texts::t_with(

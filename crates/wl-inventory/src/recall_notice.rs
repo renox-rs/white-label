@@ -4,7 +4,8 @@
 //! Arabic, one message per line.
 //!
 //! - [`send_notices`] (`recalls.manage`): `traced` to `traced`. The guards
-//!   need a template (`customer`, `patient` or `internal`) and at least one
+//!   need a template (`customer`, `patient`, `internal` or the softer
+//!   `possible`; a *possible* line gets the softer one by default) and at least one
 //!   line; the lines must belong to the recall, be `pending` and have a party.
 //!   The transition marks them `sent`; the notices go out right after it.
 //! - [`waive`] (`recalls.manage`, a reason): the owner decides a party need
@@ -25,7 +26,7 @@
 
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
-use wl_kernel::inventory::RECALL_LINE_SUBJECT_TYPE;
+use wl_kernel::inventory::{RECALL_LINE_SUBJECT_TYPE, TraceMark, trace_party_resolver};
 use wl_kernel::notify::{
     self, Category, MessageGaveUp, NotificationTypeDef, NotifyChannel, NotifyRequest,
 };
@@ -39,8 +40,24 @@ use crate::recall::{NoticeInput, Recall, RecallStatus, SEND_NOTICES};
 use crate::recall_line::{NoticeStatus, RecallLine};
 use crate::texts::{english, said};
 
-/// The templates, by the kind of party told.
-pub const TEMPLATES: [&str; 3] = ["customer", "patient", "internal"];
+/// The templates, by the kind of party told. `possible` is the softer text
+/// for lines that may be affected (an item not tracked by lot, theoretical
+/// use): "may be affected; please bring it in for a check".
+pub const TEMPLATES: [&str; 4] = ["customer", "patient", "internal", "possible"];
+
+/// The softer template of the *possible* lines.
+pub const SOFTER_TEMPLATE: &str = "possible";
+
+/// The template a notice about `line` uses when the owner chose `chosen`: a
+/// *possible* line (BL-STK-17) defaults to the softer template unless the
+/// notice is for staff, and a line that is proved keeps the one chosen.
+pub fn template_for(chosen: &str, line: &RecallLine) -> String {
+    if line.mark() == TraceMark::Possible && chosen != "internal" {
+        SOFTER_TEMPLATE.to_owned()
+    } else {
+        chosen.to_owned()
+    }
+}
 
 /// The start of the notification type key of every recall notice.
 pub const NOTICE_PREFIX: &str = "inventory.recall_notice_";
@@ -65,6 +82,10 @@ const CUSTOMER_AR: &str = "نقوم بسحب المنتج {{ item }} (الدفع
 /// The Arabic body of the notice to a patient.
 const PATIENT_AR: &str = "يتم سحب منتج استُخدم في رعايتكم بتاريخ {{ date }} ({{ item }}، الدفعة {{ lot }}). {{ reason }}. يرجى التواصل مع العيادة لترتيب فحص.";
 
+/// The Arabic body of the softer notice to a customer whose goods may be
+/// affected.
+const POSSIBLE_AR: &str = "قد يكون المنتج {{ item }} الذي استلمتموه من جهتنا متأثرًا بسحب المنتج {{ number }}. {{ reason }}. يرجى إحضاره لفحصه.";
+
 /// The Arabic body of the notice to staff.
 const INTERNAL_AR: &str = "سحب المنتج {{ number }}: {{ item }}، الدفعة {{ lot }}، استُخدم في {{ subject }} بتاريخ {{ date }}. {{ reason }}. يرجى المراجعة واتخاذ الإجراء.";
 
@@ -73,11 +94,13 @@ pub fn notice_types() -> Vec<NotificationTypeDef> {
     let english_body = |template: &str| match template {
         "customer" => english("wl_inventory.recall.notice_body_customer"),
         "patient" => english("wl_inventory.recall.notice_body_patient"),
+        "possible" => english("wl_inventory.recall.notice_body_possible"),
         _ => english("wl_inventory.recall.notice_body_internal"),
     };
     let arabic_body = |template: &str| match template {
         "customer" => CUSTOMER_AR,
         "patient" => PATIENT_AR,
+        "possible" => POSSIBLE_AR,
         _ => INTERNAL_AR,
     };
     TEMPLATES
@@ -102,11 +125,50 @@ pub fn notice_types() -> Vec<NotificationTypeDef> {
         .collect()
 }
 
-/// Registers the notification types with the kernel registry.
-pub(crate) fn register_types() {
-    for def in notice_types() {
-        notify::register_type(def);
+/// The notification type the vertical sends every notice under: no group,
+/// urgent, the customer text; a notice that gives up gives the recall owner a
+/// task ([`on_gave_up`]).
+pub fn urgent_notice_type(key: &str) -> NotificationTypeDef {
+    NotificationTypeDef::new(key, "inventory")
+        .group("")
+        .category(Category::Transactional)
+        .urgency(notify::Urgency::Urgent)
+        .give_up(&[notify::GiveUpReaction::StaffTask])
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_inventory.recall.notice_subject")),
+            english("wl_inventory.recall.notice_body_customer"),
+        )
+        .template(NotifyChannel::Email, "ar", Some(SUBJECT_AR), CUSTOMER_AR)
+}
+
+/// Registers the notification types with the kernel registry: the module's
+/// three, or the one the vertical named.
+pub(crate) fn register_types(config: &crate::InventoryConfig) {
+    match &config.recall_notice_key {
+        Some(key) => notify::register_type(urgent_notice_type(key)),
+        None => {
+            for def in notice_types() {
+                notify::register_type(def);
+            }
+        }
     }
+}
+
+/// The notification type key a notice with `template` goes out under: the
+/// vertical's own when it named one.
+fn key_for(state: &AppState, template: &str) -> String {
+    crate::config_of(state)
+        .recall_notice_key
+        .clone()
+        .unwrap_or_else(|| notice_key(template))
+}
+
+/// Whether `type_key` is the type of a recall notice.
+fn is_notice_key(state: &AppState, type_key: &str) -> bool {
+    type_key.starts_with(NOTICE_PREFIX)
+        || crate::config_of(state).recall_notice_key.as_deref() == Some(type_key)
 }
 
 /// The source key of the owner's task about line `line_id`.
@@ -121,27 +183,36 @@ async fn request_for(
     line: &RecallLine,
     template: &str,
 ) -> Result<NotifyRequest> {
-    let item = match line.lot_id {
-        Some(lot_id) => {
+    let item = match (line.lot_id, line.item_id) {
+        (Some(lot_id), _) => {
             let lot = Lot::find_or_404(&state.db, lot_id).await?;
             let item = Item::find_or_404(&state.db, lot.item_id).await?;
             (item.name_en.clone(), lot.number)
         }
-        None => (String::new(), String::new()),
+        // An item not tracked by lot has no lot to name.
+        (None, Some(item_id)) => {
+            let item = Item::find_or_404(&state.db, item_id).await?;
+            (item.name_en.clone(), String::new())
+        }
+        (None, None) => (String::new(), String::new()),
     };
     let number = recall.number.clone().unwrap_or_default();
     let party = PartyId(line.party_id.unwrap_or_default());
-    Ok(NotifyRequest::new(&notice_key(template), line.subject())
-        .subject_label(&number)
-        .to_party(party)
-        .data(renox::serde_json::json!({
-            "number": number,
-            "reason": recall.reason,
-            "item": item.0,
-            "lot": item.1,
-            "subject": line.used_by().map(|s| s.to_string()).unwrap_or_default(),
-            "date": line.occurred_on.map(|d| d.to_string()).unwrap_or_default(),
-        })))
+    // The vertical says who is told for the party: every active buyer of a
+    // customer, else the party's own contact points (07 §4.4 step 8).
+    let mut request =
+        NotifyRequest::new(&key_for(state, template), line.subject()).subject_label(&number);
+    for recipient in trace_party_resolver(state).addressees(state, party).await? {
+        request = request.to(recipient);
+    }
+    Ok(request.data(renox::serde_json::json!({
+        "number": number,
+        "reason": recall.reason,
+        "item": item.0,
+        "lot": item.1,
+        "subject": line.used_by().map(|s| s.to_string()).unwrap_or_default(),
+        "date": line.occurred_on.map(|d| d.to_string()).unwrap_or_default(),
+    })))
 }
 
 /// Puts the lines `ids` back to `pending` after a notice failed.
@@ -205,11 +276,17 @@ pub async fn send_notices(
             problem = Some(said("wl_inventory.recall.line_no_party", &[]));
         }
     }
+    let softer: Vec<i64> = lines
+        .iter()
+        .filter(|line| template_for(&template, line) == SOFTER_TEMPLATE)
+        .map(|line| line.id)
+        .collect();
     let input = NoticeInput {
         template: template.clone(),
         lines: ids.clone(),
         by: Some(user.id),
         problem,
+        softer,
     };
     let _outcome = recall
         .transition(SEND_NOTICES)
@@ -219,7 +296,7 @@ pub async fn send_notices(
         .await?;
     for (position, line) in lines.iter().enumerate() {
         let sent = async {
-            let request = request_for(state, &recall, line, &template).await?;
+            let request = request_for(state, &recall, line, &template_for(&template, line)).await?;
             notify::notifier(state).notify(state, request).await?;
             Ok::<(), Error>(())
         }
@@ -361,7 +438,7 @@ pub async fn set_notice(
 /// A database error, or the task creator's.
 pub async fn on_gave_up(state: &AppState, event: &MessageGaveUp) -> Result {
     if event.subject.subject_type != RECALL_LINE_SUBJECT_TYPE
-        || !event.type_key.starts_with(NOTICE_PREFIX)
+        || !is_notice_key(state, &event.type_key)
     {
         return Ok(());
     }
@@ -416,14 +493,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_templates_are_the_three_party_types_with_both_languages() {
+    fn the_templates_are_the_party_types_and_the_softer_one_with_both_languages() {
         for template in TEMPLATES {
             assert!(is_template(template));
         }
         assert!(!is_template("press"));
         assert_eq!(notice_key("patient"), "inventory.recall_notice_patient");
         let types = notice_types();
-        assert_eq!(types.len(), 3);
+        assert_eq!(types.len(), 4);
     }
 
     #[test]

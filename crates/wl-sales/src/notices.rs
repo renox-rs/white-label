@@ -54,6 +54,14 @@ pub const LOYALTY_PROGRAMME_OFF: &str = "sales.loyalty_programme_off";
 /// A member is told that the account was closed.
 pub const LOYALTY_CLOSED: &str = "sales.loyalty_closed";
 
+/// The customer's sales rep and the accountants are told that an order went
+/// on credit hold (`SAL.RUL.01`).
+pub const ORDER_CREDIT_HOLD: &str = "sales.order_credit_hold";
+
+/// The customer's sales rep and the accountants are told that the account
+/// went on hold after a bounced cheque (`SAL.RUL.05`).
+pub const ACCOUNT_ON_HOLD: &str = "sales.account_on_hold";
+
 /// The customer is told that the online payment of an order failed (BL-SAL-03).
 pub const ORDER_PAYMENT_FAILED: &str = "sales.order_payment_failed";
 
@@ -113,6 +121,149 @@ pub(crate) fn register_types() {
     notify::register_type(english_type(ADJUSTMENT_RETURNED, "adjustment_returned"));
     notify::register_type(english_type(ORDER_PAYMENT_FAILED, "order_payment_failed"));
     notify::register_type(english_type(ORDER_LATE_PAYMENT, "order_late_payment"));
+    notify::register_type(english_type(ORDER_CREDIT_HOLD, "order_credit_hold"));
+    notify::register_type(english_type(ACCOUNT_ON_HOLD, "account_on_hold"));
+    notify::register_type(english_type(
+        crate::deliveries::DELIVERY_RETURNED,
+        "delivery_returned",
+    ));
+}
+
+/// The users told of a credit hold of `party`'s order: the sales rep of its
+/// account, then the holders of the accountant role.
+async fn credit_audience(state: &AppState, party: i64) -> Result<Vec<i64>> {
+    let mut users = Vec::new();
+    if let Some(account) =
+        crate::customer_account::CustomerAccount::of_party(&state.db, party).await?
+        && let Some(rep) = account.sales_rep_id
+    {
+        users.push(rep);
+    }
+    let role = crate::config::config_of(state).accountant_role;
+    for user in renox::auth::permissions::users_with_role(&state.db, &role).await? {
+        if !users.contains(&user.id) {
+            users.push(user.id);
+        }
+    }
+    Ok(users)
+}
+
+/// Tells the sales rep and the accountants that `account` is on hold after
+/// the bounced `source` (`SAL.RUL.05`); `orders` of its customer were held.
+pub(crate) async fn account_on_hold(
+    state: &AppState,
+    account: &crate::customer_account::CustomerAccount,
+    source: &str,
+    orders: i64,
+) -> Result {
+    let name = wl_kernel::parties::directory(state)
+        .display_name(&state.db, wl_kernel::PartyId(account.party_id), "en")
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| format!("#{}", account.party_id));
+    let audience = credit_audience(state, account.party_id).await?;
+    if audience.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(ACCOUNT_ON_HOLD, account.subject())
+        .subject_label(&name)
+        .data(json!({
+            "customer": name,
+            "source": source,
+            "orders": orders,
+        }));
+    for user in audience {
+        request = request.to_user(user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the sales rep and the accountants that `order` is on credit hold
+/// (`SAL.RUL.01`), with the reason and the figures kept on the order.
+pub(crate) async fn order_credit_held(
+    state: &AppState,
+    order: &crate::sales_order::SalesOrder,
+) -> Result {
+    let name = wl_kernel::parties::directory(state)
+        .display_name(&state.db, wl_kernel::PartyId(order.party_id), "en")
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| format!("#{}", order.party_id));
+    let reason = english(
+        &format!(
+            "wl_sales.credit.reason.{}",
+            order.hold_reason.as_deref().unwrap_or("limit")
+        ),
+        &[],
+    );
+    let limit = order
+        .hold_limit
+        .map_or_else(|| "-".to_owned(), |fils| format!("AED {}", aed(fils)));
+    let mut audience = credit_audience(state, order.party_id).await?;
+    // A customer without an account rep: the user who entered the order.
+    if let Some(entered) = order.created_by
+        && !audience.contains(&entered)
+        && crate::customer_account::CustomerAccount::of_party(&state.db, order.party_id)
+            .await?
+            .is_none_or(|account| account.sales_rep_id.is_none())
+    {
+        audience.insert(0, entered);
+    }
+    open_credit_task(state, order, &reason).await?;
+    if audience.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(ORDER_CREDIT_HOLD, order.subject())
+        .subject_label(&order.number)
+        .data(json!({
+            "number": order.number,
+            "customer": name,
+            "reason": reason,
+            "open_balance": format!("AED {}", aed(order.hold_open_balance.unwrap_or_default())),
+            "overdue": format!("AED {}", aed(order.hold_overdue.unwrap_or_default())),
+            "limit": limit,
+        }));
+    for user in audience {
+        request = request.to_user(user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// The task of the accountant role for an order on credit hold: review the
+/// account and release the order or ask for payment. One per order and
+/// revision.
+async fn open_credit_task(
+    state: &AppState,
+    order: &crate::sales_order::SalesOrder,
+    reason: &str,
+) -> Result {
+    let config = crate::config::config_of(state);
+    let role = if config.accountant_role.is_empty() {
+        wl_kernel::COMPANY_ADMIN_ROLE
+    } else {
+        config.accountant_role.as_str()
+    };
+    let (title, body) = {
+        let total = format!("AED {}", aed(order.gross_total));
+        let params: [(&str, &dyn std::fmt::Display); 3] = [
+            ("number", &order.number),
+            ("total", &total),
+            ("reason", &reason),
+        ];
+        (
+            english("wl_sales.credit.task_title", &params),
+            english("wl_sales.credit.task_body", &params),
+        )
+    };
+    let key = format!("sales.credit_hold:{}:{}", order.id, order.revision);
+    let task = wl_kernel::role_tasks::RoleTask::new(order.subject(), role, &title, &key)
+        .description(&body);
+    wl_kernel::role_tasks::open(state, task).await?;
+    Ok(())
 }
 
 /// `fils` as `4,000.00`.

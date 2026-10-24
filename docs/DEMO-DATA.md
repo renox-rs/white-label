@@ -364,9 +364,37 @@ in the demo), real restaurant brands.
 production lines, 85 staff, B2B customers in F&B and retail. One legal entity, with an ICV
 certificate on file.
 
-**Demo users.** General manager · Sales · Production planner · Line supervisor · Operator
-(tablet) · QC inspector · Storekeeper · Procurement · Accountant · Maintenance technician ·
+**Implemented as** `clients/demo-manufacturing/client.toml` and `host/src/app/manufacturing_demo/`
+(the story at a smaller size: one plant with two lines, nine items with their lots, three released
+BOMs, five customers with credit accounts, five sales orders, seven work orders, two NCRs, one
+supplier recall, five dispatches). `APP_ENV=local CLIENT_CONFIG=clients/demo-manufacturing/client.toml
+cargo run -p host -- migrate`, then `-- manufacturing:demo` (or `-- db:seed`), then `-- serve`; the
+logins are on the login page, password `password123`. Every date is relative to today. The work is
+done through the app's own routes as the person who does it (BOMs, work orders, issues, reports, NCRs,
+the recall, the credit accounts, the sales orders, the picks); the opening stock, the lots, the
+certificates and the delivery that came back in part are inserted as the modules' services and
+records leave them.
+
+| Customer | What it shows |
+|---|---|
+| Al Noor Trading LLC | a work order running for its order (one report entered late from a paper job card), a dispatch that left and came back in part (returned goods for QC and sales), a portal buyer |
+| Gulf Fresh Foods LLC | food boxes (food-contact certificate), a planned work order, a dispatch picked |
+| Emirates Print House LLC | printed sleeves made for it alone: the cancel sheet proposes *scrap* |
+| Sahara Retail LLC | an invoice 31 days overdue, so its next order is on credit hold |
+| Atlas Gulf Export FZE | two zero-rated exports, one with its customs exit certificate and one 65 days out without it |
+
+**Demo users.** General manager / owner · Company admin · Production manager · Production planner ·
+Line supervisor · Line operator · QC inspector · Storekeeper · Sales · Sales manager · Accountant ·
 Customer buyer (portal).
+
+**Screens.** `manufacturing:demo` ends by printing the screen map (URL, the login that owns it, one
+line on what it shows), with the ids read from the database; the code is
+`host/src/app/manufacturing_demo/screens.rs` (`host::manufacturing_demo::screen_map`) and
+`host/tests/manufacturing_demo_screens.rs` opens every URL as its owner. The groups: **Start**
+(`/dashboard` with the tiles of the plant, `/menu`, `/approvals`), **Work orders**, **Bills of
+materials**, **Quality** (NCRs, inspections of returned lots, conformity, settings), **Sales** (orders,
+credit accounts, returned goods), **Stock and shipping** (stock, dispatches, holds, recalls, export
+evidence), **Money**, **People and documents** and the **customer portal**.
 
 | Entity | Volume |
 |---|---|
@@ -427,6 +455,17 @@ ready but not collected for 5 days.
    **Wow 3:** cash tied up in parts that do not move.
 
 **Must not appear.** Real car-brand logos, real insurer names, real VINs or plates.
+
+**Implemented as** `clients/demo-auto/client.toml` (a fictional Deira / Sharjah parts trader with a
+workshop; parties, documents, notify, invoicing, ticketing, payments, sales, hr, scheduling,
+inventory and portal) and the seeds of `host/src/app/auto_seed.rs`, `auto_settings.rs` and
+`auto_money.rs`: a fresh deployment starts with the workshop service types, the ticket categories,
+the document kinds (police accident report, claim documents, trade licence, fleet contract), the
+08 values for the shared modules (back-orders on the counter, phone and sales rep channels, the
+cheque, cash and stock limits, the loyalty programme, the onboarding checklists and the SOP
+library) and the two settings pages. **There is no demo company yet: the command `auto:demo` is
+future work and not built**, so the 10-minute script above is walked by hand on an empty
+deployment (the tests of `apps/auto` and `host/tests/auto_*.rs` hold the fixtures).
 
 ---
 
@@ -535,7 +574,7 @@ with the same stories. `APP_ENV=local CLIENT_CONFIG=clients/demo-edtech/client.t
 migrate`, then `-- edtech:demo` (or `-- db:seed`, which runs it in `local` only), then `-- serve`; the logins
 are on the login page, password `password123`: `admin@`, `owner@`, `manager@` (centre manager), `counsellor@`,
 `coordinator@` (academic coordinator), `accountant@` and five tutors (`tutor@`, `omar@`, `layla@`, `ravi@`,
-`hind@`), all `@gulfskills.example`. Every date is relative to today, money is in fils, names are in English
+`hind@`), all `@gulfskills.example`. Every date is relative to the latest Friday up to today (the batches meet on fixed weekdays, so the story is the same whatever day it is seeded), money is in fils, names are in English
 and Arabic, and the seed is deterministic and idempotent (an audit entry marks it done). It takes about 7 s
 in a debug build.
 

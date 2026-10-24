@@ -52,4 +52,11 @@
       radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.18), transparent) left center / 10px 100% no-repeat scroll,
       radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.18), transparent) right center / 10px 100% no-repeat scroll;
   }
+  /* A long key or list in a cell (a role, a permission) wraps instead of
+     running past the edge of the box. */
+  .rx-table-wrap td,
+  .rx-table-wrap th {
+    overflow-wrap: anywhere;
+    min-width: 0;
+  }
 }

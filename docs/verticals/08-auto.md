@@ -842,7 +842,7 @@ before the request (`wl-kernel`). Settings for this vertical:
 | Integrations | SMS gateway down → advisors call the customer, messages queued (`PLT.RUL.05`). E-invoicing provider down (from 2027) → invoices queued and sent on recovery. Insurer portals and police reports are manual already (§8) |
 | Late entry | Job card times, test drives and deliveries keep their business time; more than 24 hours late needs the branch or workshop manager (`PLT.ACL.10`) |
 | Disputes | Invoices, by the accountant or the B2B buyer in the portal (on); insurer short payments go through the payer bill (`FIN.TPP.01`) |
-| Compliance-critical rules | `AUT.RUL.15` (export VAT), `AUT.RUL.16` (legal parts supply period and substitute vehicle); owner role: Owner / GM (`PLT.RUL.04`) |
+| Compliance-critical rules | `AUT.RUL.15` (export VAT), `AUT.RUL.16` (legal parts supply period and substitute vehicle); owner role: Owner / GM (`PLT.RUL.04`); a run counts as failed after its fifth attempt (wl-kernel §5.15, backoff 1, 5, 15 and 60 minutes), and that is when the alert goes out |
 | Bad debt and cheques | Write-off limit AED 0 (`FIN.ACL.15`); bounce fee off unless the client sets a charge type; maximum two presentations; bounced cheque holds the whole credit group (`SAL.RUL.05`) |
 | Recall | A supplier recall of a part is traced through job cards and sales (`TracePartyResolver`: job card → vehicle owner or fleet, the owner when the fleet contract has ended; sales order and account sale → customer; walk-in counter sales → a count per branch and day). Parts are not lot-tracked in the MVP, so the client gives the received date range from the supplier's notice and the trace covers parts sold or fitted on or after the first receipt of the part in that range (`wl-inventory`, items not tracked by lot), every line *possible*. Recalls are opened by the Owner / GM and branch managers (`recalls.manage`) |
 | Responsible role per document kind (wl-documents §5.2) | customer trade licences and export exit evidence → accountant; fleet contracts → Owner / GM; police accident report and claim documents (driving licence, Mulkiya, Emirates ID) → insurance coordinator of the workshop |
@@ -862,7 +862,7 @@ before the request (`wl-kernel`). Settings for this vertical:
 
 | Type | Sent by | Group | Urgency | Give-up reaction |
 |---|---|---|---|---|
-| `auto.vehicle_ready`, `auto.claim_approved` | `AUT.RUL.02`, `AUT.RUL.12` (SMS) | Booking confirmations and reminders | normal | `mark_contact_invalid`; the job card shows "message not delivered" to the service advisor |
+| `auto.vehicle_ready`, `auto.claim_approved` | `AUT.RUL.02`, `AUT.RUL.12` (SMS) | Booking confirmations and reminders | normal | `mark_contact_invalid`, then `alternative_recipient` (the customer's other contact; the kernel refuses a lone `mark_contact_invalid` on a transactional type); no staff task, the job card shows "message not delivered" to the service advisor |
 | `auto.collect_vehicle` | job card `decline` and `AUT.RUL.17`, `AUT.RUL.18`, claim `declare_total_loss` | Booking confirmations and reminders | normal | as above |
 | `auto.parts_delay` | `AUT.RUL.16` (to the customer) | Booking confirmations and reminders | urgent | as above, then a task to the service advisor with an in-app alert |
 | `auto.service_reminder` | `AUT.RUL.01` (opted-in contacts only) | Marketing, delivery tracking | normal | `mark_contact_invalid` |

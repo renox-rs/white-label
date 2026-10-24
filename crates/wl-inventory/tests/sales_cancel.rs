@@ -10,7 +10,8 @@ mod support;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use wl_inventory::dispatch::{
-    Dispatch, DispatchLine, DispatchStatus, NewDispatch, NewDispatchLine, create_draft, lines_of,
+    Dispatch, DispatchLine, DispatchStatus, NewDispatch, NewDispatchLine, SALE_LINE_SUBJECT_TYPE,
+    create_draft, lines_of,
 };
 use wl_inventory::movement::MovementType;
 use wl_inventory::sales_cancel::{CancelEffect, SCRAP_REASON};
@@ -54,13 +55,15 @@ async fn picked(t: &Booted, location: &Location, lines: &[(&Item, i64, i64)]) ->
         t.db(),
         None,
         NewDispatch {
-            location_id: location.id,
             source: order(),
-            recipient_party_id: Some(1),
+            recipient: Some(PartyId(1)),
+            recipient_name: "Customer".to_owned(),
+            address: String::new(),
+            location_id: location.id,
             lines: lines
                 .iter()
                 .map(|(item, quantity, sale_line)| {
-                    NewDispatchLine::of(item.id, *quantity, *sale_line)
+                    NewDispatchLine::of(item.id, *quantity).for_sale_line(*sale_line)
                 })
                 .collect(),
         },
@@ -319,7 +322,8 @@ async fn a_dispatch_that_already_left_is_logged_and_the_dispatcher_gets_a_task()
         dispatch_id: dispatch.id,
         item_id: item.id,
         quantity_milli: 2_000,
-        sale_line_id: Some(51),
+        source_line_type: Some(SALE_LINE_SUBJECT_TYPE.to_owned()),
+        source_line_id: Some(51),
         ..DispatchLine::default()
     };
     line.insert(t.db()).await.unwrap();
@@ -562,10 +566,12 @@ async fn the_dispatch_screen_picks_and_cancels_for_a_dispatcher_only() {
         t.db(),
         None,
         NewDispatch {
-            location_id: store.id,
             source: order(),
-            recipient_party_id: None,
-            lines: vec![NewDispatchLine::of(item.id, 1_000, 91)],
+            recipient: None,
+            recipient_name: "Customer".to_owned(),
+            address: String::new(),
+            location_id: store.id,
+            lines: vec![NewDispatchLine::of(item.id, 1_000).for_sale_line(91)],
         },
     )
     .await

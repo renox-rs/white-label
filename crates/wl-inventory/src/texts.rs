@@ -3,7 +3,8 @@
 
 use renox::prelude::*;
 
-use crate::dispatch_screens::DISPATCH_TEXTS;
+use crate::bom_texts::BOM_TEXTS;
+use crate::dispatch_texts::DISPATCH_TEXTS;
 use crate::screen_texts::SCREEN_TEXTS;
 use crate::stock_ui_texts::STOCK_TEXTS;
 
@@ -639,6 +640,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Enter a quantity above zero.",
     ),
     (
+        "wl_inventory.return.needs_lot",
+        "{{ item }} is tracked by lot: name the lot it goes back to.",
+    ),
+    (
         "wl_inventory.issue.wrong_lot",
         "The lot is not a lot of that item.",
     ),
@@ -873,7 +878,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.recall.no_reason", "A recall needs a reason."),
     (
         "wl_inventory.recall.bad_scope",
-        "A recall needs a scope: the items, with the lot numbers or the supplier lot numbers recalled.",
+        "A recall needs a scope: the items, with the lot numbers or the supplier lot numbers recalled, or an item not tracked by lot with a received date range.",
     ),
     (
         "wl_inventory.recall.bad_source",
@@ -886,6 +891,26 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_inventory.recall.no_lot",
         "No lot matches the scope of the recall: check the item and the lot numbers.",
+    ),
+    (
+        "wl_inventory.recall.bad_dates",
+        "A recall of an item not tracked by lot takes a received date range (from and to, the end not before the start) and a trace end date not before the start.",
+    ),
+    (
+        "wl_inventory.recall.tracked_item",
+        "{{ item }} is tracked by lot: recall it by lot number or supplier lot number.",
+    ),
+    (
+        "wl_inventory.recall.no_receipt",
+        "No receipt of {{ item }} from that supplier falls in the received date range: check the item, the supplier and the dates.",
+    ),
+    (
+        "wl_inventory.recall.return_item",
+        "{{ item }} is not an item of the stock: the returned goods cannot join the recall.",
+    ),
+    (
+        "wl_inventory.recall.return_hold",
+        "The stock hold of this recall is not open: the returned goods cannot join it.",
     ),
     ("wl_inventory.recall.opened", "Recall opened."),
     (
@@ -903,7 +928,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_inventory.recall.closed", "Recall closed."),
     (
         "wl_inventory.recall.no_template",
-        "Choose the notice template: customer, patient or internal.",
+        "Choose the notice template: customer, patient, internal or possible.",
     ),
     (
         "wl_inventory.recall.no_lines",
@@ -950,6 +975,10 @@ const TEXTS: &[(&str, &str)] = &[
         "A product used in your care on {{ date }} ({{ item }}, lot {{ lot }}) is being recalled. {{ reason }}. Please contact the clinic to arrange a check.",
     ),
     (
+        "wl_inventory.recall.notice_body_possible",
+        "{{ item }}, which you received from us, may be affected by recall {{ number }}. {{ reason }}. Please bring it in for a check.",
+    ),
+    (
         "wl_inventory.recall.notice_body_internal",
         "Recall {{ number }}: {{ item }}, lot {{ lot }}, was used for {{ subject }} on {{ date }}. {{ reason }}. Please check and act.",
     ),
@@ -960,6 +989,23 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_inventory.recall.notice_task_body",
         "The notice about {{ subject }} to party {{ party }} could not be delivered after every retry. The line is pending again: send it again with another template or channel, or waive it with a reason.",
+    ),
+    // The lot operations of a vertical's NCR (`LotDisposal`).
+    (
+        "wl_inventory.lot.no_supplier_lot",
+        "The lot has no supplier lot (no goods receipt behind it): it cannot be returned to a supplier.",
+    ),
+    (
+        "wl_inventory.lot.nothing_left",
+        "Nothing of the lot is left in stock.",
+    ),
+    (
+        "wl_inventory.lot.not_at_location",
+        "Only {{ available }} of the lot can be taken; {{ quantity }} was asked.",
+    ),
+    (
+        "wl_inventory.lot.release_blocked",
+        "Lot {{ lot }} is not released: {{ reason }}",
     ),
     // Names of the rejected goods' returns.
     (
@@ -975,6 +1021,7 @@ pub(crate) fn english(key: &str) -> &str {
         .chain(SCREEN_TEXTS)
         .chain(STOCK_TEXTS)
         .chain(DISPATCH_TEXTS)
+        .chain(BOM_TEXTS)
         .find(|(k, _)| *k == key)
         .map_or(key, |(_, text)| text)
 }
@@ -1016,6 +1063,7 @@ mod tests {
             .chain(SCREEN_TEXTS)
             .chain(STOCK_TEXTS)
             .chain(DISPATCH_TEXTS)
+            .chain(BOM_TEXTS)
         {
             assert!(key.starts_with("wl_inventory."), "{key}");
             assert!(seen.insert(*key), "{key} twice");

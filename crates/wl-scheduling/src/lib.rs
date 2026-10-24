@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod actions;
 pub mod booking;
 pub mod booking_machine;
 pub mod config;
@@ -328,6 +329,8 @@ impl Module for WlScheduling {
         // wl-payments asks whether a booking still waits for its money.
         wl_kernel::payments::provide_prepaid_subjects(app, prepaid::PrepaidBookings);
         // A vertical shows a booking's service by its name, not its code.
+        // A vertical links its record to the booking and completes it.
+        wl_kernel::scheduling::provide_booking_actions(app, actions::SchedulingActions);
         wl_kernel::scheduling::provide_service_names(app, names::ServiceTypeNames);
         // A vertical shows a resource (a tutor, a room) by its name.
         wl_kernel::scheduling::provide_resource_names(app, names::ResourceTypeNames);

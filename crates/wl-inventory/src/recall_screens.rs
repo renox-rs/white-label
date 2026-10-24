@@ -20,12 +20,12 @@
 //!
 //! The buttons post to the routes of [`crate::recall_pages`].
 
+use crate::screens::dubai_text;
 use renox::grid::{Column, Grid, GridRequest};
 use renox::prelude::*;
 use renox::serde_json::json;
 use serde::Serialize;
 use wl_kernel::Subject;
-use wl_kernel::documents::dubai_text;
 
 use crate::balance;
 use crate::item::Item;
@@ -416,12 +416,17 @@ async fn line_row(
     line: &RecallLine,
     manage: bool,
 ) -> Result<LineRow> {
-    let lot = match line.lot_id {
-        Some(id) => Lot::find(&state.db, id)
+    let lot = match (line.lot_id, line.item_id) {
+        (Some(id), _) => Lot::find(&state.db, id)
             .await?
             .map(|lot| lot.number)
             .unwrap_or_default(),
-        None => String::new(),
+        // An item not tracked by lot names the item.
+        (None, Some(item_id)) => Item::find(&state.db, item_id)
+            .await?
+            .map(|item| item_name(&item, lang))
+            .unwrap_or_default(),
+        (None, None) => String::new(),
     };
     let record = match (&line.subject_type, line.subject_id) {
         (Some(kind), Some(id)) => {
@@ -436,11 +441,14 @@ async fn line_row(
         }
         _ => String::new(),
     };
+    let possible = line.item_id.is_some() && line.lot_id.is_none();
     let (mark, mark_kind) = match line.kind {
+        LineKind::Possible if possible => (word(lang, "mark", "possible"), "warning"),
         LineKind::Confirmed => (word(lang, "mark", "confirmed"), "info"),
         LineKind::Uncertain | LineKind::Possible => (word(lang, "mark", "uncertain"), "warning"),
         LineKind::Dispatch => (word(lang, "mark", "dispatch"), "info"),
         LineKind::WalkIn => (word(lang, "mark", "walk_in"), "info"),
+        LineKind::Production => (word(lang, "mark", "production"), "info"),
     };
     Ok(LineRow {
         id: line.id,

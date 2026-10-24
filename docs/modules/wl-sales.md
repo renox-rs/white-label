@@ -247,6 +247,12 @@ back-ordered again. The customer may cancel a back-order with `cancel_line` (no
 outcome needed: nothing was picked) or `cancel_remaining`; a cancelled back-order leaves the
 demand of `STK.RUL.04`.
 
+*As built (BL-SAL-17):* the arrival is the kernel event `StockArrived` (a posted goods receipt as
+`receive`, a received transfer as `transfer_in`) and the reversal `StockArrivalReversed`; the
+reservation is the kernel contract `StockReservations` (wl-inventory), and the demand for
+`STK.RUL.04` the contract `BackOrderDemand` (this module). The order's branch is the stock
+location of its first reservation (the selling location unless the order names one).
+
 **Customer PO number.** When *Unique customer PO number per customer* is on, `submit` and
 `amend` refuse a customer PO reference that another order of the same customer already uses,
 compared trimmed and case-insensitive with its call-off number (a call-off against a blanket

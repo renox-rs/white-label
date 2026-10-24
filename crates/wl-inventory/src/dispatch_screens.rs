@@ -1,142 +1,125 @@
-//! The dispatch screen (wl-inventory §4 *Dispatch*; base for BL-STK-26): the
-//! dispatches with their lines, source and status, and the buttons that pick
-//! a draft and cancel a draft or picked one, each with the reason it is
-//! disabled in text when the user cannot press it.
+//! The dispatch screens: the list of dispatches and one dispatch with its
+//! lines and the buttons that pick, dispatch, cancel, re-pick, confirm a
+//! courier's delivery and record the refused goods that came back (issues
+//! #240 and #241; §4 *Dispatch*).
 //!
 //! | Route | Name | Needs |
 //! |---|---|---|
-//! | `GET /dispatches` | `wl_inventory.dispatches` | `dispatch.manage` or `stock.view` somewhere |
-//! | `POST /dispatches/{id}/pick` | `wl_inventory.dispatch_pick` | `dispatch.manage` at the location |
-//! | `POST /dispatches/{id}/cancel` | `wl_inventory.dispatch_cancel` | `dispatch.manage` at the location; a reason |
+//! | `GET /dispatches` | `wl_inventory.dispatches` | `dispatch.manage` or `stock.view` somewhere; a page for a browser, JSON for the rest |
+//! | `GET /dispatches/{id}` | `wl_inventory.dispatch_page` | `dispatch.manage` or `stock.view` at the location; a page for a browser, JSON for the rest |
 //!
-//! The dispatch itself is left (`dispatch`, delivery) to BL-STK-21 and Epic
-//! 07; a dispatch that was cancelled by a sales cancellation shows the reason.
+//! The buttons post to the routes of [`crate::dispatch_pages`]. A button is
+//! shown to a user who holds `dispatch.manage` at the location and only for
+//! the states it applies to; one that cannot run now is shown disabled with
+//! the reason (a picked lot on hold: *re-pick* first; an own delivery is
+//! confirmed by the driver's proof, not by hand). A refusal of the service
+//! (a lot on hold, a failed credit re-check) is the 422 sentence in the sheet
+//! that sent the form.
+//!
+//! Decision: the screen makes no dispatch; the module that sells (a sales
+//! order) makes the draft with [`crate::dispatch::create_draft`].
 
 use std::collections::BTreeMap;
 
+use crate::screens::dubai_text;
+use renox::axum::http::HeaderMap;
 use renox::grid::{Column, Grid, GridRequest};
 use renox::prelude::*;
 use renox::serde_json::json;
-use renox::state_machine::TransitionError;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+use wl_kernel::Subject;
+use wl_kernel::inventory::DISPATCH_SUBJECT_TYPE;
 
-use crate::dispatch::{DISPATCH_SUBJECT_TYPE, Dispatch, DispatchStatus, cancel, lines_of, pick};
+use crate::balance;
+use crate::dispatch::{Dispatch, DispatchLine, DispatchStatus, Handover, lines_of};
+use crate::dispatch_pick::lot_problem;
+use crate::dispatch_texts::DISPATCH_TEXTS;
 use crate::item::Item;
+use crate::location::Location;
+use crate::lot::{Lot, LotStatus};
 use crate::permissions;
-use crate::stock_screens::{amount, exported, item_name, label};
-use crate::texts::t;
+use crate::stock_screens::{amount as quantity_with_unit, exported, item_name, label};
+use crate::texts::{said, t};
 
-/// The templates, compiled in.
-pub(crate) const VIEWS: &[(&str, &str)] = &[(
-    "wl-inventory/dispatches.html",
-    include_str!("../views/wl-inventory/dispatches.html"),
-)];
-
-/// Every text of the dispatch screens and refusals, in English.
-pub(crate) const DISPATCH_TEXTS: &[(&str, &str)] = &[
-    ("wl_inventory.dispatch.title", "Dispatches"),
+/// The templates, compiled in. An app replaces one with a file of the same
+/// name under its views directory.
+pub(crate) const VIEWS: &[(&str, &str)] = &[
     (
-        "wl_inventory.dispatch.subtitle",
-        "Goods picked and shipped for a sales order. A cancelled order line takes its goods off the dispatch.",
-    ),
-    ("wl_inventory.dispatch.number", "Dispatch"),
-    ("wl_inventory.dispatch.source", "For"),
-    ("wl_inventory.dispatch.location", "From"),
-    ("wl_inventory.dispatch.lines", "Lines"),
-    ("wl_inventory.dispatch.status", "Status"),
-    ("wl_inventory.dispatch.note", "Note"),
-    ("wl_inventory.dispatch.empty", "No dispatch yet"),
-    (
-        "wl_inventory.dispatch.empty_hint",
-        "A dispatch appears when goods are picked for a sales order.",
-    ),
-    ("wl_inventory.dispatch.source_type", "Source type"),
-    ("wl_inventory.dispatch.when", "Created"),
-    ("wl_inventory.dispatch.actions", "Actions"),
-    ("wl_inventory.dispatch.pick", "Pick"),
-    (
-        "wl_inventory.dispatch.pick_description",
-        "Pick and pack the lines. The stock is reserved until the dispatch leaves or is cancelled.",
-    ),
-    ("wl_inventory.dispatch.cancel", "Cancel"),
-    (
-        "wl_inventory.dispatch.cancel_description",
-        "Cancel the dispatch and release the reservation. The goods stay in stock.",
-    ),
-    ("wl_inventory.dispatch.reason", "Reason"),
-    ("wl_inventory.dispatch.picked", "Dispatch picked."),
-    ("wl_inventory.dispatch.cancelled", "Dispatch cancelled."),
-    (
-        "wl_inventory.dispatch.reason_needed",
-        "Give the reason for cancelling the dispatch.",
+        "wl-inventory/dispatches.html",
+        include_str!("../views/wl-inventory/dispatches.html"),
     ),
     (
-        "wl_inventory.dispatch.cannot_pick",
-        "Only a draft dispatch can be picked.",
-    ),
-    (
-        "wl_inventory.dispatch.cannot_cancel",
-        "Only a draft or picked dispatch can be cancelled: after it left, the goods follow the delivery.",
-    ),
-    (
-        "wl_inventory.dispatch.no_permission",
-        "You need the dispatch permission at this location.",
-    ),
-    (
-        "wl_inventory.dispatch.no_lines",
-        "A dispatch needs at least one line.",
-    ),
-    (
-        "wl_inventory.dispatch.bad_line",
-        "A dispatch line needs a known item and a quantity above zero.",
-    ),
-    (
-        "wl_inventory.dispatch.not_draft",
-        "Only a draft dispatch can be picked.",
-    ),
-    ("wl_inventory.dispatch.status_draft", "Draft"),
-    ("wl_inventory.dispatch.status_picked", "Picked"),
-    ("wl_inventory.dispatch.status_dispatched", "Dispatched"),
-    ("wl_inventory.dispatch.status_delivered", "Delivered"),
-    ("wl_inventory.dispatch.status_returned", "Returned"),
-    ("wl_inventory.dispatch.status_discarded", "Discarded"),
-    ("wl_inventory.dispatch.status_lost", "Lost"),
-    ("wl_inventory.dispatch.status_cancelled", "Cancelled"),
-    (
-        "wl_inventory.dispatch.cancel_task_title",
-        "{{ dispatch }}: a cancelled order line, goods already dispatched",
-    ),
-    (
-        "wl_inventory.dispatch.cancel_task_body",
-        "Sale line {{ line }} of the order was cancelled after {{ dispatch }} left (now {{ status }}). The dispatch is not changed: the goods follow the delivery, returned or refused. Follow it up with the delivery.",
+        "wl-inventory/dispatch.html",
+        include_str!("../views/wl-inventory/dispatch.html"),
     ),
 ];
 
-type Texts = BTreeMap<&'static str, String>;
+/// The texts a template reads as `tx['title']`.
+pub(crate) type Texts = BTreeMap<&'static str, String>;
 
-const PREFIX: &str = "wl_inventory.dispatch.";
+/// The prefix of the keys of these screens' texts.
+pub(crate) const PREFIX: &str = "wl_inventory.dispatch.ui.";
 
-fn tx(lang: &Lang) -> Texts {
+/// Every text of the dispatch screens in `lang`, by the name a template reads.
+pub(crate) fn tx(lang: &Lang) -> Texts {
     DISPATCH_TEXTS
         .iter()
         .filter_map(|(key, _)| Some((key.strip_prefix(PREFIX)?, t(lang, key))))
         .collect()
 }
 
-fn tr(lang: &Lang, key: &str) -> String {
-    t(lang, &format!("{PREFIX}{key}"))
+/// The word for `value` in `group` (`status`, `handover`, `reason`).
+fn word(lang: &Lang, group: &str, value: &str) -> String {
+    let key = format!("{PREFIX}{group}.{value}");
+    let found = t(lang, &key);
+    if found == key {
+        value.replace('_', " ")
+    } else {
+        found
+    }
 }
 
-/// The routes of the dispatch screen.
+/// The routes of the dispatch screens.
 pub fn routes() -> Routes {
     Routes::new()
-        .get("/dispatches", dispatches)
+        .get("/dispatches", list)
         .name("wl_inventory.dispatches")
-        .post("/dispatches/{id}/pick", pick_dispatch)
-        .name("wl_inventory.dispatch_pick")
-        .post("/dispatches/{id}/cancel", cancel_dispatch)
-        .name("wl_inventory.dispatch_cancel")
+        .get("/dispatches/{id}", show)
+        .name("wl_inventory.dispatch_page")
         .require_auth()
+}
+
+/// A dispatch's label for pages that only hold its id.
+pub(crate) fn register_labels() {
+    wl_kernel::documents::register_subject_label(DISPATCH_SUBJECT_TYPE, |db, id| {
+        Box::pin(async move { Ok(Dispatch::find(db, id).await?.and_then(|row| row.number)) })
+    });
+}
+
+/// The badge colour of a status.
+fn status_kind(status: DispatchStatus) -> &'static str {
+    match status {
+        DispatchStatus::Draft => "info",
+        DispatchStatus::Picked | DispatchStatus::Dispatched => "warning",
+        DispatchStatus::Delivered => "success",
+        DispatchStatus::Returned | DispatchStatus::Discarded | DispatchStatus::Lost => "error",
+        DispatchStatus::Cancelled => "info",
+    }
+}
+
+/// One dispatch in the list.
+#[derive(Serialize, Debug, Clone)]
+pub struct DispatchRow {
+    id: i64,
+    number: String,
+    recipient: String,
+    source: String,
+    store: String,
+    lines: String,
+    status: String,
+    status_code: String,
+    status_kind: &'static str,
+    when: String,
 }
 
 /// What the dispatches page needs.
@@ -157,30 +140,32 @@ pub struct DispatchSheet {
     can_cancel: bool,
 }
 
-/// The dispatches grid: search on the store, the source and the note, filters
-/// by status. The lines, the number and the buttons are drawn by the template
-/// (`custom`).
+/// The dispatches grid: search on the number, the recipient, the store and the
+/// note, filters by status. The source, the lines and the buttons are drawn by
+/// the template (`custom`).
 pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
-    let statuses: Vec<(String, String)> = [
-        "draft",
-        "picked",
-        "dispatched",
-        "delivered",
-        "returned",
-        "discarded",
-        "lost",
-        "cancelled",
-    ]
-    .iter()
-    .map(|status| ((*status).to_owned(), tr(lang, &format!("status_{status}"))))
-    .collect();
+    let statuses: Vec<(String, String)> = DispatchStatus::ALL
+        .iter()
+        .map(|status| (status.as_str().to_owned(), word(lang, "status", status.as_str())))
+        .collect();
     let grid = Grid::new("inventory-dispatches")
         .title(&tr(lang, "title"))
         .per_page(25)
         .remember()
         .advanced_filter()
-        .column(Column::custom("number", &tr(lang, "number")).frozen().mobile())
-        .column(Column::custom("source", &tr(lang, "source")).mobile())
+        .column(
+            Column::text("number", &tr(lang, "number"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/dispatches/{id}"),
+        )
+        .column(
+            Column::text("recipient_name", &tr(lang, "recipient"))
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::custom("source", &tr(lang, "source")))
         .column(
             Column::text("source_type", &tr(lang, "source_type"))
                 .hidden()
@@ -188,15 +173,15 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
         )
         .column(
             Column::related(
-                "location",
-                &tr(lang, "location"),
+                "store",
+                &tr(lang, "store"),
                 "wl_inventory_locations",
                 "location_id",
                 "name_en",
             )
             .searchable(),
         )
-        .column(Column::custom("lines", &tr(lang, "lines")))
+        .column(Column::custom("lines", &tr(lang, "lines")).hidden())
         .column(
             Column::select("status", &tr(lang, "status"), statuses)
                 .badges(&[
@@ -207,24 +192,38 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                     ("returned", "error"),
                     ("discarded", "error"),
                     ("lost", "error"),
-                    ("cancelled", "error"),
+                    ("cancelled", "info"),
                 ])
                 .mobile(),
         )
-        .column(Column::text("cancel_reason", &tr(lang, "note")).searchable())
-        .column(Column::datetime("created_at", &tr(lang, "when")).hidden())
+        .column(Column::text("cancel_reason", &tr(lang, "note")).hidden().searchable())
+        .column(Column::datetime("updated_at", &tr(lang, "when")).hidden())
         .column(Column::custom("actions", &tr(lang, "actions")))
         .sort_by("-id")
+        .row_url("/dispatches/{id}")
         .cards_on_mobile()
         .empty_state(&tr(lang, "empty"), Some(&tr(lang, "empty_hint")));
     if can_export { grid.exports() } else { grid }
 }
 
-/// `GET /dispatches`.
-async fn dispatches(
+/// The text `key` of the dispatch screens.
+fn tr(lang: &Lang, key: &str) -> String {
+    t(lang, &format!("{PREFIX}{key}"))
+}
+
+/// Whether `user` may see the dispatch: the right to manage or to see stock
+/// at its location.
+fn may_see(user: &AuthUser, dispatch: &Dispatch) -> bool {
+    user.has_permission_in(permissions::DISPATCH_MANAGE, &dispatch.scope())
+        || user.has_permission_in(permissions::STOCK_VIEW, &dispatch.scope())
+}
+
+/// `GET /dispatches`: a grid for a browser, the rows as JSON for the rest.
+async fn list(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
+    headers: HeaderMap,
     request: GridRequest,
 ) -> Result<Response> {
     if !user.has_permission_anywhere(permissions::DISPATCH_MANAGE)
@@ -232,9 +231,36 @@ async fn dispatches(
     {
         return Err(Error::Forbidden);
     }
+    let visible: Vec<Dispatch> = Dispatch::query()
+        .order_by_desc(Dispatch::ID)
+        .get(&state.db)
+        .await?
+        .into_iter()
+        .filter(|dispatch| may_see(&user, dispatch))
+        .collect();
+    if !wl_kernel::negotiate::wants_html(&headers) {
+        let mut rows = Vec::new();
+        for dispatch in &visible {
+            let location = Location::find_or_404(&state.db, dispatch.location_id).await?;
+            rows.push(DispatchRow {
+                id: dispatch.id,
+                number: dispatch.number.clone().unwrap_or_default(),
+                recipient: dispatch.recipient_name.clone(),
+                source: source_text(&state, dispatch).await,
+                store: location.name_en,
+                lines: lines_text(&state, &lang, dispatch).await?,
+                status: word(&lang, "status", dispatch.status.as_str()),
+                status_code: dispatch.status.as_str().to_owned(),
+                status_kind: status_kind(dispatch.status),
+                when: dispatch.updated_at.map(dubai_text).unwrap_or_default(),
+            });
+        }
+        return json(&rows);
+    }
     let can_export = user.has_permission_anywhere(permissions::DISPATCH_MANAGE);
     let grid = grid(&lang, can_export);
-    let query = Dispatch::query();
+    let ids = crate::stock_screens::ids_or_none(visible.iter().map(|d| d.id).collect());
+    let query = Dispatch::query().where_(Dispatch::ID.is_in(ids));
     if let Some(file) = exported(&grid, &query, &request, can_export).await? {
         return Ok(file);
     }
@@ -242,27 +268,9 @@ async fn dispatches(
     let mut extra = std::collections::HashMap::new();
     let mut sheets = Vec::new();
     for dispatch in page.items() {
-        let mut lines = Vec::new();
-        for line in lines_of(&state.db, dispatch.id).await? {
-            let item = Item::find_or_404(&state.db, line.item_id).await?;
-            lines.push(format!(
-                "{} · {}",
-                item_name(&item, &lang),
-                amount(line.quantity_milli, &item.base_unit)
-            ));
-        }
         let allowed = user.has_permission_in(permissions::DISPATCH_MANAGE, &dispatch.scope());
         let can_pick = allowed && dispatch.status == DispatchStatus::Draft;
         let can_cancel = allowed && dispatch.status.in_store();
-        // Why the buttons are off, as text.
-        let disabled_reason = if !allowed {
-            tr(&lang, "no_permission")
-        } else if !dispatch.status.in_store() {
-            tr(&lang, "cannot_cancel")
-        } else {
-            String::new()
-        };
-        let source = label(&state, &dispatch.source()).await;
         if can_pick || can_cancel {
             sheets.push(DispatchSheet {
                 id: dispatch.id,
@@ -273,18 +281,9 @@ async fn dispatches(
         extra.insert(
             dispatch.id,
             json!({
-                "number": dispatch.number(),
-                "source": if source.is_empty() {
-                    format!("{}:{}", dispatch.source_type, dispatch.source_id)
-                } else {
-                    source
-                },
-                "lines": if lines.is_empty() { "-".to_owned() } else { lines.join(", ") },
-                "cancel_reason": dispatch
-                    .cancel_reason
-                    .clone()
-                    .filter(|reason| !reason.is_empty())
-                    .unwrap_or(disabled_reason),
+                "number": dispatch.number.clone().unwrap_or_default(),
+                "source": source_text(&state, dispatch).await,
+                "lines": lines_text(&state, &lang, dispatch).await?,
                 "can_pick": can_pick,
                 "can_cancel": can_cancel,
             }),
@@ -299,56 +298,421 @@ async fn dispatches(
     .into_response())
 }
 
-fn refused(message: impl Into<String>) -> Error {
-    Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message.into())
+/// The lines of a dispatch in one sentence: item and quantity each.
+async fn lines_text(state: &AppState, lang: &Lang, dispatch: &Dispatch) -> Result<String> {
+    let mut lines = Vec::new();
+    for line in lines_of(&state.db, dispatch.id).await? {
+        let item = Item::find_or_404(&state.db, line.item_id).await?;
+        lines.push(format!(
+            "{} · {}",
+            item_name(&item, lang),
+            quantity_with_unit(line.quantity_milli, &item.base_unit)
+        ));
+    }
+    Ok(lines.join(", "))
 }
 
-/// `POST /dispatches/{id}/pick`.
-async fn pick_dispatch(
+/// `value` as a JSON answer.
+fn json<T: Serialize>(value: &T) -> Result<Response> {
+    let body = renox::serde_json::to_string(value)
+        .map_err(|error| Error::Internal(renox::anyhow::Error::new(error)))?;
+    Ok(([("content-type", "application/json")], body).into_response())
+}
+
+/// The record the dispatch fulfils, in words: its label, else its number.
+async fn source_text(state: &AppState, dispatch: &Dispatch) -> String {
+    let source: Subject = dispatch.source();
+    let found = label(state, &source).await;
+    if found.is_empty() {
+        format!("#{}", dispatch.source_id)
+    } else {
+        found
+    }
+}
+
+/// An action button: shown or not, and the reason when it cannot run now.
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct Act {
+    shown: bool,
+    blocked: Option<String>,
+}
+
+impl Act {
+    fn hidden() -> Self {
+        Act::default()
+    }
+
+    fn ready() -> Self {
+        Act {
+            shown: true,
+            blocked: None,
+        }
+    }
+
+    fn unless(reason: Option<String>) -> Self {
+        Act {
+            shown: true,
+            blocked: reason,
+        }
+    }
+}
+
+/// The buttons of a dispatch.
+#[derive(Serialize, Debug, Clone)]
+pub struct Actions {
+    pick: Act,
+    dispatch: Act,
+    cancel: Act,
+    confirm: Act,
+    receive_back: Act,
+    return_back: Act,
+}
+
+/// One line of the record page.
+#[derive(Serialize, Debug, Clone)]
+pub struct LineRow {
+    id: i64,
+    position: i64,
+    item: String,
+    lot: String,
+    quantity: String,
+    delivered: String,
+    refused: String,
+    reason: String,
+    in_return: String,
+    received: String,
+    missing: String,
+    held: bool,
+    can_repick: bool,
+    lots: Vec<(String, String)>,
+    unit: String,
+}
+
+/// What the record page needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-inventory/dispatch.html")]
+pub(crate) struct DispatchPage {
+    tx: Texts,
+    id: i64,
+    title: String,
+    status: String,
+    status_code: String,
+    status_kind: &'static str,
+    recipient: String,
+    address: String,
+    source: String,
+    store: String,
+    handover: String,
+    tracking: String,
+    signature: String,
+    delivery: String,
+    has_note: bool,
+    picked_at: String,
+    dispatched_at: String,
+    delivered_at: String,
+    loss: String,
+    alerts: Vec<String>,
+    lines: Vec<LineRow>,
+    actions: Actions,
+    handovers: Vec<(String, String)>,
+    reasons: Vec<(String, String)>,
+}
+
+/// The released lots of `item` with something available at `location_id`,
+/// as options of a select, the first to expire first.
+async fn lot_options(
+    state: &AppState,
+    lang: &Lang,
+    item: &Item,
+    location_id: i64,
+    leave_out: Option<i64>,
+) -> Result<Vec<(String, String)>> {
+    let mut options = vec![(String::new(), t(lang, &format!("{PREFIX}suggest")))];
+    if !item.lot_tracked {
+        return Ok(options);
+    }
+    for candidate in balance::candidates(&state.db, item, location_id).await? {
+        let Some(lot_id) = candidate.lot_id else {
+            continue;
+        };
+        if Some(lot_id) == leave_out {
+            continue;
+        }
+        let lot = Lot::find_or_404(&state.db, lot_id).await?;
+        let expiry = lot
+            .expiry_date
+            .map(|day| format!(" ({day})"))
+            .unwrap_or_default();
+        options.push((lot.id.to_string(), format!("{}{expiry}", lot.number)));
+    }
+    Ok(options)
+}
+
+async fn line_row(
+    state: &AppState,
+    lang: &Lang,
+    dispatch: &Dispatch,
+    line: &DispatchLine,
+    manage: bool,
+    alerts: &mut Vec<String>,
+) -> Result<LineRow> {
+    let item = Item::find_or_404(&state.db, line.item_id).await?;
+    let lot = match line.lot_id {
+        Some(id) => Some(Lot::find_or_404(&state.db, id).await?),
+        None => None,
+    };
+    let held = lot
+        .as_ref()
+        .is_some_and(|lot| lot_problem(lot, line.position).is_some());
+    if held
+        && dispatch.status == DispatchStatus::Picked
+        && let Some(lot) = &lot
+    {
+        let key = if lot.status == LotStatus::OnHold {
+            "lot_held"
+        } else {
+            "lot_unusable"
+        };
+        alerts.push(said(
+            &format!("wl_inventory.dispatch.ui.{key}"),
+            &[
+                ("position", &line.position.to_string()),
+                ("lot", &lot.number),
+            ],
+        ));
+    }
+    let unit = item.base_unit.clone();
+    let shown = |milli: i64| quantity_with_unit(milli, &unit);
+    let lots = if manage && dispatch.status == DispatchStatus::Picked {
+        lot_options(state, lang, &item, dispatch.location_id, line.lot_id).await?
+    } else {
+        Vec::new()
+    };
+    Ok(LineRow {
+        id: line.id,
+        position: line.position,
+        item: item_name(&item, lang),
+        lot: lot
+            .map(|lot| lot.number)
+            .unwrap_or_else(|| t(lang, &format!("{PREFIX}no_lot"))),
+        quantity: shown(line.quantity_milli),
+        delivered: shown(line.delivered_milli),
+        refused: shown(line.refused_milli),
+        reason: line
+            .refusal_reason
+            .as_deref()
+            .map(|reason| word(lang, "reason", reason))
+            .unwrap_or_default(),
+        in_return: shown(line.in_return_milli()),
+        received: shown(line.returned_milli),
+        missing: shown(line.missing_milli),
+        held,
+        can_repick: manage && dispatch.status == DispatchStatus::Picked,
+        lots,
+        unit,
+    })
+}
+
+/// `GET /dispatches/{id}`.
+async fn show(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    match pick(&state, &user, id).await {
-        Ok(_) => Ok((Toast::success(tr(&lang, "picked")), renox::HxRefresh).into_response()),
-        Err(TransitionError::Guard(message)) => Err(refused(message)),
-        Err(TransitionError::NotFrom(_)) => Err(refused(tr(&lang, "cannot_pick"))),
-        Err(other) => Err(other.into_error()),
+    let dispatch = Dispatch::find_or_404(&state.db, id).await?;
+    if !may_see(&user, &dispatch) {
+        return Err(Error::Forbidden);
     }
+    let manage = user.has_permission_in(permissions::DISPATCH_MANAGE, &dispatch.scope());
+    let location = Location::find_or_404(&state.db, dispatch.location_id).await?;
+    let lines = lines_of(&state.db, id).await?;
+    let mut alerts = Vec::new();
+    let mut rows = Vec::new();
+    for line in &lines {
+        rows.push(line_row(&state, &lang, &dispatch, line, manage, &mut alerts).await?);
+    }
+    if wl_kernel::negotiate::wants_html(&headers) {
+        let in_return: i64 = lines.iter().map(DispatchLine::in_return_milli).sum();
+        let own_delivery = dispatch.handover.as_deref() == Some(Handover::OwnDelivery.as_str());
+        let status = dispatch.status;
+        let actions = Actions {
+            pick: if manage && status == DispatchStatus::Draft {
+                Act::ready()
+            } else {
+                Act::hidden()
+            },
+            dispatch: if manage && status == DispatchStatus::Picked {
+                Act::unless(alerts.first().cloned())
+            } else {
+                Act::hidden()
+            },
+            cancel: if manage && matches!(status, DispatchStatus::Draft | DispatchStatus::Picked) {
+                Act::ready()
+            } else {
+                Act::hidden()
+            },
+            confirm: if manage && status == DispatchStatus::Dispatched {
+                Act::unless(
+                    own_delivery.then(|| t(&lang, &format!("{PREFIX}blocked_own_delivery"))),
+                )
+            } else {
+                Act::hidden()
+            },
+            return_back: if manage && status == DispatchStatus::Dispatched {
+                Act::ready()
+            } else {
+                Act::hidden()
+            },
+            receive_back: if manage
+                && matches!(
+                    status,
+                    DispatchStatus::Delivered | DispatchStatus::Dispatched | DispatchStatus::Lost
+                )
+                && lines.iter().any(|line| line.refused_milli > 0)
+            {
+                Act::unless(
+                    (in_return == 0)
+                        .then(|| t(&lang, &format!("{PREFIX}blocked_nothing_in_return"))),
+                )
+            } else {
+                Act::hidden()
+            },
+        };
+        let loss = if dispatch.loss_open {
+            said(
+                "wl_inventory.dispatch.ui.lost",
+                &[("value", &crate::po_revise::money_text(dispatch.loss_fils))],
+            )
+        } else {
+            String::new()
+        };
+        let mut notes = alerts;
+        if status == DispatchStatus::Discarded {
+            notes.push(said(
+                "wl_inventory.dispatch.ui.discarded_note",
+                &[
+                    (
+                        "value",
+                        &crate::po_revise::money_text(dispatch.discard_fils),
+                    ),
+                    (
+                        "reason",
+                        dispatch.discard_reason.as_deref().unwrap_or_default(),
+                    ),
+                ],
+            ));
+        }
+        if status == DispatchStatus::Returned {
+            notes.push(said(
+                "wl_inventory.dispatch.ui.returned_note",
+                &[(
+                    "reason",
+                    dispatch.return_reason.as_deref().unwrap_or_default(),
+                )],
+            ));
+        }
+        if in_return > 0 && status != DispatchStatus::Picked {
+            let unit = rows.first().map(|row| row.unit.clone()).unwrap_or_default();
+            let quantity = quantity_with_unit(in_return, &unit);
+            notes.push(said(
+                "wl_inventory.dispatch.ui.in_return_note",
+                &[("quantity", &quantity)],
+            ));
+        }
+        let page = DispatchPage {
+            tx: tx(&lang),
+            id,
+            title: dispatch.number.clone().unwrap_or_default(),
+            status: word(&lang, "status", status.as_str()),
+            status_code: status.as_str().to_owned(),
+            status_kind: status_kind(status),
+            recipient: dispatch.recipient_name.clone(),
+            address: dispatch.address.clone(),
+            source: source_text(&state, &dispatch).await,
+            store: location.name_en.clone(),
+            handover: dispatch
+                .handover
+                .as_deref()
+                .map(|kind| word(&lang, "handover", kind))
+                .unwrap_or_default(),
+            tracking: dispatch.tracking_number.clone().unwrap_or_default(),
+            signature: dispatch.collector_signature.clone().unwrap_or_default(),
+            delivery: dispatch
+                .delivery_id
+                .map(|delivery| format!("#{delivery}"))
+                .unwrap_or_default(),
+            has_note: dispatch.delivery_note.is_some(),
+            picked_at: dispatch.picked_at.map(dubai_text).unwrap_or_default(),
+            dispatched_at: dispatch.dispatched_at.map(dubai_text).unwrap_or_default(),
+            delivered_at: dispatch.delivered_at.map(dubai_text).unwrap_or_default(),
+            loss,
+            alerts: notes,
+            lines: rows,
+            actions,
+            handovers: [
+                Handover::OwnDelivery,
+                Handover::Courier,
+                Handover::Collection,
+            ]
+            .iter()
+            .map(|handover| {
+                (
+                    handover.as_str().to_owned(),
+                    word(&lang, "handover", handover.as_str()),
+                )
+            })
+            .collect(),
+            reasons: [
+                "damaged",
+                "wrong_item",
+                "not_ordered",
+                "short_dated",
+                "temperature",
+                "other",
+            ]
+            .iter()
+            .map(|reason| ((*reason).to_owned(), word(&lang, "reason", reason)))
+            .collect(),
+        };
+        return Ok(View::typed(page).into_response());
+    }
+    json(&rows)
 }
 
-/// What a user enters to cancel a dispatch.
-#[derive(Deserialize, Serialize, Validate, Debug, Default)]
-pub struct CancelForm {
-    /// Why.
-    #[validate(max = 500)]
-    pub reason: Option<String>,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// `POST /dispatches/{id}/cancel`.
-async fn cancel_dispatch(
-    State(state): State<AppState>,
-    user: AuthUser,
-    lang: Lang,
-    Path(id): Path<i64>,
-    Valid(form): Valid<CancelForm>,
-) -> Result<Response> {
-    let reason = form.reason.unwrap_or_default();
-    if reason.trim().is_empty() {
-        return Err(refused(tr(&lang, "reason_needed")));
+    /// Every `tx['name']` a template reads is a text of the crate: a missing
+    /// one would show as a raw key on the page.
+    #[test]
+    fn every_text_a_dispatch_template_reads_exists() {
+        for (name, source) in VIEWS {
+            let mut rest = *source;
+            while let Some(at) = rest.find("tx['") {
+                rest = &rest[at + 4..];
+                let end = rest.find('\'').expect("a closed key");
+                let key = format!("{PREFIX}{}", &rest[..end]);
+                assert!(
+                    DISPATCH_TEXTS.iter().any(|(known, _)| *known == key),
+                    "{name} reads `{key}`, which has no text"
+                );
+            }
+        }
     }
-    match cancel(&state, &user, id, reason.trim()).await {
-        Ok(_) => Ok((Toast::success(tr(&lang, "cancelled")), renox::HxRefresh).into_response()),
-        Err(TransitionError::Guard(message)) => Err(refused(message)),
-        Err(TransitionError::NotFrom(_)) => Err(refused(tr(&lang, "cannot_cancel"))),
-        Err(other) => Err(other.into_error()),
-    }
-}
 
-/// The number as the label of a dispatch (`DSP-0007`).
-pub(crate) fn register_labels() {
-    wl_kernel::documents::register_subject_label(DISPATCH_SUBJECT_TYPE, |db, id| {
-        Box::pin(async move { Ok(Dispatch::find(db, id).await?.map(|row| row.number())) })
-    });
+    #[test]
+    fn a_status_has_a_badge_colour_and_a_word() {
+        assert_eq!(status_kind(DispatchStatus::Delivered), "success");
+        assert_eq!(status_kind(DispatchStatus::Lost), "error");
+        for status in DispatchStatus::ALL {
+            let key = format!("{PREFIX}status.{}", status.as_str());
+            assert!(
+                DISPATCH_TEXTS.iter().any(|(known, _)| *known == key),
+                "{key}"
+            );
+        }
+    }
 }

@@ -24,23 +24,26 @@ use wl_inventory::{
 use wl_kernel::block_guard::{
     ActionKind, BlockFuture, BlockGuard, BlockRefusal, GuardOutcome, provide_block_guard,
 };
+use wl_kernel::delivery::{DeliveryFuture, DeliveryId, DeliveryRequest, DeliveryRequester};
 use wl_kernel::documents::{
     BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, InvalidReason,
     NoDocuments, RecordFlag, Validity,
 };
 use wl_kernel::inventory::{
-    GoodsReceived, LandedCostAdjusted, LandedCostAllocated, LotDiscarded, LotHeld, LotReleased,
-    PreferredSupplierChanged, PurchaseOrderRevised, RecallClosed, RecallOpened, RecallTraced,
-    StockHoldClosed, StockHoldPlaced, StockNegative, SupplierReturnCredited,
-    SupplierReturnDispatched, SupplierScoreBelowThreshold, TraceFuture, TraceParty,
-    TracePartyResolver,
+    DispatchDelivered, DispatchDiscarded, DispatchGoodsQuarantined, DispatchLost, DispatchReturned,
+    DispatchReversed, DispatchSent, GoodsReceived, LandedCostAdjusted, LandedCostAllocated,
+    LotDiscarded, LotHeld, LotReleased, PendingIssueClosed, PreferredSupplierChanged,
+    PurchaseOrderRevised, RecallClosed, RecallOpened, RecallTraced, StockHoldClosed,
+    StockHoldPlaced, StockNegative, SupplierReturnCredited, SupplierReturnDispatched,
+    SupplierScoreBelowThreshold, TraceFuture, TraceParty, TracePartyResolver,
 };
 use wl_kernel::invoicing::{
-    CostPoster, DebitedLine, PeriodLocks, PostCost, SupplierBillFuture, SupplierBillId,
-    SupplierBillLine, SupplierBillLineId, SupplierBillStatus, SupplierBills,
+    CostPoster, DebitedLine, PeriodLocks, PostCost, ReverseCost, SupplierBillFuture,
+    SupplierBillId, SupplierBillLine, SupplierBillLineId, SupplierBillStatus, SupplierBills,
     SupplierDebitNoteCancelled, SupplierDebitNoteId, SupplierDebitNoteIssued,
 };
-use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
+use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest};
+use wl_kernel::sales::{CreditChecker, CreditFailure, CreditVerdict, SalesFuture, SalesOrderId};
 use wl_kernel::tickets::{OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef};
 use wl_kernel::{PartyId, Subject};
 
@@ -107,9 +110,21 @@ pub struct TraceParties {
     parties: Arc<Mutex<std::collections::BTreeMap<Subject, PartyId>>>,
     walk_in: Arc<Mutex<Vec<String>>>,
     delivery: Arc<Mutex<std::collections::BTreeMap<Subject, String>>>,
+    back: Arc<Mutex<Vec<Subject>>>,
+    addressed: Arc<Mutex<std::collections::BTreeMap<PartyId, Vec<NotifyRecipient>>>>,
 }
 
 impl TraceParties {
+    /// The goods of `subject` are back on site: it is not listed.
+    pub fn not_affected(&self, subject: &Subject) {
+        self.back.lock().unwrap().push(subject.clone());
+    }
+
+    /// `party` is told through `recipients`.
+    pub fn addressed(&self, party: PartyId, recipients: Vec<NotifyRecipient>) {
+        self.addressed.lock().unwrap().insert(party, recipients);
+    }
+
     /// `party` is behind `subject`.
     pub fn set(&self, subject: &Subject, party: PartyId) {
         self.parties.lock().unwrap().insert(subject.clone(), party);
@@ -139,6 +154,9 @@ impl TracePartyResolver for TraceParties {
             if self.walk_in.lock().unwrap().contains(&subject.subject_type) {
                 return Ok(TraceParty::WalkIn);
             }
+            if self.back.lock().unwrap().contains(subject) {
+                return Ok(TraceParty::NotAffected);
+            }
             Ok(match self.parties.lock().unwrap().get(subject) {
                 Some(party) => TraceParty::Party(*party),
                 None => TraceParty::Unknown,
@@ -152,6 +170,68 @@ impl TracePartyResolver for TraceParties {
         subject: &'a Subject,
     ) -> TraceFuture<'a, Option<String>> {
         Box::pin(async move { Ok(self.delivery.lock().unwrap().get(subject).cloned()) })
+    }
+
+    fn addressees<'a>(
+        &'a self,
+        _state: &'a AppState,
+        party: PartyId,
+    ) -> TraceFuture<'a, Vec<NotifyRecipient>> {
+        Box::pin(async move {
+            Ok(self
+                .addressed
+                .lock()
+                .unwrap()
+                .get(&party)
+                .cloned()
+                .unwrap_or_else(|| vec![NotifyRecipient::Party { id: party }]))
+        })
+    }
+}
+
+/// A vertical's `DispatchGuard`: the words that refuse the steps of a dispatch
+/// holding an item the test blocks.
+#[derive(Clone, Default)]
+pub struct ItemGuard {
+    blocked: Arc<Mutex<Vec<(i64, String)>>>,
+    asked: Arc<Mutex<Vec<(String, renox::chrono::NaiveDate)>>>,
+}
+
+impl ItemGuard {
+    /// Dispatches holding `item` are refused with `words`.
+    pub fn block(&self, item: i64, words: &str) {
+        self.blocked.lock().unwrap().push((item, words.to_owned()));
+    }
+
+    /// The steps and days the guard was asked about, oldest first.
+    pub fn asked(&self) -> Vec<(String, renox::chrono::NaiveDate)> {
+        self.asked.lock().unwrap().clone()
+    }
+
+    /// Nothing is blocked any more.
+    pub fn clear(&self) {
+        self.blocked.lock().unwrap().clear();
+    }
+}
+
+impl wl_kernel::inventory::DispatchGuard for ItemGuard {
+    fn blocked<'a>(
+        &'a self,
+        _state: &'a AppState,
+        dispatch: &'a wl_kernel::inventory::DispatchFacts,
+        guarded: &'a str,
+        on: renox::chrono::NaiveDate,
+    ) -> TraceFuture<'a, Option<String>> {
+        Box::pin(async move {
+            self.asked.lock().unwrap().push((guarded.to_owned(), on));
+            let blocked = self.blocked.lock().unwrap().clone();
+            Ok(dispatch.lines.iter().find_map(|line| {
+                blocked
+                    .iter()
+                    .find(|(item, _)| line.item.subject_id == *item)
+                    .map(|(_, words)| words.clone())
+            }))
+        })
     }
 }
 
@@ -253,9 +333,15 @@ impl Notifier for Recording {
 #[derive(Clone, Default)]
 pub struct CostDesk {
     posted: Arc<Mutex<Vec<PostCost>>>,
+    reversed: Arc<Mutex<Vec<ReverseCost>>>,
 }
 
 impl CostDesk {
+    /// The cost taken back, oldest first.
+    pub fn reversed(&self) -> Vec<ReverseCost> {
+        self.reversed.lock().unwrap().clone()
+    }
+
     /// The cost posted, oldest first.
     pub fn posted(&self) -> Vec<PostCost> {
         self.posted.lock().unwrap().clone()
@@ -266,6 +352,122 @@ impl CostPoster for CostDesk {
     fn post<'a>(&'a self, _state: &'a AppState, request: PostCost) -> SupplierBillFuture<'a, ()> {
         Box::pin(async move {
             self.posted.lock().unwrap().push(request);
+            Ok(())
+        })
+    }
+
+    fn reverse<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: ReverseCost,
+    ) -> SupplierBillFuture<'a, ()> {
+        Box::pin(async move {
+            self.reversed.lock().unwrap().push(request);
+            Ok(())
+        })
+    }
+}
+
+/// A `CreditChecker` that fails the orders the test sets and records what it
+/// was asked. A failure puts the order on hold, as `wl-sales` does: the order
+/// is listed in `held`.
+#[derive(Clone, Default)]
+pub struct CreditDesk {
+    failing: Arc<Mutex<Vec<(i64, CreditFailure)>>>,
+    asked: Arc<Mutex<Vec<i64>>>,
+    held: Arc<Mutex<Vec<i64>>>,
+}
+
+impl CreditDesk {
+    /// The credit re-check of `order` fails from now on.
+    pub fn fail(&self, order: i64, failure: CreditFailure) {
+        self.failing.lock().unwrap().push((order, failure));
+    }
+
+    /// The order is released: its re-check passes again.
+    pub fn release(&self, order: i64) {
+        self.failing.lock().unwrap().retain(|(o, _)| *o != order);
+    }
+
+    /// The orders re-checked, oldest first.
+    pub fn asked(&self) -> Vec<i64> {
+        self.asked.lock().unwrap().clone()
+    }
+
+    /// The orders put on credit hold by a failed re-check.
+    pub fn held(&self) -> Vec<i64> {
+        self.held.lock().unwrap().clone()
+    }
+}
+
+impl CreditChecker for CreditDesk {
+    fn credit_recheck<'a>(
+        &'a self,
+        _state: &'a AppState,
+        order: SalesOrderId,
+    ) -> SalesFuture<'a, CreditVerdict> {
+        Box::pin(async move {
+            self.asked.lock().unwrap().push(order.0);
+            let failure = self
+                .failing
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(o, _)| *o == order.0)
+                .map(|(_, failure)| *failure);
+            Ok(match failure {
+                Some(failure) => {
+                    self.held.lock().unwrap().push(order.0);
+                    CreditVerdict::Failed(failure)
+                }
+                None => CreditVerdict::Passed,
+            })
+        })
+    }
+}
+
+/// A `DeliveryRequester` that records the deliveries asked for and the ones
+/// cancelled.
+#[derive(Clone, Default)]
+pub struct DeliveryDesk {
+    requested: Arc<Mutex<Vec<DeliveryRequest>>>,
+    cancelled: Arc<Mutex<Vec<DeliveryId>>>,
+}
+
+impl DeliveryDesk {
+    /// The deliveries asked for, oldest first; the delivery id is the
+    /// position, from 1.
+    pub fn requested(&self) -> Vec<DeliveryRequest> {
+        self.requested.lock().unwrap().clone()
+    }
+
+    /// The deliveries cancelled.
+    pub fn cancelled(&self) -> Vec<DeliveryId> {
+        self.cancelled.lock().unwrap().clone()
+    }
+}
+
+impl DeliveryRequester for DeliveryDesk {
+    fn request<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: DeliveryRequest,
+    ) -> DeliveryFuture<'a, DeliveryId> {
+        Box::pin(async move {
+            let mut asked = self.requested.lock().unwrap();
+            asked.push(request);
+            Ok(DeliveryId(asked.len() as i64))
+        })
+    }
+
+    fn cancel<'a>(
+        &'a self,
+        _state: &'a AppState,
+        delivery: DeliveryId,
+        _reason: &'a str,
+    ) -> DeliveryFuture<'a, ()> {
+        Box::pin(async move {
+            self.cancelled.lock().unwrap().push(delivery);
             Ok(())
         })
     }
@@ -569,6 +771,36 @@ impl SupplierBills for BillDesk {
     }
 }
 
+/// The back-ordered demand of the sales module, set by the test.
+#[derive(Clone, Default)]
+pub struct BackOrderDesk(Arc<Mutex<Vec<wl_kernel::backorders::BackOrdered>>>);
+
+impl BackOrderDesk {
+    /// Replaces the open back-orders with `quantity_milli` of `code` at
+    /// `location` (none when 0).
+    pub fn set(&self, code: &str, location: &Location, quantity_milli: i64) {
+        let mut all = self.0.lock().unwrap();
+        all.clear();
+        if quantity_milli > 0 {
+            all.push(wl_kernel::backorders::BackOrdered {
+                item_code: code.to_owned(),
+                location: Some(Subject::new("inventory.location", location.id)),
+                quantity_milli,
+            });
+        }
+    }
+}
+
+impl wl_kernel::backorders::BackOrderDemand for BackOrderDesk {
+    fn open<'a>(
+        &'a self,
+        _state: &'a AppState,
+    ) -> wl_kernel::backorders::BackOrderFuture<'a, Vec<wl_kernel::backorders::BackOrdered>> {
+        let all = self.0.lock().unwrap().clone();
+        Box::pin(async move { Ok(all) })
+    }
+}
+
 /// The vertical's recipe: what the sale lines the test names are made of
 /// (`SaleLineStockSource`).
 #[derive(Clone, Default)]
@@ -601,9 +833,77 @@ impl wl_kernel::inventory::SaleLineStockSource for SaleLineDesk {
     }
 }
 
+/// The sales orders of the test, as the order desk of wl-sales shows them
+/// (`SalesOrderDesk::find`): the lines the test sets, with their item code and
+/// quantities.
+#[derive(Clone, Default)]
+pub struct OrderBook {
+    orders: Arc<Mutex<std::collections::BTreeMap<i64, Vec<wl_kernel::sales::OrderLineView>>>>,
+}
+
+impl OrderBook {
+    /// Order `order` has a line `line` of `quantity_milli` of the item `code`.
+    pub fn line(&self, order: i64, line: i64, code: &str, quantity_milli: i64) {
+        self.orders.lock().unwrap().entry(order).or_default().push(
+            wl_kernel::sales::OrderLineView {
+                id: line,
+                line_no: line,
+                item_code: code.to_owned(),
+                description: code.to_owned(),
+                is_item: true,
+                quantity_milli,
+                fulfilled_milli: 0,
+                cancelled_milli: 0,
+                unit_price: 1_000,
+                gross: 0,
+            },
+        );
+    }
+
+    /// `cancelled_milli` of the line `line` of `order` are cancelled.
+    pub fn cancel(&self, order: i64, line: i64, cancelled_milli: i64) {
+        for view in self.orders.lock().unwrap().entry(order).or_default() {
+            if view.id == line {
+                view.cancelled_milli += cancelled_milli;
+            }
+        }
+    }
+}
+
+impl wl_kernel::sales::SalesOrderDesk for OrderBook {
+    fn find<'a>(
+        &'a self,
+        _state: &'a AppState,
+        order: SalesOrderId,
+    ) -> SalesFuture<'a, Option<wl_kernel::sales::OrderView>> {
+        let lines = self.orders.lock().unwrap().get(&order.0).cloned();
+        Box::pin(async move {
+            Ok(lines.map(|lines| wl_kernel::sales::OrderView {
+                id: order,
+                number: format!("SO-{}", order.0),
+                party: PartyId(1),
+                channel: "phone".to_owned(),
+                external_number: None,
+                payment_mode: "on_account".to_owned(),
+                prepaid: false,
+                currency: "AED".to_owned(),
+                gross_total: 0,
+                legal_entity: None,
+                status: "confirmed".to_owned(),
+                revision: 1,
+                refunded_amount: 0,
+                aggregator: false,
+                lines,
+            }))
+        })
+    }
+}
+
 /// Records the events and stands in for ticketing and cost entries.
 struct Fakes {
+    back_orders: BackOrderDesk,
     sale_lines: SaleLineDesk,
+    orders: OrderBook,
     revised: Arc<Mutex<Vec<PurchaseOrderRevised>>>,
     allocated: Arc<Mutex<Vec<LandedCostAllocated>>>,
     adjusted: Arc<Mutex<Vec<LandedCostAdjusted>>>,
@@ -617,6 +917,7 @@ struct Fakes {
     with_parties: bool,
     received: Arc<Mutex<Vec<GoodsReceived>>>,
     dispatched: Arc<Mutex<Vec<SupplierReturnDispatched>>>,
+    cancelled_returns: Arc<Mutex<Vec<wl_kernel::lot_disposal::SupplierReturnCancelled>>>,
     credited: Arc<Mutex<Vec<SupplierReturnCredited>>>,
     tickets: TicketDesk,
     costs: CostDesk,
@@ -624,6 +925,7 @@ struct Fakes {
     holds: Arc<Mutex<Vec<StockHoldPlaced>>>,
     lots_held: Arc<Mutex<Vec<LotHeld>>>,
     negative: Arc<Mutex<Vec<StockNegative>>>,
+    pending_closed: Arc<Mutex<Vec<PendingIssueClosed>>>,
     closed: Arc<Mutex<Vec<StockHoldClosed>>>,
     released: Arc<Mutex<Vec<LotReleased>>>,
     discarded: Arc<Mutex<Vec<LotDiscarded>>>,
@@ -631,6 +933,16 @@ struct Fakes {
     traced: Arc<Mutex<Vec<RecallTraced>>>,
     recall_closed: Arc<Mutex<Vec<RecallClosed>>>,
     trace_parties: TraceParties,
+    item_guard: ItemGuard,
+    sent: Arc<Mutex<Vec<DispatchSent>>>,
+    delivered: Arc<Mutex<Vec<DispatchDelivered>>>,
+    lost: Arc<Mutex<Vec<DispatchLost>>>,
+    reopened: Arc<Mutex<Vec<DispatchReversed>>>,
+    discarded_dispatches: Arc<Mutex<Vec<DispatchDiscarded>>>,
+    returned: Arc<Mutex<Vec<DispatchReturned>>>,
+    quarantined: Arc<Mutex<Vec<DispatchGoodsQuarantined>>>,
+    credit: CreditDesk,
+    deliveries: DeliveryDesk,
 }
 
 impl Module for Fakes {
@@ -657,21 +969,35 @@ impl Module for Fakes {
         wl_kernel::inventory::provide_supplier_incidents(app, self.incidents.clone());
         record(app, &self.received);
         record(app, &self.dispatched);
+        record(app, &self.cancelled_returns);
         record(app, &self.credited);
         record(app, &self.holds);
         record(app, &self.lots_held);
         record(app, &self.negative);
+        record(app, &self.pending_closed);
         record(app, &self.closed);
         record(app, &self.released);
         record(app, &self.discarded);
         record(app, &self.recalls);
         record(app, &self.traced);
         record(app, &self.recall_closed);
+        record(app, &self.sent);
+        record(app, &self.delivered);
+        record(app, &self.lost);
+        record(app, &self.reopened);
+        record(app, &self.discarded_dispatches);
+        record(app, &self.returned);
+        record(app, &self.quarantined);
+        wl_kernel::sales::provide_credit_checker(app, self.credit.clone());
+        wl_kernel::delivery::provide_requester(app, self.deliveries.clone());
         wl_kernel::inventory::provide_trace_party_resolver(app, self.trace_parties.clone());
+        wl_kernel::inventory::provide_dispatch_guard(app, self.item_guard.clone());
         wl_kernel::tickets::provide_task_creator(app, self.tickets.clone());
         wl_kernel::invoicing::provide_cost_poster(app, self.costs.clone());
         wl_kernel::inventory::provide_sale_line_stock(app, self.sale_lines.clone());
+        wl_kernel::sales::provide_order_desk(app, self.orders.clone());
         wl_kernel::notify::provide_notifier(app, self.notices.clone());
+        wl_kernel::backorders::provide_back_orders(app, self.back_orders.clone());
     }
 }
 
@@ -683,6 +1009,8 @@ pub struct Booted {
     pub received: Recorded<GoodsReceived>,
     /// `SupplierReturnDispatched`.
     pub dispatched: Recorded<SupplierReturnDispatched>,
+    /// `SupplierReturnCancelled`.
+    pub cancelled_returns: Recorded<wl_kernel::lot_disposal::SupplierReturnCancelled>,
     /// Every `PurchaseOrderRevised`.
     pub revised: Recorded<PurchaseOrderRevised>,
     /// Every `LandedCostAllocated`.
@@ -711,6 +1039,8 @@ pub struct Booted {
     pub costs: CostDesk,
     /// What the sale lines are made of (the vertical's recipe).
     pub sale_lines: SaleLineDesk,
+    /// The sales orders (the order desk of wl-sales).
+    pub orders: OrderBook,
     /// The notifications asked for.
     pub notices: Recording,
     /// Every `StockHoldPlaced`.
@@ -719,6 +1049,8 @@ pub struct Booted {
     pub lots_held: Recorded<LotHeld>,
     /// Every `StockNegative`.
     pub negative: Recorded<StockNegative>,
+    /// Every `PendingIssueClosed`.
+    pub pending_closed: Recorded<PendingIssueClosed>,
     /// Every `StockHoldClosed`.
     pub closed: Recorded<StockHoldClosed>,
     /// Every `LotReleased`.
@@ -733,6 +1065,28 @@ pub struct Booted {
     pub recall_closed: Recorded<RecallClosed>,
     /// The parties behind the subjects of a trace.
     pub trace_parties: TraceParties,
+    /// The item flags of a vertical's `DispatchGuard`.
+    pub item_guard: ItemGuard,
+    /// Every `DispatchSent`.
+    pub sent: Recorded<DispatchSent>,
+    /// Every `DispatchDelivered`.
+    pub delivered: Recorded<DispatchDelivered>,
+    /// Every `DispatchLost`.
+    pub lost: Recorded<DispatchLost>,
+    /// Every `DispatchReversed`.
+    pub reopened: Recorded<DispatchReversed>,
+    /// Every `DispatchDiscarded`.
+    pub discarded_dispatches: Recorded<DispatchDiscarded>,
+    /// Every `DispatchReturned`.
+    pub returned: Recorded<DispatchReturned>,
+    /// Every `DispatchGoodsQuarantined`.
+    pub quarantined: Recorded<DispatchGoodsQuarantined>,
+    /// The credit control of the orders on account.
+    pub credit: CreditDesk,
+    /// The deliveries asked of wl-delivery.
+    pub deliveries: DeliveryDesk,
+    /// The back-ordered demand the sales module would report.
+    pub back_orders: BackOrderDesk,
     /// The days the clock was moved forward.
     clock_days: std::sync::atomic::AtomicI64,
     /// Keeps the views directory alive.
@@ -842,6 +1196,21 @@ impl Booted {
     /// A user who decides the lines of a hold (`lots.release`) everywhere.
     pub async fn releaser(&self, name: &str) -> User {
         self.user_with(name, "lot_releaser").await
+    }
+
+    /// A user who keeps BOMs (`boms.view`, `boms.manage`) everywhere.
+    pub async fn bom_keeper(&self, name: &str) -> User {
+        self.user_with(name, "bom_keeper").await
+    }
+
+    /// A user who releases BOMs (`boms.release`) everywhere.
+    pub async fn bom_releaser(&self, name: &str) -> User {
+        self.user_with(name, "bom_releaser").await
+    }
+
+    /// A user who only sees BOMs (`boms.view`).
+    pub async fn bom_viewer(&self, name: &str) -> User {
+        self.user_with(name, "bom_viewer").await
     }
 
     /// A user who opens recalls (`recalls.manage`) everywhere.
@@ -1604,6 +1973,31 @@ impl Booted {
         moved.save(self.db()).await.unwrap();
     }
 
+    /// `quantity_milli` of `item` taken out of `location` (and `lot`) by an
+    /// `issue` movement of an earlier order.
+    pub async fn stock_out(
+        &self,
+        item: &Item,
+        location: &Location,
+        lot: Option<&Lot>,
+        quantity_milli: i64,
+    ) {
+        let source = Subject::new("inventory.dispatch", 900);
+        let mut moved = StockMovement::leaving(
+            wl_inventory::movement::MovementType::Issue,
+            item.id,
+            lot.map(|l| l.id),
+            location.id,
+            quantity_milli,
+            0,
+            0,
+            &source,
+            None,
+            None,
+        );
+        moved.save(self.db()).await.unwrap();
+    }
+
     /// A lot `number` of `item` in `status`.
     pub async fn lot(&self, item: &Item, number: &str, status: LotStatus) -> Lot {
         let mut lot = Lot {
@@ -1702,6 +2096,7 @@ pub async fn boot_with_parties() -> Booted {
 async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: bool) -> Booted {
     let received = Arc::new(Mutex::new(Vec::new()));
     let dispatched = Arc::new(Mutex::new(Vec::new()));
+    let cancelled_returns = Arc::new(Mutex::new(Vec::new()));
     let revised = Arc::new(Mutex::new(Vec::new()));
     let allocated = Arc::new(Mutex::new(Vec::new()));
     let adjusted = Arc::new(Mutex::new(Vec::new()));
@@ -1716,10 +2111,12 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     let tickets = TicketDesk::default();
     let costs = CostDesk::default();
     let sale_lines = SaleLineDesk::default();
+    let orders = OrderBook::default();
     let notices = Recording::default();
     let holds = Arc::new(Mutex::new(Vec::new()));
     let lots_held = Arc::new(Mutex::new(Vec::new()));
     let negative = Arc::new(Mutex::new(Vec::new()));
+    let pending_closed = Arc::new(Mutex::new(Vec::new()));
     let closed = Arc::new(Mutex::new(Vec::new()));
     let released = Arc::new(Mutex::new(Vec::new()));
     let discarded = Arc::new(Mutex::new(Vec::new()));
@@ -1727,6 +2124,16 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     let traced = Arc::new(Mutex::new(Vec::new()));
     let recall_closed = Arc::new(Mutex::new(Vec::new()));
     let trace_parties = TraceParties::default();
+    let item_guard = ItemGuard::default();
+    let sent = Arc::new(Mutex::new(Vec::new()));
+    let delivered = Arc::new(Mutex::new(Vec::new()));
+    let lost = Arc::new(Mutex::new(Vec::new()));
+    let reopened = Arc::new(Mutex::new(Vec::new()));
+    let discarded_dispatches = Arc::new(Mutex::new(Vec::new()));
+    let returned = Arc::new(Mutex::new(Vec::new()));
+    let quarantined = Arc::new(Mutex::new(Vec::new()));
+    let credit = CreditDesk::default();
+    let deliveries = DeliveryDesk::default();
     // What wl-parties registers: an exception to a block is decided by the
     // finance manager (screening off). The defaults are process-wide and
     // `wl:install` stores the ones registered by then, so this comes before
@@ -1753,7 +2160,9 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     } else {
         app
     };
+    let back_orders = BackOrderDesk::default();
     let app = app.module(Fakes {
+        back_orders: back_orders.clone(),
         with_parties,
         revised: revised.clone(),
         allocated: allocated.clone(),
@@ -1767,14 +2176,17 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         bills: (!with_invoicing).then(|| bills.clone()),
         received: received.clone(),
         dispatched: dispatched.clone(),
+        cancelled_returns: cancelled_returns.clone(),
         credited: credited.clone(),
         tickets: tickets.clone(),
         costs: costs.clone(),
         sale_lines: sale_lines.clone(),
+        orders: orders.clone(),
         notices: notices.clone(),
         holds: holds.clone(),
         lots_held: lots_held.clone(),
         negative: negative.clone(),
+        pending_closed: pending_closed.clone(),
         closed: closed.clone(),
         released: released.clone(),
         discarded: discarded.clone(),
@@ -1782,6 +2194,16 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         traced: traced.clone(),
         recall_closed: recall_closed.clone(),
         trace_parties: trace_parties.clone(),
+        item_guard: item_guard.clone(),
+        sent: sent.clone(),
+        delivered: delivered.clone(),
+        lost: lost.clone(),
+        reopened: reopened.clone(),
+        discarded_dispatches: discarded_dispatches.clone(),
+        returned: returned.clone(),
+        quarantined: quarantined.clone(),
+        credit: credit.clone(),
+        deliveries: deliveries.clone(),
     });
     let client = if with_invoicing {
         CLIENT_WITH_INVOICING
@@ -1884,10 +2306,24 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
     permissions::define_role(app.db(), "recall_viewer", &[perm::RECALLS_VIEW])
         .await
         .unwrap();
+    permissions::define_role(app.db(), "bom_viewer", &[perm::BOMS_VIEW])
+        .await
+        .unwrap();
+    permissions::define_role(
+        app.db(),
+        "bom_keeper",
+        &[perm::BOMS_VIEW, perm::BOMS_MANAGE],
+    )
+    .await
+    .unwrap();
+    permissions::define_role(app.db(), "bom_releaser", &[perm::BOMS_RELEASE])
+        .await
+        .unwrap();
     Booted {
         app,
         received: Recorded(received),
         dispatched: Recorded(dispatched),
+        cancelled_returns: Recorded(cancelled_returns),
         revised: Recorded(revised),
         allocated: Recorded(allocated),
         adjusted: Recorded(adjusted),
@@ -1902,10 +2338,12 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         tickets,
         costs,
         sale_lines,
+        orders,
         notices,
         holds: Recorded(holds),
         lots_held: Recorded(lots_held),
         negative: Recorded(negative),
+        pending_closed: Recorded(pending_closed),
         closed: Recorded(closed),
         released: Recorded(released),
         discarded: Recorded(discarded),
@@ -1913,6 +2351,17 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: b
         traced: Recorded(traced),
         recall_closed: Recorded(recall_closed),
         trace_parties,
+        item_guard,
+        sent: Recorded(sent),
+        delivered: Recorded(delivered),
+        lost: Recorded(lost),
+        reopened: Recorded(reopened),
+        discarded_dispatches: Recorded(discarded_dispatches),
+        returned: Recorded(returned),
+        quarantined: Recorded(quarantined),
+        credit,
+        deliveries,
+        back_orders,
         clock_days: std::sync::atomic::AtomicI64::new(0),
         _views: views,
     }
@@ -1927,4 +2376,362 @@ fn debited(lines: &[(i64, i64)]) -> Vec<DebitedLine> {
             quantity_milli: *quantity_milli,
         })
         .collect()
+}
+
+/// The sales order the dispatches of the tests fulfil.
+pub const ORDER: i64 = 41;
+
+/// Dispatches: fixtures, the actions as a user through the routes, and the
+/// events of wl-delivery as the delivery module would emit them.
+impl Booted {
+    /// A draft dispatch of `lines` from `location` for sales order `order`.
+    pub async fn draft_dispatch(
+        &self,
+        location: &Location,
+        order: i64,
+        lines: Vec<wl_inventory::NewDispatchLine>,
+    ) -> wl_inventory::Dispatch {
+        wl_inventory::create_dispatch(
+            self.db(),
+            None,
+            wl_inventory::NewDispatch {
+                source: Subject::new("sales.sales_order", order),
+                recipient: Some(PartyId(21)),
+                recipient_name: "Al Noor Trading".to_owned(),
+                address: "Warehouse 4, Al Quoz".to_owned(),
+                location_id: location.id,
+                lines,
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// `POST /dispatches/{id}/{action}` as `by` with `form`.
+    pub async fn dispatch_action(
+        &self,
+        by: &User,
+        dispatch: &wl_inventory::Dispatch,
+        action: &str,
+        form: &[(&str, &str)],
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/dispatches/{}/{action}", dispatch.id), form)
+            .await
+    }
+
+    /// The dispatch as stored now.
+    pub async fn dispatch_now(&self, dispatch: &wl_inventory::Dispatch) -> wl_inventory::Dispatch {
+        wl_inventory::Dispatch::find_or_404(self.db(), dispatch.id)
+            .await
+            .unwrap()
+    }
+
+    /// The lines of the dispatch as stored now.
+    pub async fn dispatch_lines(
+        &self,
+        dispatch: &wl_inventory::Dispatch,
+    ) -> Vec<wl_inventory::DispatchLine> {
+        wl_inventory::dispatch::lines_of(self.db(), dispatch.id)
+            .await
+            .unwrap()
+    }
+
+    /// The movements the dispatch caused, oldest first.
+    pub async fn dispatch_movements(
+        &self,
+        dispatch: &wl_inventory::Dispatch,
+    ) -> Vec<StockMovement> {
+        wl_inventory::movement::of_source(self.db(), &dispatch.subject())
+            .await
+            .unwrap()
+    }
+
+    /// A picked dispatch of `quantity_milli` of `item` (of `lot`) from
+    /// `location`, for sales order `order`, picked as `by`.
+    pub async fn picked_dispatch(
+        &self,
+        by: &User,
+        location: &Location,
+        order: i64,
+        lines: Vec<wl_inventory::NewDispatchLine>,
+    ) -> wl_inventory::Dispatch {
+        let dispatch = self.draft_dispatch(location, order, lines).await;
+        self.dispatch_action(by, &dispatch, "pick", &[])
+            .await
+            .assert_ok();
+        let picked = self.dispatch_now(&dispatch).await;
+        assert_eq!(picked.status, wl_inventory::DispatchStatus::Picked);
+        picked
+    }
+
+    /// A dispatch that left with a courier, as `by`.
+    pub async fn sent_dispatch(
+        &self,
+        by: &User,
+        location: &Location,
+        order: i64,
+        lines: Vec<wl_inventory::NewDispatchLine>,
+    ) -> wl_inventory::Dispatch {
+        let picked = self.picked_dispatch(by, location, order, lines).await;
+        self.dispatch_action(
+            by,
+            &picked,
+            "dispatch",
+            &[("handover", "courier"), ("tracking_number", "TRK-1")],
+        )
+        .await
+        .assert_ok();
+        let sent = self.dispatch_now(&picked).await;
+        assert_eq!(sent.status, wl_inventory::DispatchStatus::Dispatched);
+        sent
+    }
+
+    /// `DeliveryDelivered` for the delivery of `dispatch`: for each line the
+    /// delivered and the refused quantity and the refusal reason.
+    pub async fn emit_delivered(
+        &self,
+        dispatch: &wl_inventory::Dispatch,
+        proof: i64,
+        lines: &[(&wl_inventory::DispatchLine, i64, i64, Option<&str>)],
+    ) {
+        self.state()
+            .emit(wl_kernel::delivery::DeliveryDelivered {
+                delivery: DeliveryId(1),
+                source: dispatch.subject(),
+                attempt: 1,
+                proof,
+                lines: lines
+                    .iter()
+                    .map(
+                        |(line, delivered, refused, reason)| wl_kernel::delivery::DeliveredLine {
+                            line: Some(line.subject()),
+                            description: "Pump".to_owned(),
+                            quantity_milli: line.quantity_milli,
+                            delivered_milli: *delivered,
+                            refused_milli: *refused,
+                            refusal_reason: reason.map(str::to_owned),
+                        },
+                    )
+                    .collect(),
+                cash_expected: 0,
+                cash_collected: 0,
+                cod_difference: 0,
+                cod_difference_reason: None,
+                absorbed_by: None,
+                cheque: None,
+            })
+            .await
+            .unwrap();
+    }
+
+    /// `DeliveryRefusedReceived` at the close of a run: for each line what
+    /// came back and what is missing.
+    pub async fn emit_refused_received(
+        &self,
+        dispatch: &wl_inventory::Dispatch,
+        lines: &[(&wl_inventory::DispatchLine, i64, i64)],
+    ) {
+        self.state()
+            .emit(wl_kernel::delivery::DeliveryRefusedReceived {
+                delivery: DeliveryId(1),
+                source: dispatch.subject(),
+                run: wl_kernel::delivery::RunId(1),
+                lines: lines
+                    .iter()
+                    .map(
+                        |(line, received, missing)| wl_kernel::delivery::RefusedLineReceived {
+                            line: Some(line.subject()),
+                            description: "Pump".to_owned(),
+                            refused_milli: received + missing,
+                            received_milli: *received,
+                            missing_milli: *missing,
+                            refusal_reason: line.refusal_reason.clone(),
+                        },
+                    )
+                    .collect(),
+            })
+            .await
+            .unwrap();
+    }
+
+    /// `DeliveryLost` for the delivery of `dispatch`.
+    pub async fn emit_lost(&self, dispatch: &wl_inventory::Dispatch, under_review: bool) {
+        self.state()
+            .emit(wl_kernel::delivery::DeliveryLost {
+                delivery: DeliveryId(1),
+                source: dispatch.subject(),
+                was_under_review: under_review,
+                ticket: None,
+                liability: "none".to_owned(),
+                run: None,
+                claim_ticket: None,
+                lines: Vec::new(),
+            })
+            .await
+            .unwrap();
+    }
+
+    /// `DeliveryDiscarded` for the delivery of `dispatch`.
+    pub async fn emit_discarded(
+        &self,
+        dispatch: &wl_inventory::Dispatch,
+        reason: &str,
+        photo: Option<&str>,
+    ) {
+        self.state()
+            .emit(wl_kernel::delivery::DeliveryDiscarded {
+                delivery: DeliveryId(1),
+                source: dispatch.subject(),
+                reason: reason.to_owned(),
+                photo: photo.map(str::to_owned),
+                wastage: None,
+                value: 0,
+                lines: Vec::new(),
+            })
+            .await
+            .unwrap();
+    }
+
+    /// `DeliveryReturned` for the delivery of `dispatch`.
+    pub async fn emit_returned(&self, dispatch: &wl_inventory::Dispatch, reason: &str) {
+        self.state()
+            .emit(wl_kernel::delivery::DeliveryReturned {
+                delivery: DeliveryId(1),
+                source: dispatch.subject(),
+                reason: reason.to_owned(),
+            })
+            .await
+            .unwrap();
+    }
+
+    /// `DeliveryFound` for the delivery of `dispatch`.
+    pub async fn emit_found(&self, dispatch: &wl_inventory::Dispatch) {
+        self.state()
+            .emit(wl_kernel::delivery::DeliveryFound {
+                delivery: DeliveryId(1),
+                source: dispatch.subject(),
+                depot: "Jebel Ali depot".to_owned(),
+                claim_ticket: None,
+                lines: Vec::new(),
+            })
+            .await
+            .unwrap();
+    }
+
+    /// `DeliveryReversed` for the delivery of `dispatch`.
+    pub async fn emit_reversed(&self, dispatch: &wl_inventory::Dispatch) {
+        self.state()
+            .emit(wl_kernel::delivery::DeliveryReversed {
+                delivery: DeliveryId(1),
+                source: dispatch.subject(),
+                reason: "Not delivered".to_owned(),
+                liability: "none".to_owned(),
+                proof: Some(1),
+                cash_treatment: None,
+                approver: None,
+                target_state: None,
+                driver: None,
+                cash_amount: 0,
+                lines: Vec::new(),
+            })
+            .await
+            .unwrap();
+    }
+}
+
+impl Booted {
+    /// An item `code` in `pcs` costing `cost` fils a unit, tracked by lot
+    /// when `tracked`.
+    pub async fn priced_item(&self, code: &str, tracked: bool, cost: i64) -> Item {
+        let mut item = Item::new(code, code, "pcs");
+        if tracked {
+            item = item.lot_tracked();
+        }
+        item.average_cost = cost;
+        item.save(self.db()).await.unwrap();
+        item
+    }
+
+    /// A released lot `number` of `item` that expires in `days` days.
+    pub async fn lot_expiring(&self, item: &Item, number: &str, days: i64) -> Lot {
+        let lot = self.lot(item, number, LotStatus::Released).await;
+        let day = wl_kernel::documents::today() + renox::chrono::Duration::days(days);
+        Lot::query()
+            .where_(Lot::ID.eq(lot.id))
+            .update(self.db(), &[("expiry_date", &Some(day))])
+            .await
+            .unwrap();
+        self.lot_now(&lot).await
+    }
+
+    /// Puts the whole lot on hold (`stock.hold`), as the quality manager.
+    pub async fn hold_lot(&self, lot: &Lot) {
+        let holder = self.holder("Hana").await;
+        let id = lot.id.to_string();
+        self.hold_as(
+            &holder,
+            &[
+                ("reason", "quality"),
+                ("reference", "ticketing.ticket:9"),
+                ("lots", id.as_str()),
+            ],
+        )
+        .await
+        .assert_ok();
+        assert_eq!(self.lot_now(lot).await.status, LotStatus::OnHold);
+    }
+}
+
+impl Booted {
+    /// The item of a dispatch line as stored now.
+    pub async fn item_now_of(&self, line: &wl_inventory::DispatchLine) -> Item {
+        Item::find_or_404(self.db(), line.item_id).await.unwrap()
+    }
+}
+
+impl Booted {
+    /// `quantity_milli` of `item` (not tracked by lot) received at `location`
+    /// from `supplier` on `day`: a posted goods receipt that arrived that day
+    /// and its `receive` movement.
+    pub async fn received_on(
+        &self,
+        item: &Item,
+        location: &Location,
+        supplier: PartyId,
+        quantity_milli: i64,
+        day: renox::chrono::NaiveDate,
+    ) -> GoodsReceipt {
+        let at = day.and_hms_opt(8, 0, 0).unwrap().and_utc();
+        let mut receipt = GoodsReceipt {
+            supplier_party_id: supplier.0,
+            location_id: location.id,
+            arrived_at: Some(at),
+            posted_at: Some(at),
+            status: wl_inventory::GoodsReceiptStatus::Posted,
+            ..GoodsReceipt::default()
+        };
+        let mut tx = self.db().begin().await.unwrap();
+        receipt
+            .insert_in_state(&mut tx, wl_inventory::GoodsReceiptStatus::Posted, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        let source = Subject::new("inventory.goods_receipt", receipt.id);
+        let mut moved = StockMovement::receive(
+            item.id,
+            None,
+            location.id,
+            quantity_milli,
+            1_000,
+            value_of(quantity_milli, 1_000),
+            &source,
+            None,
+        );
+        moved.moved_at = at;
+        moved.save(self.db()).await.unwrap();
+        receipt
+    }
 }

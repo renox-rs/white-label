@@ -110,6 +110,9 @@ issue covers only Renox's own notification and mail sends.
 | [R23](https://github.com/renox-rs/renox/issues/50) | **Import beyond CSV**: Excel files, a dry run that validates without writing, a rollback window after commit (✔ Renox import today: CSV, row validation, savepoints, `all_or_nothing`, templates) | Client data migration ([wl-kernel](modules/wl-kernel.md) `PLT.IMP.01`) **Delivered:** `Import::xlsx`, `from_upload`, `.dry_run()`, `.undoable(window)`, `rnx import:prune` (#50). |
 | [R24](https://github.com/renox-rs/renox/issues/51) | **Enterprise sign-in for renox-oauth**: a Microsoft Entra ID provider; restricting Google sign-in to the client's Workspace domain | Staff single sign-on (`PLT.SSO.01`, Later) **Delivered:** `Microsoft` provider, `Google::hosted_domain`, `OAuth::allow_domains`, `OAuthRefused` event (#51). |
 | [R25](https://github.com/renox-rs/renox/issues/52) | **Offline queue for field work** (Later): actions recorded without a connection (attendance, proof of delivery, POS sales, line output) are stored on the device and sent in order when online, with conflict handling | Field PWA in 02, 03, 06, 07, 08; MVP is online only with paper fallback ([UX.md](UX.md)) **Partly delivered:** `Routes::offline()`, `Offline` extractor (`recorded_at`, `skew_exceeded`), `<rx-form offline>`, `Idempotency-Key` replay in order (#52). **No merge of conflicting edits**: that rule stays in each `wl-*` module. |
+| [R26](https://github.com/renox-rs/renox/issues/82) | **OAuth 2.1 authorization server**: the app as a provider other programs sign in to (authorization code + PKCE, client registration, consent page, scopes as token abilities, connected apps, revoke) | AI assistants connecting to a client's app ([decision 0006](decisions/0006-search-and-ai-agents.md)); later mobile apps and integrations |
+| [R27](https://github.com/renox-rs/renox/issues/83) | **`renox-mcp`**: the app's tools and resources served over the Model Context Protocol at `/mcp`, signed in through R26, audited with the client's name | `search`, `fetch`, `related`, reports and inbox for assistants (BL-AGT-07, BL-AGT-09) |
+| [R28](https://github.com/renox-rs/renox/issues/84) | **State machine transitions as tools**: opt-in transitions offered to assistants with a preview step and a confirm step, through the same guards and approvals | Agent actions (BL-AGT-08, BL-AGT-10) |
 
 ### 4a-1. What 1.2.0 did not cover
 
@@ -228,11 +231,12 @@ white-label/
 │   └── ...
 ├── apps/
 │   ├── property/              # library crate: the property domain as a Module
-│   ├── construction/, logistics/, accounting/, clinics/, manpower/, edtech/
-│   └── ...                    # one per vertical (§9); F6 to F8 are not built yet
+│   ├── construction/, logistics/, accounting/, clinics/, manpower/, edtech/, auto/
+│   └── ...                    # one per vertical (§9); F6 and F7 are not built yet
 ├── host/                      # binary: reads client.toml, assembles the App from enabled modules
 ├── operator/                  # planned (rollout track): our control plane (wl-operator)
 ├── clients/
+│   ├── demo-auto/             # the F8 demo client: a parts trader with a workshop
 │   ├── demo-edtech/           # the F10 demo client: a training centre
 │   └── demo-properties/       # the F1 demo client
 │       ├── client.toml        # app, modules, branding, locales, TRN
@@ -314,7 +318,7 @@ extension gets its own binary: `host` + the `ext/` crate linked at build time.
 | **F5 — Clinics** | `wl-scheduling` (resources, bookings, reminders) + `apps/clinics` | Appointment to invoice, with licence expiry blocks |
 | **F6 — F&B** | Recipes and lots in `wl-inventory`, orders and POS in `wl-sales`, aggregator integrations + `apps/fnb` | Order to dispatch to food-safety log. Validate partner API access first |
 | **F7 — Manufacturing** | BOMs, lots and quality in `wl-inventory` + `apps/manufacturing` | Work order to finished stock with landed cost |
-| **F8 — Auto** | Orders and POS in `wl-sales` (if not done in F6), job cards + `apps/auto` | Job card to invoice, insurance repair |
+| **F8 — Auto** (**built**: `apps/auto`, `clients/demo-auto`, the settings of `host/src/app/auto_*.rs`; the demo command `auto:demo` is future work and not built) | Orders and POS in `wl-sales` (if not done in F6), job cards + `apps/auto`; back-orders in `wl-sales` and reservations in `wl-inventory` | Job card to invoice, insurance repair |
 | **F9 — Manpower** | The rest of `wl-hr` (visas, leave, payroll, WPS, final settlement) + `apps/manpower` | Deployment to client timesheet to WPS payroll |
 | **F10 — EdTech** (**built**: `apps/edtech`, `clients/demo-edtech`, the settings of `host/src/app/edtech_*.rs`; the demo command `edtech:demo` in `host/src/app/edtech_demo`) | Batches, enrolments, tutors, certificates on `wl-scheduling` + `apps/edtech` | Enrolment to attendance to certificate |
 | **Rollout track** (after F1, before the second paying client) | `deploy/rollout`, tested backup/restore, R8 `rnx new --from`, client onboarding in < 1 day | A new client goes live from `client.toml` alone |

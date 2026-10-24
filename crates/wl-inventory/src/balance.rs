@@ -3,8 +3,9 @@
 //! lot-tracked item):
 //!
 //! - *on hand*: what arrived less what left;
-//! - *reserved*: set aside for a draft Return to supplier (the other
-//!   reservations come with the issues that build them);
+//! - *reserved*: set aside for a draft Return to supplier, for the lines of
+//!   a `picked` dispatch at the location and for the sales order lines that
+//!   hold a reservation there ([`crate::reservation`]);
 //! - *on hold*: blocked by an open stock hold: the undecided lines of an open
 //!   hold on whole lots follow the lot wherever it is, those of an open hold
 //!   on a location block that balance only (a line decided `release`,
@@ -135,8 +136,9 @@ pub async fn lot_locations<'c>(db: impl Executor<'c>, lot_id: i64) -> Result<Vec
     Ok(places.into_iter().filter(|(_, qty)| *qty > 0).collect())
 }
 
-/// What draft returns to supplier and picked dispatches set aside of `item_id` at `location_id`
-/// (of `lot_id` when given), in thousandths.
+/// What draft returns to supplier, picked dispatches and the reservations
+/// for sales order lines ([`crate::reservation`]) set aside of
+/// `item_id` at `location_id` (of `lot_id` when given), in thousandths.
 ///
 /// # Errors
 ///
@@ -166,25 +168,11 @@ pub async fn reserved_at<'c>(
             .map(|line| line.quantity_milli)
             .sum::<i64>();
     }
-    // A picked dispatch keeps its goods reserved until it is dispatched or
-    // cancelled (wl-inventory §4 *Dispatch* `pick`).
-    let picked = crate::dispatch::Dispatch::query()
-        .where_(crate::dispatch::Dispatch::STATUS.eq(crate::dispatch::DispatchStatus::Picked))
-        .where_(crate::dispatch::Dispatch::LOCATION_ID.eq(location_id))
-        .get(conn.reborrow())
-        .await?;
-    for dispatch in picked {
-        let lines = crate::dispatch::DispatchLine::query()
-            .where_(crate::dispatch::DispatchLine::DISPATCH_ID.eq(dispatch.id))
-            .where_(crate::dispatch::DispatchLine::ITEM_ID.eq(item_id))
-            .get(conn.reborrow())
+    reserved +=
+        crate::dispatch::reserved_picked(conn.reborrow(), item_id, location_id, lot_id).await?;
+    reserved +=
+        crate::reservation::reserved_in(conn.reborrow(), item_id, location_id, lot_id, None)
             .await?;
-        reserved += lines
-            .iter()
-            .filter(|line| lot_id.is_none() || line.lot_id == lot_id)
-            .map(|line| line.quantity_milli)
-            .sum::<i64>();
-    }
     Ok(reserved)
 }
 
@@ -224,6 +212,15 @@ pub async fn held_at<'c>(
         match hold.scope_kind {
             HoldScope::Lots => {
                 whole_lots.extend(lines.iter().filter_map(|line| line.lot_id));
+                // A recall of an item not tracked by lot holds its whole
+                // quantity at each location, in lines that name no lot.
+                if lot_id.is_none() {
+                    at_location += lines
+                        .iter()
+                        .filter(|line| line.lot_id.is_none() && line.location_id == location_id)
+                        .map(|line| line.quantity_milli)
+                        .sum::<i64>();
+                }
             }
             HoldScope::Location => {
                 at_location += lines

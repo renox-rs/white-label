@@ -81,6 +81,8 @@ async fn att09_a_client_dispute_adjustment_is_opened_by_a_user_and_defaults_to_b
             lines: Vec::new(),
             ticket: None,
             raised_by: DisputeBy::System,
+            reason: String::new(),
+            kind: None,
         })
         .await
         .unwrap();

@@ -28,7 +28,7 @@ use renox::serde_json::json;
 use serde::Serialize;
 use wl_kernel::Subject;
 use wl_kernel::approvals::{self, ApprovalCard};
-use wl_kernel::documents::{dubai_text, subject_label, today};
+use wl_kernel::documents::{subject_label, today};
 
 use crate::balance;
 
@@ -38,7 +38,7 @@ use crate::lot::{Lot, LotStatus};
 use crate::movement::{MovementType, StockMovement};
 use crate::pending_issue::{self, PendingIssue};
 use crate::permissions;
-use crate::screens::quantity_text;
+use crate::screens::{dubai_text, quantity_text};
 use crate::stock_hold::{HoldLineStatus, HoldStatus, REASONS, StockHold, StockHoldLine, lines_of};
 use crate::stock_ui_texts::STOCK_TEXTS;
 use crate::texts::t;
@@ -289,6 +289,7 @@ pub(crate) fn items_grid(lang: &Lang) -> Grid {
         .column(Column::text("name_ar", &tr(lang, "stock.item_ar")).hidden().searchable())
         .column(quantity("on_hand_milli", &tr(lang, "stock.on_hand")).mobile())
         .column(quantity("held_milli", &tr(lang, "stock.held")).hidden())
+        .column(quantity("reserved_milli", &tr(lang, "stock.reserved")).hidden())
         .column(quantity("available_milli", &tr(lang, "stock.available")).mobile())
         .column(
             Column::quantity("reorder_point_milli", &tr(lang, "stock.reorder"))
@@ -344,6 +345,7 @@ pub(crate) fn lots_grid(lang: &Lang) -> Grid {
         .column(Column::custom("expiry", &tr(lang, "stock.expiry")).mobile())
         .column(quantity("here_milli", &tr(lang, "stock.here")).mobile())
         .column(quantity("held_milli", &tr(lang, "stock.held")).hidden())
+        .column(quantity("reserved_milli", &tr(lang, "stock.reserved")).hidden())
         .column(
             Column::select(
                 "status",
@@ -436,21 +438,30 @@ async fn stock(
                     if found.on_hand_milli <= 0 {
                         continue;
                     }
+                    let reserved = crate::reservation::reserved_in(
+                        &state.db,
+                        item.id,
+                        chosen.id,
+                        Some(lot.id),
+                        None,
+                    )
+                    .await?;
                     ids.push(lot.id);
-                    figures.insert(lot.id, (found, item.clone()));
+                    figures.insert(lot.id, (found, item.clone(), reserved));
                 }
             }
         }
         let grid = lots_grid(&lang);
         let query = Lot::query().where_(Lot::ID.is_in(ids_or_none(ids)));
         let page = grid.page(query, &request).await?.extend(|lot| {
-            let Some((found, item)) = figures.get(&lot.id) else {
+            let Some((found, item, reserved)) = figures.get(&lot.id) else {
                 return json!({});
             };
             let (expiry, expiry_kind) = expiry_of(lot, &lang);
             json!({
                 "here_milli": found.on_hand_milli,
                 "held_milli": found.held_milli,
+                "reserved_milli": reserved,
                 "unit": item.base_unit,
                 "item": item_name(item, &lang),
                 "expiry": expiry,
@@ -471,20 +482,24 @@ async fn stock(
             if low_only && !low {
                 continue;
             }
+            let reserved =
+                crate::reservation::reserved_in(&state.db, item.id, chosen.id, None, None)
+                    .await?;
             ids.push(item.id);
-            figures.insert(item.id, (found, low));
+            figures.insert(item.id, (found, low, reserved));
         }
     }
     let grid = items_grid(&lang);
     let query = Item::query().where_(Item::ID.is_in(ids_or_none(ids)));
     let page = grid.page(query, &request).await?.extend(|item| {
-        let Some((found, low)) = figures.get(&item.id) else {
+        let Some((found, low, reserved)) = figures.get(&item.id) else {
             return json!({});
         };
         json!({
             "name_en": item_name(item, &lang),
             "on_hand_milli": found.on_hand_milli,
             "held_milli": found.held_milli,
+            "reserved_milli": reserved,
             "available_milli": found.available_milli(),
             "low": low,
         })
@@ -497,6 +512,7 @@ async fn stock(
 pub struct WhereRow {
     location: String,
     quantity: String,
+    reserved: String,
 }
 
 /// One movement of a lot.
@@ -585,6 +601,17 @@ async fn lot(
             places.push(WhereRow {
                 location: location_name(&location),
                 quantity: amount(quantity, &item.base_unit),
+                reserved: amount(
+                    crate::reservation::reserved_in(
+                        &state.db,
+                        item.id,
+                        location.id,
+                        Some(lot.id),
+                        None,
+                    )
+                    .await?,
+                    &item.base_unit,
+                ),
             });
         }
     }
@@ -1173,11 +1200,20 @@ pub(crate) fn register_labels() {
     use wl_kernel::documents::register_subject_label as register;
     use wl_kernel::inventory::{
         GOODS_RECEIPT_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE,
-        PENDING_ISSUE_SUBJECT_TYPE, PURCHASE_ORDER_SUBJECT_TYPE, STOCK_HOLD_LINE_SUBJECT_TYPE,
-        STOCK_HOLD_SUBJECT_TYPE, TRANSFER_SUBJECT_TYPE,
+        PENDING_ISSUE_SUBJECT_TYPE, PURCHASE_ORDER_SUBJECT_TYPE, RECALL_SUBJECT_TYPE,
+        STOCK_HOLD_LINE_SUBJECT_TYPE, STOCK_HOLD_SUBJECT_TYPE, TRANSFER_SUBJECT_TYPE,
     };
     // The number alone: a page that names a lot (a recall's trace) never
     // names the product.
+    // The code and the name: a page that names an item (a certificate that is
+    // missing for it) says which.
+    register(wl_kernel::inventory::ITEM_SUBJECT_TYPE, |db, id| {
+        Box::pin(async move {
+            Ok(Item::find(db, id)
+                .await?
+                .map(|item| format!("{} - {}", item.code, item.name_en)))
+        })
+    });
     register(LOT_SUBJECT_TYPE, |db, id| {
         Box::pin(async move { Ok(Lot::find(db, id).await?.map(|lot| lot.number)) })
     });
@@ -1186,6 +1222,13 @@ pub(crate) fn register_labels() {
     });
     register(STOCK_HOLD_SUBJECT_TYPE, |db, id| {
         Box::pin(async move { Ok(StockHold::find(db, id).await?.and_then(|row| row.number)) })
+    });
+    register(RECALL_SUBJECT_TYPE, |db, id| {
+        Box::pin(async move {
+            Ok(crate::recall::Recall::find(db, id)
+                .await?
+                .and_then(|row| row.number))
+        })
     });
     register(STOCK_HOLD_LINE_SUBJECT_TYPE, |db, id| {
         Box::pin(async move {

@@ -94,3 +94,46 @@ async fn the_choices_are_first_expiry_first_and_a_picked_lot_goes_first() {
         1
     );
 }
+
+/// BL-MFG-09: a caller that holds the id of the item (a work order) reads the
+/// same choices as one that holds its code; an unknown item has none, and an
+/// item that is not lot-tracked has no lots.
+#[renox::test]
+async fn the_choices_can_be_read_by_the_items_id() {
+    let t = boot().await;
+    let store = t.location("STORE-1", None).await;
+    let item = t.tracked_item("FILLER").await;
+    let carton = t.item("CARTON").await;
+    let lot = t.lot(&item, "L1", LotStatus::Released).await;
+    t.stock_in(&item, &store, Some(&lot), 1_000, 500).await;
+    t.stock_in(&carton, &store, None, 5_000, 100).await;
+    let stock = stock_service(t.state());
+    let place = store.subject();
+
+    let by_id = stock
+        .choices_of_item(t.state(), &item.subject(), &place)
+        .await
+        .unwrap()
+        .expect("the item exists");
+    let by_code = stock
+        .choices(t.state(), "FILLER", &place)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(by_id, by_code);
+    assert_eq!(by_id.lots.len(), 1);
+
+    let plain = stock
+        .choices_of_item(t.state(), &carton.subject(), &place)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!plain.lot_tracked && plain.lots.is_empty());
+    assert!(
+        stock
+            .choices_of_item(t.state(), &Subject::new("inventory.item", 999), &place)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}

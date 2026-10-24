@@ -1322,6 +1322,15 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.notices.loyalty_given_back_body",
         "{{ points }} points were given back to your account {{ code }} because {{ why }}.",
     ),
+    (
+        "wl_sales.notices.back_order_reserved_subject",
+        "Your back-ordered goods are in stock",
+    ),
+    (
+        "wl_sales.notices.back_order_reserved_body",
+        "Goods back-ordered on your order {{ number }} arrived and are reserved for you: {{ lines }}.",
+    ),
+    ("wl_sales.orders.backordered", "Back-ordered"),
     ("wl_sales.redeem.status.pending", "Waiting for the code"),
     ("wl_sales.redeem.status.held", "Held"),
     ("wl_sales.redeem.status.applied", "Redeemed"),
@@ -1857,7 +1866,10 @@ pub(crate) fn t_with(lang: &Lang, key: &str, params: &[(&str, &dyn Display)]) ->
 pub(crate) fn all(lang: &Lang) -> BTreeMap<&'static str, String> {
     TEXTS
         .iter()
+        .chain(crate::credit_texts::TEXTS)
         .chain(crate::texts_changes::CHANGE_TEXTS.iter())
+        .chain(crate::texts_deliveries::DELIVERY_TEXTS.iter())
+        .chain(crate::texts_destination::DESTINATION_TEXTS.iter())
         .chain(crate::texts_till::TILL_TEXTS.iter())
         .map(|(key, _)| (key.trim_start_matches("wl_sales."), t(lang, key)))
         .collect()
@@ -1868,7 +1880,10 @@ pub(crate) fn all(lang: &Lang) -> BTreeMap<&'static str, String> {
 pub(crate) fn english(key: &str, params: &[(&str, &dyn Display)]) -> String {
     let text = TEXTS
         .iter()
+        .chain(crate::credit_texts::TEXTS)
         .chain(crate::texts_changes::CHANGE_TEXTS.iter())
+        .chain(crate::texts_deliveries::DELIVERY_TEXTS.iter())
+        .chain(crate::texts_destination::DESTINATION_TEXTS.iter())
         .chain(crate::texts_till::TILL_TEXTS.iter())
         .find(|(k, _)| *k == key)
         .map_or(key, |(_, text)| *text);
@@ -1884,7 +1899,10 @@ mod tests {
     fn keys_are_unique_and_prefixed() {
         let mut keys: Vec<&str> = TEXTS
             .iter()
+            .chain(crate::credit_texts::TEXTS)
             .chain(crate::texts_changes::CHANGE_TEXTS.iter())
+            .chain(crate::texts_deliveries::DELIVERY_TEXTS.iter())
+            .chain(crate::texts_destination::DESTINATION_TEXTS.iter())
             .chain(crate::texts_till::TILL_TEXTS.iter())
             .map(|(key, _)| *key)
             .collect();

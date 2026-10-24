@@ -1,0 +1,24 @@
+{#- auto: a recalled part traced to the vehicle owners, fleets and customers
+    who got it: each job card or sale with its party, vehicle and day, all
+    possible (parts are not tracked by lot), the count of walk-in sales per
+    branch and day, and the action that tells the parties still to tell.
+    Replace it with resources/views/auto/recall.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="tx['recall.subtitle']" :back="back" :back-label="tx['recall.back']">
+      <template rx-if="can_send">
+        <rx-action-sheet id="recall-send" :label="tx['recall.send']" :action="route('auto.recall_send', id)"
+                         :title="tx['recall.send']" :description="tx['recall.send_description']" :submit-label="tx['recall.send']" icon="send"/>
+      </template>
+    </rx-page-header>
+    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['recall.title']" card>
+      <rx-column :label="tx['recall.record']">{{ row.record }}</rx-column>
+      <rx-column :label="tx['recall.party']">{{ row.party }}</rx-column>
+      <rx-column :label="tx['recall.vehicle']" hide-narrow>{{ row.vehicle }}</rx-column>
+      <rx-column :label="tx['recall.day']">{{ row.day }}</rx-column>
+      <rx-column :label="tx['recall.mark']" hide-narrow><rx-badge :kind="row.mark_kind" :text="row.mark"/></rx-column>
+      <rx-column :label="tx['recall.notice']"><rx-badge :kind="row.notice_kind" :text="row.notice"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['recall.empty']" icon="shield-check"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

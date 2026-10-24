@@ -39,7 +39,8 @@ use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::inventory::{
     ConsumeRequest, Consumed, ConsumedLot, ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE,
-    LOT_SUBJECT_TYPE, StockChoice, StockFuture, StockLot, StockNegative, StockService,
+    LOT_SUBJECT_TYPE, ReturnRequest, Returned, StockChoice, StockFuture, StockLot, StockNegative,
+    StockService,
 };
 
 use crate::balance::{self, Candidate};
@@ -255,6 +256,7 @@ pub async fn consume(state: &AppState, request: ConsumeRequest) -> Result<Consum
         lots.push(ConsumedLot {
             lot: lot_id.map(|id| Subject::new(LOT_SUBJECT_TYPE, id)),
             quantity_milli: quantity,
+            unit_cost: item.average_cost,
         });
         let mut moved = StockMovement::leaving(
             MovementType::Consume,
@@ -329,6 +331,56 @@ pub async fn consume(state: &AppState, request: ConsumeRequest) -> Result<Consum
     })
 }
 
+/// Puts `request` back into stock (see [`StockService::return_to_stock`]): a
+/// `return_in` movement of the quantity at the item's average cost against the
+/// record that gives it back.
+///
+/// # Errors
+///
+/// 422 for a quantity that is not above zero and for an item tracked by lot
+/// without a lot; a database error.
+pub async fn return_to_stock(state: &AppState, request: ReturnRequest) -> Result<Returned> {
+    if request.quantity_milli <= 0 {
+        return Err(refused(said("wl_inventory.issue.bad_quantity", &[])));
+    }
+    let location = Location::find_or_404(&state.db, request.location.subject_id).await?;
+    let item = Item::find_or_404(&state.db, request.item.subject_id).await?;
+    let lot_id = request.lot.as_ref().map(|lot| lot.subject_id);
+    if item.lot_tracked && lot_id.is_none() {
+        return Err(refused(said(
+            "wl_inventory.return.needs_lot",
+            &[("item", &item.code)],
+        )));
+    }
+    let mut tx = state.db.begin().await?;
+    let mut moved = StockMovement::moving(
+        MovementType::ReturnIn,
+        item.id,
+        lot_id,
+        None,
+        Some(location.id),
+        request.quantity_milli,
+        item.average_cost,
+        value_of(request.quantity_milli, item.average_cost),
+        &request.source,
+        None,
+    );
+    moved.reason = request.reason.clone();
+    moved.cost_object_type = request
+        .cost_object
+        .as_ref()
+        .map(|subject| subject.subject_type.clone());
+    moved.cost_object_id = request
+        .cost_object
+        .as_ref()
+        .map(|subject| subject.subject_id);
+    moved.insert(&mut tx).await?;
+    tx.commit().await?;
+    Ok(Returned {
+        posted_milli: request.quantity_milli,
+    })
+}
+
 /// The store of scope `kind`/`id`: the location of that scope of the type
 /// store (else the first location of the scope that is not in transit,
 /// quarantine or scrap), oldest first.
@@ -370,10 +422,27 @@ pub async fn choices(db: &Db, code: &str, location_id: i64) -> Result<Option<Sto
     else {
         return Ok(None);
     };
+    choices_of(db, &item, location_id).await.map(Some)
+}
+
+/// What can be taken of the item with id `item_id` at `location_id`; `None`
+/// for an unknown item.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn choices_by_id(db: &Db, item_id: i64, location_id: i64) -> Result<Option<StockChoice>> {
+    match Item::find(db, item_id).await? {
+        Some(item) => choices_of(db, &item, location_id).await.map(Some),
+        None => Ok(None),
+    }
+}
+
+async fn choices_of(db: &Db, item: &Item, location_id: i64) -> Result<StockChoice> {
     let mut lots = Vec::new();
     if item.lot_tracked {
         let day = today();
-        for candidate in balance::candidates(db, &item, location_id).await? {
+        for candidate in balance::candidates(db, item, location_id).await? {
             let Some(lot_id) = candidate.lot_id else {
                 continue;
             };
@@ -389,11 +458,11 @@ pub async fn choices(db: &Db, code: &str, location_id: i64) -> Result<Option<Sto
             });
         }
     }
-    Ok(Some(StockChoice {
+    Ok(StockChoice {
         item: item.subject(),
         lot_tracked: item.lot_tracked,
         lots,
-    }))
+    })
 }
 
 /// The module's [`StockService`].
@@ -407,6 +476,14 @@ impl StockService for InventoryStock {
         request: ConsumeRequest,
     ) -> StockFuture<'a, Consumed> {
         Box::pin(async move { consume(state, request).await })
+    }
+
+    fn return_to_stock<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: ReturnRequest,
+    ) -> StockFuture<'a, Returned> {
+        Box::pin(async move { return_to_stock(state, request).await })
     }
 
     fn store_of<'a>(
@@ -429,6 +506,57 @@ impl StockService for InventoryStock {
         location: &'a Subject,
     ) -> StockFuture<'a, Option<StockChoice>> {
         Box::pin(async move { choices(&state.db, code, location.subject_id).await })
+    }
+
+    fn choices_of_item<'a>(
+        &'a self,
+        state: &'a AppState,
+        item: &'a Subject,
+        location: &'a Subject,
+    ) -> StockFuture<'a, Option<StockChoice>> {
+        Box::pin(
+            async move { choices_by_id(&state.db, item.subject_id, location.subject_id).await },
+        )
+    }
+
+    fn on_hand<'a>(
+        &'a self,
+        state: &'a AppState,
+        item: &'a Subject,
+        location: &'a Subject,
+    ) -> StockFuture<'a, Option<i64>> {
+        Box::pin(async move {
+            crate::movement::on_hand(&state.db, item.subject_id, location.subject_id)
+                .await
+                .map(Some)
+        })
+    }
+
+    fn item_label<'a>(
+        &'a self,
+        state: &'a AppState,
+        item: &'a Subject,
+    ) -> StockFuture<'a, Option<wl_kernel::inventory::ItemLabel>> {
+        Box::pin(async move {
+            Ok(Item::find(&state.db, item.subject_id).await?.map(|found| {
+                wl_kernel::inventory::ItemLabel {
+                    code: found.code,
+                    name: found.name_en,
+                }
+            }))
+        })
+    }
+
+    fn lot_number<'a>(
+        &'a self,
+        state: &'a AppState,
+        lot: &'a Subject,
+    ) -> StockFuture<'a, Option<String>> {
+        Box::pin(async move {
+            Ok(Lot::find(&state.db, lot.subject_id)
+                .await?
+                .map(|found| found.number))
+        })
     }
 
     fn source_cancelled<'a>(

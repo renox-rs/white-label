@@ -1,18 +1,15 @@
 //! The notices of the changes to a placed order (BL-SAL-05, BL-SAL-06,
 //! BL-SAL-08, BL-SAL-09): the revised confirmation, the payment link of an
-//! increase, the cancelled lines, and the credit hold (`SAL.RUL.01`) that tells
-//! the accountant and the sales rep. Transactional, English first, through the
-//! kernel notifier.
+//! increase and the cancelled lines. (The credit hold notice, `SAL.RUL.01`,
+//! is one for every hold: [`crate::notices::order_credit_held`].)
+//! Transactional, English first, through the kernel notifier.
 
 use renox::prelude::*;
 use renox::serde_json::json;
-use wl_kernel::COMPANY_ADMIN_ROLE;
 use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRequest};
-use wl_kernel::role_tasks::{self, RoleTask};
 
 use crate::amend::AmendDetail;
 use crate::cancel_lines::CancelDetail;
-use crate::config::config_of;
 use crate::notices::aed;
 use crate::sales_order::SalesOrder;
 use crate::texts::english;
@@ -23,8 +20,6 @@ pub const ORDER_REVISED: &str = "sales.order_revised";
 pub const ORDER_AMEND_LINK: &str = "sales.order_amend_link";
 /// The customer is told that lines of the order were cancelled.
 pub const ORDER_LINES_CANCELLED: &str = "sales.order_lines_cancelled";
-/// The sales rep is told that the order is on credit hold (`SAL.RUL.01`).
-pub const ORDER_CREDIT_HOLD: &str = "sales.order_credit_hold";
 
 /// A transactional e-mail type with English texts.
 fn english_type(key: &str, texts: &str) -> NotificationTypeDef {
@@ -40,7 +35,6 @@ pub(crate) fn register_types() {
     notify::register_type(english_type(ORDER_REVISED, "order_revised"));
     notify::register_type(english_type(ORDER_AMEND_LINK, "order_amend_link"));
     notify::register_type(english_type(ORDER_LINES_CANCELLED, "order_lines_cancelled"));
-    notify::register_type(english_type(ORDER_CREDIT_HOLD, "order_credit_hold"));
 }
 
 /// Tells the customer of `order` about the revision now in force.
@@ -99,40 +93,5 @@ pub(crate) async fn lines_cancelled(
             "fee": aed(fees),
         }));
     notify::notifier(state).notify(state, request).await?;
-    Ok(())
-}
-
-/// Tells the sales rep and the accountant that the order is on credit hold
-/// (`SAL.RUL.01`): `exposure` fils with this order counted.
-pub(crate) async fn credit_hold(state: &AppState, order: &SalesOrder, exposure: i64) -> Result {
-    if let Some(rep) = order.created_by {
-        let request = NotifyRequest::new(ORDER_CREDIT_HOLD, order.subject())
-            .to_user(rep)
-            .subject_label(&order.number)
-            .data(json!({
-                "number": order.number,
-                "total": aed(order.gross_total),
-                "exposure": aed(exposure),
-            }));
-        notify::notifier(state).notify(state, request).await?;
-    }
-    let config = config_of(state);
-    let role = if config.accountant_role.is_empty() {
-        COMPANY_ADMIN_ROLE
-    } else {
-        config.accountant_role.as_str()
-    };
-    let (title, body) = {
-        let total = format!("AED {}", aed(order.gross_total));
-        let params: [(&str, &dyn std::fmt::Display); 2] =
-            [("number", &order.number), ("total", &total)];
-        (
-            english("wl_sales.credit.task_title", &params),
-            english("wl_sales.credit.task_body", &params),
-        )
-    };
-    let key = format!("sales.credit_hold:{}:{}", order.id, order.revision);
-    let task = RoleTask::new(order.subject(), role, &title, &key).description(&body);
-    role_tasks::open(state, task).await?;
     Ok(())
 }

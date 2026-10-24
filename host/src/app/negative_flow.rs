@@ -93,6 +93,9 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
         super::fnb_seed::FNB => super::fnb_seed::invoicing(module, entities),
         // The 10 money values (BL-EDU-18): see [`super::edtech_money::invoicing`].
         super::edtech_seed::EDTECH => super::edtech_money::invoicing(module, entities),
+        // The 08 money values (BL-AUT-18): see [`super::auto_money::invoicing`].
+        // The invoice of a delivered job card is issued at once.
+        super::auto_seed::AUTO => super::auto_money::invoicing(module, entities),
         // 03 `FIN.ACL.15`, `FIN.RUL.14`, `FIN.RUL.15`, `FIN.RUL.23`,
         // `FIN.RUL.24`, `FIN.ACL.21` and the e-invoicing scope (BL-LOG-26,
         // BL-LOG-25): see [`super::logistics_seed::invoicing`].
@@ -103,6 +106,12 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
         // 04 `FIN.ACL.15`, `FIN.RUL.15`, `FIN.RUL.23`, `FIN.RUL.24`, `FIN.ACL.21`
         // (BL-ACC-24): see [`super::accounting_seed::invoicing`].
         "accounting" => super::accounting_seed::invoicing(module, entities),
+        // 07 Manufacturing §7.1 *Disputes*: the customer buyer disputes an
+        // invoice in the portal (a quality dispute links an NCR, BL-MFG-13),
+        // and `FIN.RUL.15` escalates after 14 days to the accountant.
+        // The money values of 07 (BL-MFG-14): see
+        // [`super::manufacturing_seed::invoicing`].
+        "manufacturing" => super::manufacturing_seed::invoicing(module, entities),
         _ => module,
     }
 }
@@ -162,6 +171,8 @@ pub fn payments_for(client_app: &str) -> WlPayments {
         // operations manager; the manager of a driver is that role. Salary
         // deduction stays off (`FIN.ACL.19`, open item L-20).
         "logistics" => super::logistics_seed::payments(module),
+        // 07: two presentations, chased after 3 and 14 days, no bounce fee.
+        "manufacturing" => super::manufacturing_seed::payments(module),
         "construction" => super::construction_seed::payments(module),
         "manpower" => super::manpower_seed::payments(module),
         // 06: pending payments, late payments, refund retry, shortage
@@ -176,6 +187,8 @@ pub fn payments_for(client_app: &str) -> WlPayments {
         // 10: pending payments, late confirmation, refund retry and the desk
         // cash shortage (BL-EDU-18).
         super::edtech_seed::EDTECH => super::edtech_money::payments(module),
+        // 08: cheques, field handover and the cash shortage (BL-AUT-18).
+        super::auto_seed::AUTO => super::auto_money::payments(module),
         _ => module,
     }
 }
@@ -227,6 +240,10 @@ pub fn rows(client_app: &str, entities: &[String]) -> Vec<Row> {
     // The 10 client has its own table too (BL-EDU-18).
     if client_app == super::edtech_seed::EDTECH {
         return super::edtech_money::rows(entities);
+    }
+    // The 08 client has its own table too (BL-AUT-18).
+    if client_app == super::auto_seed::AUTO {
+        return super::auto_money::rows(entities);
     }
     let invoicing = invoicing_for(client_app, entities);
     let invoicing = invoicing.config();
@@ -604,6 +621,9 @@ async fn show(State(state): State<AppState>, request: GridRequest) -> Result<Res
     } else if settings.client_app == super::fnb_seed::FNB {
         // The 06 client has its own table (BL-FNB-16).
         super::fnb_settings::money_rows(&settings.entities)
+    } else if settings.client_app == super::manufacturing_seed::MANUFACTURING {
+        // The 07 client has its own table (BL-MFG-14).
+        super::manufacturing_settings::money_rows(&settings.entities)
     } else {
         rows(&settings.client_app, &settings.entities)
     };

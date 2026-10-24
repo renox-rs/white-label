@@ -183,6 +183,11 @@ pub async fn register(
         }
     }
     tx.commit().await?;
+    // A holder who collects cheques in the field hands them over in a
+    // handover of the day, counted by someone else (`FIN.ACL.20`).
+    if let (true, Some(user_id)) = (cheque.field_collected, cheque.collected_by) {
+        crate::cash_cheques::ensure_handover(state, user_id, Some(cheque.legal_entity_id)).await?;
+    }
     Ok(cheque)
 }
 
@@ -482,6 +487,15 @@ impl Cheques for ChequeBook {
         by: Option<i64>,
     ) -> ChequeFuture<'a, Option<ReturnedCheques>> {
         Box::pin(async move { crate::cheque_return::return_undeposited(state, &request, by).await })
+    }
+
+    fn uncleared_amount<'a>(
+        &'a self,
+        db: &'a Db,
+        party: PartyId,
+        currency: &'a str,
+    ) -> ChequeFuture<'a, i64> {
+        Box::pin(Cheque::uncleared_amount(db, party, currency))
     }
 
     fn not_cleared<'a>(

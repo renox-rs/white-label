@@ -1,0 +1,47 @@
+{#- auto: the job cards, newest first, with the vehicle, the customer, the
+    technician, the estimate and the status in words; searched by plate or
+    number and narrowed by status with link tabs; the action that checks a
+    vehicle in (vehicle from the register, intake condition, fees agreed). A
+    technician sees only the job cards assigned to them. Replace it with
+    resources/views/auto/job_cards.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['jobs.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['jobs.title']" :subtitle="tx['jobs.subtitle']">
+      <template rx-if="can_check_in">
+        <rx-action-sheet id="job-new" :label="tx['jobs.new']" :action="route('auto.job_card_create')"
+                         :title="tx['jobs.new']" :description="tx['jobs.new_description']" :submit-label="tx['jobs.new']" icon="plus">
+          <rx-select name="vehicle" :label="tx['jobs.vehicle']" :options="[]" :placeholder="tx['jobs.vehicle_placeholder']" options-url="{{ route('auto.vehicle_options') }}" id="job-new-vehicle" required/>
+          <rx-textarea name="complaint" :label="tx['jobs.complaint']" id="job-new-complaint" required/>
+          <rx-input name="odometer" type="number" :label="tx['jobs.odometer_in']" id="job-new-odometer" required/>
+          <rx-select name="fuel" :label="tx['jobs.fuel_level']" :options="fuel_options" :selected="'half'" id="job-new-fuel"/>
+          <rx-textarea name="condition" :label="tx['jobs.condition']" :hint="tx['jobs.condition_hint']" id="job-new-condition" required/>
+          <rx-input name="acknowledged_by" :label="tx['jobs.acknowledged_by']" :hint="tx['jobs.acknowledged_hint']" id="job-new-acknowledged"/>
+          <rx-checkbox name="accident" :label="tx['jobs.accident']" :hint="tx['jobs.accident_hint']" id="job-new-accident"/>
+          <rx-input name="police_report" :label="tx['jobs.police_report']" id="job-new-police"/>
+          <rx-input name="inspection_fee" :label="tx['jobs.inspection_fee']" :hint="tx['jobs.money_hint']" id="job-new-inspection"/>
+          <rx-input name="storage_fee" :label="tx['jobs.storage_fee']" :hint="tx['jobs.money_hint']" id="job-new-storage"/>
+          <rx-select name="technician" :label="tx['jobs.technician']" :options="technician_options" id="job-new-technician"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <form method="get" action="{{ route('auto.job_cards') }}">
+      <input type="hidden" name="status" value="{{ status }}">
+      <rx-toolbar>
+        <rx-input name="q" :label="tx['jobs.search']" :value="q" id="filter-q"/>
+        <rx-button type="submit" :label="tx['jobs.show']" icon="search"/>
+      </rx-toolbar>
+    </form>
+    <rx-link-tabs :items="status_tabs" :current="status_current" :label="tx['jobs.filter']"/>
+    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['jobs.title']" card>
+      <rx-column :label="tx['jobs.number']"><a href="{{ route('auto.job_card', row.id) }}">{{ row.number }}</a></rx-column>
+      <rx-column :label="tx['jobs.date']" hide-narrow>{{ row.date }}</rx-column>
+      <rx-column :label="tx['vehicles.plate']">{{ row.plate }}</rx-column>
+      <rx-column :label="tx['vehicles.make']" hide-narrow>{{ row.vehicle }}</rx-column>
+      <rx-column :label="tx['jobs.customer']" hide-narrow>{{ row.customer }}</rx-column>
+      <rx-column :label="tx['jobs.technician']" hide-narrow>{{ row.technician }}</rx-column>
+      <rx-column :label="tx['jobs.estimate']" align="num">{{ row.total }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['jobs.empty']" icon="wrench"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>
