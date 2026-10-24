@@ -134,13 +134,18 @@ impl Tickets {
             ..Ticket::default()
         };
         ticket.insert(&state.db).await?;
+        // Findable from now on (BL-AGT-04).
+        crate::search::index(&state.db, ticket.id).await?;
         if let Some(assignee) = assignee {
             // The first assignment, as the system. The transition has its
             // own transaction, so a refusal takes the new ticket back.
             if let Err(error) =
                 assign_as_system(state, &ticket, assignee, category.default_priority, at).await
             {
+                let id = ticket.id;
                 ticket.delete(&state.db).await?;
+                // Gone with the ticket.
+                crate::search::index(&state.db, id).await?;
                 return Err(unprocessable(error.to_string()));
             }
         } else {

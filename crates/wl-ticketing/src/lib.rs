@@ -30,6 +30,7 @@ pub mod portal_requests;
 pub mod priority;
 pub mod reasons;
 pub mod role_queue;
+pub mod search;
 pub mod seed;
 pub mod sla;
 mod texts;
@@ -360,6 +361,8 @@ impl Module for WlTicketing {
     }
 
     fn register(&self, app: &mut Registry) {
+        // Tickets in the global search and their relations (BL-AGT-04).
+        search::register(app);
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
             .view_data::<pages::ShowPage>()

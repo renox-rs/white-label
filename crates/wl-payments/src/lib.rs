@@ -80,6 +80,7 @@ pub mod refund_recover;
 pub mod refund_retry;
 pub mod reverse;
 mod scoped;
+pub mod search;
 pub mod seed;
 pub mod set_off;
 pub mod supplier_pay;
@@ -595,6 +596,9 @@ impl Module for WlPayments {
     fn register(&self, app: &mut Registry) {
         // The payments of some scopes, for the lists (`scoped.rs`).
         scoped::register();
+        // Payments, cheques, deposits and refunds in the global search and
+        // their relations (BL-AGT-04).
+        search::register(app);
         // A page that names a payment (an invoice's allocations): its receipt
         // number.
         wl_kernel::documents::register_subject_label(

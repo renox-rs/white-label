@@ -43,6 +43,7 @@ use wl_kernel::documents::{
 };
 
 use crate::expiry::ReminderLog;
+use crate::expiry::renewal::DOCUMENT_SUBJECT_TYPE;
 use crate::kinds::DocumentKind;
 use crate::machine::{
     ACCEPT, ARCHIVE, AcceptInput, KindInput, RECORD, REJECT, RESUBMIT, ResubmitInput, SUBMIT,
@@ -921,6 +922,9 @@ impl Documents {
         if update.expiry_date != current.expiry_date {
             ReminderLog::reset_for(&mut tx, current.id).await?;
         }
+        // The title and number are searched (BL-AGT-04).
+        wl_kernel::search::index_in(&mut tx, &Subject::new(DOCUMENT_SUBJECT_TYPE, current.id))
+            .await?;
         tx.commit().await?;
         renox::audit::record(
             &state.db,
@@ -1255,6 +1259,9 @@ async fn create(
     } else {
         Vec::new()
     };
+    // Findable from the commit on (BL-AGT-04).
+    wl_kernel::search::index_in(&mut tx, &Subject::new(DOCUMENT_SUBJECT_TYPE, document.id))
+        .await?;
     tx.commit().await?;
 
     if recording {

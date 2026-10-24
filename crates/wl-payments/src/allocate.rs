@@ -184,6 +184,8 @@ pub async fn allocate(
     }
     let mut allocation = Allocation::new(payment.id, &target.subject(), amount, by);
     allocation.insert(&state.db).await?;
+    // The payment takes the scope of the invoice it pays (BL-AGT-04).
+    crate::search::index(&state.db, &[payment.subject()]).await?;
     Ok(allocation)
 }
 

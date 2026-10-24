@@ -291,7 +291,10 @@ pub async fn hold(
         .await?;
     if let Some((payment, amount)) = payment {
         allocate_to_deposit_in(&mut tx, &payment, &mut deposit, amount, Some(user.id)).await?;
+        // The payment is now in the deposit's scope (BL-AGT-04).
+        wl_kernel::search::index_in(&mut tx, &payment.subject()).await?;
     }
+    wl_kernel::search::index_in(&mut tx, &deposit.subject()).await?;
     tx.commit().await?;
     Ok(deposit)
 }

@@ -12,6 +12,7 @@ pub mod machine;
 pub mod overrides;
 pub mod pages;
 pub mod registrations;
+pub mod search;
 pub mod sops;
 pub mod store;
 pub mod subject_pages;
@@ -157,6 +158,8 @@ impl Module for WlDocuments {
         .label("Documents")
         .permission(permissions::VIEW)
         .register();
+        // Documents in the global search (BL-AGT-04).
+        search::register(app);
         app.model::<DocumentKind>()
             .model::<KindBlock>()
             .model::<Document>()

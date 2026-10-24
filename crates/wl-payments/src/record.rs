@@ -458,6 +458,8 @@ pub(crate) async fn record_in(
         None => builder.by_system(),
     };
     let outcome = builder.input(input).run_in(&mut *tx).await?;
+    // Findable by its number from the commit on (BL-AGT-04).
+    wl_kernel::search::index_in(&mut *tx, &payment.subject()).await?;
     Ok((payment, outcome))
 }
 

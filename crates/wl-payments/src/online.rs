@@ -314,6 +314,7 @@ pub async fn start_online(
     payment
         .insert_in_state(&mut tx, PaymentStatus::Pending, START_ONLINE)
         .await?;
+    wl_kernel::search::index_in(&mut tx, &payment.subject()).await?;
     tx.commit().await?;
     Ok(Started { payment, checkout })
 }

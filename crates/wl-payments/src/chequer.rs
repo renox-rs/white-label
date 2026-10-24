@@ -157,6 +157,8 @@ async fn insert_in(
         };
         link.insert(&mut *tx).await?;
     }
+    // Findable by its number from the commit on (BL-AGT-04).
+    wl_kernel::search::index_in(&mut *tx, &cheque.subject()).await?;
     Ok(cheque)
 }
 
