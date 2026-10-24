@@ -430,6 +430,10 @@
     "home": "Go to the home page",
     "refused": "This could not be done"
   },
+  "search": {
+    "placeholder": "Search by number, name or words",
+    "disabled": "Your role gives access to no record that can be searched"
+  },
   "wl_kernel": {
     "block_kind": {
       "fleet_contract": "Fleet contract",

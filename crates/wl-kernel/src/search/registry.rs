@@ -31,6 +31,8 @@ pub struct Searchable {
     table: &'static str,
     permission: String,
     portal_visible: bool,
+    label: String,
+    link: String,
     build: BuildFn,
     ids: IdsFn,
 }
@@ -42,6 +44,8 @@ impl std::fmt::Debug for Searchable {
             .field("table", &self.table)
             .field("permission", &self.permission)
             .field("portal_visible", &self.portal_visible)
+            .field("label", &self.label)
+            .field("link", &self.link)
             .finish()
     }
 }
@@ -57,6 +61,8 @@ impl Searchable {
             subject_type: subject_type.to_owned(),
             permission: String::new(),
             portal_visible: false,
+            label: None,
+            link: None,
             document: None,
         }
     }
@@ -79,6 +85,17 @@ impl Searchable {
     /// Whether external users may find this type in the portal.
     pub fn is_portal_visible(&self) -> bool {
         self.portal_visible
+    }
+
+    /// The name of this type's group of results, e.g. `Invoices`.
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    /// The address of record `id`'s page: the registered link with `{id}`
+    /// filled in (`/invoices/{id}` → `/invoices/42`).
+    pub fn url_of(&self, id: i64) -> String {
+        self.link.replace("{id}", &id.to_string())
     }
 
     /// The document of record `id`; `None` when the record does not exist.
@@ -107,6 +124,8 @@ pub struct SearchableBuilder<M> {
     subject_type: String,
     permission: String,
     portal_visible: bool,
+    label: Option<String>,
+    link: Option<String>,
     document: Option<DocumentFn<M>>,
 }
 
@@ -124,6 +143,22 @@ where
     /// only, BL-AGT-05).
     pub fn portal_visible(mut self) -> Self {
         self.portal_visible = true;
+        self
+    }
+
+    /// The name of the type's group on the search page, plural (`Invoices`).
+    /// Without it, the entity in words (`invoicing.credit_note`: "Credit
+    /// note").
+    pub fn label(mut self, label: &str) -> Self {
+        self.label = Some(label.to_owned());
+        self
+    }
+
+    /// The address of a record's page, with `{id}` where its id goes
+    /// (`/invoices/{id}`). Without it, a result opens the kernel's page of the
+    /// record's related records (`/related/invoicing.invoice:42`).
+    pub fn link(mut self, link: &str) -> Self {
+        self.link = Some(link.to_owned());
         self
     }
 
@@ -194,7 +229,15 @@ where
                 Ok(rows.iter().map(Model::id).collect())
             })
         });
+        let label = self
+            .label
+            .unwrap_or_else(|| entity_words(&self.subject_type));
+        let link = self
+            .link
+            .unwrap_or_else(|| format!("/related/{}:{{id}}", self.subject_type));
         Searchable {
+            label,
+            link,
             subject_type: self.subject_type,
             table: M::TABLE,
             permission: self.permission,
@@ -211,6 +254,18 @@ where
     }
 }
 
+/// The entity of `subject_type` in words, capitalised: `invoicing.credit_note`
+/// reads "Credit note".
+fn entity_words(subject_type: &str) -> String {
+    let entity = subject_type.rsplit('.').next().unwrap_or(subject_type);
+    let words = entity.replace('_', " ");
+    let mut chars = words.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
 static REGISTRY: RwLock<BTreeMap<String, Arc<Searchable>>> = RwLock::new(BTreeMap::new());
 
 /// Adds `searchable` to the process-wide registry.
@@ -222,7 +277,7 @@ pub(super) fn register(searchable: Searchable) {
 }
 
 /// The entry of `subject_type`, if it is searchable.
-pub(super) fn get(subject_type: &str) -> Option<Arc<Searchable>> {
+pub fn get(subject_type: &str) -> Option<Arc<Searchable>> {
     REGISTRY
         .read()
         .unwrap_or_else(PoisonError::into_inner)

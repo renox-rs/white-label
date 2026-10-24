@@ -697,6 +697,42 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_kernel.rule_run.status.retrying", "Retrying"),
     ("wl_kernel.rule_run.status.failed", "Failed"),
     ("wl_kernel.rule_run.status.stopped", "Stopped"),
+    ("wl_kernel.search.title", "Search"),
+    ("wl_kernel.search.label", "Search records"),
+    ("wl_kernel.search.placeholder", "Search by number, name or words"),
+    ("wl_kernel.search.submit", "Search"),
+    (
+        "wl_kernel.search.too_short",
+        "Type at least 2 characters to search.",
+    ),
+    (
+        "wl_kernel.search.no_permission",
+        "Your role gives access to no record that can be searched.",
+    ),
+    ("wl_kernel.search.results_for", "Results for \u{201c}:query\u{201d}"),
+    (
+        "wl_kernel.search.nothing_for",
+        "Nothing found for \u{201c}:query\u{201d}",
+    ),
+    (
+        "wl_kernel.search.nothing_hint",
+        "Check the spelling, or search by a document number, a phone or a name.",
+    ),
+    ("wl_kernel.search.show_all", "Show all :count"),
+    ("wl_kernel.search.count", ":count found"),
+    ("wl_kernel.search.page_of", "Page :page of :pages"),
+    ("wl_kernel.search.all_results", "All results"),
+    ("wl_kernel.search.previous", "Previous"),
+    ("wl_kernel.search.next", "Next"),
+    ("wl_kernel.search.void", "Void"),
+    ("wl_kernel.search.updated", "Updated :at"),
+    ("wl_kernel.search.matched", "Matched :value"),
+    ("wl_kernel.related.title", "Related"),
+    ("wl_kernel.related.subtitle", "Everything that belongs to :record"),
+    ("wl_kernel.related.empty", "No related records"),
+    ("wl_kernel.related.more", "and :count more"),
+    ("wl_kernel.related.void", "Void"),
+    ("wl_kernel.related.approvals", "Approvals"),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

@@ -53,6 +53,7 @@ pub mod production;
 pub mod qualifications;
 pub mod quotations;
 pub mod rate_cards;
+pub mod related;
 pub mod role_tasks;
 pub mod sales;
 pub mod scheduling;
@@ -349,6 +350,18 @@ const VIEWS: &[(&str, &str)] = &[
         late_entries::web::CARD_TEMPLATE,
         include_str!("../views/wl-kernel/late_entry_card.html"),
     ),
+    (
+        search::web::TEMPLATE,
+        include_str!("../views/wl-kernel/search.html"),
+    ),
+    (
+        related::web::PAGE_TEMPLATE,
+        include_str!("../views/wl-kernel/related.html"),
+    ),
+    (
+        related::web::PANEL_TEMPLATE,
+        include_str!("../views/wl-kernel/related_panel.html"),
+    ),
 ];
 
 /// The kernel's migrations: its SQL files, then the full-text index of the
@@ -441,6 +454,10 @@ impl Module for WlKernel {
             .merge(voids::web::routes())
             .merge(integrations::web::routes())
             .merge(compliance::web::routes())
+            // The search page and the related records of a record; what each
+            // user sees is filtered per request.
+            .merge(search::web::routes())
+            .merge(related::web::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -465,6 +482,7 @@ impl Module for WlKernel {
         compliance::register_models(app);
         digest::register(app);
         search::register(app);
+        related::register(app);
         // In the admin group of the staff sidebar; the label is the app's
         // `nav.legal_entities` text.
         app.nav(

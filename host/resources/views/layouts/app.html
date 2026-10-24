@@ -64,6 +64,19 @@
   </rx-sidebar>
   <div class="rx-shell__main">
     <rx-navbar width="full" :skip="false" :tabs="tabs" tabs-label="{{ t('nav.sections') }}">
+      {#- The global search (wl-kernel, BL-AGT-02): numbers, names or words,
+          across every module, to /search. The menu "search" holds one link,
+          shown only to someone whose role may search something; anyone else
+          sees the box turned off with the reason. mod+k (Ctrl+K, or Cmd+K on
+          a Mac) focuses it, or the search page's own box on that page. -#}
+      <template rx-if="auth.check">
+        <rx-let name="search_links" :value="nav('search')"/>
+        <rx-nav-search :label="t('ui.search')" id="top-search">
+          <form method="get" action="{{ route('wl_kernel.search') }}" role="search">
+            <rx-input name="q" type="search" :label="t('ui.search')" hide-label id="wl-search-q" :placeholder="t('search.placeholder') if search_links else t('search.disabled')" :disabled="not search_links" autocomplete="off"/>
+          </form>
+        </rx-nav-search>
+      </template>
       <span class="rx-spacer"></span>
       {#- New notifications, live: Auth::new().notifications(). -#}
       <template rx-if="auth.check">
@@ -89,6 +102,8 @@
   <rx-toasts/>
   {#- A refusal of a form sent with htmx shows inside its modal or form (public/forms.js). -#}
   <script src="{{ asset('forms.js') }}" defer></script>
+  {#- mod+k focuses the search box (public/search.js). -#}
+  <script src="{{ asset('search.js') }}" defer></script>
   <rx-outlet stack="scripts"/>
 </body>
 </html>

@@ -7,6 +7,8 @@
 //! ```ignore
 //! Searchable::of::<Invoice>("invoicing.invoice")
 //!     .permission("invoices.view")
+//!     .label("Invoices")          // the group on the search page
+//!     .link("/invoices/{id}")     // where a result opens
 //!     .portal_visible()
 //!     .document(|invoice: &Invoice| {
 //!         SearchDocument::new(&invoice.number)
@@ -39,10 +41,19 @@
 //! Arabic marks and spelling variants normalised (R22). The `forms` column
 //! holds each word's Arabic–Latin match key (`renox::text::match_key`), so
 //! "Mohammed" and "محمد" can find each other.
+//!
+//! **Reading it** (BL-AGT-02): [`search`] and [`search_type`] answer for an
+//! [`Access`] (what one user may see), filtering by permission and scope in
+//! the statement, before anything is counted or limited; `GET /search` is
+//! the page ([`web`]). The related records of a record ([`crate::related`])
+//! read the same documents and the same `Access`.
 
+mod access;
 mod document;
 mod index;
+mod query;
 mod registry;
+pub mod web;
 
 use renox::db::{DateTime, Migration};
 use renox::prelude::*;
@@ -53,7 +64,12 @@ pub use index::{
     IdentifierMatch, document_of, forget_import_change, identifiers_of, index_in,
     lookup_identifier, rebuild, rebuild_type, remove_in, undo_import,
 };
-pub use registry::{Searchable, SearchableBuilder, registered_types};
+pub use access::{Access, can_search};
+pub use query::{
+    MIN_QUERY_CHARS, PER_PAGE, PER_TYPE, SearchGroup, SearchHit, SearchResults, mask, search,
+    search_type, searchable_query,
+};
+pub use registry::{Searchable, SearchableBuilder, get as searchable_type, registered_types};
 
 /// The command that builds the index again.
 pub const REBUILD_COMMAND: &str = "search:rebuild";
@@ -141,10 +157,13 @@ pub(crate) fn index_migration() -> Migration {
     renox::db::search::migration::<SearchDocumentRow>(INDEX_MIGRATION)
 }
 
-/// Registers the models and the `search:rebuild` command.
+/// Registers the models, the search page, the top bar's menu and the
+/// `search:rebuild` command.
 pub(crate) fn register(app: &mut Registry) {
     app.model::<SearchDocumentRow>()
-        .model::<SearchIdentifierRow>();
+        .model::<SearchIdentifierRow>()
+        .view_data::<web::SearchPage>();
+    app.nav(web::MENU, web::nav_link());
     app.command(
         REBUILD_COMMAND,
         "Build the search index again from the registered types \

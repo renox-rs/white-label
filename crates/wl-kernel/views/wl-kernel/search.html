@@ -1,0 +1,52 @@
+{#- wl-kernel: the global search page (BL-AGT-02, wl-kernel §5.8). The
+    records the user may open, grouped by type, the best group first, up to
+    five per type with "Show all N"; a "Show all" page lists one type, paged.
+    Each group is a card and each result a row of its list (no sideways
+    scroll on a phone) with its title, the line under it, its status, a Void
+    badge and when it changed (Asia/Dubai). Sensitive identifiers show
+    masked. Replace it with resources/views/wl-kernel/search.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['title']">
+  <rx-stack>
+    <rx-page-header :title="tx['title']" :subtitle="found.subtitle"/>
+    <form method="get" action="/search" role="search">
+      <input rx-if="found.only" type="hidden" name="type" value="{{ found.only }}">
+      <rx-row>
+        <rx-input name="q" type="search" :label="tx['label']" hide-label id="wl-search-page-q" :value="found.q" :placeholder="tx['placeholder']" :disabled="not found.allowed" autocomplete="off"/>
+        <rx-button type="submit" :label="tx['submit']" icon="search" :disabled="not found.allowed" :disabled-reason="found.hint if not found.allowed else none"/>
+      </rx-row>
+    </form>
+    <rx-alert rx-if="found.hint" kind="info" :message="found.hint"/>
+    <rx-empty rx-if="found.empty" :title="found.empty" :message="found.empty_hint" icon="search"/>
+    <rx-row rx-if="found.back_url">
+      <rx-link-button :href="found.back_url" :label="tx['all_results']" variant="plain" size="small" icon="arrow-left"/>
+    </rx-row>
+    <section rx-for="group in found.groups" class="wl-search-group" data-type="{{ group.subject_type }}" data-total="{{ group.total }}" aria-label="{{ group.heading }}">
+      <rx-card :title="group.heading" :subtitle="group.count">
+        <rx-stack>
+          <rx-list :label="group.heading">
+            <li rx-for="row in group.rows" data-result="{{ row.url }}">
+              <rx-stack>
+                <rx-row>
+                  <a href="{{ row.url }}"><strong>{{ row.title }}</strong></a>
+                  <rx-badge rx-if="row.status" :text="row.status" kind="info"/>
+                  <rx-badge rx-if="row.voided" :text="tx['void']" kind="error"/>
+                </rx-row>
+                <span rx-if="row.secondary">{{ row.secondary }}</span>
+                <small rx-if="row.matched">{{ row.matched }}</small>
+                <small rx-if="row.updated">{{ row.updated }}</small>
+              </rx-stack>
+            </li>
+          </rx-list>
+          <rx-row rx-if="group.more_url">
+            <rx-link-button :href="group.more_url" :label="group.more_label" variant="secondary" size="small"/>
+          </rx-row>
+        </rx-stack>
+      </rx-card>
+    </section>
+    <rx-row rx-if="found.prev_url or found.next_url">
+      <rx-link-button rx-if="found.prev_url" :href="found.prev_url" :label="tx['previous']" variant="secondary" size="small"/>
+      <span rx-if="found.page_label">{{ found.page_label }}</span>
+      <rx-link-button rx-if="found.next_url" :href="found.next_url" :label="tx['next']" variant="secondary" size="small"/>
+    </rx-row>
+  </rx-stack>
+</rx-page>
