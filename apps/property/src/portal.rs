@@ -39,7 +39,7 @@ use crate::unit::Unit;
 /// abandonment inspection, legal documents) are not among them.
 pub const TENANT_DOCUMENT_KINDS: &[&str] = &[
     "signed_tenancy_contract",
-    "tenancy_contract",
+    crate::generated::TENANCY_CONTRACT_KIND,
     "ejari_certificate",
     crate::terms::TENANT_ACCEPTANCE_KIND,
 ];

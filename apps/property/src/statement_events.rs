@@ -62,7 +62,13 @@ pub async fn after(state: &AppState, event: &Transitioned<OwnerStatement>) -> Re
         }
         PUBLISH => {
             let text = lines_text(&state.db, &found).await?;
-            notices::statement_published(state, &found, &text).await
+            let pdf = crate::generated::GeneratedDocument::of(
+                &state.db,
+                &found.subject(),
+                crate::generated::OWNER_STATEMENT_TEMPLATE,
+            )
+            .await?;
+            notices::statement_published(state, &found, &text, pdf.as_ref()).await
         }
         REVISE => {
             notices::statement_revised(state, &found, found.revision + 1).await?;

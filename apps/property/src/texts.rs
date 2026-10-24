@@ -983,6 +983,7 @@ const TEXTS: &[(&str, &str)] = &[
         "property.terminate.credit_not_taken",
         "Refund :refund was asked but credit note :note was not reduced: cancel the refund or reduce the note by hand.",
     ),
+    ("property.statements.published", "Statement published to the owner."),
     (
         "property.vendor_bills.ticket_line",
         "Vendor bill :bill :supplier — :ticket (unit :unit)",

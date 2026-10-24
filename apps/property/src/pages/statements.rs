@@ -11,6 +11,7 @@
 //! | `POST /property/statements/{id}/disputes/clear` | `property.statement_dispute_clear` | `owner_statements.prepare` |
 //! | `POST /property/statements/{id}/pay-out` | `property.statement_pay_out` | `owner_statements.prepare` (field `block_exception`) |
 //! | `POST /property/statements/{id}/invoice-owner` | `property.statement_invoice_owner` | `owner_statements.approve` |
+//! | `POST /property/statements/{id}/publish` | `property.statement_publish` | `owner_statements.prepare` (the PDF first, BL-PRP-31) |
 //! | `POST /property/statements/{id}/transitions/{name}` | `property.statement_transitions.*` | the transition's permission |
 //!
 //! The transitions are the machine's ([`crate::statement_machine`]): `approve`,
@@ -49,6 +50,8 @@ pub fn routes() -> Routes {
         .name("property.statement_line_add")
         .post("/property/statements/{id}/lines/remove", remove_line)
         .name("property.statement_line_remove")
+        .post("/property/statements/{id}/publish", publish)
+        .name("property.statement_publish")
         .post("/property/statements/{id}/pay-out", pay_out)
         .name("property.statement_pay_out")
         .post("/property/statements/{id}/invoice-owner", invoice_owner)
@@ -705,6 +708,26 @@ pub struct PayOutForm {
     /// `1` to ask for an exception when the owner is on hold.
     #[serde(default)]
     pub block_exception: String,
+}
+
+/// `POST /property/statements/{id}/publish`: generates the statement PDF and
+/// publishes the statement to the owner with it (BL-PRP-31); a PDF that cannot
+/// be generated refuses the publication (422) and the statement stays
+/// approved.
+async fn publish(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    crate::generated::publish(&state, &user, id)
+        .await
+        .map_err(renox::state_machine::TransitionError::into_error)?;
+    Ok((
+        Toast::success(text(&lang, "statements.published")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// `POST /property/statements/{id}/pay-out`: asks to pay the owner the whole

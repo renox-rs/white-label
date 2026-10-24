@@ -22,6 +22,7 @@ pub mod documents;
 pub mod enquiry;
 pub mod events;
 pub mod force;
+pub mod generated;
 pub mod holding;
 pub mod invoicing;
 pub mod lease;
@@ -195,7 +196,8 @@ impl Module for Property {
             .model::<statement::StatementLine>()
             .model::<statement_dispute::StatementDispute>()
             .model::<write_off::WriteOffConsent>()
-            .model::<vendor_bills::ContractBuilding>();
+            .model::<vendor_bills::ContractBuilding>()
+            .model::<generated::GeneratedDocument>();
         unit_machine::register();
         lease_machine::register();
         documents::register();
@@ -223,6 +225,8 @@ impl Module for Property {
         statement::schedule(app);
         // Approved vendor bills and AMC shares become expense lines (BL-PRP-34).
         vendor_bills::register(app);
+        // The contract and statement PDFs, once a generator is set (BL-PRP-31).
+        generated::register(app);
         write_off::register(app);
         compliance::register(app);
         seed::register_critical_rules();

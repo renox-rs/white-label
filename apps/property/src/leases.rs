@@ -538,6 +538,16 @@ pub async fn submit(
         },
     };
     let reason = terms::history_reason(&lease);
+    // The bilingual contract is generated before `submit` (BL-PRP-31): when
+    // it cannot be, nothing is submitted.
+    let contract = if lease.status == LeaseStatus::Draft {
+        match crate::generated::contract_for(state, &lease).await {
+            Ok(contract) => contract,
+            Err(error) => return Err(TransitionError::Guard(error.to_string())),
+        }
+    } else {
+        None
+    };
     let outcome = documents::guarded(state, GUARD_SUBMIT, id, Some(user.id), || async {
         let mut run = lease.transition(SUBMIT).by(user).input(&input);
         if let Some(reason) = reason {
@@ -545,11 +555,30 @@ pub async fn submit(
         }
         run.run(state).await
     })
-    .await?;
+    .await;
+    let outcome = match outcome {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            // Still a draft that may change: its contract is made again at
+            // the next `submit`.
+            if let Some(mut contract) = contract {
+                contract.delete(&state.db).await?;
+            }
+            return Err(error);
+        }
+    };
     wl_kernel::approvals::announce(state, &outcome)
         .await
         .map_err(TransitionError::Failed)?;
-    load(state, id).await
+    let submitted = load(state, id).await?;
+    if let Some(contract) = contract
+        && submitted.status == LeaseStatus::PendingSignature
+    {
+        crate::notices::contract_for_signature(state, &submitted, &contract)
+            .await
+            .map_err(TransitionError::Failed)?;
+    }
+    Ok(submitted)
 }
 
 /// `user` activates the signed lease `id`. The signed contract is checked by

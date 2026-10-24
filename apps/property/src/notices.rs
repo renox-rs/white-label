@@ -541,12 +541,33 @@ fn statement_period(statement: &crate::statement::OwnerStatement) -> String {
     )
 }
 
+/// Sends the tenant of the submitted `lease` its generated `contract` for
+/// signature (BL-PRP-31). The message names the stored document; attaching
+/// the file to the e-mail is wl-notify's (BL-NTF-10).
+pub async fn contract_for_signature(
+    state: &AppState,
+    lease: &Lease,
+    contract: &crate::generated::GeneratedDocument,
+) -> Result {
+    let request = NotifyRequest::new(CONTRACT_FOR_SIGNATURE, lease.subject())
+        .subject_label(&lease.number_with_version())
+        .to_party(lease.tenant())
+        .data(json!({
+            "lease": lease.number_with_version(),
+            "contract": contract.title,
+            "document": contract.document_id,
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
 /// Sends the published `statement` to its owner, with the lines `lines` as
-/// text.
+/// text and its generated PDF, when there is one (BL-PRP-31).
 pub async fn statement_published(
     state: &AppState,
     statement: &crate::statement::OwnerStatement,
     lines: &str,
+    pdf: Option<&crate::generated::GeneratedDocument>,
 ) -> Result {
     let request = NotifyRequest::new(OWNER_STATEMENT, statement.subject())
         .subject_label(&statement.number())
@@ -561,6 +582,7 @@ pub async fn statement_published(
             "adjustments": crate::money_text(statement.adjustments),
             "balance": crate::money_text(statement.balance()),
             "lines": lines,
+            "document": pdf.map(|pdf| pdf.document_id),
         }));
     notify::notifier(state).notify(state, request).await?;
     Ok(())
