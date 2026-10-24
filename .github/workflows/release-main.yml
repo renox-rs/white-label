@@ -1,0 +1,68 @@
+name: Release build (main)
+
+# Builds the host binary on every push to main, on the same Ubuntu (glibc) as
+# the server that runs the public demos (<vertical>.renoxium.com). The server
+# pulls the newest `white-label-<sha>` artifact from main every few minutes
+# (autodeploy); CI holds no server keys. It also builds on pull requests that
+# touch this file, so a change can be tried on the server by run id before it
+# is merged. Tagged releases for clients: release.yml.
+#
+# The artifact holds `white-label` (the host binary, all verticals compiled in),
+# `REVISION`, `white-label.sha256` and `clients/` (the demo client.toml presets).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "host/**"
+      - "apps/**"
+      - "crates/**"
+      - "clients/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/release-main.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/release-main.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-main-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_RELEASE_DEBUG: 0
+
+jobs:
+  build:
+    name: build host (x86_64-linux, ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked -p host
+      - name: Check the binary runs
+        run: ./target/release/host help | head -5
+      - name: Package
+        run: |
+          mkdir dist
+          cp target/release/host dist/white-label
+          strip dist/white-label
+          cp -r clients dist/clients
+          echo "${GITHUB_SHA}" > dist/REVISION
+          (cd dist && sha256sum white-label > white-label.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: white-label-${{ github.sha }}
+          path: dist/
+          retention-days: 30
+          if-no-files-found: error
