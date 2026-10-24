@@ -563,7 +563,7 @@ with the same stories. `APP_ENV=local CLIENT_CONFIG=clients/demo-edtech/client.t
 migrate`, then `-- edtech:demo` (or `-- db:seed`, which runs it in `local` only), then `-- serve`; the logins
 are on the login page, password `password123`: `admin@`, `owner@`, `manager@` (centre manager), `counsellor@`,
 `coordinator@` (academic coordinator), `accountant@` and five tutors (`tutor@`, `omar@`, `layla@`, `ravi@`,
-`hind@`), all `@gulfskills.example`. Every date is relative to today, money is in fils, names are in English
+`hind@`), all `@gulfskills.example`. Every date is relative to the latest Friday up to today (the batches meet on fixed weekdays, so the story is the same whatever day it is seeded), money is in fils, names are in English
 and Arabic, and the seed is deterministic and idempotent (an audit entry marks it done). It takes about 7 s
 in a debug build.
 
