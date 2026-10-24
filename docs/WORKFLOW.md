@@ -229,9 +229,9 @@ Every shared automation, with its owner and the vertical rules it generalises. S
 | `FIN.RUL.25` | Task for the accountant when a bank balance for the forecast is missing or older than 7 days | wl-invoicing | — | module |
 | `FIN.RUL.26` | Remind 30 days before a fiscal year that has no approved budget | wl-invoicing | — | module |
 | `SAL.RUL.01` | Notify accountant and sales rep when an order goes on credit hold | wl-sales | — | in use |
-| `SAL.RUL.02` | Remind the party before a package expires | wl-sales | `CLN.RUL.06`, `EDU.RUL.04` | in use |
-| `SAL.RUL.03` | Notify the party when package credits run low | wl-sales | `EDU.RUL.03` | in use |
-| `SAL.RUL.04` | Remind the customer of an order ready but not collected | wl-sales | `AUT.RUL.06` | in use |
+| `SAL.RUL.02` | Remind the party before a package expires | wl-sales | `CLN.RUL.06`, `EDU.RUL.04` | planned (not built) |
+| `SAL.RUL.03` | Notify the party when package credits run low | wl-sales | `EDU.RUL.03` | planned (not built) |
+| `SAL.RUL.04` | Remind the customer of an order ready but not collected | wl-sales | `AUT.RUL.06` | planned (not built) |
 | `SAL.RUL.05` | Put the customer account and its credit group on hold when a cheque bounces | wl-sales | — | module |
 | `SAL.RUL.06` | Refund a payment that arrives for a cancelled, rejected or fully paid order | wl-sales | — | module |
 | `SAL.RUL.07` | Earn loyalty points or visits on a qualifying sale; reverse them on a return or credit note | wl-sales | `FNB.LOY.01` (06) | module |
