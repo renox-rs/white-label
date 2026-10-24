@@ -14,15 +14,16 @@
 use std::collections::BTreeMap;
 
 use renox::chrono::NaiveDate;
+use renox::grid::{Action, Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
-use wl_kernel::documents::dubai_text;
 
-use crate::booking::{Booking, REASON_CODES};
+use crate::booking::{Booking, BookingStatus, REASON_CODES};
 use crate::conflict::{
     self, BLOCK_REASON_CODE, BulkAction, Conflict, day_bounds, open_of, rest_of_day,
 };
-use crate::pages::{field, number, parse_local};
+use crate::pages::{field, number, parse_local, status_text};
 use crate::resource::{AvailabilityBlock, Resource};
 use crate::service::Actor;
 use crate::{permissions, texts};
@@ -66,50 +67,107 @@ struct Filter {
 #[view(template = "wl-scheduling/conflicts.html")]
 pub(crate) struct ConflictsPage {
     tx: BTreeMap<&'static str, String>,
-    options: Vec<(String, String)>,
-    resources: Vec<(String, String)>,
+    bookings: GridPage<Booking>,
     targets: Vec<(String, String)>,
     actions: Vec<(String, String)>,
     reasons: Vec<(String, String)>,
-    filter_resource: String,
-    filter_day: String,
-    empty: bool,
-    has_rows: bool,
     can_manage: bool,
 }
 
+/// The conflicts grid: search on the number, filters by resource,
+/// status and start, with the bulk actions of the desk. The resources and the
+/// causes are drawn by the template (`custom`).
+fn conflicts_grid(lang: &Lang, resources: Vec<(String, String)>, can_manage: bool) -> Grid {
+    let t = |key: &str| texts::t(lang, &format!("wl_scheduling.{key}"));
+    let statuses: Vec<(String, String)> = BookingStatus::ALL
+        .iter()
+        .map(|status| (status.as_str().to_owned(), status_text(lang, *status)))
+        .collect();
+    let grid = Grid::new("scheduling-conflicts")
+        .title(&t("conflicts.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &t("bookings.number"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/scheduling/bookings/{id}"),
+        )
+        .column(Column::datetime("starts_at", &t("bookings.when")).mobile())
+        .column(Column::custom("party", &t("bookings.party")).mobile())
+        .column(Column::custom("resources", &t("bookings.resources")).mobile())
+        .column(
+            Column::select("first_resource", &t("conflicts.resource"), resources)
+                .computed(
+                    "(SELECT \"br\".\"resource_id\" FROM \"wl_scheduling_booking_resources\" \"br\" \
+                     WHERE \"br\".\"booking_id\" = {T}.\"id\" ORDER BY \"br\".\"id\" LIMIT 1)",
+                )
+                .hidden(),
+        )
+        .column(Column::custom("causes", &t("conflicts.causes")).mobile())
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("requested", "info"),
+                    ("booked", "info"),
+                    ("confirmed", "info"),
+                    ("checked_in", "info"),
+                    ("in_progress", "info"),
+                    ("completed", "success"),
+                    ("no_show", "danger"),
+                    ("cancelled", "warning"),
+                ])
+                .hidden(),
+        )
+        .sort_by("starts_at")
+        .row_url("/scheduling/bookings/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("conflicts.empty"), None);
+    let grid = if can_manage {
+        grid.exports().bulk_action(
+            Action::new(&t("conflicts.apply"), "/scheduling/conflicts/resolve")
+                .sheet("conflicts-resolve"),
+        )
+    } else {
+        grid
+    };
+    grid
+}
+
 /// `GET /scheduling/conflicts`: the conflicted bookings, by start, optionally
-/// of one resource (`resource`) and of one day (`day`, `2026-11-03`).
+/// of one resource (`resource`) and of one day (`day`, `2026-11-03`) in the
+/// query string; the grid searches, filters, sorts and pages them.
 async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Query(filter): Query<Filter>,
-) -> Result<View> {
+    request: GridRequest,
+) -> Result<Response> {
+    let can_manage = user.has_permission(permissions::MANAGE);
     let resource = filter.resource.trim().parse::<i64>().ok();
     let period = filter.day.trim().parse::<NaiveDate>().ok().map(day_bounds);
-    let mut options = Vec::new();
-    for booking in conflict::conflicts(&state.db, resource, period).await? {
-        options.push((
-            booking.id.to_string(),
-            label_of(&state, &lang, &booking).await?,
-        ));
-    }
+    let ids: Vec<i64> = conflict::conflicts(&state.db, resource, period)
+        .await?
+        .iter()
+        .map(|booking| booking.id)
+        .collect();
     let active: Vec<Resource> = Resource::query()
         .where_(Resource::ACTIVE.eq(true))
         .order_by(Resource::ID)
         .get(&state.db)
         .await?;
-    let mut resources = vec![(
-        String::new(),
-        texts::t(&lang, "wl_scheduling.conflicts.all"),
-    )];
-    resources.extend(active.iter().map(|r| (r.id.to_string(), r.name.clone())));
+    let named: Vec<(String, String)> = active
+        .iter()
+        .map(|r| (r.id.to_string(), r.name.clone()))
+        .collect();
     let mut targets = vec![(
         String::new(),
         texts::t(&lang, "wl_scheduling.conflicts.any"),
     )];
-    targets.extend(active.iter().map(|r| (r.id.to_string(), r.name.clone())));
+    targets.extend(named.iter().cloned());
     let actions = ["reassign", "reschedule", "cancel"]
         .iter()
         .map(|action| {
@@ -128,53 +186,55 @@ async fn index(
             )
         })
         .collect();
+    let grid = conflicts_grid(&lang, named, can_manage);
+    if request.param("export").is_some() && !can_manage {
+        return Err(Error::Forbidden);
+    }
+    let query =
+        Booking::query().where_(Booking::ID.is_in(if ids.is_empty() { vec![-1] } else { ids }));
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    // The resources and the open causes of the bookings on this page.
+    let mut details = BTreeMap::new();
+    for booking in page.items() {
+        let mut names = Vec::new();
+        for id in booking.resource_ids(&state.db).await? {
+            if let Some(resource) = Resource::find(&state.db, id).await? {
+                names.push(resource.name);
+            }
+        }
+        let causes = open_of(&state.db, booking.id)
+            .await?
+            .iter()
+            .map(|row: &Conflict| row.cause.clone())
+            .collect::<Vec<_>>();
+        let party = wl_kernel::parties::directory(&state)
+            .display_name(&state.db, booking.party(), &lang.locale)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| format!("#{}", booking.party_id));
+        details.insert(booking.id, (party, names.join(", "), causes.join(", ")));
+    }
+    let bookings = page.extend(|booking| {
+        let found = details.get(&booking.id);
+        json!({
+            "party": found.map(|d| d.0.as_str()),
+            "resources": found.map(|d| d.1.as_str()),
+            "causes": found.map(|d| d.2.as_str()),
+        })
+    });
     Ok(View::typed(ConflictsPage {
         tx: texts::all(&lang),
-        empty: options.is_empty(),
-        has_rows: !options.is_empty(),
-        options,
-        resources,
+        bookings,
         targets,
         actions,
         reasons,
-        filter_resource: filter.resource,
-        filter_day: filter.day,
-        can_manage: user.has_permission(permissions::MANAGE),
-    }))
-}
-
-/// One line of the list: number, time, party, resource.
-async fn label_of(state: &AppState, lang: &Lang, booking: &Booking) -> Result<String> {
-    let party = wl_kernel::parties::directory(state)
-        .display_name(&state.db, booking.party(), &lang.locale)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or_else(|| format!("#{}", booking.party_id));
-    let mut names = Vec::new();
-    for id in booking.resource_ids(&state.db).await? {
-        if let Some(resource) = Resource::find(&state.db, id).await? {
-            names.push(resource.name);
-        }
-    }
-    let causes = open_of(&state.db, booking.id)
-        .await?
-        .iter()
-        .map(|row: &Conflict| row.cause.clone())
-        .collect::<Vec<_>>();
-    let cause = if causes.is_empty() {
-        String::new()
-    } else {
-        format!(" · {}", causes.join(", "))
-    };
-    Ok(format!(
-        "{} · {} · {} · {}{}",
-        booking.number,
-        dubai_text(booking.starts_at),
-        party,
-        names.join(", "),
-        cause
-    ))
+        can_manage,
+    })
+    .into_response())
 }
 
 /// The form of a bulk action: `action` (`reassign`, `reschedule` or `cancel`),
@@ -203,6 +263,12 @@ impl ResolveForm {
                 "to" => form.to = value,
                 "reason_code" => form.reason_code = value,
                 "bookings" => form.bookings.extend(value.trim().parse::<i64>().ok()),
+                // The grid's bulk action sends the selected ids, comma separated.
+                "ids" => form.bookings.extend(
+                    value
+                        .split(',')
+                        .filter_map(|id| id.trim().parse::<i64>().ok()),
+                ),
                 _ => {}
             }
         }

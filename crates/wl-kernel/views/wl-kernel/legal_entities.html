@@ -1,13 +1,7 @@
-{#- wl-kernel: the legal entities of this deployment (PLT.ENT.01). Replace it
-    with resources/views/wl-kernel/legal_entities.html in the app. -#}
+{#- wl-kernel: the legal entities of this deployment (PLT.ENT.01), a
+    renox::grid that fills the screen. Replace it with
+    resources/views/wl-kernel/legal_entities.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="heading">
-  <rx-stack>
-    <rx-page-header :title="heading"/>
-    <rx-table :rows="entities" as="entity" :key="entity.id" :caption="heading">
-      <rx-column label="Code">{{ entity.code }}</rx-column>
-      <rx-column label="Legal name">{{ entity.name_en }}</rx-column>
-      <rx-column label="TRN">{{ entity.trn or "—" }}</rx-column>
-      <rx-column label="Default"><rx-badge rx-if="entity.is_default" kind="success">Default</rx-badge></rx-column>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="heading"/>
+  <rx-grid :page="entities"/>
 </rx-page>

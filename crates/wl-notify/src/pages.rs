@@ -28,12 +28,14 @@
 use std::collections::{BTreeMap, HashMap};
 
 use renox::Download;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::validation::{Errors, ValidationError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 use wl_kernel::approvals::{self, ApprovalCard};
-use wl_kernel::notify::{self, GiveUpReaction, NotifyChannel, ProofMethod};
+use wl_kernel::notify::{self, Category, GiveUpReaction, NotifyChannel, ProofMethod, Urgency};
 
 use crate::broadcast::{Broadcast, BroadcastStatus};
 use crate::broadcast_results;
@@ -55,9 +57,6 @@ type Texts = BTreeMap<&'static str, String>;
 
 /// The package text `key` (without the `wl_notify.` prefix) in a language.
 type Text<'a> = &'a dyn Fn(&str) -> String;
-
-/// How many messages the log shows, newest first.
-pub const LOG_LIMIT: u64 = 200;
 
 /// The module's routes, each behind its permission.
 pub fn routes() -> Routes {
@@ -256,25 +255,82 @@ pub(crate) fn type_row(t: Text<'_>, kind: &NotificationType) -> TypeRow {
 #[view(template = "wl-notify/types.html")]
 pub(crate) struct TypesPage {
     tx: Texts,
-    types: Vec<TypeRow>,
+    types: GridPage<NotificationType>,
+}
+
+/// The types grid: search on the key, module and give-up texts, filters by
+/// module, category, urgency and statutory. The channels, the reactions and
+/// the staff role are drawn by the template (`custom`).
+fn types_grid(lang: &Lang) -> Grid {
+    let t = texts_in(lang);
+    let categories: Vec<(String, String)> = Category::ALL
+        .iter()
+        .map(|c| {
+            (
+                c.as_str().to_owned(),
+                t(&format!("category.{}", c.as_str())),
+            )
+        })
+        .collect();
+    let urgencies: Vec<(String, String)> = Urgency::ALL
+        .iter()
+        .map(|u| (u.as_str().to_owned(), t(&format!("urgency.{}", u.as_str()))))
+        .collect();
+    Grid::new("notify-types")
+        .title(&t("types.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("key", &t("fields.key"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable(),
+        )
+        .column(
+            Column::text("module", &t("fields.module"))
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::select("category", &t("fields.category"), categories).mobile())
+        .column(Column::select("urgency", &t("fields.urgency"), urgencies).hidden())
+        .column(Column::custom("channels", &t("fields.channels")))
+        .column(Column::bool("statutory", &t("fields.statutory")).mobile())
+        .column(Column::custom("give_up", &t("fields.give_up")))
+        .column(Column::custom("staff_role", &t("fields.staff_role")).hidden())
+        .column(Column::custom("edit", &t("types.edit")).frozen_right())
+        .sort_by("module,key")
+        .cards_on_mobile()
+        .exports()
+        .empty_state(&t("types.empty"), Some(&t("types.empty_hint")))
 }
 
 /// `GET /notification-types`: every type with its statutory flag, give-up
-/// reaction and staff role told.
-async fn types_index(State(db): State<Db>, lang: Lang) -> Result<View> {
+/// reaction and staff role told, searched, filtered, sorted and paged by the
+/// grid.
+async fn types_index(lang: Lang, request: GridRequest) -> Result<Response> {
     let t = texts_in(&lang);
-    let types = NotificationType::query()
-        .order_by(NotificationType::MODULE)
-        .order_by(NotificationType::KEY)
-        .get(&db)
-        .await?
-        .iter()
-        .map(|kind| type_row(&t, kind))
-        .collect();
+    // The route needs `notifications.templates.manage`, so the export is open.
+    let grid = types_grid(&lang);
+    let query = NotificationType::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let types = grid.page(query, &request).await?.extend(|kind| {
+        let row = type_row(&t, kind);
+        json!({
+            "channels": row.channels,
+            "give_up": row.give_up,
+            "staff_role": row.staff_role,
+            "edit_url": format!("/notification-types/{}", kind.key),
+        })
+    });
     Ok(View::typed(TypesPage {
         tx: texts::all(&lang),
         types,
-    }))
+    })
+    .into_response())
 }
 
 /// The reactions the edit form offers, in run order. `statutory_notice` is
@@ -563,19 +619,101 @@ impl LogCounts {
 pub(crate) struct LogPage {
     tx: Texts,
     counts: LogCounts,
-    messages: Vec<LogRow>,
+    messages: GridPage<Message>,
 }
 
-/// `GET /notification-log`: the latest messages, newest first, with their
-/// status labels, and the counters.
-async fn log_index(State(db): State<Db>, lang: Lang) -> Result<View> {
+/// The log grid: search on the type, recipient, reference and error, filters
+/// by channel, status and date. The query stays cheap: newest first by the
+/// primary key, no join. What a given-up message did next is drawn by the
+/// template (`custom`).
+fn log_grid(lang: &Lang) -> Grid {
+    let t = texts_in(lang);
+    let channels: Vec<(String, String)> = NotifyChannel::ALL
+        .iter()
+        .map(|c| (c.as_str().to_owned(), channel_label(&t, *c)))
+        .collect();
+    let statuses: Vec<(String, String)> = MessageStatus::ALL
+        .iter()
+        .map(|s| {
+            let label = match s {
+                MessageStatus::Abandoned => t("counters.not_delivered"),
+                other => t(&format!("status.{}", other.as_str())),
+            };
+            (s.as_str().to_owned(), label)
+        })
+        .collect();
+    Grid::new("notify-log")
+        .title(&t("log.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(Column::number("id", &t("fields.id")).hidden())
+        .column(Column::datetime("created_at", &t("fields.created_at")).mobile())
+        .column(
+            Column::text("type_key", &t("fields.key"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable(),
+        )
+        .column(Column::custom("subject", &t("fields.subject")))
+        .column(Column::text("subject_label", &t("fields.reference")).searchable().hidden())
+        .column(
+            Column::text("address", &t("fields.recipient"))
+                .computed(
+                    "COALESCE({T}.\"address\", \
+                     CASE WHEN {T}.\"user_id\" IS NOT NULL THEN 'user #' || CAST({T}.\"user_id\" AS TEXT) \
+                     WHEN {T}.\"party_id\" IS NOT NULL THEN 'party #' || CAST({T}.\"party_id\" AS TEXT) END, \
+                     '\u{2014}')",
+                )
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::select("channel", &t("fields.channel"), channels).mobile())
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("queued", "neutral"),
+                    ("deferred", "neutral"),
+                    ("suppressed", "neutral"),
+                    ("sent", "info"),
+                    ("delivered", "success"),
+                    ("read", "success"),
+                    ("failed", "danger"),
+                    ("abandoned", "danger"),
+                ])
+                .mobile(),
+        )
+        .column(Column::custom("outcome", &t("fields.outcome")))
+        .column(Column::number("attempts", &t("fields.attempts")).hidden())
+        .column(
+            Column::text("last_error", &t("fields.last_error"))
+                .computed(
+                    "NULLIF(TRIM(COALESCE({T}.\"last_error_code\", '') || ' ' || COALESCE({T}.\"last_error\", '')), '')",
+                )
+                .searchable(),
+        )
+        .sort_by("-id")
+        .cards_on_mobile()
+        .exports()
+        .empty_state(&t("log.empty"), Some(&t("log.empty_hint")))
+}
+
+/// `GET /notification-log`: the messages, newest first, paged by the grid
+/// (no cap: older messages are on the next pages), with their status labels,
+/// and the counters.
+async fn log_index(State(db): State<Db>, lang: Lang, request: GridRequest) -> Result<Response> {
     let t = texts_in(&lang);
-    let messages = Message::query()
-        .order_by_desc(Message::ID)
-        .limit(LOG_LIMIT)
-        .get(&db)
-        .await?;
-    let abandoned: Vec<i64> = messages
+    // The route needs `notifications.log.view`, so the export is open.
+    let grid = log_grid(&lang);
+    let query = Message::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    // What took over from each given-up message of this page.
+    let abandoned: Vec<i64> = page
+        .items()
         .iter()
         .filter(|m| m.status == MessageStatus::Abandoned)
         .map(|m| m.id)
@@ -592,15 +730,20 @@ async fn log_index(State(db): State<Db>, lang: Lang) -> Result<View> {
             }
         }
     }
-    let rows = messages
-        .iter()
-        .map(|m| log_row(&t, m, fell_back.get(&m.id).copied()))
-        .collect();
+    let page = page.extend(|m| {
+        let row = log_row(&t, m, fell_back.get(&m.id).copied());
+        json!({
+            "subject": row.subject,
+            "outcome": (m.status == MessageStatus::Abandoned).then_some(row.status),
+            "tone": row.tone,
+        })
+    });
     Ok(View::typed(LogPage {
         tx: texts::all(&lang),
         counts: LogCounts::of(&db).await?,
-        messages: rows,
-    }))
+        messages: page,
+    })
+    .into_response())
 }
 
 /// The methods a type accepts, as `(code, label)` options of a select.
@@ -953,25 +1096,6 @@ async fn send_windows_update(
     }
 }
 
-/// One broadcast in the list.
-#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
-pub struct BroadcastRow {
-    /// The broadcast's id.
-    pub id: i64,
-    /// The notification type's key.
-    pub type_key: String,
-    /// "Draft", "Pending approval", ...
-    pub status: String,
-    /// The badge tone of the status.
-    pub tone: &'static str,
-    /// "SMS".
-    pub channel: String,
-    /// The recipients estimated when it was asked.
-    pub estimate: i64,
-    /// When it goes out.
-    pub send_at: DateTime,
-}
-
 /// The badge tone of a broadcast status.
 fn broadcast_tone(status: BroadcastStatus) -> &'static str {
     match status {
@@ -1005,37 +1129,77 @@ fn may_handle(user: &AuthUser, broadcast: &Broadcast) -> bool {
 #[view(template = "wl-notify/broadcasts.html")]
 pub(crate) struct BroadcastsPage {
     tx: Texts,
-    broadcasts: Vec<BroadcastRow>,
+    broadcasts: GridPage<Broadcast>,
+}
+
+/// The broadcasts grid: search on the type, filters by status, channel and
+/// send time. Only holders of `notifications.marketing.send` export.
+fn broadcasts_grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = texts_in(lang);
+    let statuses: Vec<(String, String)> = BroadcastStatus::ALL
+        .iter()
+        .map(|s| (s.as_str().to_owned(), t(broadcast_status_key(*s))))
+        .collect();
+    let channels: Vec<(String, String)> = NotifyChannel::ALL
+        .iter()
+        .map(|c| (c.as_str().to_owned(), channel_label(&t, *c)))
+        .collect();
+    let grid = Grid::new("notify-broadcasts")
+        .title(&t("broadcasts.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(Column::number("id", &t("fields.id")).hidden())
+        .column(
+            Column::text("type_key", &t("fields.key"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/notify/broadcasts/{id}"),
+        )
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("draft", "info"),
+                    ("pending_approval", "warning"),
+                    ("scheduled", "info"),
+                    ("sending", "info"),
+                    ("completed", "success"),
+                    ("cancelled", "danger"),
+                ])
+                .mobile(),
+        )
+        .column(Column::select("channel", &t("fields.channel"), channels).mobile())
+        .column(Column::number("estimate", &t("broadcasts.estimate")))
+        .column(Column::datetime("send_at", &t("broadcasts.send_at")).mobile())
+        .column(Column::datetime("created_at", &t("fields.created_at")).hidden())
+        .sort_by("-id")
+        .row_url("/notify/broadcasts/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("broadcasts.empty"), Some(&t("broadcasts.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// `GET /notify/broadcasts`: newest first. A holder sees every broadcast,
 /// anyone else only the ones they asked for.
-async fn broadcasts_index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View> {
-    let t = texts_in(&lang);
-    let mut query = Broadcast::query()
-        .order_by_desc(Broadcast::ID)
-        .limit(LOG_LIMIT);
-    if !user.has_permission(permissions::MARKETING_SEND) {
+async fn broadcasts_index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
+    let holder = user.has_permission(permissions::MARKETING_SEND);
+    let grid = broadcasts_grid(&lang, holder);
+    if request.param("export").is_some() && !holder {
+        return Err(Error::Forbidden);
+    }
+    let mut query = Broadcast::query();
+    if !holder {
         query = query.where_(Broadcast::REQUESTED_BY.eq(user.id));
     }
-    let rows = query
-        .get(&db)
-        .await?
-        .into_iter()
-        .map(|b| BroadcastRow {
-            id: b.id,
-            status: t(broadcast_status_key(b.status)),
-            tone: broadcast_tone(b.status),
-            channel: channel_label(&t, b.channel),
-            estimate: b.estimate,
-            send_at: b.send_at,
-            type_key: b.type_key,
-        })
-        .collect();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
     Ok(View::typed(BroadcastsPage {
         tx: texts::all(&lang),
-        broadcasts: rows,
-    }))
+        broadcasts: grid.page(query, &request).await?,
+    })
+    .into_response())
 }
 
 /// A count with its label (an excluded reason, a result).

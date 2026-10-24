@@ -361,6 +361,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_kernel.integrations.page.failed_since", "Failing since"),
     ("wl_kernel.integrations.page.last_success", "Last success"),
     ("wl_kernel.integrations.page.queued", "Queued"),
+    ("wl_kernel.integrations.page.open", "Open"),
     (
         "wl_kernel.integrations.page.empty",
         "No connections are registered.",
@@ -573,6 +574,8 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_kernel.compliance.page.subject", "About"),
     ("wl_kernel.compliance.page.raised_at", "Raised"),
     ("wl_kernel.compliance.page.task", "Task"),
+    ("wl_kernel.compliance.page.owner_role", "Owner role"),
+    ("wl_kernel.compliance.page.error", "Error"),
     ("wl_kernel.compliance.page.actions", "Actions"),
     ("wl_kernel.compliance.page.close", "Record how it was met"),
     (
