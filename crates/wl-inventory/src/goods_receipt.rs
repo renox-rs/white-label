@@ -304,6 +304,7 @@ pub async fn create_draft(db: &Db, by: Option<i64>, draft: DraftReceipt) -> Resu
         line.goods_receipt_id = receipt.id;
         line.insert(&mut tx).await?;
     }
+    crate::search::index(&mut tx, GOODS_RECEIPT_SUBJECT_TYPE, receipt.id).await?;
     tx.commit().await?;
     Ok(receipt)
 }
@@ -391,6 +392,7 @@ pub async fn create_replacement_draft(
         row.goods_receipt_id = receipt.id;
         row.insert(&mut tx).await?;
     }
+    crate::search::index(&mut tx, GOODS_RECEIPT_SUBJECT_TYPE, receipt.id).await?;
     tx.commit().await?;
     Ok(receipt)
 }

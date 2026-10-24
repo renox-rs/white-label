@@ -435,6 +435,7 @@ pub async fn create_draft(db: &Db, by: Option<i64>, new: NewDispatch) -> Result<
         row.dispatch_id = dispatch.id;
         row.insert(&mut tx).await?;
     }
+    crate::search::index(&mut tx, DISPATCH_SUBJECT_TYPE, dispatch.id).await?;
     tx.commit().await?;
     Ok(dispatch)
 }

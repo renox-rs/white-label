@@ -124,7 +124,9 @@ pub(crate) fn add_to(machine: Machine<Dispatch>) -> Machine<Dispatch> {
             .label("Return (delivery came back)")
             .system(),
     );
-    machine.transition(by_user).transition(by_system)
+    machine
+        .transition(crate::search::reindex_dispatch(by_user))
+        .transition(crate::search::reindex_dispatch(by_system))
 }
 
 /// `user` records that dispatch `id` came back, for `reason`.

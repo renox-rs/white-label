@@ -128,7 +128,9 @@ pub(crate) fn add_to(machine: Machine<Dispatch>) -> Machine<Dispatch> {
                 Ok(())
             })
         });
-    machine.transition(lost).transition(found)
+    machine
+        .transition(crate::search::reindex_dispatch(lost))
+        .transition(crate::search::reindex_dispatch(found))
 }
 
 /// Marks `dispatch` lost as the system. Does nothing, and answers `false`,

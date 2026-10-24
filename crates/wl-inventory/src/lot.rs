@@ -130,24 +130,24 @@ impl StateMachine for Lot {
             // The user's `reject` (`lots.release`) comes with the lot issues;
             // so far the system rejects a held lot when a Return to supplier
             // takes its last quantity.
-            .transition(
+            .transition(crate::search::reindex_lot(
                 Transition::new(REJECT)
                     .label("Reject")
                     .system()
                     .from([Quarantine, OnHold])
                     .to(Rejected),
-            )
+            ))
             // Decision: `release` is the system's here; the user's run
             // (`lots.release`, passed inspection, `SOD`) is the lot issue's.
-            .transition(
+            .transition(crate::search::reindex_lot(
                 Transition::new(RELEASE)
                     .label("Release")
                     .tone("success")
                     .system()
                     .from([Quarantine, OnHold])
                     .to(Released),
-            )
-            .transition(
+            ))
+            .transition(crate::search::reindex_lot(
                 Transition::new(DISCARD)
                     .label("Discard")
                     .tone("danger")
@@ -182,22 +182,22 @@ impl StateMachine for Lot {
                             Ok(())
                         })
                     }),
-            )
-            .transition(
+            ))
+            .transition(crate::search::reindex_lot(
                 Transition::new(UNHOLD)
                     .label("Unhold")
                     .system()
                     .from([OnHold])
                     .to(Released),
-            )
-            .transition(
+            ))
+            .transition(crate::search::reindex_lot(
                 Transition::new(UNHOLD_TO_QUARANTINE)
                     .label("Unhold (back to quarantine)")
                     .system()
                     .from([OnHold])
                     .to(Quarantine),
-            )
-            .transition(
+            ))
+            .transition(crate::search::reindex_lot(
                 Transition::new(HOLD)
                     .label("Hold")
                     .tone("warning")
@@ -217,7 +217,7 @@ impl StateMachine for Lot {
                             Ok(())
                         })
                     }),
-            )
+            ))
     }
 }
 

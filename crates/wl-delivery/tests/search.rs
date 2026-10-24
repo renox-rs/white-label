@@ -64,7 +64,9 @@ async fn a_tracking_number_finds_the_delivery_and_then_its_run() {
     assert!(!document.keywords.contains("971500000000"));
 
     // The tracking number, typed loosely, finds the delivery.
-    let found = search::lookup_identifier(world.db(), "shp 7001").await.unwrap();
+    let found = search::lookup_identifier(world.db(), "shp 7001")
+        .await
+        .unwrap();
     assert!(found.iter().any(|m| m.subject == delivery_subject));
     let by_number = search::lookup_identifier(world.db(), &delivery.number)
         .await
@@ -85,7 +87,9 @@ async fn a_tracking_number_finds_the_delivery_and_then_its_run() {
         .assign(&world.dispatcher, &delivery, &run)
         .await
         .assert_ok();
-    let found = search::lookup_identifier(world.db(), "SHP-7001").await.unwrap();
+    let found = search::lookup_identifier(world.db(), "SHP-7001")
+        .await
+        .unwrap();
     assert!(found.iter().any(|m| m.subject == delivery_subject));
     assert!(found.iter().any(|m| m.subject == run_subject));
     let document = search::document_of(world.db(), &delivery_subject)
@@ -95,9 +99,15 @@ async fn a_tracking_number_finds_the_delivery_and_then_its_run() {
     assert_eq!(document.status.as_deref(), Some("assigned"));
 
     // The rebuild gives the same documents as the writes.
-    let before = search::identifiers_of(world.db(), &run_subject).await.unwrap();
-    search::rebuild_type(world.db(), RUN_SUBJECT_TYPE).await.unwrap();
-    let after = search::identifiers_of(world.db(), &run_subject).await.unwrap();
+    let before = search::identifiers_of(world.db(), &run_subject)
+        .await
+        .unwrap();
+    search::rebuild_type(world.db(), RUN_SUBJECT_TYPE)
+        .await
+        .unwrap();
+    let after = search::identifiers_of(world.db(), &run_subject)
+        .await
+        .unwrap();
     let values = |rows: &[SearchIdentifierRow]| {
         rows.iter()
             .map(|r| (r.kind.clone(), r.value.clone()))
@@ -141,7 +151,10 @@ async fn the_delivery_and_run_pages_load_their_related_panels() {
         .get(&format!("/runs/{}", run.id))
         .await
         .assert_ok()
-        .assert_see(&format!("hx-get=\"/related/delivery.run:{}/panel\"", run.id));
+        .assert_see(&format!(
+            "hx-get=\"/related/delivery.run:{}/panel\"",
+            run.id
+        ));
     world
         .app
         .get(&format!("/related/delivery.run:{}/panel", run.id))

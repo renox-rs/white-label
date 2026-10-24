@@ -248,7 +248,9 @@ pub(crate) fn add_to(machine: Machine<Dispatch>) -> Machine<Dispatch> {
             .label("Confirm delivery (proof of delivery)")
             .system(),
     );
-    machine.transition(by_user).transition(by_system)
+    machine
+        .transition(crate::search::reindex_dispatch(by_user))
+        .transition(crate::search::reindex_dispatch(by_system))
 }
 
 /// `user` confirms the delivery of dispatch `id` of a courier or a

@@ -39,9 +39,24 @@ pub const PROOF_SUBJECT_TYPE: &str = "delivery.proof";
 /// The sources a delivery is for that have a group of their own on the
 /// delivery's panel: subject type, relation name, heading, page.
 const SOURCES: &[(&str, &str, &str, &str)] = &[
-    ("sales.sales_order", "order", "Sales order", "/sales-orders/{id}"),
-    ("inventory.dispatch", "dispatch", "Dispatch", "/dispatches/{id}"),
-    ("logistics.shipment", "shipment", "Shipment", "/shipments/{id}"),
+    (
+        "sales.sales_order",
+        "order",
+        "Sales order",
+        "/sales-orders/{id}",
+    ),
+    (
+        "inventory.dispatch",
+        "dispatch",
+        "Dispatch",
+        "/dispatches/{id}",
+    ),
+    (
+        "logistics.shipment",
+        "shipment",
+        "Shipment",
+        "/shipments/{id}",
+    ),
 ];
 
 /// Registers the two searchable types and the relations of both.
@@ -143,7 +158,10 @@ async fn source_tracking(tx: &mut Transaction, source: &Subject) -> Result<Vec<S
         .where_eq("subject_type", source.subject_type.as_str())
         .where_eq("subject_id", source.subject_id)
         .where_eq("hashed", false)
-        .where_in("kind", vec![kinds::NUMBER.to_owned(), kinds::TRACKING.to_owned()])
+        .where_in(
+            "kind",
+            vec![kinds::NUMBER.to_owned(), kinds::TRACKING.to_owned()],
+        )
         .order_by("id")
         .get(&mut *tx)
         .await?;

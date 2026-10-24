@@ -53,5 +53,6 @@
         </template>
       </rx-row-actions>
     </rx-table>
+    <div id="receipt-related" hx-get="/related/inventory.goods_receipt:{{ id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

@@ -311,9 +311,9 @@ pub(crate) fn add_to(machine: Machine<Dispatch>) -> Machine<Dispatch> {
     );
     let by_system = cancel_rules(Transition::new(CANCEL_BY_SYSTEM).label("Cancel").system());
     machine
-        .transition(pick)
-        .transition(cancel)
-        .transition(by_system)
+        .transition(crate::search::reindex_dispatch(pick))
+        .transition(crate::search::reindex_dispatch(cancel))
+        .transition(crate::search::reindex_dispatch(by_system))
 }
 
 /// What `cancel` and `cancel_by_system` share: from `draft` or `picked` to

@@ -468,7 +468,11 @@ pub(crate) fn transitions() -> Vec<Transition<PurchaseOrder>> {
 
 /// The machine of the order with the revise transitions.
 pub(crate) fn add_to(machine: Machine<PurchaseOrder>) -> Machine<PurchaseOrder> {
-    transitions().into_iter().fold(machine, Machine::transition)
+    transitions()
+        .into_iter()
+        // Each transition writes the order's search document (BL-AGT-11).
+        .map(crate::search::reindex_order)
+        .fold(machine, Machine::transition)
 }
 
 /// A 422 with `message`.

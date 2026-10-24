@@ -133,6 +133,7 @@ pub async fn produce(tx: &mut Transaction, request: ProduceOutput) -> Result<Opt
                     ..Lot::default()
                 };
                 lot.insert(&mut *tx).await?;
+                crate::search::index(tx, LOT_SUBJECT_TYPE, lot.id).await?;
                 lot.id
             }
         };

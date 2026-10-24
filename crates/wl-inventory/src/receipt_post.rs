@@ -490,8 +490,10 @@ impl StateMachine for GoodsReceipt {
             .terminal();
         transitions()
             .into_iter()
+            .chain([crate::receipt_reverse::transition()])
+            // Each transition writes the receipt's search document (BL-AGT-11).
+            .map(crate::search::reindex_receipt)
             .fold(machine, Machine::transition)
-            .transition(crate::receipt_reverse::transition())
     }
 }
 
@@ -527,6 +529,7 @@ async fn ensure_lot(
         ..Lot::default()
     };
     lot.insert(&mut *tx).await?;
+    crate::search::index(tx, wl_kernel::inventory::LOT_SUBJECT_TYPE, lot.id).await?;
     Ok(lot.id)
 }
 

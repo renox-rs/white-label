@@ -111,5 +111,6 @@
       </rx-row-actions>
       <rx-slot name="empty"><rx-empty :title="tx['empty']" icon="truck"/></rx-slot>
     </rx-table>
+    <div id="dispatch-related" hx-get="/related/inventory.dispatch:{{ id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

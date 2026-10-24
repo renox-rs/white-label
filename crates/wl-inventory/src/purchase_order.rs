@@ -414,23 +414,23 @@ impl StateMachine for PurchaseOrder {
             .state(Cancelled)
             .tone("neutral")
             .terminal()
-            .transition(rules(
+            .transition(crate::search::reindex_order(rules(
                 Transition::new(RECEIVE)
                     .label("Receive")
                     .to(PartiallyReceived),
-            ))
-            .transition(rules(
+            )))
+            .transition(crate::search::reindex_order(rules(
                 Transition::new(RECEIVE_IN_FULL)
                     .label("Receive in full")
                     .to(Received),
-            ))
-            .transition(
+            )))
+            .transition(crate::search::reindex_order(
                 Transition::new(REOPEN)
                     .label("Reopen")
                     .system()
                     .from([Received])
                     .to(PartiallyReceived),
-            );
+            ));
         crate::po_revise::add_to(crate::po_issue::add_to(machine))
     }
 }

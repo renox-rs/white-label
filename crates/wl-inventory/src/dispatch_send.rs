@@ -376,7 +376,7 @@ pub(crate) fn add_to(machine: Machine<Dispatch>) -> Machine<Dispatch> {
         let run = input(ctx).unwrap_or_default();
         Box::pin(async move { send_in(tx, dispatch, &run).await })
     });
-    machine.transition(send)
+    machine.transition(crate::search::reindex_dispatch(send))
 }
 
 /// The text of a failed credit check.

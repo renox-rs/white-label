@@ -55,7 +55,7 @@ pub(crate) fn add_to(machine: Machine<Dispatch>) -> Machine<Dispatch> {
                 Ok(())
             })
         });
-    machine.transition(reverse)
+    machine.transition(crate::search::reindex_dispatch(reverse))
 }
 
 /// Reopens `dispatch` as the system. Does nothing, and answers `false`, when

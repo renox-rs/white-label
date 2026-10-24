@@ -48,5 +48,6 @@
         <rx-slot name="empty"><rx-empty :title="tx['lot.no_movements']" icon="package"/></rx-slot>
       </rx-table>
     </rx-card>
+    <div id="lot-related" hx-get="/related/inventory.lot:{{ id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

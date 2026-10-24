@@ -71,6 +71,7 @@ pub mod return_draft;
 pub mod return_note;
 pub mod sales_cancel;
 pub mod scope_stock;
+pub mod search;
 mod screen_texts;
 mod screens;
 pub mod shortage_alert;
@@ -573,6 +574,9 @@ impl Module for WlInventory {
         // receipt (an approval, a message) shows its number.
         stock_screens::register_labels();
         dispatch_screens::register_labels();
+        // Items, orders, receipts, lots and dispatches in the search index
+        // and the Related panel (BL-AGT-11).
+        search::register();
         app.model::<Item>();
         app.model::<Location>();
         app.model::<ItemSupplier>();

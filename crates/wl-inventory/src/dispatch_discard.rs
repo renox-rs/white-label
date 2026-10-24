@@ -89,7 +89,7 @@ pub(crate) fn add_to(machine: Machine<Dispatch>) -> Machine<Dispatch> {
             let run = discard_input(ctx);
             Box::pin(async move { discard_in(tx, dispatch, run).await })
         });
-    machine.transition(discard)
+    machine.transition(crate::search::reindex_dispatch(discard))
 }
 
 /// Discards `dispatch` as the system. Does nothing, and answers `false`,

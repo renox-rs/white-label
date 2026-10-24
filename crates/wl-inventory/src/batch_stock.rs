@@ -139,6 +139,7 @@ async fn produce(state: &AppState, request: ProduceBatch) -> Result<Option<Produ
         ..Lot::default()
     };
     out.insert(&mut tx).await?;
+    crate::search::index(&mut tx, LOT_SUBJECT_TYPE, out.id).await?;
     let unit_cost =
         i64::try_from(i128::from(total_value) * 1_000 / i128::from(request.quantity_milli))
             .unwrap_or(0);
