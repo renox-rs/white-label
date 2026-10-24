@@ -201,7 +201,7 @@ fn waiting_grid(
                 .frozen()
                 .mobile(),
         )
-        .column(Column::number("party_id", &t("bookings.party_id")).hidden())
+        .column(Column::number("party_id", &t("bookings.party_id")).hidden().searchable())
         .column(Column::select("service_type_id", &t("waiting.service"), services).mobile())
         .column(
             Column::select(
@@ -231,6 +231,15 @@ fn waiting_grid(
             Column::number("open_first", "")
                 .computed("CASE WHEN {T}.\"status\" IN ('waiting', 'offered') THEN 0 ELSE 1 END")
                 .hidden(),
+        )
+        // Search: the entry number, the party id and the booking it became.
+        .column(
+            Column::text("lookup", &t("waiting.party"))
+                .computed("CAST({T}.\"id\" AS TEXT) || ' ' || COALESCE(CAST({T}.\"booking_id\" AS TEXT), '')")
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
         )
         .sort_by("open_first,id")
         .row_url("/scheduling/waiting-list/{id}")

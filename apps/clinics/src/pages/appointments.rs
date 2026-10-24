@@ -155,6 +155,16 @@ pub(crate) fn grid(lang: &Lang, names: &std::collections::BTreeMap<String, Strin
             Column::custom("open", &text(lang, "appointments.title"))
                 .frozen_right(),
         )
+        // Search: the booking number and the service code (the names are in
+        // the parties module, so the patient is not searched).
+        .column(
+            Column::text("lookup", &text(lang, "appointments.service"))
+                .computed("CAST({T}.\"booking_id\" AS TEXT) || ' ' || {T}.\"service_code\"")
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
+        )
         .sort_by("starts_at")
         .cards_on_mobile()
         .empty_state(

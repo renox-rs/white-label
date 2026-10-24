@@ -68,6 +68,16 @@ pub(crate) fn grid(lang: &Lang) -> Grid {
         .column(Column::custom("phone", &text(lang, "call_list.phone")).mobile())
         .column(Column::custom("called", &text(lang, "call_list.called")))
         .column(Column::custom("tick", &text(lang, "call_list.tick")).frozen_right())
+        // Search: the booking number and the service code (names and phones
+        // are in the parties module).
+        .column(
+            Column::text("lookup", &text(lang, "call_list.starts"))
+                .computed("CAST({T}.\"booking_id\" AS TEXT) || ' ' || {T}.\"service_code\"")
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
+        )
         .sort_by("starts_at")
         .cards_on_mobile()
         .empty_state(

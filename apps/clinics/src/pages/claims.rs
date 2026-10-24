@@ -214,6 +214,22 @@ pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
                 .mobile(),
         )
         .column(Column::custom("closed", &text(lang, "claim.closed")).hidden())
+        // Search: the claim number and the payer's and channel's references
+        // (the names are in the parties module, so they are not searched).
+        .column(
+            Column::text("lookup", &text(lang, "claim.number"))
+                .computed(
+                    "'CLM-' || CASE WHEN {T}.\"id\" < 10 THEN '000' WHEN {T}.\"id\" < 100 THEN '00' \
+                     WHEN {T}.\"id\" < 1000 THEN '0' ELSE '' END || CAST({T}.\"id\" AS TEXT) \
+                     || ' ' || COALESCE({T}.\"payer_reference\", '') \
+                     || ' ' || COALESCE({T}.\"submission_reference\", '') \
+                     || ' ' || COALESCE({T}.\"last_remittance_reference\", '')",
+                )
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
+        )
         .sort_by("-id")
         .row_url("/clinics/claims/{id}")
         .cards_on_mobile()
