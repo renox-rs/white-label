@@ -1,6 +1,8 @@
 # UX Specification
 
-> Status: draft · Last updated: 2026-10-16
+> Status: specification, screens built for F1-F10 (not every screen of this document) · Last updated: 2026-10-24
+>
+> **Build status (2026-10-24):** Built: the shell, the standard list grid and the page-fill rule (§2.3). Target, not built: the `wl-*` components named below (`wl-status`, `wl-money`): today the screens use `rx-badge` kinds and the kit's money formatting. Individual screens are marked built or not in the progress notes and the module specs.
 
 How people use the platform, screen by screen. [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) defines
 the look, and this document defines the layouts, navigation and behaviour. Screens are built
@@ -69,17 +71,25 @@ Every record with a state machine uses one layout:
 | Part | Rule |
 |---|---|
 | Title | number + the subject's natural name (`Lease L-0142 · Unit 1204, Tower A`) |
-| Status | `wl-status` badge; tone from [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) §6 |
+| Status | status badge (`rx-badge` kind; `wl-status` is a target, not built); tone from [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) §6 |
 | Actions | exactly the transitions available to this user now (WORKFLOW §3.2 point 5). Primary action = the transition that moves the record forward; destructive ones (`cancel`, `void`, `credit`) go under **More** with an `rx-confirm` |
 | Blocked action | shown disabled with a tooltip naming the missing guard ("Signed contract not attached"); a `LIM`/`SOD` action shows "Request approval" instead |
 | Tabs | `rx-tabs`: **Overview** (`rx-infolist`) · related records (one tab per related list) · **Documents** (`DOC.FIL.01`, expiry badges) · **Activity** |
 | Activity | Renox `history` block merging state transitions, field changes (audit), notes, comments and @mentions (`PLT.NOT.01`), messages sent (`wl-notify`) |
 | Hidden fields | `FLD`/`SEN` fields are not rendered; a `SEN` field the user may see shows a "Reveal" button whose click is audited (`PLT.ACL.06`) |
-| Side panel | 3–5 figures that matter (`--rx-type-display`), with `wl-money` for amounts |
+| Side panel | 3–5 figures that matter (`--rx-type-display`), with amounts in AED (`wl-money` is a target, not built) |
 
 ### 2.3 Lists
 
-- `rx-grid` with columns, sort, filters and pagination; the status column uses `wl-status`.
+- **Every list is the standard grid**, `renox::grid::Grid` rendered as `<rx-grid>`, with the
+  baseline of the project skill [standard-grid](../.claude/skills/standard-grid/SKILL.md): search,
+  sort, filters, pagination, dynamic columns, remembered state, export, an empty state and summaries on
+  money columns; the status column is an `rx-badge` (tone from DESIGN-SYSTEM §6). `rx-table` is
+  only for a few lines inside a detail page, never for a list ([host/AGENTS.md](../host/AGENTS.md)).
+- **Pages fill the desktop screen** (`<rx-shell fill>`): the document does not scroll, the grid is a
+  direct child of `<rx-page>` and takes the remaining height (`rx-fill`, `rx-panes` for side-by-side
+  panels), each panel scrolls on its own; tablets and phones scroll as a document. Check with
+  `node .claude/skills/standard-grid/check-fill.js` ([DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) §11).
 - **Saved filters**: per user, plus defaults per role ("My open tickets", "Overdue invoices").
 - **Scope selector** in the navbar (building, project, branch, outlet…), as in the bike
   shop's store switcher. Lists, inbox and dashboards follow it. "All" appears only for users
@@ -117,7 +127,7 @@ come after the inbox, never before it.
   the client.
 - Arabic fields sit next to their English counterpart (`name_en` | `name_ar`), and the Arabic
   input is `dir="rtl"`.
-- Amounts use `wl-money`; dates use `rx-date-picker` in `dd/mm/yyyy` format.
+- Amounts are shown as AED (`wl-money` is a target, not built); dates use `rx-date-picker` in `dd/mm/yyyy` format.
 
 ### 2.7 Empty states
 
@@ -489,6 +499,7 @@ key wireframes are in §2.2 (record page), §2.9 (technician PWA) and §2.10 (te
 - [ ] Works at 360 px (field roles) and in RTL
 - [ ] Keyboard path for every action; visible focus
 - [ ] Every list exports (`RPT.LIB.01`) without hidden columns
+- [ ] A list is the standard grid and fills the screen (`check-fill.js` passes)
 
 ## 7. Screens still to specify
 
