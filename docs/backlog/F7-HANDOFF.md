@@ -55,9 +55,6 @@ Map of IDs to numbers: `docs/backlog/github-issues.md`. Issue text: `docs/backlo
 
 | # | Issue, point | What is missing | Provider | Why not now |
 |---|---|---|---|---|
-| 1 | BL-MFG-11 (#392) pt 6: export-only item refused at sales submit/amend | wl-sales never calls `OrderLineRules`: an order has no delivery address (`DeliveryDestination` unwired). The rule works at pick and dispatch | wl-sales (delivery address with VAT category on the order) | no data |
-| 2 | BL-MFG-11 pt 7 look-ahead / `PromisedLines` | a sale line has no promised day; tested with a fake | wl-sales | no data |
-| 3 | `DeliveryDestination` | same as 1 | wl-sales | same |
 | 4 | BL-MFG-02 (#383) pt 5 / `release_reservation` | wl-inventory keeps no reservation of an output lot for an order line; answers `false` | wl-inventory | no such reservation |
 | 5 | BL-MFG-03 (#384): output "for stock" of a started work order | only flagged, never reserved or released | wl-inventory | same as 4 |
 | 6 | BL-SAL-13 (#132) / BL-MFG-14: delivery after the invoice was issued | not billed (one invoice per order, accountant task) | wl-sales / client billing | open decision |
@@ -70,13 +67,12 @@ Map of IDs to numbers: `docs/backlog/github-issues.md`. Issue text: `docs/backlo
 | 13 | BL-MFG-09 (#390) scanner/import entry | no scanner or import entry in the app | later issue | nothing to test |
 | 14 | BL-MFG-13 (#394) pt 3 | "no line selection for a price dispute" is a client-side show/hide; server ignores lines for a price dispute (tested). Ticked on the issue | none (by design) | not enforceable on the server |
 | 15 | BL-SAL-11 (#130) pt 2: stock reserved after a held order is released | nothing reserves stock on `SalesOrderConfirmed` (the dispatch pick reserves); only the status and the single event are tested. Left open on the issue | wl-inventory (reservation on the confirmed event) | no consumer exists |
-| 16 | BL-SAL-18 (#137) pt 2: the buyer sees only number and status | only `po_number::buyer_refusal` is tested, called directly; the portal page is built in BL-MFG-06 (`/portal/manufacturing/orders`) | wl-portal / BL-MFG-06 | re-check the point against `host/tests/manufacturing_po_number.rs` and `apps/manufacturing/tests/po_upload.rs` |
 | 17 | BL-MFG-14 (#395) pt 3: no bounce fee invoiced | asserted only as the config value `bounce_fee.is_none()` | wl-payments | no mechanism run under the 07 seed |
 | 18 | BL-MFG-14 pt 14: drawings left out of operating cost and profit reports; owner approval of the budget | not tested; approval asserted only as configuration (100% budget warning and drawing self-approval refusal are proved) | wl-invoicing / wl-accounting reports | not run with the 07 seed |
 | 19 | BL-MFG-14 pt 16: alternative supplier on a purchase request and a second person for a preferred supplier | not run with the 07 seed (supplier score 69 vs 70 is proved) | wl-inventory | not run with the 07 seed |
 
 Not proven end to end (say so in the issues): notice to a customer's main contact is proved as a queued message, not a delivered email; 09:00/09:15 timing of
-MFG.RUL.08 and the 01:00 expiry look-ahead schedule are not asserted; supplier score, cancellation fee and drawing approval are proved at mechanism level;
+MFG.RUL.08 is not asserted (the 01:00 expiry look-ahead schedule is, in `host/tests/manufacturing_conformity.rs`); supplier score, cancellation fee and drawing approval are proved at mechanism level;
 390 px is a browser crawl, not an automated width test; Postgres migrations and `rnx db:check`/`view:check` were not run.
 
 ## Known failure that is not ours
@@ -117,4 +113,4 @@ Never `pkill -f cargo` (it kills your own shell); use `pgrep -x cargo`. Do not r
 2. Push the branch (check that no CI run is in progress on it first).
 3. Update the 25 GitHub issues as described above (one agent per ~9 issues), then a sweep that re-reads every body and comment.
 4. Open the pull request only when asked: title with scope and count, `Closes #N` per issue, verification totals, the deferred list above.
-5. Possible follow-ups: wl-sales delivery address and promised day (closes deferred 1 to 3), output lot reservation in wl-inventory (4, 5).
+5. Possible follow-ups: output lot reservation in wl-inventory (4, 5). The wl-sales delivery destination and promised day (`crates/wl-sales/src/destination.rs`) are built; BL-MFG-11 points 6 and 7 and BL-SAL-18 point 2 are tested (`host/tests/manufacturing_conformity.rs`, `host/tests/manufacturing_po_number.rs`).

@@ -78,11 +78,14 @@ wl-inventory; the scrap limit of `STK.ACL.02` is AED 2,000 here, as for the abor
 
 Seams of the sales module: wl-sales provides `OrderLines` (the customer and open quantity of a
 work order's order, BL-MFG-03), `FulfilmentProgress` is provided here (`progress`), `CustomerPoCheck`
-(BL-SAL-18) and the `OutcomeProposals` reader are in place. Not provided by anything yet, so the matching
-Done-when points are proved with fakes: `DeliveryDestination` (whether an order is delivered abroad),
-`PromisedLines` (the look-ahead of `DOC.RUL.02`) and `OrderLineRules` (the refusal of an export only item at
-`submit` and `amend`): a sale line has no promised day and no delivery address yet, so wl-sales cannot
-answer them; they stay seams and the real host leaves them unwired.
+(BL-SAL-18) and the `OutcomeProposals` reader are in place. `DeliveryDestination` (whether an order is delivered abroad), `PromisedLines` (the
+look-ahead of `DOC.RUL.02`) and the call of `OrderLineRules` at `submit` and `amend` are provided by
+wl-sales too (the order's delivery address with its domestic or export answer, and a promised day on
+each line), and the host tests run them for real (`manufacturing_conformity.rs`: the order pages refuse an
+export only item on a domestic order at `submit` and `amend`, the look-ahead lists the confirmed lines
+promised after the expiry, and the 01:00 Asia/Dubai schedule is asserted through the list of scheduled tasks).
+The buyer's refusal in the portal (BL-SAL-18 point 2) is tested against real wl-sales orders in
+`host/tests/manufacturing_po_number.rs`: it names the number and status of the order holding the PO and nothing else.
 
 Not built for the returned goods: the checklist template `returned_goods_inspection` and its field pages
 are `WRK.CHK.01` of wl-ticketing, which only has the kernel contract (`Checklists`) so far; until it
@@ -96,8 +99,6 @@ kept with the audit of the round (`DEFERRED-F7`).
 
 | Issue, point | What is missing | Provider |
 |---|---|---|
-| BL-MFG-11 point 6: export-only item refused at sales `submit` and `amend` | wl-sales has no caller of the kernel's `OrderLineRules`, because an order has no delivery address to tell domestic from export (`DeliveryDestination`). The refusal itself (`conformity::ItemRules`) is built and tested at the pick and dispatch guards; the sales side is tested with the rule called directly | wl-sales: a delivery address (and its VAT category) on the order, then the call at `submit` and `amend` |
-| BL-MFG-11 point 7: the look-ahead lists the orders promised after the expiry | `PromisedLines` is not provided by wl-sales (a sale line has no promised day); the test feeds the kernel trait with a fake. The 01:00 schedule is a constant not asserted | wl-sales: a promised day on the sale line |
 | BL-MFG-02 point 5: the output reserved for a cancelled line is released | wl-inventory keeps no reservation of an output lot for an order line (the dispatch pick reserves), so `release_reservation` answers `false`; the test proves the call with the app's fake stock | wl-inventory: reservations of output lots for order lines |
 | BL-MFG-03: the output *for stock* of a started work order | only flagged, not reserved or released by wl-inventory (same reason) | wl-inventory |
 | BL-SAL-13 / BL-MFG-14: an invoice already issued, a later delivery | the order keeps one invoice: a delivery accepted after the invoice was issued is not billed by wl-sales (the accountant gets a task naming the invoice); a second invoice per delivery is a client billing choice | wl-sales / client billing |
