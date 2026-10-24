@@ -336,10 +336,33 @@ async fn pick_problems(db: &Db, dispatch: &Dispatch) -> Result<PickInput> {
         input.lines_problem = Some(said("wl_inventory.dispatch.no_lines", &[]));
         return Ok(input);
     }
+    // What the order reserved for the sale line is the goods picked here.
+    let mut covered: std::collections::BTreeMap<i64, i64> = std::collections::BTreeMap::new();
     for line in &lines {
         let item = Item::find_or_404(db, line.item_id).await?;
         let found = balance::balance(db, line.item_id, dispatch.location_id, line.lot_id).await?;
-        if found.available_milli() < line.quantity_milli {
+        let mut own = 0;
+        if line.lot_id.is_none()
+            && dispatch.source_type == wl_kernel::sales::SALES_ORDER_SUBJECT_TYPE
+            && let Some(sale_line) = line.sale_line_id
+        {
+            let left = match covered.get(&sale_line) {
+                Some(left) => *left,
+                None => {
+                    crate::reservation::reserved_for_line(
+                        db,
+                        &dispatch.source(),
+                        sale_line,
+                        line.item_id,
+                        dispatch.location_id,
+                    )
+                    .await?
+                }
+            };
+            own = left.min(line.quantity_milli);
+            covered.insert(sale_line, left - own);
+        }
+        if found.available_milli() + own < line.quantity_milli {
             input.stock_problem = Some(if found.held_milli > 0 {
                 said(
                     "wl_inventory.issue.held",

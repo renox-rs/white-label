@@ -17,6 +17,11 @@
 //!   reserved. A client with no location has nothing in stock: nothing is
 //!   reserved.
 //!
+//! A dispatch picked for the order that reserved the goods (BL-STK-26 beside
+//! BL-SAL-17) is the same goods: `pick` sees the order's reservation of the
+//! sale line as available, and [`crate::balance::reserved_at`] counts the
+//! picked line only for what the order's reservation does not cover.
+//!
 //! Decision: a consumption posted for the order itself (a dispatch that
 //! fulfils it) sees the reserved stock as unavailable, so the dispatch gives
 //! the reservation back first; wl-sales does so when the order's goods are
@@ -72,6 +77,30 @@ pub async fn sales_reserved<'c>(
     location_id: i64,
 ) -> Result<i64> {
     StockReservation::query()
+        .where_(StockReservation::ITEM_ID.eq(item_id))
+        .where_(StockReservation::LOCATION_ID.eq(location_id))
+        .sum::<i64, _>(db, "quantity_milli")
+        .await
+}
+
+/// What the record `owner` has set aside for `line` of `item_id` at
+/// `location_id`, in thousandths: the part of a picked dispatch that is
+/// already counted as reserved for its own order.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn reserved_for_line<'c>(
+    db: impl Executor<'c>,
+    owner: &Subject,
+    line: i64,
+    item_id: i64,
+    location_id: i64,
+) -> Result<i64> {
+    StockReservation::query()
+        .where_(StockReservation::OWNER_TYPE.eq(owner.subject_type.clone()))
+        .where_(StockReservation::OWNER_ID.eq(owner.subject_id))
+        .where_(StockReservation::LINE_ID.eq(line))
         .where_(StockReservation::ITEM_ID.eq(item_id))
         .where_(StockReservation::LOCATION_ID.eq(location_id))
         .sum::<i64, _>(db, "quantity_milli")
