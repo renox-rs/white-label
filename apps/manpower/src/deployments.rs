@@ -202,6 +202,7 @@ pub async fn plan_with_warning(
         },
     )
     .await?;
+    crate::search::index(&state.db, &planned.subject()).await?;
     let warning = guard::warn_planned(state, &planned).await?;
     Ok((planned, warning))
 }

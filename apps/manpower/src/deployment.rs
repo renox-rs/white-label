@@ -253,6 +253,13 @@ pub struct Deployment {
 }
 
 impl Deployment {
+    /// The number the deployment is found by: `DEP-0004` (BL-AGT-13;
+    /// decision: the id, never changed, like the other verticals' record
+    /// numbers).
+    pub fn number(&self) -> String {
+        format!("DEP-{:04}", self.id)
+    }
+
     /// The deployment as a [`Subject`]: `manpower.deployment:4`.
     pub fn subject(&self) -> Subject {
         Subject::new(SUBJECT_TYPE, self.id)

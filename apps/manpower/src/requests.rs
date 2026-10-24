@@ -99,7 +99,7 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewRequest) -> Result<
     if new.end_date.is_some_and(|end| end < new.start_date) {
         return Err(refused(refusal("manpower.request.dates", &[])));
     }
-    ManpowerRequest::create(
+    let made = ManpowerRequest::create(
         &state.db,
         ManpowerRequest {
             client_contract_id: contract.id,
@@ -116,7 +116,9 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewRequest) -> Result<
             ..ManpowerRequest::default()
         },
     )
-    .await
+    .await?;
+    crate::search::index(&state.db, &made.subject()).await?;
+    Ok(made)
 }
 
 /// The checks that fail for submitting `request` under `contract`, one

@@ -80,5 +80,6 @@
       <rx-column :label="tx['fields.status']"><rx-badge :kind="deployment.status_kind" :text="deployment.status"/></rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['request.no_deployments']" :message="tx['request.no_deployments_text']" icon="users"/></rx-slot>
     </rx-table>
+    <div id="related-panel" hx-get="/related/manpower.request:{{ id }}/panel" hx-trigger="load" hx-swap="innerHTML"></div>
   </rx-stack>
 </rx-page>

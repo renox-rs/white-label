@@ -148,7 +148,7 @@ pub async fn create_with(
     {
         return Err(refused(refusal("manpower.problems.client_unknown", &[])));
     }
-    Site::create(
+    let made = Site::create(
         &state.db,
         Site {
             client_party_id: client.0,
@@ -159,7 +159,9 @@ pub async fn create_with(
             ..Site::default()
         },
     )
-    .await
+    .await?;
+    crate::search::index(&state.db, &Subject::new(SUBJECT_TYPE, made.id)).await?;
+    Ok(made)
 }
 
 /// `by` changes site `id`: its name, address and required licences. The
@@ -183,6 +185,7 @@ pub async fn update(state: &AppState, by: &AuthUser, id: i64, input: SiteInput) 
     site.address = clean(input.address.as_deref());
     site.required_licences = clean(input.required_licences.as_deref());
     site.save(&state.db).await?;
+    crate::search::index(&state.db, &Subject::new(SUBJECT_TYPE, site.id)).await?;
     Ok(site)
 }
 

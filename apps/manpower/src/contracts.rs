@@ -122,7 +122,7 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewContract) -> Result
     {
         return Err(refused(refusal("manpower.problems.client_unknown", &[])));
     }
-    ClientContract::create(
+    let made = ClientContract::create(
         &state.db,
         ClientContract {
             reference: new.reference.trim().to_owned(),
@@ -140,7 +140,9 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewContract) -> Result
             ..ClientContract::default()
         },
     )
-    .await
+    .await?;
+    crate::search::index(&state.db, &made.subject()).await?;
+    Ok(made)
 }
 
 /// `by` records that the client signed the contract on `on` (`DOC.SIG.01`),

@@ -151,6 +151,12 @@ pub struct ManpowerRequest {
 }
 
 impl ManpowerRequest {
+    /// The number the request is found by: `REQ-0004` (BL-AGT-13; decision:
+    /// the id, never changed, like the other verticals' record numbers).
+    pub fn number(&self) -> String {
+        format!("REQ-{:04}", self.id)
+    }
+
     /// The request as a [`Subject`]: `manpower.request:4`.
     pub fn subject(&self) -> Subject {
         Subject::new(SUBJECT_TYPE, self.id)

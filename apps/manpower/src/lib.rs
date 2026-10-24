@@ -38,6 +38,7 @@ pub mod request;
 pub mod requests;
 pub mod resumption;
 mod screens;
+pub mod search;
 pub mod seed;
 pub mod site;
 pub mod suspension;
@@ -106,6 +107,9 @@ impl Module for Manpower {
     }
 
     fn register(&self, app: &mut Registry) {
+        // The records in the global search and the Related panel (BL-AGT-13).
+        search::register();
+        search::listen(app);
         app.view_data::<screens::lists::ContractsPage>()
             .view_data::<screens::lists::RequestsPage>()
             .view_data::<screens::lists::DeploymentsPage>()

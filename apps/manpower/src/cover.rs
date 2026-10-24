@@ -144,6 +144,7 @@ pub async fn open_cover(state: &AppState, ask: CoverAsk<'_>) -> Result<Cover> {
             &english("manpower.cover.history", &[("cause", &ask.cause)]),
         )
         .await?;
+    wl_kernel::search::index_in(&mut tx, &request.subject()).await?;
     tx.commit().await?;
     state
         .emit(CoverRequested {
