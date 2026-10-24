@@ -1,0 +1,44 @@
+{#- wl-payments: Pay supplier (BL-PAY-28): the supplier's approved bills,
+    oldest first, with an amount per bill (proposed from an amount), the
+    method, the bank account, the date and the reference. A blocked supplier's
+    payment is refused with the on-hold text; Request exception asks the
+    compliance role. Replace it with resources/views/wl-payments/supplier_pay.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['supplier_pay.title'] ~ ' - ' ~ supplier_name">
+  <rx-stack>
+    <rx-page-header :title="tx['supplier_pay.title']" :subtitle="supplier_name"/>
+    <rx-card>
+      <rx-form method="GET" :action="action">
+        <rx-row>
+          <rx-input name="amount" :label="tx['supplier_pay.amount']" :value="amount" :hint="tx['supplier_pay.amount_hint']" id="supplier-pay-amount"/>
+          <rx-button type="submit" :label="tx['supplier_pay.propose']" variant="secondary"/>
+        </rx-row>
+      </rx-form>
+    </rx-card>
+    <rx-empty rx-if="not bill_rows" :title="tx['supplier_pay.no_bills']" icon="receipt"/>
+    <rx-card rx-if="bill_rows">
+      <rx-form method="POST" :action="action">
+        <rx-stack>
+          <rx-form-errors/>
+          <input type="hidden" name="legal_entity_id" value="{{ entity }}">
+          <rx-table :rows="bill_rows" as="bill" :key="bill.id" :caption="tx['supplier_pay.bills']">
+            <rx-column :label="tx['supplier_pay.bill']">{{ bill.number }}</rx-column>
+            <rx-column :label="tx['supplier_pay.balance']" align="num">{{ bill.balance }}</rx-column>
+            <rx-column :label="tx['supplier_pay.pay']"><rx-input :name="bill.field" :label="tx['supplier_pay.pay']" :value="bill.proposed" :id="'supplier-pay-' ~ bill.field"/></rx-column>
+          </rx-table>
+          <rx-form-grid columns="2">
+            <rx-select name="method" :label="tx['supplier_pay.method']" :options="methods" :selected="'transfer'" id="supplier-pay-method"/>
+            <rx-input name="bank_account" :label="tx['supplier_pay.bank_account']" id="supplier-pay-bank-account"/>
+            <rx-input name="date" type="date" :label="tx['supplier_pay.date']" id="supplier-pay-date"/>
+            <rx-input name="reference" :label="tx['supplier_pay.reference']" id="supplier-pay-reference"/>
+            <rx-input name="cheque_bank" :label="tx['supplier_pay.cheque_bank']" id="supplier-pay-cheque-bank"/>
+          </rx-form-grid>
+          <rx-row>
+            <rx-button type="submit" :label="tx['supplier_pay.submit']" variant="primary"/>
+            <rx-button type="submit" name="exception" value="1" :label="tx['supplier_pay.request_exception']" variant="secondary"/>
+          </rx-row>
+        </rx-stack>
+      </rx-form>
+    </rx-card>
+  </rx-stack>
+</rx-page>

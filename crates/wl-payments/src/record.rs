@@ -51,6 +51,15 @@ pub const RECORD_SET_OFF: &str = "record_set_off";
 /// it when an exception for a blocked party was approved (`PTY.ACL.03`).
 pub const RECORD_SET_OFF_APPROVED: &str = "record_set_off_approved";
 
+/// The `record_supplier` transition's name: a user pays approved supplier
+/// bills by transfer (BL-PAY-28, [`crate::supplier_pay`]); guarded as money
+/// out to the supplier (`PTY.ACL.03`).
+pub const RECORD_SUPPLIER: &str = "record_supplier";
+
+/// The system's `record_supplier_approved` transition's name: the kernel runs
+/// it when an exception for a blocked supplier was approved.
+pub const RECORD_SUPPLIER_APPROVED: &str = "record_supplier_approved";
+
 /// What a record run carries to its guards, gathered by [`record`].
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct RecordInput {
@@ -216,8 +225,30 @@ fn set_off_rules(transition: Transition<Payment>) -> Transition<Payment> {
     })
 }
 
+/// What a supplier payment adds to the record rules: money out by transfer,
+/// naming the bills it pays ([`crate::supplier_pay::bills_of`]).
+fn supplier_rules(transition: Transition<Payment>) -> Transition<Payment> {
+    with_rules(transition).guard("supplier_bills", |payment: &Payment, _ctx| {
+        let problem = if payment.direction != Direction::Out {
+            Some("A supplier payment is money out.".to_owned())
+        } else if crate::supplier_pay::bills_of(payment).is_empty() {
+            Some("A supplier payment names the bills it pays.".to_owned())
+        } else if crate::supplier_pay::bills_of(payment)
+            .iter()
+            .map(|(_, amount)| amount)
+            .sum::<i64>()
+            != payment.amount
+        {
+            Some("The amounts of the bills must add up to the payment.".to_owned())
+        } else {
+            None
+        };
+        Box::pin(async move { problem.map_or(Ok(()), Err) })
+    })
+}
+
 /// `record` (a user with `payments.record`) and `record_by_system`, then the
-/// two set-off transitions, for the machine.
+/// two set-off and the two supplier payment transitions, for the machine.
 pub(crate) fn transitions() -> Vec<Transition<Payment>> {
     vec![
         with_rules(
@@ -241,6 +272,18 @@ pub(crate) fn transitions() -> Vec<Transition<Payment>> {
         set_off_rules(
             Transition::new(RECORD_SET_OFF_APPROVED)
                 .label("Record set-off (exception approved)")
+                .tone("primary")
+                .system(),
+        ),
+        supplier_rules(
+            Transition::new(RECORD_SUPPLIER)
+                .label("Pay supplier")
+                .tone("primary")
+                .permission(permissions::RECORD),
+        ),
+        supplier_rules(
+            Transition::new(RECORD_SUPPLIER_APPROVED)
+                .label("Pay supplier (exception approved)")
                 .tone("primary")
                 .system(),
         ),

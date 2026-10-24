@@ -29,22 +29,32 @@ use wl_kernel::payments::{Direction, PAYMENT_SUBJECT_TYPE, PaymentReceived, Paym
 
 use crate::allocation::Allocation;
 use crate::payment::Payment;
-use crate::record::{RECORD, RECORD_BY_SYSTEM, RECORD_SET_OFF, RECORD_SET_OFF_APPROVED};
+use crate::record::{
+    RECORD, RECORD_BY_SYSTEM, RECORD_SET_OFF, RECORD_SET_OFF_APPROVED, RECORD_SUPPLIER,
+    RECORD_SUPPLIER_APPROVED,
+};
 use crate::reverse::{self, REVERSE, REVERSE_APPROVED, REVERSE_BY_SYSTEM};
 
 /// The event a committed transition of `payment` (as it is now) gives, if
 /// any.
 fn received_event(transition: &str, payment: &Payment) -> Option<PaymentReceived> {
     // Money out (a refund's voucher) is not a payment received; an owner
-    // drawing is (`record` gives `PaymentReceived`, wl-payments §4).
+    // drawing and a supplier payment are (`record` gives `PaymentReceived`,
+    // wl-payments §4).
     ([
         RECORD,
         RECORD_BY_SYSTEM,
         RECORD_SET_OFF,
         RECORD_SET_OFF_APPROVED,
+        RECORD_SUPPLIER,
+        RECORD_SUPPLIER_APPROVED,
     ]
     .contains(&transition)
-        && (payment.direction == Direction::In || payment.purpose == PURPOSE))
+        && (payment.direction == Direction::In
+            || payment.purpose == PURPOSE
+            // A supplier payment (BL-PAY-28): `record` gives the event, as
+            // the spec says, money out included.
+            || [RECORD_SUPPLIER, RECORD_SUPPLIER_APPROVED].contains(&transition)))
         .then(|| PaymentReceived {
             payment: payment.payment_id(),
             party: payment.party(),
@@ -143,6 +153,8 @@ pub(crate) fn register(app: &mut Registry) {
             RECORD_BY_SYSTEM,
             RECORD_SET_OFF,
             RECORD_SET_OFF_APPROVED,
+            RECORD_SUPPLIER,
+            RECORD_SUPPLIER_APPROVED,
         ]
         .contains(&name);
         let reversed = [REVERSE, REVERSE_BY_SYSTEM, REVERSE_APPROVED].contains(&name);
@@ -167,6 +179,11 @@ pub(crate) fn register(app: &mut Registry) {
         // user records is allocated by `set_off::record`).
         if name == RECORD_SET_OFF_APPROVED {
             crate::set_off::complete(&state, payment.id).await?;
+        }
+        // An exception for a blocked supplier was approved: the payment is
+        // allocated to its bills now, as requested (BL-PAY-28).
+        if name == RECORD_SUPPLIER_APPROVED {
+            crate::supplier_pay::complete(&state, payment.id).await?;
         }
         Ok(())
     });

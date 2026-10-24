@@ -7,6 +7,44 @@ use renox::prelude::*;
 
 /// Every key the package uses, with its English text.
 const TEXTS: &[(&str, &str)] = &[
+    // Pay supplier (BL-PAY-28).
+    ("wl_payments.supplier_pay.title", "Pay supplier"),
+    ("wl_payments.supplier_pay.amount", "Amount to pay"),
+    (
+        "wl_payments.supplier_pay.amount_hint",
+        "Spread over the oldest bills first.",
+    ),
+    ("wl_payments.supplier_pay.propose", "Propose"),
+    ("wl_payments.supplier_pay.no_bills", "No approved bills to pay"),
+    ("wl_payments.supplier_pay.bills", "Approved bills"),
+    ("wl_payments.supplier_pay.bill", "Bill"),
+    ("wl_payments.supplier_pay.balance", "Open balance"),
+    ("wl_payments.supplier_pay.pay", "Pay"),
+    ("wl_payments.supplier_pay.method", "Method"),
+    ("wl_payments.supplier_pay.method.transfer", "Bank transfer"),
+    ("wl_payments.supplier_pay.method.cheque", "Issued cheque"),
+    ("wl_payments.supplier_pay.bank_account", "Bank account"),
+    ("wl_payments.supplier_pay.date", "Date"),
+    (
+        "wl_payments.supplier_pay.reference",
+        "Reference (the cheque number for a cheque)",
+    ),
+    ("wl_payments.supplier_pay.cheque_bank", "Bank of the cheque"),
+    ("wl_payments.supplier_pay.submit", "Pay"),
+    ("wl_payments.supplier_pay.request_exception", "Request exception"),
+    ("wl_payments.supplier_pay.paid", "Supplier paid."),
+    (
+        "wl_payments.supplier_pay.cheque_issued",
+        "Cheque issued: it pays the bills when it clears.",
+    ),
+    (
+        "wl_payments.supplier_pay.exception_requested",
+        "The exception was requested. The payment is recorded when it is approved.",
+    ),
+    (
+        "wl_payments.supplier_pay.exception_hint",
+        "Use Request exception to ask the compliance officer.",
+    ),
     // The match engine of the bank reconciliation (BL-PAY-29).
     ("wl_payments.bank_statements.match.kind.invoices", "Invoices"),
     ("wl_payments.bank_statements.match.kind.payment", "Payment recorded"),

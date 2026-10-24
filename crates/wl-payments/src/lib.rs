@@ -81,6 +81,8 @@ pub mod reverse;
 mod scoped;
 pub mod seed;
 pub mod set_off;
+pub mod supplier_pay;
+pub mod supplier_pay_pages;
 mod texts;
 
 use std::sync::Arc;
@@ -105,6 +107,10 @@ pub use refund_attempt::RefundAttempt;
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
 const VIEWS: &[(&str, &str)] = &[
+    (
+        "wl-payments/supplier_pay.html",
+        include_str!("../views/wl-payments/supplier_pay.html"),
+    ),
     (
         "wl-payments/portal_deposit.html",
         include_str!("../views/wl-payments/portal_deposit.html"),
@@ -582,6 +588,7 @@ impl Module for WlPayments {
             .merge(online_pages::routes())
             .merge(chargeback_pages::routes())
             .merge(cash_pages::routes())
+            .merge(supplier_pay_pages::routes())
     }
 
     fn register(&self, app: &mut Registry) {
@@ -621,6 +628,13 @@ impl Module for WlPayments {
                 wl_kernel::ActionKind::MoneyOut,
                 |payment: &Payment| Some(wl_kernel::PartyId(payment.party_id)),
             )
+            // Paying a supplier's bills is money out to the supplier
+            // (`PTY.ACL.03`, BL-PAY-28).
+            .block_guarded(
+                record::RECORD_SUPPLIER,
+                wl_kernel::ActionKind::MoneyOut,
+                |payment: &Payment| Some(wl_kernel::PartyId(payment.party_id)),
+            )
             .register();
         // `accept_chargeback` needs another person's approval (`FIN.ACL.18`)
         // and tells the gateway at the final approval; this replaces the
@@ -657,6 +671,7 @@ impl Module for WlPayments {
         app.model::<expense_claim::ExpenseLine>();
         app.view_data::<pages::IndexPage>()
             .view_data::<deposit_portal::PortalDepositPage>()
+            .view_data::<supplier_pay_pages::PayPage>()
             .view_data::<pages::NewPage>()
             .view_data::<pages::ShowPage>()
             .view_data::<pages::DrawingPage>()

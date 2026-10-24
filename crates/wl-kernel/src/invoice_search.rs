@@ -9,6 +9,10 @@
 //! [`provide_invoice_search`]; without it, [`invoice_search`] gives
 //! [`NoInvoiceSearch`], which finds nothing, so no line is suggested against
 //! an invoice.
+//!
+//! The same search reads a supplier's payable bills (BL-PAY-28): *Pay
+//! supplier* lists the `approved` and `partially_paid` bills of a supplier,
+//! oldest first ([`OpenInvoiceSearch::payable_bills_of`]).
 
 use std::future::Future;
 use std::pin::Pin;
@@ -16,7 +20,8 @@ use std::sync::Arc;
 
 use renox::prelude::*;
 
-use crate::invoicing::InvoiceSummary;
+use crate::invoicing::{InvoiceSummary, SupplierBillSummary};
+use crate::parties::PartyId;
 
 /// The future an [`OpenInvoiceSearch`] method returns.
 pub type SearchFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
@@ -32,6 +37,18 @@ pub trait OpenInvoiceSearch: Send + Sync + 'static {
         _legal_entity_id: i64,
         _currency: &'a str,
     ) -> SearchFuture<'a, Vec<InvoiceSummary>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// The bills of `supplier` that take a payment (`approved` or
+    /// `partially_paid`, with a balance; a bill held as a possible duplicate
+    /// is not approved and is not listed), oldest first (bill date, then
+    /// id). The default finds none.
+    fn payable_bills_of<'a>(
+        &'a self,
+        _db: &'a Db,
+        _supplier: PartyId,
+    ) -> SearchFuture<'a, Vec<SupplierBillSummary>> {
         Box::pin(async { Ok(Vec::new()) })
     }
 }
