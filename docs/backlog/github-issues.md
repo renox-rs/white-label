@@ -31,6 +31,7 @@
 | [#22](https://github.com/renox-rs/white-label/issues/22) | `08-auto` |
 | [#23](https://github.com/renox-rs/white-label/issues/23) | `09-manpower` |
 | [#24](https://github.com/renox-rs/white-label/issues/24) | `10-edtech` |
+| [#540](https://github.com/renox-rs/white-label/issues/540) | Search and AI agents (BL-AGT) |
 
 ## Issues
 
@@ -501,3 +502,13 @@
 | BL-PRP-32 | [#477](https://github.com/renox-rs/white-label/issues/477) |
 | BL-PRP-33 | [#478](https://github.com/renox-rs/white-label/issues/478) |
 | BL-PRP-34 | [#479](https://github.com/renox-rs/white-label/issues/479) |
+| BL-AGT-01 | [#541](https://github.com/renox-rs/white-label/issues/541) |
+| BL-AGT-02 | [#542](https://github.com/renox-rs/white-label/issues/542) |
+| BL-AGT-03 | [#543](https://github.com/renox-rs/white-label/issues/543) |
+| BL-AGT-04 | [#544](https://github.com/renox-rs/white-label/issues/544) |
+| BL-AGT-05 | [#545](https://github.com/renox-rs/white-label/issues/545) |
+| BL-AGT-06 | [#546](https://github.com/renox-rs/white-label/issues/546) |
+| BL-AGT-07 | [#547](https://github.com/renox-rs/white-label/issues/547) |
+| BL-AGT-08 | [#548](https://github.com/renox-rs/white-label/issues/548) |
+| BL-AGT-09 | [#549](https://github.com/renox-rs/white-label/issues/549) |
+| BL-AGT-10 | [#550](https://github.com/renox-rs/white-label/issues/550) |
