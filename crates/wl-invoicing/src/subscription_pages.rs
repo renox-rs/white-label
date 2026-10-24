@@ -117,7 +117,7 @@ async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
             id: subscription.id,
             plan: subscription.plan.clone(),
             party: party_name(&state, subscription.party()).await?,
-            source: subscription.source().to_string(),
+            source: subscription.source().words(),
             status: text(
                 &lang,
                 &format!("subscription.status.{}", subscription.status.as_str()),
@@ -235,7 +235,7 @@ async fn show(
         ),
         status_kind: status_kind(subscription.status),
         party: party_name(&state, subscription.party()).await?,
-        source: subscription.source().to_string(),
+        source: subscription.source().words(),
         price: amount_text(&subscription.currency, subscription.unit_price),
         cycle: text(
             &lang,

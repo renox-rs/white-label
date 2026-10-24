@@ -163,7 +163,7 @@ async fn row(
         id: task.id,
         title: task.title.clone(),
         task_type: task.task_type.clone(),
-        source: format!("{} #{}", task.subject_type, task.subject_id),
+        source: wl_kernel::subject::words_of(&task.subject_type, task.subject_id),
         due: task.due_date.to_string(),
         start: task.start_date.to_string(),
         status: match (&deadlines::settings(state).waiting_label, task.status) {

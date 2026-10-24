@@ -131,7 +131,7 @@ async fn the_pages_show_the_subscription() {
         .get(&format!("/subscriptions/{}", sub.id))
         .await
         .assert_ok()
-        .assert_see("accounting.engagement:5")
+        .assert_see("Engagement #5")
         .assert_see("AED 3,100.00");
     let viewer = t.viewer().await;
     t.app.acting_as(&viewer);

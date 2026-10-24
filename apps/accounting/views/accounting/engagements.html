@@ -8,7 +8,7 @@
         <rx-action-sheet id="engagement-new" :label="tx['engagements.new']" :action="route('accounting.engagement_create')"
                          :title="tx['engagements.new']" :description="tx['engagements.new_description']" :submit-label="tx['engagements.new']" icon="plus">
           <rx-input name="client" :label="tx['engagements.client_party']" id="engagement-new-client" required/>
-          <rx-input name="title" :label="tx['engagements.services']" id="engagement-new-title" required/>
+          <rx-input name="title" :label="tx['engagements.services']" id="engagement-new-services" required/>
           <rx-select name="fee_basis" :label="tx['engagements.fee_basis']" :options="fee_bases" :selected="'retainer'" id="engagement-new-basis"/>
           <rx-input name="retainer_fee" :label="tx['engagements.retainer_fee']" id="engagement-new-fee"/>
         </rx-action-sheet>

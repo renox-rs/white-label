@@ -61,6 +61,26 @@ impl Subject {
     pub fn entity(&self) -> &str {
         self.subject_type.split('.').nth(1).unwrap_or_default()
     }
+
+    /// The subject as a page shows it when the module's own label is not at
+    /// hand: `accounting.engagement:7` as "Engagement #7".
+    pub fn words(&self) -> String {
+        words_of(&self.subject_type, self.subject_id)
+    }
+}
+
+/// [`Subject::words`] of a type and id kept in two columns: the entity in
+/// words, capitalised, and its number (`property.lease_renewal`, 3: "Lease
+/// renewal #3").
+pub fn words_of(subject_type: &str, id: i64) -> String {
+    let entity = subject_type.rsplit('.').next().unwrap_or(subject_type);
+    let words = entity.replace('_', " ");
+    let mut chars = words.chars();
+    let words: String = match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    };
+    format!("{words} #{id}")
 }
 
 /// `property.lease:42`, the form used in occurrence keys and logs.
@@ -99,6 +119,15 @@ fn is_type(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_subject_in_words_is_its_entity_and_number() {
+        assert_eq!(
+            Subject::new("accounting.engagement", 7).words(),
+            "Engagement #7"
+        );
+        assert_eq!(words_of("property.lease_renewal", 3), "Lease renewal #3");
+    }
 
     #[test]
     fn it_round_trips_through_text() {
