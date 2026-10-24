@@ -33,9 +33,16 @@
 //!   days and a dispute is refused; wl-portal's daily timer closes the grant
 //!   on day 91 (an agreement ended on 2028-06-30 reads until 2028-09-28).
 //!
-//! The other tenant sections (invoices, deposit, requests) come with their
-//! modules' issues (BL-INV-31, BL-PAY-27, BL-TKT-14); [`SECTIONS`] is the
-//! order and permission each one registers with.
+//! - *Requests* (BL-TKT-14, [`RequestsSection`]): the tenant's maintenance
+//!   requests (raised by its portal users or on its units) with their stored
+//!   status; *New request* (`GET/POST /portal/{party}/requests[/new]`) raises
+//!   one with photos, also while the party is blocked, never with a
+//!   `read_only` grant; a request's page shows only the comments marked
+//!   visible and, once resolved, the charge with Confirm and Reopen.
+//!
+//! The other tenant sections (invoices, deposit) come with their modules'
+//! issues (BL-INV-31, BL-PAY-27); [`SECTIONS`] is the order and permission
+//! each one registers with.
 
 use property::lease::LEASE_SUBJECT_TYPE;
 use property::portal::{PortalRow, TENANT_DOCUMENT_KINDS};
@@ -460,9 +467,345 @@ async fn dispute(
         .into_response())
 }
 
-/// Registers the tenant sections (BL-PRP-30) and the owner's (BL-PRP-29)
-/// with wl-portal.
+/// The units the tenant `party` holds: those of its leases.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn tenant_units(db: &Db, party: PartyId) -> Result<Vec<wl_kernel::Subject>> {
+    let mut units: Vec<wl_kernel::Subject> = Vec::new();
+    for lease in property::portal::leases_of(db, party).await? {
+        let unit = wl_kernel::Subject::new(property::unit::UNIT_SUBJECT_TYPE, lease.unit_id);
+        if !units.contains(&unit) {
+            units.push(unit);
+        }
+    }
+    Ok(units)
+}
+
+/// The portal users acting for `party`.
+async fn party_users(db: &Db, party: PartyId) -> Result<Vec<i64>> {
+    Ok(wl_portal::AccessGrant::query()
+        .where_(wl_portal::AccessGrant::PARTY_ID.eq(party.0))
+        .get(db)
+        .await?
+        .into_iter()
+        .filter_map(|grant| grant.user_id)
+        .collect())
+}
+
+/// The requests of the tenant `party` (`WRK.ACL.01`): raised by its portal
+/// users or on its units, newest first.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn tenant_requests(db: &Db, party: PartyId) -> Result<Vec<wl_ticketing::Ticket>> {
+    let users = party_users(db, party).await?;
+    let units = tenant_units(db, party).await?;
+    wl_ticketing::portal_requests::requests_for(db, party, &users, &units).await
+}
+
+/// *Requests* (BL-TKT-14, `POR.SLF.01`): the tenant's maintenance requests
+/// with the status ticketing stored.
+pub struct RequestsSection;
+
+impl PortalSection for RequestsSection {
+    fn title(&self) -> String {
+        "Requests".to_owned()
+    }
+
+    fn rows<'a>(
+        &'a self,
+        state: &'a AppState,
+        party: PartyId,
+    ) -> SectionFuture<'a, Vec<SectionRow>> {
+        Box::pin(async move {
+            Ok(tenant_requests(&state.db, party)
+                .await?
+                .iter()
+                .map(|ticket| {
+                    SectionRow::new(
+                        &format!("{} · {}", ticket.number, ticket.title),
+                        wl_ticketing::portal_requests::status_text(ticket.status),
+                    )
+                })
+                .collect())
+        })
+    }
+
+    fn audience(&self) -> Option<&str> {
+        Some(TENANT_AUDIENCE)
+    }
+
+    fn permission(&self) -> Option<&str> {
+        Some(placed("requests").1)
+    }
+
+    fn order(&self) -> i32 {
+        placed("requests").0
+    }
+}
+
+/// The menu of `user` for `party` when it shows *Requests*; 403 otherwise.
+async fn requests_menu(
+    state: &AppState,
+    user: &AuthUser,
+    party: PartyId,
+    lang: &Lang,
+) -> Result<PortalMenu> {
+    let menu = PortalMenu::of(state, user.id, party, today(), lang)
+        .await?
+        .ok_or(Error::Forbidden)?;
+    if !menu.allows("requests") {
+        return Err(Error::Forbidden);
+    }
+    Ok(menu)
+}
+
+/// Whether `user` may raise or reopen a request for `party`: an active grant
+/// (a blocked party may, it is not new business); a `read_only` grant is
+/// refused with its notice.
+async fn may_request(state: &AppState, user: &AuthUser, party: PartyId, lang: &Lang) -> Result<()> {
+    match PortalGuard::check(state, user.id, party, PortalAction::MaintenanceRequest).await? {
+        Ok(()) => Ok(()),
+        Err(Refused::GrantReadOnly(since)) => Err(Error::Status(
+            StatusCode::FORBIDDEN,
+            wl_portal::read_only_notice(lang, since),
+        )),
+        Err(_) => Err(Error::Forbidden),
+    }
+}
+
+/// What the New request page needs.
+#[derive(serde::Serialize, ViewData)]
+#[view(template = "requests/new.html")]
+pub struct RequestNewPage {
+    action: String,
+    home_url: String,
+    /// The party's units, `(id, name)`.
+    units: Vec<(String, String)>,
+    /// The categories open to the portal, `(key, name)`.
+    categories: Vec<(String, String)>,
+}
+
+/// `GET /portal/{party}/requests/new`.
+async fn request_new(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(party): Path<i64>,
+) -> Result<View> {
+    let party = PartyId(party);
+    requests_menu(&state, &user, party, &lang).await?;
+    may_request(&state, &user, party, &lang).await?;
+    let mut units = Vec::new();
+    for unit in tenant_units(&state.db, party).await? {
+        let name = wl_kernel::documents::subject_text(&state.db, &unit).await?;
+        units.push((unit.subject_id.to_string(), name));
+    }
+    let categories = wl_ticketing::portal_requests::portal_categories(&state.db)
+        .await?
+        .into_iter()
+        .map(|c| (c.key.clone(), c.name(&lang.locale).to_owned()))
+        .collect();
+    Ok(View::typed(RequestNewPage {
+        action: format!("/portal/{}/requests", party.0),
+        home_url: format!("/portal/{}/requests", party.0),
+        units,
+        categories,
+    }))
+}
+
+/// The New request form.
+#[derive(serde::Deserialize, serde::Serialize, Validate, Debug)]
+pub struct RequestForm {
+    /// The unit's id.
+    pub unit: i64,
+    /// The category's key.
+    #[validate(required, max = 64)]
+    pub category: String,
+    /// The description.
+    #[validate(max = 5000)]
+    pub description: Option<String>,
+    /// The photos.
+    #[serde(default, skip_serializing)]
+    pub photos: Vec<Upload>,
+}
+
+/// `POST /portal/{party}/requests`: raises the request (channel *portal*,
+/// requester the user); 403 without the section or with a `read_only`
+/// grant, 422 for a unit the party does not hold or a bad category or photo.
+async fn request_store(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(party): Path<i64>,
+    Valid(form): Valid<RequestForm>,
+) -> Result<Response> {
+    let party = PartyId(party);
+    requests_menu(&state, &user, party, &lang).await?;
+    may_request(&state, &user, party, &lang).await?;
+    let unit = wl_kernel::Subject::new(property::unit::UNIT_SUBJECT_TYPE, form.unit);
+    if !tenant_units(&state.db, party).await?.contains(&unit) {
+        return Err(Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Choose one of your units.".to_owned(),
+        ));
+    }
+    let ticket = wl_ticketing::portal_requests::raise(
+        &state,
+        user.id,
+        party,
+        wl_ticketing::portal_requests::PortalRequest {
+            subject: unit,
+            category: form.category.clone(),
+            description: form.description.clone().unwrap_or_default(),
+            photos: form.photos,
+        },
+    )
+    .await?;
+    Ok((
+        Toast::success("Your request was sent."),
+        Redirect::to(&format!("/portal/{}/requests/{}", party.0, ticket.id.0)),
+    )
+        .into_response())
+}
+
+/// One visible comment.
+#[derive(serde::Serialize, Debug, Clone)]
+pub struct RequestComment {
+    id: i64,
+    at: String,
+    text: String,
+}
+
+/// What a request's page needs.
+#[derive(serde::Serialize, ViewData)]
+#[view(template = "requests/show.html")]
+pub struct RequestPage {
+    number: String,
+    title: String,
+    description: String,
+    status: String,
+    comments: Vec<RequestComment>,
+    /// The amount with VAT of a chargeable job.
+    charge: Option<String>,
+    can_confirm: bool,
+    can_reopen: bool,
+    confirm_text: String,
+    confirm_url: String,
+    reopen_url: String,
+    home_url: String,
+}
+
+/// The request `id` of the tenant `party`; 404 when it is not one of its.
+async fn party_request(db: &Db, party: PartyId, id: i64) -> Result<wl_ticketing::Ticket> {
+    tenant_requests(db, party)
+        .await?
+        .into_iter()
+        .find(|t| t.id == id)
+        .ok_or(Error::NotFound)
+}
+
+/// `GET /portal/{party}/requests/{ticket}`: the request, its visible
+/// comments and, once resolved, Confirm (with the charge) and Reopen.
+async fn request_show(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path((party, id)): Path<(i64, i64)>,
+) -> Result<View> {
+    let party = PartyId(party);
+    let menu = requests_menu(&state, &user, party, &lang).await?;
+    let ticket = party_request(&state.db, party, id).await?;
+    let calendar = wl_kernel::calendar::calendar(&state);
+    let comments = wl_ticketing::portal_requests::visible_comments(&state.db, &ticket)
+        .await?
+        .into_iter()
+        .map(|c| RequestComment {
+            id: c.id,
+            at: c
+                .created_at
+                .map(|at| calendar.local(at).format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_default(),
+            text: c.text,
+        })
+        .collect();
+    let charge = wl_ticketing::portal_requests::charge_text(&state.db, &ticket).await?;
+    let resolved = ticket.status == wl_ticketing::TicketStatus::Resolved;
+    let requester = ticket.requester_user_id == Some(user.id);
+    let confirm_text = match &charge {
+        Some(amount) => format!("The work is done. You will be charged {amount} (incl. VAT)."),
+        None => "The work is done.".to_owned(),
+    };
+    Ok(View::typed(RequestPage {
+        number: ticket.number.clone(),
+        title: ticket.title.clone(),
+        description: ticket.description.clone(),
+        status: wl_ticketing::portal_requests::status_text(ticket.status).to_owned(),
+        comments,
+        charge,
+        can_confirm: resolved && requester,
+        can_reopen: resolved && requester && menu.read_only_since.is_none(),
+        confirm_text,
+        confirm_url: format!("/portal/{}/requests/{}/confirm", party.0, ticket.id),
+        reopen_url: format!("/portal/{}/requests/{}/reopen", party.0, ticket.id),
+        home_url: format!("/portal/{}/requests", party.0),
+    }))
+}
+
+/// `POST /portal/{party}/requests/{ticket}/confirm`: the requester confirms
+/// the resolved work; the ticket closes.
+async fn request_confirm(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path((party, id)): Path<(i64, i64)>,
+) -> Result<Response> {
+    let party = PartyId(party);
+    requests_menu(&state, &user, party, &lang).await?;
+    let ticket = party_request(&state.db, party, id).await?;
+    wl_ticketing::work::confirm(&state, &user, &ticket)
+        .await
+        .map_err(renox::state_machine::TransitionError::into_error)?;
+    Ok((Toast::success("Thank you: the request is closed."), renox::HxRefresh).into_response())
+}
+
+/// `POST /portal/{party}/requests/{ticket}/reopen`: the requester reopens
+/// the resolved work; refused for a `read_only` grant.
+async fn request_reopen(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path((party, id)): Path<(i64, i64)>,
+) -> Result<Response> {
+    let party = PartyId(party);
+    requests_menu(&state, &user, party, &lang).await?;
+    may_request(&state, &user, party, &lang).await?;
+    let ticket = party_request(&state.db, party, id).await?;
+    wl_ticketing::work::reopen(&state, &user, &ticket, renox::db::now())
+        .await
+        .map_err(renox::state_machine::TransitionError::into_error)?;
+    Ok((Toast::success("The request is open again."), renox::HxRefresh).into_response())
+}
+
+/// The document kind of a request's photos (BL-TKT-14): images up to 20 MB
+/// on a ticket, uploaded from the portal.
+fn photo_kind() -> wl_documents::KindSeed {
+    wl_documents::KindSeed::new(wl_ticketing::portal_requests::PHOTO_KIND, "Request photo")
+        .name_ar("صورة الطلب")
+        .subject_type(wl_kernel::tickets::TICKET_SUBJECT_TYPE)
+        .file_types(&["jpg", "jpeg", "png", "webp", "heic"])
+        .max_size(20 * 1024 * 1024)
+        .portal_upload()
+        .without_review()
+}
+
+/// Registers the tenant sections (BL-PRP-30, BL-TKT-14) and the owner's
+/// (BL-PRP-29) with wl-portal.
 pub fn register_sections() {
+    wl_portal::register_section("requests", RequestsSection);
     wl_portal::register_section("lease", LeaseSection);
     wl_portal::register_section("cheques", ChequesSection);
     wl_portal::register_section("documents", DocumentsSection);
@@ -487,11 +830,25 @@ impl Module for PropertyPortal {
                 dispute,
             )
             .name("property_portal.statement_dispute")
+            .get("/portal/{party}/requests/new", request_new)
+            .name("property_portal.request_new")
+            .post("/portal/{party}/requests", request_store)
+            .name("property_portal.request_store")
+            .get("/portal/{party}/requests/{ticket}", request_show)
+            .name("property_portal.request")
+            .post("/portal/{party}/requests/{ticket}/confirm", request_confirm)
+            .name("property_portal.request_confirm")
+            .post("/portal/{party}/requests/{ticket}/reopen", request_reopen)
+            .name("property_portal.request_reopen")
             .require_auth()
     }
 
     fn register(&self, app: &mut Registry) {
         register_sections();
+        app.view_data::<RequestNewPage>()
+            .view_data::<RequestPage>();
+        // The photos of a portal request, stored on the ticket (BL-TKT-14).
+        wl_documents::register_kind(photo_kind());
         app.command(
             "property:portal-install",
             "Store the tenant portal audience and its roles, where the database lacks them",

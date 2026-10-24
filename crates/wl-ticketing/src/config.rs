@@ -169,6 +169,9 @@ pub struct Category {
     pub default_assignee_role: Option<String>,
     /// The custom fields of its tickets.
     pub custom_fields: Json<Vec<CustomField>>,
+    /// Whether the portal's *New request* form offers it (BL-TKT-14); a
+    /// platform category never is.
+    pub portal: bool,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

@@ -1,0 +1,21 @@
+{#- The tenant portal's New request form (BL-TKT-14): one of the party's
+    units, a category open to the portal, the description and photos. -#}
+<rx-page layout="layouts/app.html" title="New request">
+  <rx-stack>
+    <rx-page-header title="New request" :back="home_url" back-label="Portal"/>
+    <rx-form :action="action" enctype="multipart/form-data" novalidate>
+      <rx-card>
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-select name="unit" label="Unit" :options="units" :selected="''" id="request-unit" required/>
+          <rx-select name="category" label="Category" :options="categories" :selected="''" id="request-category" required/>
+          <rx-textarea name="description" label="Description" span="full" id="request-description" required/>
+          <rx-file name="photos" label="Photos" accept="image/*" id="request-photos" multiple preview/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-button label="Send the request"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

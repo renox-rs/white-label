@@ -14,7 +14,9 @@ use renox::signed::ValidSignature;
 use wl_kernel::documents::DocumentId;
 use wl_kernel::document_store::{DocumentStore, StoreFuture, StoredFile};
 
-use crate::documents::Document;
+use wl_kernel::Subject;
+
+use crate::documents::{Document, Documents, NewDocument};
 
 /// The route name of the signed download.
 pub const SIGNED_FILE_ROUTE: &str = "wl_documents.signed_file";
@@ -58,6 +60,37 @@ impl DocumentStore for StoredDocuments {
         state
             .signed_url(SIGNED_FILE_ROUTE, &[&document.0], ttl)
             .map(Some)
+    }
+
+    fn attach<'a>(
+        &'a self,
+        state: &'a AppState,
+        subject: Subject,
+        kind: &'a str,
+        file: Upload,
+        channel: &'a str,
+    ) -> StoreFuture<'a, Option<DocumentId>> {
+        Box::pin(async move {
+            let new = NewDocument::new(subject, kind, file).channel(channel);
+            match Documents::attach(state, None, new).await? {
+                Ok(document) => Ok(Some(document.document_id())),
+                Err(refused) => Err(refused.into_error()),
+            }
+        })
+    }
+
+    fn documents_of<'a>(
+        &'a self,
+        state: &'a AppState,
+        subject: Subject,
+    ) -> StoreFuture<'a, Vec<(DocumentId, String)>> {
+        Box::pin(async move {
+            Ok(Documents::of_subject(&state.db, &subject)
+                .await?
+                .into_iter()
+                .map(|d| (d.document_id(), d.title))
+                .collect())
+        })
     }
 }
 

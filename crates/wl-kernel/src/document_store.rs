@@ -76,6 +76,32 @@ pub trait DocumentStore: Send + Sync + 'static {
         document: DocumentId,
         ttl: Duration,
     ) -> Result<Option<String>>;
+
+    /// Stores `file` as a document of kind `kind` on `subject`, uploaded by
+    /// `uploaded_by` through `channel` (e.g. `portal`), for review when the
+    /// kind needs it. `None` when documents are not stored (the module is
+    /// off). A file the kind refuses is a 422 with the reason.
+    fn attach<'a>(
+        &'a self,
+        state: &'a AppState,
+        subject: Subject,
+        kind: &'a str,
+        file: Upload,
+        channel: &'a str,
+    ) -> StoreFuture<'a, Option<DocumentId>> {
+        let _ = (state, subject, kind, file, channel);
+        Box::pin(async { Ok(None) })
+    }
+
+    /// The documents of `subject`, oldest first (id and file name).
+    fn documents_of<'a>(
+        &'a self,
+        state: &'a AppState,
+        subject: Subject,
+    ) -> StoreFuture<'a, Vec<(DocumentId, String)>> {
+        let _ = (state, subject);
+        Box::pin(async { Ok(Vec::new()) })
+    }
 }
 
 /// The store when the `documents` module is off: knows no document.

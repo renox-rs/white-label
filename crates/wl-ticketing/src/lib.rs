@@ -26,6 +26,7 @@ mod notices;
 pub mod open;
 pub mod pages;
 pub mod plans;
+pub mod portal_requests;
 pub mod priority;
 pub mod reasons;
 pub mod role_queue;

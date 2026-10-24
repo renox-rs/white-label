@@ -1,0 +1,28 @@
+{#- One request of the tenant portal (BL-TKT-14): its status, the comments
+    marked visible to the requester (never the internal ones or the
+    assignee), the charge of a chargeable job, and Confirm or Reopen once it
+    is resolved. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="title" :back="home_url" back-label="Requests" :badge="status" badge-kind="info">
+      <rx-action-sheet rx-if="can_confirm" id="confirm-request" label="Confirm" :action="confirm_url"
+                       title="Confirm the work" :description="confirm_text" submit-label="Confirm" icon="circle-check" variant="primary"/>
+      <rx-action-sheet rx-if="can_reopen" id="reopen-request" label="Reopen" :action="reopen_url"
+                       title="Reopen the request" description="The work is not done: the request goes back to the team." submit-label="Reopen" icon="refresh-cw"/>
+    </rx-page-header>
+    <rx-alert rx-if="charge" kind="info" title="Charge" :message="charge ~ ' (incl. VAT)'"/>
+    <rx-card title="Details">
+      <rx-infolist columns="2">
+        <rx-entry label="Status" :value="status"/>
+        <rx-entry label="Description" :value="description"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card title="Comments">
+      <rx-table :rows="comments" as="comment" :key="comment.id" caption="Comments">
+        <rx-column label="When">{{ comment.at }}</rx-column>
+        <rx-column label="Comment">{{ comment.text }}</rx-column>
+        <rx-slot name="empty"><rx-empty title="No comments yet" icon="inbox"/></rx-slot>
+      </rx-table>
+    </rx-card>
+  </rx-stack>
+</rx-page>
