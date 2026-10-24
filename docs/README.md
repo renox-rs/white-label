@@ -21,12 +21,14 @@ the build started with F1 (Property) ([decision 0004](decisions/0004-start-f1-bu
 | Know how we package and price it | [PRICING.md](PRICING.md) |
 | Run it: environments, releases, backups, support, onboarding | [OPERATIONS.md](OPERATIONS.md) |
 | Know the threats and security controls | [SECURITY.md](SECURITY.md) |
-| Know how it will be tested | [TESTING.md](TESTING.md) |
+| Know how it is tested | [TESTING.md](TESTING.md) |
 | Look up a term (TRN, Ejari, PDC, WPS…) | [GLOSSARY.md](GLOSSARY.md) |
 | Know why something was decided | [decisions/](decisions/) |
 | See what is still open: questions for lawyers, accountants, authorities, and owner decisions | [OPEN-ITEMS.md](OPEN-ITEMS.md) |
 | Find and approach leads for a vertical | [go-to-market/](go-to-market/README.md) |
 | See review findings and how they were closed (negative flows, SME problem map) | [reviews/](reviews/) |
+| Read the notes of a finished build phase | [progress/](progress/) |
+| Rules for coding agents: grid, fill, build workflow | [../host/AGENTS.md](../host/AGENTS.md), [../.claude/skills/](../.claude/skills/) |
 | Pick up build work: draft issues per module and vertical, written for developers and coding models | [backlog/](backlog/README.md) |
 
 ## Verticals
@@ -48,21 +50,21 @@ the build started with F1 (Property) ([decision 0004](decisions/0004-start-f1-bu
 
 | Module | Covers | Status |
 |---|---|---|
-| [`wl-kernel`](modules/wl-kernel.md) | Platform services: settings, branding, legal entities, sequences, custom fields, approvals, automations, business calendar, import, search, notes, reports | draft |
-| [`wl-parties`](modules/wl-parties.md) | Companies and people in any role, identity, relationships, consents, UBO, screening | draft |
-| [`wl-portal`](modules/wl-portal.md) | External users: access grants, self-service, document requests | draft |
-| [`wl-documents`](modules/wl-documents.md) | Files, expiry reminders, generated PDFs, e-signature, SOP library with acknowledgements | draft |
-| [`wl-notify`](modules/wl-notify.md) | Email, WhatsApp, SMS, marketing broadcasts with consent | draft |
-| [`wl-invoicing`](modules/wl-invoicing.md) | Quotations, invoices, subscriptions, rate cards, usage billing, costing, receivables, supplier bills, VAT summary, company budget, cash-flow forecast | draft |
-| [`wl-payments`](modules/wl-payments.md) | Payments, payment links, cheques, deposits, cash custody, expense claims and petty cash, bank statement matching | draft |
-| [`wl-sales`](modules/wl-sales.md) | Leads, campaigns and acquisition cost, catalogue, orders, POS, packages, discounts, loyalty, returns, credit limits | draft |
-| [`wl-ticketing`](modules/wl-ticketing.md) | Tickets, checklists, planned maintenance, recurring tasks, customer feedback, vendor service contracts | draft |
-| [`wl-delivery`](modules/wl-delivery.md) | Dispatch, runs, proof of delivery | draft |
-| [`wl-scheduling`](modules/wl-scheduling.md) | Resources, bookings, self-booking, reminders, waiting list | draft |
-| [`wl-attendance`](modules/wl-attendance.md) | Attendance, timesheets, rosters | draft |
-| [`wl-hr`](modules/wl-hr.md) | Employees, onboarding, qualifications, visa cases, leave, payroll, WPS, final settlement | draft |
-| [`wl-inventory`](modules/wl-inventory.md) | Items, stock, purchasing, supplier scorecards, lots, BOMs, dispatch notes, assets | draft |
-| [`wl-operator`](modules/wl-operator.md) | **Ours, not the clients':** clients, provisioning, plans and entitlements, billing our clients, rollout, monitoring, support, demo instances | draft |
+| [`wl-kernel`](modules/wl-kernel.md) | Platform services: settings, branding, legal entities, sequences, custom fields, approvals, automations, business calendar, import, search, notes, reports | built (F1-F10) |
+| [`wl-parties`](modules/wl-parties.md) | Companies and people in any role, identity, relationships, consents, UBO, screening | built (F1-F10) |
+| [`wl-portal`](modules/wl-portal.md) | External users: access grants, self-service, document requests | built (F1-F10) |
+| [`wl-documents`](modules/wl-documents.md) | Files, expiry reminders, generated PDFs, e-signature, SOP library with acknowledgements | built (F1-F10) |
+| [`wl-notify`](modules/wl-notify.md) | Email, WhatsApp, SMS, marketing broadcasts with consent | built (F1-F10) |
+| [`wl-invoicing`](modules/wl-invoicing.md) | Quotations, invoices, subscriptions, rate cards, usage billing, costing, receivables, supplier bills, VAT summary, company budget, cash-flow forecast | built (F1-F10) |
+| [`wl-payments`](modules/wl-payments.md) | Payments, payment links, cheques, deposits, cash custody, expense claims and petty cash, bank statement matching | built (F1-F10) |
+| [`wl-sales`](modules/wl-sales.md) | Leads, campaigns and acquisition cost, catalogue, orders, POS, packages, discounts, loyalty, returns, credit limits | built (F1-F10) |
+| [`wl-ticketing`](modules/wl-ticketing.md) | Tickets, checklists, planned maintenance, recurring tasks, customer feedback, vendor service contracts | built (F1-F10) |
+| [`wl-delivery`](modules/wl-delivery.md) | Dispatch, runs, proof of delivery | built (F1-F10) |
+| [`wl-scheduling`](modules/wl-scheduling.md) | Resources, bookings, self-booking, reminders, waiting list | built (F1-F10) |
+| [`wl-attendance`](modules/wl-attendance.md) | Attendance, timesheets, rosters | built (F1-F10) |
+| [`wl-hr`](modules/wl-hr.md) | Employees, onboarding, qualifications, visa cases, leave, payroll, WPS, final settlement | built (F1-F10) |
+| [`wl-inventory`](modules/wl-inventory.md) | Items, stock, purchasing, supplier scorecards, lots, BOMs, dispatch notes, assets | built (F1-F10) |
+| [`wl-operator`](modules/wl-operator.md) | **Ours, not the clients':** clients, provisioning, plans and entitlements, billing our clients, rollout, monitoring, support, demo instances | built (F1-F10) |
 
 ## Reconciliation
 

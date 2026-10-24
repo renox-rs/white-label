@@ -12,7 +12,7 @@ here as `~~question~~ Answered (date): ...`.
 
 | Gate | Meaning |
 |---|---|
-| **Build 1** | Changes the data model or a rule in the first build (phase F1: 01 Property and the modules it uses, decision 0005); answer before coding those parts |
+| **Build 1** | Changed the data model or a rule in the first build (phase F1: 01 Property and the modules it uses, decision 0005). **F1 is built and merged**: an item still open under this gate was shipped with its safe default and is now needed before the first client who depends on it (see the note below the summary) |
 | **Client 1** | Needed for the contract, data processing agreement or security pack before the first production client of any vertical |
 | **Launch NN** | Needed before selling vertical NN (or before selling it outside Dubai, where noted) |
 | **Onboarding** | Collected per client during onboarding; the app already has a setting or a manual path |
@@ -24,18 +24,18 @@ here as `~~question~~ Answered (date): ...`.
 | Owner | Items | Build 1 | Client 1 | Outreach | Launch | Onboarding | Later |
 |---|---|---|---|---|---|---|---|
 | Owner decision (`D`) | 5 (all decided) | — | 0 | — | — | — | — |
-| Lawyer (`L`) | 40 | 1 | 5 | 1 | 30 | 1 | 2 |
+| Lawyer (`L`) | 40 | — | 5 | 1 | 31 | 1 | 2 |
 | Accountant (`A`) | 16 | — | — | — | 15 | 1 | — |
 | Authority (`AU`) | 25 | — | — | — | 21 | 2 | 2 |
 | Client (`C`) | 3 | — | — | — | 1 | 2 | — |
 | Onboarding (`O`) | 4 | — | 2 | — | — | 2 | — |
-| **Total open** | **88** | **1** | **7** | **1** | **67** | **8** | **4** |
+| **Total open** | **88** | **0** | **7** | **1** | **68** | **8** | **4** |
 
-**Before Build 1:** L-10. **Before Launch 02 (attendance):** L-05. **Before outreach at scale:** L-18. **Before Client 1:**
+**Build 1 has passed** (F1 shipped with the default of decision 0004 item 4); L-10 (signature level) is still open and its real gate is now Launch 01. **Before Launch 02 (attendance):** L-05 (F2 is built; the launch gate stands). **Before outreach at scale:** L-18. **Before Client 1:**
 L-01, L-02, L-03, L-11, L-13, O-01, O-02. The owner decisions D-01 to D-05 were taken on 2026-10-15.
 The items added from the negative-flow pass (L-19 to L-37, A-04 to A-14, AU-20 to AU-25, C-03)
 and from the SME gaps (L-38, L-39, A-15, A-16), and L-40 from decision 0006 (agent access stays off by default),
-are not needed before Build 1: each has a safe default in its document (the stricter
+were never needed for Build 1: each has a safe default in its document (the stricter
 choice, off by default, or a configurable parameter).
 
 ## 2. Owner decisions
@@ -63,7 +63,7 @@ The prices themselves are filled in [PRICING.md](PRICING.md) by the owner.
 | L-07 | Do feedback requests after a service count as direct marketing? | [wl-ticketing](modules/wl-ticketing.md) §10 | all with `WRK.FBK.01` | Launch 05 |
 | L-08 | Is an expiry term on prepaid services, packages or vouchers enforceable? | [wl-sales](modules/wl-sales.md) §10 | 05, 08, 10 | Launch 05 |
 | L-09 | Are there rules on no-show fees and forfeited booking deposits? | [wl-scheduling](modules/wl-scheduling.md) §10 | 05, 10 | Launch 05 |
-| L-10 | Which documents need more than a simple electronic signature (tenancy contracts for Ejari, employment contracts on MoHRE, engagement letters)? | [wl-documents](modules/wl-documents.md) §10 | 01, 04, 09 | **Build 1** |
+| L-10 | Which documents need more than a simple electronic signature (tenancy contracts for Ejari, employment contracts on MoHRE, engagement letters)? | [wl-documents](modules/wl-documents.md) §10 | 01, 04, 09 | **Launch 01** (was Build 1; F1 shipped without it) |
 | L-11 | Which sector duties require keeping an archive beyond deletion 30 days after a client leaves? | [wl-operator](modules/wl-operator.md) §7; [OPERATIONS.md](OPERATIONS.md) §10 | all, mainly 05 | Client 1 |
 | L-12 | Is a support session from outside the UAE "processing health data outside the UAE" (Law 2 of 2019, Art. 13)? | [wl-operator](modules/wl-operator.md) §10 | 05 | Launch 05 |
 | L-13 | Is the platform, which connects each client's own merchant account and never holds funds, excluded from the CBUAE Retail Payment Services Regulation (Circular 15/2021)? | [wl-payments](modules/wl-payments.md) §10 | all with online payments | Client 1 |
@@ -173,8 +173,8 @@ Not owner, lawyer or authority questions: what Renox 1.2.0 left to us
 | T-01 | HEIC/AVIF are not decoded by `Images`; write an `UploadStep` that calls a converter (R16) | [wl-documents](modules/wl-documents.md) | Launch 01 |
 | T-02 | Rule for two devices editing one record offline (R25 gives order and clock skew only) | [wl-delivery](modules/wl-delivery.md), [wl-attendance](modules/wl-attendance.md), [wl-sales](modules/wl-sales.md) | Later |
 | T-03 | Telr and Checkout.com gateways through the `Gateway` trait (R17) | [wl-payments](modules/wl-payments.md) | on demand |
-| T-04 | Choose a map tile provider and licence; set `BLOCKS_MAP_TILES` and `BLOCKS_MAP_ATTRIBUTION` (R20) for geofenced attendance (F2) | apps | Launch 02 |
-| T-05 | Allow camera and geolocation with `App::permissions_policy` (R5) for attendance check-in (F2); F1 does not use them | apps | Launch 02 |
+| T-04 | Choose a map tile provider and licence; set `BLOCKS_MAP_TILES` and `BLOCKS_MAP_ATTRIBUTION` (R20) for geofenced attendance (F2). **Still open (2026-10-24):** F2 is built without it; only `host/.env.example` mentions the variables | apps | Launch 02 |
+| T-05 | Allow camera and geolocation with `App::permissions_policy` (R5) for attendance check-in (F2); F1 does not use them. **Still open (2026-10-24):** F2 is built but no code calls `permissions_policy` (grep of `host/src`, `apps`, `crates`), so the default header blocks geolocation and camera; verify check-in in a browser and set `p.allow("geolocation", "self")` in the host (a bug if confirmed) | apps | Launch 02 |
 | T-06 | Record N-Genius chargebacks and dispute fees by hand (no disputes API in renox-billing) | [wl-payments](modules/wl-payments.md) §5.2a | Launch 05 |
 | T-07 | ~~Kernel registry of transitions by name and the `back_to_<state>` convention (Renox engine has fixed targets)~~ Resolved (2026-10-20): built in F1 in `crates/wl-kernel/src/machines.rs` (`SubjectMachine`, `BACK_TO_PREFIX`, `APPROVED_SUFFIX`) | [wl-kernel](modules/wl-kernel.md) §4.1 | Build 1 |
 

@@ -1,6 +1,8 @@
 # 01 — Property & Building Management
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
+> Spec: accepted · Reviewed: 2026-10-15 · Spec text last changed: 2026-10-20
+
+**Build status (2026-10-24):** Built in F1 (#455, #456, #482), merged. **Built:** all four app-owned state machines of §7.1 (Unit, Lease, Management agreement, Owner statement) with their states and transitions, the lease negative paths (holding over, notice, termination, deposit settlement), charge schedule, invoices, cheques, deposits and arrears on the shared modules, owner statements with approval and payout, maintenance tickets, enquiries and viewings, the Property demo (`property:demo`). **Partly built:** the shared-module items of §12 (bank statement import, VAT summary, AMC certificates) live in wl-payments, wl-invoicing and wl-documents and are not property-specific; AMC planned visits are not verified. **Not built (MVP items still open):** tenant portal (no property route), rent roll report (`PRP.RPT.01`; only an occupancy column on the portfolio page), EN/AR contract PDF, portfolio migration from Excel (`PLT.IMP.01`). Reservations and the rest of the Excluded list are Later. Machines in code but not in the spec: none. See [STATUS.md](STATUS.md) and [apps/property/README.md](../../apps/property/README.md).
 
 ## 1. Summary
 

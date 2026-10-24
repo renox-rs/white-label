@@ -9,9 +9,11 @@ Each client gets their own branded app, in English and Arabic, hosted in the UAE
 brand, every app runs the same tested modules for parties, documents, invoicing, payments,
 stock, scheduling, HR and more. Only the vertical's own workflows differ.
 
-> **Status: phase F*n* builds vertical *n*; all ten verticals are built (F1–F10, `apps/*`, one demo client each in `clients/`; the `auto:demo` command of 08 is future work).** This repository holds the full design (business context,
-> state machines, access rules, automations and UAE compliance notes) and, since
-> [decision 0004](docs/decisions/0004-start-f1-build.md), the code: `crates/wl-*`, `apps/*`, `host`.
+> **Status: phase F*n* builds vertical *n*; all ten verticals are built (F1–F10, `apps/*`, one
+> demo client each in `clients/`, one `<vertical>:demo` command each except 04).** This repository
+> holds the full design (business context, state machines, access rules, automations and UAE
+> compliance notes) and, since [decision 0004](docs/decisions/0004-start-f1-build.md), the code:
+> `crates/wl-*`, `apps/*`, `host`.
 
 ## The ten verticals
 
@@ -54,7 +56,8 @@ vertical adds only 9–24 of its own ([capability map](docs/CAPABILITY-MAP.md)).
 
 `wl-kernel` · `wl-parties` · `wl-portal` · `wl-documents` · `wl-notify` · `wl-invoicing` ·
 `wl-payments` · `wl-sales` · `wl-ticketing` · `wl-delivery` · `wl-scheduling` ·
-`wl-attendance` · `wl-hr` · `wl-inventory`, plus `wl-operator` for running the platform.
+`wl-attendance` · `wl-hr` · `wl-inventory`, plus `wl-operator` (our control plane for running the platform, specified in
+[docs/modules/wl-operator.md](docs/modules/wl-operator.md), **not built yet**).
 See [docs/modules/](docs/modules/).
 
 ## Run it
@@ -70,10 +73,13 @@ export APP_ENV=local APP_DEBUG=true APP_KEY=base64:$(head -c 32 /dev/urandom | b
 ../target/debug/host serve                  # http://127.0.0.1:3000, admin@example.com / password123
 ```
 
-The demo client is `clients/demo-properties/client.toml`. Tests: `cargo test --workspace --locked`.
+The demo client is `clients/demo-properties/client.toml`. Other verticals: set
+`CLIENT_CONFIG=clients/demo-<x>/client.toml`, run `<vertical>:demo` (see
+[docs/DEMO-DATA.md](docs/DEMO-DATA.md)); 04 accounting has `db:seed` only. Tests: `cargo test --workspace --locked`.
 Deploying a client to a server (production variables, systemd, Caddy, Litestream, rollout,
 restore drill): [deploy/README.md](deploy/README.md) and [docs/OPERATIONS.md](docs/OPERATIONS.md).
-Never run `migrate:fresh` or `db:seed` against a production database.
+Never run `migrate:fresh`, `db:seed` or a `<vertical>:demo` command against a production
+database (the host refuses them when `APP_ENV` is production).
 
 ## Where to start
 
@@ -82,8 +88,8 @@ Never run `migrate:fresh` or `db:seed` against a production database.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the platform is layered and deployed
 - [docs/CAPABILITY-MAP.md](docs/CAPABILITY-MAP.md): what is shared and what is specific
 - [docs/verticals/](docs/verticals/): one document per business
-- [docs/backlog/](docs/backlog/README.md): 429 build-ready issues in 24 epics, created on
-  GitHub, each self-contained enough for a developer or a coding model
+- [docs/backlog/](docs/backlog/README.md): 478 build-ready issues in 25 epics (15 modules, 10
+  verticals), created on GitHub, each self-contained enough for a developer or a coding model
 - [SME problem map](docs/reviews/2026-10-16-sme-problem-map.md): 50 common SME problems and
   how the platform answers them
 

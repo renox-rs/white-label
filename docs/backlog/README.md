@@ -1,6 +1,6 @@
 # Backlog — Negative Flows
 
-> Status: draft · Last updated: 2026-10-24 · Spec version: same commit as this file
+> Status: in use. F1–F10 are built and merged; the open items are in §7 · Last updated: 2026-10-24
 
 GitHub issues for building the negative flows fixed in the
 [negative-flow review](../reviews/2026-10-15-negative-flows.md). They were **created on GitHub
@@ -19,12 +19,12 @@ specification before this backlog was written.
 - **Also in:** the capabilities G1–G7 approved from the
   [SME problem map](../reviews/2026-10-16-sme-problem-map.md) (label `area:sme-gap`); their
   **Review items** line names the gap and the problem rows it solves.
-- **Not in:** the happy path of each entity (create, issue, pay…). Those come in a separate
-  backlog. An issue that needs one names it under **Depends on** as
-  `Base: <module> <Entity> lifecycle`.
+- **Not in:** the happy path of each entity (create, issue, pay…). There is no separate
+  happy-path backlog: the `Base: <module> <Entity> lifecycle` lines under **Depends on** name
+  lifecycles that were built together with the verticals (F1–F10), not issues of this backlog.
 - The specification documents stay the source of truth. The excerpt in an issue is a copy for
-  convenience; if it differs from the document at the spec version above, the document wins
-  and the issue is corrected.
+  convenience; if it differs from the document in `docs/` at the commit that last changed the
+  backlog file, the document wins and the issue is corrected.
 
 ## 2. Files
 
@@ -66,7 +66,7 @@ issues are created on GitHub, the IDs stay in the title prefix so links can be r
 | `DLV` | wl-delivery | `EDU` | 10 EdTech |
 | `STK` | wl-inventory | | |
 | `SCH` | wl-scheduling | | |
-| `AGT` | Search and AI agents (wl-kernel, wl-portal, wl-notify) | | |
+| `AGT` | Search and AI agents (wl-kernel, wl-portal, wl-notify; no crate of its own) | | |
 | `ATT` | wl-attendance | | |
 | `HRM` | wl-hr | | |
 
@@ -98,8 +98,10 @@ issues are created on GitHub, the IDs stay in the title prefix so links can be r
 A module issue takes the earliest milestone of any vertical that needs it.
 
 **Built early.** An issue built before its milestone keeps the milestone (it says which vertical
-first needs it). Built early in Build 1: the sanctions screening issues BL-PTY-05 to BL-PTY-09
-(#38–#42, Launch 04) and the marketing broadcast BL-NTF-07 (#61, Launch 05).
+first needs it). Examples: the sanctions screening issues BL-PTY-05 to BL-PTY-09
+(#38–#42, Launch 04) and the marketing broadcast BL-NTF-07 (#61, Launch 05) were built in
+Build 1; other module issues were built in a later phase than their milestone (for example
+BL-HRM-30, #480, Launch 09). No list is kept; the issue's state on GitHub is the record.
 
 Milestones and [OPEN-ITEMS](../OPEN-ITEMS.md) gates are different things. A milestone says
 when an issue is built; a gate says when an open question must be answered. An issue labelled
@@ -161,10 +163,10 @@ What a reader might expect here but belongs to another issue (with its ID).
 
 ## 5. How the backlog was checked
 
-1. Written per epic from the specification at the spec version above.
+1. Written per epic from the specification as it stood on 2026-10-16.
 2. **Question pass:** a small coding model read each epic as a new developer and listed every
    assumption and question.
-3. Each question was answered in the specification (and the spec version updated) or in the
+3. Each question was answered in the specification or in the
    issue's **Edge cases decided**. Questions that need an adviser point to OPEN-ITEMS.
 
 ## 6. Issues on GitHub
@@ -181,8 +183,71 @@ Launch 09), the pay accounts waiting for approval in the approvals inbox, so the
 issues. Added on 2026-10-24 from [decision 0006](../decisions/0006-search-and-ai-agents.md): the
 epic #540 and BL-AGT-01 to BL-AGT-10 (#541–#550: five Build 1, five Later), label
 `area:ai-agents`, so the backlog has 475 issues. Added the same day, after F1–F10 were merged:
-BL-AGT-11 to BL-AGT-13 (#552–#554, Launch 02 and Launch 06), the search registrations of the
-modules and verticals built in F2–F10, so the backlog has 478 issues. Links between issues
+BL-AGT-11 to BL-AGT-13 (#552–#554, milestones Launch 02 and Launch 06 but not built with those
+launches: see §7), the search registrations of the modules and verticals built in F2–F10, so
+the backlog has 478 issues. Links between issues
 use the GitHub numbers.
 The mapping from backlog ID to issue is in [github-issues.md](github-issues.md). When a backlog
 file changes, update the matching GitHub issue too.
+
+Not backlog issues: the repository also holds issues without a `BL-` ID. They are not in
+[github-issues.md](github-issues.md) and do not change the numbering: the standard-grid tracking
+issues (#523 and #524–#538, #556, #557, #564), defect reports from browser tests (#491–#496,
+#558, #565, #566) and a UX issue (#567). Counts in this file are of `BL-` issues only:
+429 + 22 + 1 + 12 + 1 + 10 + 3 = 478, equal to the `### BL-` blocks in the 25 files.
+
+## 7. State (2026-10-24)
+
+**Built.** Phases F1 to F10 are built and merged to `main` (pull requests from `git log --merges`):
+
+| Phase | Milestone | Pull requests |
+|---|---|---|
+| F1 | Build 1 (01 Property) | #456 (Build 1 issues), #482 (demo and deploy) |
+| F2 | Launch 02 (02 Construction) | #486, #487 (HTML screens) |
+| F3 | Launch 03 (03 Logistics) | #498 |
+| F4 | Launch 04 (04 Accounting) | #484, #485 (deferred gaps), #497 (activation blockers) |
+| F5 | Launch 05 (05 Clinics) | #499, #514, #515 (demo data, staff screens) |
+| F6 | Launch 06 (06 F&B) | #520 |
+| F7 | Launch 07 (07 Manufacturing) | #521 |
+| F8 | Launch 08 (08 Auto) | #522, #561 (demo and grids) |
+| F9 | Launch 09 (09 Manpower) | #500, #501, #516, #519 |
+| F10 | Launch 10 (10 EdTech) | #517 |
+
+"Built" means the issue's work is merged. It does not mean every Done-when point is proved: points
+that wait for a provider are listed as deferred (below). Nothing is marked "planned" for a
+module or vertical that exists: all ten `apps/*` verticals and the `crates/wl-*` modules exist.
+
+**Still open on GitHub, and why.**
+
+| Issues | What | Why open |
+|---|---|---|
+| #458–#479 (22) | Build 1 follow-ups: BL-KRN-10/11, PTY-11, POR-02/03, DOC-11, NTF-10, INV-31, PAY-27 to 30, SAL-27/28, TKT-12 to 14, PRP-30 to 34 | Created on 2026-10-20 for work the closed F1 issues deferred; not built |
+| #541–#550, #552–#554 (13) and epic #540 | BL-AGT-01 to 13: search, related records, agent connector | Not built (no search or related-records code exists). Milestone note below |
+| #502, #503, #505, #506, #507, #509, #510, #513 | BL-MPW-22, 23, 25, 26, 27, 29, 30, 33: Manpower screens | Screens are built except the Arabic translation (#513, not built); the others stay open for points marked `**Deferred:**` in the issue body |
+| #207, #213, #278, #279, #298, #346, #434, #435 | BL-HRM-17, HRM-23, PRP-28, PRP-29, CON-19, ACC-22, MPW-20, MPW-21 | Built in part; each has one or more points deferred (a kernel contract, a provider) |
+| #523–#538, #556, #557, #564 | Standard-grid conversion (not `BL-` issues) | List screens move to the standard grid module by module |
+| #491–#496, #558, #565–#567 | Defects and UX reports from browser tests (not `BL-` issues) | Open reports |
+| Epics #1–#24 | Epics | Stay open while a child is open |
+
+**BL-AGT-11, -12, -13 and their milestone.** These three carry the milestones Launch 02 (11, 12)
+and Launch 06 (13) because they register the records of the F2 to F10 modules and verticals.
+Those launches are already built, while the three issues depend on BL-AGT-01 and BL-AGT-03
+(Build 1), which are not built. The honest reading: the milestone names the records, not the
+build time. AGT-01 to AGT-13 are one track: BL-AGT-01 and -03, then -02, -04, -05, then -11, then
+-12 and -13 ([modules/wl-agents.md](modules/wl-agents.md)). The GitHub milestone of #552–#554 is
+not changed by this file.
+
+**Where the build state and the deferred points live.**
+
+- The GitHub issue body: ticked Done-when points, `**Deferred:**` lines, one
+  `**Verification summary**` comment (the rule of the `build-issues` skill, `.claude/skills/build-issues`).
+  The backlog files are the text as created; they are not updated with ticks.
+- `docs/progress/`: the deferred lists of the phases, for example
+  [f8-auto.md](../progress/f8-auto.md) and [f8-auto-deferred.md](../progress/f8-auto-deferred.md)
+  (08 Auto and the module issues #134, #136, #111) and the F7 list in
+  `docs/progress/f7-manufacturing.md` (07 Manufacturing, #132, #390, #394, #395). The F7 list is
+  also in the "Deferred in F7" table of `apps/manufacturing/README.md`. Blocks of issues with
+  deferred points carry a pointer line under **Done when**.
+- [DEMO-DATA.md](../DEMO-DATA.md) and the `*:demo` commands: the executable evidence per vertical.
+- Leftovers of the other open issues in the table above are in the `**Deferred:**` lines of
+  their GitHub bodies; there is no repo list yet.

@@ -1,6 +1,8 @@
 # wl-hr
 
-> Status: draft · Last updated: 2026-10-16
+> Status: specification, partly built; the build ledger is [crates/wl-hr/README.md](../../crates/wl-hr/README.md) · Last updated: 2026-10-24
+
+**Build status (2026-10-24):** Built: employees and the employee machine (activation, exits, absconding, death), onboarding with its steps, qualifications and expiry, leave and sick leave, pay accounts, payroll runs with the WPS (SIF) file, rejections and partial results, supplementary runs, visa cases (`complete`, `cancel`, `reject`, `waive` of steps), final settlements. Not built: the payroll run `cancel` and state `cancelled`; the employee transitions `start_leave` and `give_notice` (leave starts and notice are not machine transitions today); the visa case `start`, `hold` and `resume` and the state `on_hold`; pro-rating of joiners and leavers, unpaid leave, expense reimbursements, payslip documents. The code also has a transition `cancel_step` (cancels an onboarding step) that the tables below do not list. List screens use the standard Renox grid (`renox::grid::Grid`).
 
 ## 1. Purpose
 
@@ -200,9 +202,9 @@ machines' events.
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
 | `activate` | onboarding | active | `employees.manage` | statutory onboarding items complete: when visa cases are enabled, a *new* visa case `completed`; labour contract signed; mandatory documents (Emirates ID, passport, health insurance) attached with expiry; ILOE is not a blocker, the worker has four months from the work permit to subscribe ✔ [S6]. For `freelance`: permit or freelance visa and the freelance agreement attached instead. For a *minimal* record (§2): no statutory items, only the document kinds the client marks required (none by default). For every record: when the employee's onboarding includes a template with *blocks activation* (§3 *Onboarding*), every required step from such a template `done` or `waived` | portal account created (where the vertical has an employee portal); event `EmployeeActivated` |
-| `start_leave` | active | on_leave | system (leave start) | approved leave request | event `LeaveStarted` |
+| `start_leave` (not built) | active | on_leave | system (leave start) | approved leave request | event `LeaveStarted` |
 | `return` | on_leave | active | system (leave end) or `employees.manage` | — | — |
-| `give_notice` | active, on_leave | notice | `employees.manage` | notice date, last working day and reason recorded | final settlement drafted; *cancellation* visa case opened when sponsored; event `EmployeeNoticeGiven` |
+| `give_notice` (not built) | active, on_leave | notice | `employees.manage` | notice date, last working day and reason recorded | final settlement drafted; *cancellation* visa case opened when sponsored; event `EmployeeNoticeGiven` |
 | `exit` | notice | exited | `employees.manage` | final settlement `paid` or `closed`; *cancellation* visa case `completed` when sponsored | portal becomes read-only, then closes (TIM rule); event `EmployeeExited` with exit route *standard* |
 | `exit` | absconded, deceased | exited | `employees.manage` | *cancellation* visa case `completed`, or the authority's cancellation reference recorded; final settlement `approved`, `paid` or `closed` (absconded; `disputed` blocks the exit) or `paid` or `closed` to the estate (deceased); no signed acknowledgement needed | portal becomes read-only, then closes (TIM rule); event `EmployeeExited` with exit route *absconding* or *death* |
 | `cancel_onboarding` | onboarding | onboarding_cancelled | `employees.manage`, approved under `HRM.ACL.07` | reason given; open *new* visa case `cancel`led or `rejected`; when a work permit or entry permit was already issued, a *cancellation* visa case `completed` (or *cancellation not needed* recorded on the *new* case by `visas.manage`, with a reason); when the employee has attendance, wages for those days paid by a final settlement (`paid`) that HR drafted with reason *onboarding cancelled* (§5.4); no settlement needed without attendance | planned deployments and assignments cancelled through event `EmployeeOnboardingCancelled`; visa and onboarding costs stay on the employee cost object and are not recovered from the person (Art. 6(4)); portal account (if any) closed |
@@ -308,9 +310,9 @@ not states.
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `start` | open | in_progress | `visas.manage` | first step recorded | — |
-| `hold` | in_progress | on_hold | `visas.manage` | reason given | HR notified |
-| `resume` | on_hold | in_progress | `visas.manage` | — | — |
+| `start` (not built) | open | in_progress | `visas.manage` | first step recorded | — |
+| `hold` (not built) | in_progress | on_hold | `visas.manage` | reason given | HR notified |
+| `resume` (not built) | on_hold | in_progress | `visas.manage` | — | — |
 | `complete` | in_progress | completed | `visas.manage` | all mandatory steps done; resulting documents attached with numbers and expiry dates | *new*: employee may `activate`; *cancellation*: employee may `exit`; fees posted to the employee as cost object (`FIN.CST.01`), amortised evenly over the visa or contract term (default 24 months) for management reporting; event `VisaCaseCompleted` |
 | `cancel` | open, in_progress, on_hold | cancelled | `visas.manage` | reason given | fees already paid stay posted |
 | `reject` | in_progress, on_hold | rejected | `visas.manage` | authority reference and reason recorded | fees already paid stay posted; event `VisaCaseRejected`. *New*: HR task to `cancel_onboarding` or open another case. *Renewal*: HR task with a deadline N days before the current residence visa expires (default 30; due today when that day has passed) to open a new case by another route, or to `give_notice` and open a *cancellation* case; active deployments told through `VisaCaseRejected`, which carries the current visa's expiry date (the vertical reacts; 09 deployments), and again through `DocumentExpiring` (`affected`) once the visa enters its look-ahead window (`DOC.RUL.02`); MD notified |
@@ -396,7 +398,7 @@ stateDiagram-v2
 | `resubmit` | rejected | submitted | `payroll.prepare` | cause fixed: a note on the fix entered (every reason); for reason *establishment ID*, the legal entity's MoHRE establishment ID differs from the one in the rejected SIF version; amounts unchanged (`return` is not possible once the file was sent: an amount error is corrected after payment by a supplementary run, §5.6) | new SIF version generated for the same lines; lines reset from `failed` to `included`; the previous file kept |
 | `regenerate` | partially_rejected | submitted | `payroll.prepare` | each failed line fixed (pay account changed under `HRM.ACL.05`) or moved out of the run (held, or paid by an approved non-WPS method) | SIF generated with only the fixed lines, as a new version linked to the run |
 | `confirm_paid` | submitted, partially_rejected | paid | `payroll.approve` | bank or exchange-house confirmation attached for every line not held with net > 0 that is in a SIF version (the result file attached at `record_partial` confirms the lines it shows paid; none needed when no SIF was generated); a line moved out to an approved non-WPS method has its payment recorded (`FIN.PAY.01`) instead; no line left `failed` (fix it or hold it) | payslips generated (`DOC.GEN.01`) and published to the employee portal; salary cost posted to cost objects (`FIN.CST.01`); held lines wait for `HRM.RUL.12`; for a supplementary run, overpayment recovery adjustments created for the negative differences; event `PayrollRunPaid` |
-| `cancel` | draft, calculated | cancelled | `payroll.prepare` | — | — |
+| `cancel` (not built) | draft, calculated | cancelled | `payroll.prepare` | — | — |
 
 ```mermaid
 stateDiagram-v2

@@ -1,6 +1,8 @@
 # wl-ticketing
 
-> Status: draft · Last updated: 2026-10-16
+> Status: specification, partly built; the build ledger is [crates/wl-ticketing/README.md](../../crates/wl-ticketing/README.md) · Last updated: 2026-10-24
+
+**Build status (2026-10-24):** Built: tickets and their machine, categories, SLA policies and targets, assignments, comments, hold reasons, compliance flags, charge lines, no-shows, maintenance plans (the plan machine without `pause`), tasks (deadlines) and task templates, service contracts (draft, active, expiring, expired, terminated; coverage of subjects by category). Not built (later): Checklist run (§4.2, including `void`; the kernel `Checklists` trait has no production provider yet), Feedback request (§4.5, `WRK.RUL.11`), the maintenance plan `pause` (state `paused`), the service contract `renew` (state `renewed`) and `discard`. The Task machine has transitions the table below does not list: `auto_complete`, `auto_unblock`, `auto_waive`, `complete_reviewed`, `hand_over`, and the contract machine has `terminate_by_decision`; treat them as variants of `complete`, `unblock`, `waive` and `terminate`. List screens use the standard Renox grid (`renox::grid::Grid`).
 
 ## 1. Purpose
 
@@ -50,12 +52,12 @@ complaints.
 | Ticket comment | Conversation and updates | author, visibility (internal / visible to requester), text, attachments |
 | Checklist template | A versioned list of items | name, version, items (see below), pass rule (all required items pass / score ≥ threshold), signatures required (performer, counter-signer, party), on-failure action (none, open ticket of category X, emit event) |
 | Checklist item | One line of a template | label (EN/AR), type (yes/no, pass/fail, number with unit and min/max, choice, text, photo, signature, condition rating), required, help text, failure condition |
-| Checklist run | One filled checklist | template + version, subject, performer, started at, completed at, results per item, photos, signatures, outcome (passed / failed), status |
+| Checklist run (not built) | One filled checklist | template + version, subject, performer, started at, completed at, results per item, photos, signatures, outcome (passed / failed), status |
 | Maintenance plan | Work that recurs | subject (unit, asset, vehicle, machine), task template (category, checklist template, description), trigger (every N days/weeks/months; every N meter units; whichever comes first), lead time, last done (date, meter value), next due (date, meter value), status |
 | Task template | A recurring deadline | name, subject type (e.g. client company, employee), recurrence (monthly, quarterly, yearly, per tax period, custom), due-date rule (e.g. 28 days after period end), lead time, owner role, reviewer role, evidence required, checklist template |
 | Task | One occurrence of a task template, or a one-off task | template, subject, period, due date, start date (due − lead time), owner, reviewer, evidence, status |
 | Feedback setting | When and how feedback is asked for one kind of completed work | subject type and completing event (ticket closed, booking completed, sales order fulfilled, delivery delivered), delay, rating scale, question text (EN/AR), optional tags, low-rating threshold, low-rating ticket category, channels, active |
-| Feedback request | One request for feedback, and its answer | setting, subject, party, contact, channel, sent at, expires at, rating, comment, tags, low (yes/no), follow-up ticket, status |
+| Feedback request (not built) | One request for feedback, and its answer | setting, subject, party, contact, channel, sent at, expires at, rating, comment, tags, low (yes/no), follow-up ticket, status |
 | Service contract | An agreement with a vendor to maintain covered assets or subjects | number, vendor (party), issuing entity (`PLT.ENT.01`), title, start date, end date, renewal notice days, value and billing terms (fixed per period, per visit, or included), SLA policy, visit schedule (every N days/weeks/months, or a list of dates), checklist template, cost allocation basis for recharges (area, units, asset or manual %; set by the vertical), contract document, previous version, compliance contract (yes/no; yes when a covered category is compliance-critical), vendor document flag (set while a vendor document the contract's categories need is expired or missing), status |
 | Contract coverage | One asset or subject covered by a contract | contract, subject (unit, building system, asset, machine, outlet equipment), covered categories, exclusions, visit schedule override |
 | Compliance flag | A covered subject that is not compliant for a compliance-critical category | subject (building, building system, asset), category, reason (`no_contract`: a compliance contract ended with no replacement; `visit_missed`: `WRK.RUL.14`; `vendor_document_expired`: the vendor's required approval expired), contract, raised at, cleared at, cleared by (replacement contract `active`, visit resolved, document renewed; a `visit_missed` flag is cleared only by resolving that visit, not by cancelling it) |
@@ -147,6 +149,8 @@ scope is told as well. No-shows per vendor and contract appear on the contract p
 
 ### 4.2 Checklist run
 
+**Build status (2026-10-24):** Not built (later): no checklist table or machine exists.
+
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
 | `in_progress` | info | no | Being filled |
@@ -182,7 +186,7 @@ Completed results cannot be edited. A wrong run is voided and a new run is start
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
 | `activate` | — | active | `maintenance_plans.manage` or system (e.g. a fleet contract `activate`) | trigger and task template set | next due computed |
-| `pause` | active | paused | `maintenance_plans.manage` | reason given | — |
+| `pause` (not built) | active | paused | `maintenance_plans.manage` | reason given | — |
 | `resume` | paused | active | `maintenance_plans.manage` | — | next due recomputed |
 | `end` | active, paused | ended | `maintenance_plans.manage` or system | — | open generated tickets stay open |
 
@@ -270,6 +274,8 @@ abandoned. No other vertical lists `WRK.TSK.01`; licence and visa expiries use `
 
 ### 4.5 Feedback request
 
+**Build status (2026-10-24):** Not built (later).
+
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
 | `pending` | neutral | no | Created when the work completed; waiting for the configured delay |
@@ -324,10 +330,10 @@ stateDiagram-v2
 |---|---|---|---|---|---|
 | `activate` | draft | active | `service_contracts.manage` | vendor, dates, at least one covered subject, SLA policy and visit schedule set; contract document attached; `document_valid(vendor, kind, start date)` for every vendor document kind whose `blocks` include `service_contract.activate` (e.g. 01: Civil Defence approval for fire and life safety) | one maintenance plan per covered subject through `MaintenancePlans::create` (`WRK.PPM.01`); contract document registered for expiry (`DOC.EXP.01`); compliance flags `no_contract` on the covered subjects and categories cleared; event `ServiceContractActivated` |
 | `flag_expiring` | active | expiring | system (`WRK.RUL.12`) | end date − notice days reached | contract owner notified; event `ServiceContractExpiring` |
-| `renew` | expiring | renewed | `service_contracts.manage` | a new version of this contract is `active` | maintenance plans move to the new version; event `ServiceContractEnded` |
+| `renew` (not built) | expiring | renewed | `service_contracts.manage` | a new version of this contract is `active` | maintenance plans move to the new version; event `ServiceContractEnded` |
 | `expire` | expiring | expired | system (`WRK.RUL.13`) | end date passed | maintenance plans `end`; open planned visits handled per [§5.6](#56-service-contract-amc) step 6 (`WRK.RUL.18`); for a compliance contract with no replacement, compliance flag `no_contract` on each covered subject; covered tickets fall back to the category SLA; event `ServiceContractEnded` |
 | `terminate` | active, expiring | terminated | `service_contracts.manage` | reason and termination date given | the contract is `terminated` at once, but until the termination date it still covers its subjects (coverage, SLA, planned visits); on the termination date (`WRK.RUL.18`, date reached; at once when the date is today) maintenance plans `end`, and open planned visits and compliance flags are handled as for `expire`; event `ServiceContractEnded` when `WRK.RUL.18` runs |
-| `discard` | draft | — (deleted) | `service_contracts.manage` | — | — |
+| `discard` (not built) | draft | — (deleted) | `service_contracts.manage` | — | — |
 
 ```mermaid
 stateDiagram-v2

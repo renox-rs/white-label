@@ -1,6 +1,6 @@
 # Epic: wl-portal — negative flows
 
-> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
+> Status: in use (F1–F10 built; open items in [README](../README.md) §7) · Last updated: 2026-10-24
 
 How the portal behaves while the party behind a portal user is blocked: it never shows a block, a
 status or a reason (no tipping off), keeps history and payments working, and refuses actions that
@@ -18,7 +18,7 @@ X-18 and 04-N11-a.
 ### BL-POR-01 — wl-portal: refuse new business and money out in the portal with a neutral text while the party is blocked
 
 **Labels:** `module:wl-portal` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:portal` `surface:public` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** BL-PTY-01, BL-PTY-04 · Base: wl-portal Access grant lifecycle · **Blocks:** BL-LOG-19, BL-POR-02, BL-TKT-14, BL-INV-31, BL-PRP-30
+**Depends on:** BL-PTY-01, BL-PTY-04 · Base: wl-portal Access grant lifecycle · **Blocks:** BL-LOG-19, BL-POR-02, BL-TKT-14, BL-INV-31, BL-PRP-30, BL-MPW-28
 **Review items:** X-18, 04-N11-a
 
 #### Goal
@@ -143,7 +143,7 @@ requests (module epics).
 ### BL-POR-02 — wl-portal: build each audience's menu from registered sections and portal-role permissions
 
 **Labels:** `module:wl-portal` `area:negative-flow` `priority:high` `size:m` `surface:portal` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** Base: wl-portal Access grant lifecycle; BL-POR-01 · **Blocks:** BL-TKT-14, BL-INV-31, BL-PAY-27, BL-PRP-30, BL-POR-03
+**Depends on:** Base: wl-portal Access grant lifecycle; BL-POR-01 · **Blocks:** BL-TKT-14, BL-INV-31, BL-PAY-27, BL-PRP-30, BL-POR-03, BL-MPW-28
 **Review items:** X-18; follow-up of BL-POR-01, Done-when points 1 and 8
 
 #### Goal
@@ -221,7 +221,7 @@ wl-portal Access grant lifecycle); the owner portal (`POR.SLF.02`, Later).
 ### BL-POR-03 — wl-portal: make a grant read-only when the vertical's contract ends and close it after the period (`POR.ACL.01`)
 
 **Labels:** `module:wl-portal` `area:negative-flow` `priority:medium` `size:s` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** s
-**Depends on:** Base: wl-portal Access grant lifecycle; BL-POR-02 · **Blocks:** None.
+**Depends on:** Base: wl-portal Access grant lifecycle; BL-POR-02 · **Blocks:** BL-MPW-28
 **Review items:** 01-N12-a; follow-up of BL-PRP-11, Done-when point 1 (c)
 
 #### Goal

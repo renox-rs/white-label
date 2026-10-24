@@ -1,6 +1,6 @@
 # Epic: wl-ticketing — negative flows
 
-> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
+> Status: in use (F1–F10 built; open items in [README](../README.md) §7) · Last updated: 2026-10-24
 
 What happens when maintenance and recurring work go wrong: a service contract ends with visits
 still open, a vendor does not turn up, a vendor's approval lapses, a compliance-critical subject

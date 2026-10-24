@@ -15,6 +15,8 @@ second       = "#1D4ED8"
 display_font = "Poppins"
 
 [modules]
+# No `sales` here: the leads and tenders of spec 02 §12 ("also included") are
+# not available in this demo until it is added.
 enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "hr", "attendance", "inventory", "portal"]
 
 [[legal_entities]]

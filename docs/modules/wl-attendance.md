@@ -1,6 +1,8 @@
 # wl-attendance
 
-> Status: draft · Last updated: 2026-10-16
+> Status: specification, partly built; the build ledger is [crates/wl-attendance/README.md](../../crates/wl-attendance/README.md) · Last updated: 2026-10-24
+
+**Build status (2026-10-24):** Built: work locations, the attendance record and its machine, check-in and check-out, overlap, overtime cap and midday break checks, permit and qualification checks, review of held records, timesheets with entries, submission, approval (also on behalf and deemed), escalation, adjustments, reconciliation, hours for payroll, closing of open timesheets. Not built (later): Shift pattern, Roster and Shift (§3, the Roster machine, §5.9, the event `RosterPublished`, `WorkingTime`), and with them rosters as a source of blocks for `wl-scheduling` (`AvailabilitySource`). List screens use the standard Renox grid (`renox::grid::Grid`).
 
 ## 1. Purpose
 
@@ -52,9 +54,9 @@ Related capabilities owned elsewhere:
 | Adjustment timesheet | A timesheet of kind `adjustment` that corrects a `locked` timesheet. The original is never edited | adjusts (original timesheet), reason, origin (`client_dispute`, `attendance_error`, `payroll_error`, `provisional_reconciliation`), linked ticket or invoice dispute, affects (`billing`, `payroll` or `both`), entries with signed hours (+ or −) per day, cost object and category |
 | Timesheet entry | Hours on one day against one cost object | timesheet, employee, date, cost object (`Subject`: cost code, work order, engagement service, job card, session), hours by category (normal, overtime, night, rest day, public holiday), billable flag, source (attendance, manual, generated), cost rate used per category (from `CostRateResolver`, §8), note |
 | Approval evidence | Proof of an approval given outside the system | timesheet, document (signed sheet), approver name, date |
-| Shift pattern | A reusable shift | name, start/end time, break, days of week, role |
-| Roster | Planned shifts for a scope and period | scope, period, status |
-| Shift | One planned shift | roster, work location, date, start/end, role, required qualification, assigned employee, status (open/assigned/confirmed/cancelled) |
+| Shift pattern (not built) | A reusable shift | name, start/end time, break, days of week, role |
+| Roster (not built) | Planned shifts for a scope and period | scope, period, status |
+| Shift (not built) | One planned shift | roster, work location, date, start/end, role, required qualification, assigned employee, status (open/assigned/confirmed/cancelled) |
 
 Field names are generic. Verticals add their own fields through custom fields (`wl-kernel`) or
 their own tables linked by `Subject`. Examples: trade on a construction entry, service code
@@ -195,6 +197,8 @@ cost is counted twice. The rate comes from `CostRateResolver` (§8), never from 
 | 07, 08 (Later) | yes | employee cost rate, or the vertical's rate |
 
 ### Roster
+
+**Build status (2026-10-24):** Not built (later): no roster table or machine exists.
 
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
@@ -367,6 +371,8 @@ Salary does not wait for the client. The WPS due date is fixed by law (wl-hr, MR
    the table in §4. Every step is audited and linked both ways.
 
 ### 5.9 Rostering (05 MVP, 09 Later)
+
+**Build status (2026-10-24):** Not built.
 
 1. A planner creates a roster for a scope and period from shift patterns.
 2. Shifts are assigned. Employees on approved leave (`wl-hr`) or without a required

@@ -1,6 +1,6 @@
 # Epic: wl-documents — negative flows
 
-> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
+> Status: in use (F1–F10 built; open items in [README](../README.md) §7) · Last updated: 2026-10-24
 
 Expired documents no longer only remind: a document kind names the transitions it guards
 (`blocks`), and every guarded module calls the standard guard `document_valid`. This epic
@@ -364,7 +364,7 @@ Module reactions to `affected` (`Epic wl-scheduling: SCH.RUL.05`, BL-TKT-07, ver
 ### BL-DOC-05 — wl-documents: emit the blocked records on expiry and lift the block on renewal
 
 **Labels:** `module:wl-documents` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** BL-DOC-01, BL-DOC-04, BL-KRN-08 · **Blocks:** BL-TKT-07, BL-ACC-12, BL-CLN-12, BL-EDU-07, BL-LOG-25, BL-MFG-11, BL-MPW-11, BL-PRP-27
+**Depends on:** BL-DOC-01, BL-DOC-04, BL-KRN-08 · **Blocks:** BL-TKT-07, BL-ACC-12, BL-CLN-12, BL-EDU-07, BL-LOG-25, BL-MFG-11, BL-MPW-11, BL-PRP-27, BL-MPW-31
 **Review items:** X-13, 01-N8-b, 09-N8-b
 
 #### Goal
@@ -445,7 +445,7 @@ deployment suspend`, BL-TKT-07).
 ### BL-DOC-06 — wl-documents: approve a one-use override of a document block
 
 **Labels:** `module:wl-documents` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** BL-DOC-01, BL-KRN-01 · Base: wl-kernel Approval request lifecycle · **Blocks:** BL-ACC-01, BL-ACC-23, BL-CLN-15, BL-EDU-08, BL-EDU-17, BL-MPW-08, BL-MPW-20
+**Depends on:** BL-DOC-01, BL-KRN-01 · Base: wl-kernel Approval request lifecycle · **Blocks:** BL-ACC-01, BL-ACC-23, BL-CLN-15, BL-EDU-08, BL-EDU-17, BL-MPW-08, BL-MPW-20, BL-MPW-24
 **Review items:** X-13, 09-N8-b
 
 #### Goal

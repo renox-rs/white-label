@@ -2,8 +2,8 @@
 //! cancellation fee of `cancel` and the return charge of `cancel_return`
 //! (03 Logistics §7.1, `FIN.RAT.01`).
 //!
-//! The rate cards of wl-invoicing (`FIN.RAT.01`) are not built yet. Until they
-//! are, a client's two lines are kept here as [`ClientRate`] rows, one per
+//! The rate cards of wl-invoicing (`FIN.RAT.01`) exist, but logistics does not
+//! use them yet. Until it does, a client's two lines are kept here as [`ClientRate`] rows, one per
 //! kind, and [`price`] is the only place that reads them: replacing it with a
 //! call to the `RateCards` contract of wl-kernel changes nothing else. A
 //! client without a row for a kind has no such line on its rate card.

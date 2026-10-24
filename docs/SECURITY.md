@@ -1,11 +1,29 @@
 # Security
 
-> Status: draft for review · Last updated: 2026-10-15
+> Status: design and target; only the controls marked built below exist · Last updated: 2026-10-24
 
 How the platform protects client data: what we protect, from whom, with which controls, and
 what happens when something goes wrong. Access rules themselves are in
 [ACCESS-CONTROL.md](ACCESS-CONTROL.md). Hosting and day-to-day operations are in
 [OPERATIONS.md](OPERATIONS.md).
+
+**Build status (2026-10-24):** this document is mostly the design and the target. What is built, from the code and the tests:
+
+| Control | Status |
+|---|---|
+| Deny by default, roles and scopes on the server (`PLT.ACL.01`, `03`, `05`-`09`) | Built in `wl-kernel` and the modules (see ACCESS-CONTROL.md §9) |
+| CSRF, escaping, secure cookies, login throttling | Built, by Renox defaults (not re-tested by this repository) |
+| CSP | Built, default `relaxed`; `strict` was tried on the main pages only, not on portal pages, PDFs or uploads ([OPERATIONS.md](OPERATIONS.md) §12, [deploy/README.md](../deploy/README.md) §8) |
+| `TRUSTED_HOSTS`, `TRUSTED_PROXIES` | Built and tested in a debug run (`deploy/env.production.example`) |
+| Production guard: `migrate:fresh`, `db:seed` and every `<vertical>:demo` refuse to run | Built and tested ([OPERATIONS.md](OPERATIONS.md) §12, `host/tests/production_guard.rs`) |
+| No public sign-up; users added by an admin or `users:invite` | Built and tested |
+| Staff two-factor login (`PLT.ACL.02`, `renox-2fa`) | **Not built** (no two-factor code in the host or the modules) |
+| Operator break-glass access, support sessions (`PLT.ACL.04`, `OPS.ACL.*`) | **Not built** (needs `wl-operator`) |
+| Malware scan hook on uploads, HEIC conversion | **Not built** (HEIC is accepted as a file type only) |
+| Backups and restore drill, uploads sync | Files and runbook only; never run ([OPERATIONS.md](OPERATIONS.md) §12) |
+| SSO (`PLT.SSO.01`), per-file encryption (R16), monitoring | **Not built** |
+
+Read every "required", "on by default" and "2FA" below as the target unless the table above says built.
 
 ## 1. Principles
 
@@ -38,7 +56,7 @@ fields as well as files ([ACCESS-CONTROL.md](ACCESS-CONTROL.md) `PLT.ACL.06`).
 | Boundary | Who crosses it |
 |---|---|
 | Internet → portal | External users (tenants, patients, parents), recipients with signed links |
-| Internet → back office | Client staff (2FA), field staff on phones (PWA) |
+| Internet → back office | Client staff (2FA is a target, not built), field staff on phones (PWA) |
 | Internet → API and webhooks | Client integrations with API tokens; payment gateways and BSPs posting webhooks |
 | Upload → storage | Any file a user or the portal uploads |
 | Deployment → outbound | Email, SMS, WhatsApp, gateways, accounting exports, outbound webhooks (R11) |
@@ -65,7 +83,7 @@ of service, **E**levation of privilege.
 
 | Threat | STRIDE | Control |
 |---|---|---|
-| Stolen staff password | S | 2FA required (`PLT.ACL.02`), optional SSO (`PLT.SSO.01`), session timeout |
+| Stolen staff password | S | 2FA required (`PLT.ACL.02`, **not built**), optional SSO (`PLT.SSO.01`), session timeout |
 | A staff member grants themselves more rights | E | `PLT.ACL.03`: cannot grant a permission you do not hold; grants audited |
 | Insider fraud: refund to self, fake supplier bill | T, R | Segregation of duties (`FIN.ACL.04`, `STK.ACL.01`, `FIN.ACL.03`), approvals with history, audit |
 | Bulk export of personal data by a leaving employee | I | Exports need permission and are audited; `NTF.ACL.01` for marketing lists; leavers lose access at once (`PLT.ACL.08`) |
