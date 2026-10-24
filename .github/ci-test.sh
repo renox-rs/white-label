@@ -11,11 +11,13 @@
 # slowest part, not the sum.
 #
 # Usage:
-#   .github/ci-test.sh modules        every wl-* package
-#   .github/ci-test.sh apps           every package that is neither wl-* nor host
+#   .github/ci-test.sh modules [K N]  the wl-* packages (of shard K of N)
+#   .github/ci-test.sh apps [K N]     the packages that are neither wl-* nor host
 #   .github/ci-test.sh host K N       host's test files of shard K of N (K from 1);
 #                                     shard 1 also runs host's lib, bins and doc tests
 #   .github/ci-test.sh all            everything, one part after the other
+# Shards are dealt round-robin from the sorted list, so every package or
+# file is in exactly one shard of N.
 # Every run goes even when one fails; the exit code is 1 if any failed.
 
 set -uo pipefail
@@ -45,16 +47,23 @@ packages() {
   cargo metadata --no-deps --format-version 1 | jq -r '.packages[].name' | sort
 }
 
-modules() {
-  for package in $(packages | grep '^wl-'); do
-    run "$package" -p "$package"
+# The packages of shard $2 of $3 among those of stdin, each run alone.
+run_packages() {
+  local label=$1 shard=$2 shards=$3 list
+  mapfile -t list
+  for ((i = shard - 1; i < ${#list[@]}; i += shards)); do
+    run "$label $shard/$shards: ${list[i]}" -p "${list[i]}"
   done
 }
 
+# (Fed by process substitution, not a pipe: a pipe would run the loop in a
+# subshell and lose the failures it records.)
+modules() {
+  run_packages modules "${1:-1}" "${2:-1}" < <(packages | grep '^wl-')
+}
+
 apps() {
-  for package in $(packages | grep -v '^wl-' | grep -vx host); do
-    run "$package" -p "$package"
-  done
+  run_packages apps "${1:-1}" "${2:-1}" < <(packages | grep -v '^wl-' | grep -vx host)
 }
 
 # host's test files of shard $1 of $2, dealt round-robin so neighbouring
@@ -76,8 +85,8 @@ host() {
 }
 
 case "${1:-all}" in
-  modules) modules ;;
-  apps) apps ;;
+  modules) modules "${2:-1}" "${3:-1}" ;;
+  apps) apps "${2:-1}" "${3:-1}" ;;
   host) host "${2:?shard}" "${3:?shards}" ;;
   all) modules; apps; host 1 1 ;;
   *) echo "unknown part: $1" >&2; exit 2 ;;

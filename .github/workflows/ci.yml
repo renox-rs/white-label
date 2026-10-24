@@ -41,15 +41,34 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked
 
   test:
-    # The tests in parallel parts, so the wait is the slowest part (about
-    # half an hour) instead of all of them in a row (about two hours).
+    # The tests in parallel parts, so the wait is the slowest part instead
+    # of all of them in a row (about two hours).
     # .github/ci-test.sh says how a part is chosen.
     name: test (${{ matrix.part }})
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        part: [modules, apps, host 1 6, host 2 6, host 3 6, host 4 6, host 5 6, host 6 6]
+        # 17 parts: with lint and msrv, 19 jobs, within the 20 a free
+        # organisation runs at once.
+        part:
+          - modules 1 4
+          - modules 2 4
+          - modules 3 4
+          - modules 4 4
+          - apps 1 3
+          - apps 2 3
+          - apps 3 3
+          - host 1 10
+          - host 2 10
+          - host 3 10
+          - host 4 10
+          - host 5 10
+          - host 6 10
+          - host 7 10
+          - host 8 10
+          - host 9 10
+          - host 10 10
     steps:
       - uses: actions/checkout@v4
       - name: Free disk space
@@ -63,7 +82,7 @@ jobs:
         with:
           # One cache for every part; only the first part saves it.
           shared-key: test
-          save-if: ${{ matrix.part == 'host 1 6' }}
+          save-if: ${{ matrix.part == 'host 1 10' }}
       - run: .github/ci-test.sh ${{ matrix.part }}
 
   # The check branch protection and the PR page know: green when lint and
