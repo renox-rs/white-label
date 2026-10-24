@@ -76,6 +76,17 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_portal.home.empty", "Nothing to show yet"),
     ("wl_portal.home.parties", "Acting for"),
     ("wl_portal.home.switch", "Switch"),
+    ("wl_portal.home.search", "Find your invoices and records"),
+    ("wl_portal.search.title", "Search"),
+    (
+        "wl_portal.search.subtitle",
+        "Your own invoices and records, by number or words.",
+    ),
+    ("wl_portal.search.label", "Search your records"),
+    ("wl_portal.search.placeholder", "Invoice number or words"),
+    ("wl_portal.search.submit", "Search"),
+    ("wl_portal.search.short", "Type at least two characters."),
+    ("wl_portal.search.empty", "Nothing found"),
     ("wl_portal.roles.title", "Portal roles"),
     (
         "wl_portal.roles.subtitle",

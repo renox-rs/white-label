@@ -8,6 +8,7 @@ pub mod grants;
 pub mod guard;
 pub mod links;
 pub mod refusals;
+pub mod search;
 pub mod sections;
 pub mod settings;
 mod texts;
@@ -67,6 +68,10 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-portal/roles.html",
         include_str!("../views/wl-portal/roles.html"),
     ),
+    (
+        "wl-portal/search.html",
+        include_str!("../views/wl-portal/search.html"),
+    ),
 ];
 
 /// The daily close-after timer (`POR.ACL.01`, BL-POR-03).
@@ -86,6 +91,7 @@ impl Module for WlPortal {
 
     fn routes(&self) -> Routes {
         refusals::routes()
+            .merge(search::routes())
             .merge(sections::routes())
             .merge(links::routes())
             .merge(settings::routes())
@@ -106,6 +112,7 @@ impl Module for WlPortal {
         app.view_data::<links::LinkPage>();
         app.view_data::<sections::HomePage>();
         app.view_data::<settings::RolesPage>();
+        app.view_data::<search::PortalSearchPage>();
         app.schedule()
             .daily_at(CLOSE_TASK_AT, CLOSE_TASK, |state: AppState| async move {
                 PortalAccess::close_due(&state, wl_kernel::documents::today())

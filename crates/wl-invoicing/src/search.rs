@@ -12,18 +12,21 @@
 //! **Names.** The customer's name is the party's own search document (the
 //! party module indexes it), or the name the invoice took at issue.
 //!
+//! **Portal.** An issued invoice belongs to its customer's party: the
+//! portal search finds it for the portal users acting for that party, with
+//! `portal.invoices.view`, and opens the party's invoices page.
+//!
 //! The documents are written again after every transition (issue, payment,
 //! write-off, credit: [`register`] listens for them) and in the transaction
 //! that drafts or discards an invoice and drafts a credit note.
 
-use renox::auth::permissions::Scope;
 use renox::db::Transaction;
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use wl_kernel::Subject;
 use wl_kernel::invoicing::{CREDIT_NOTE_SUBJECT_TYPE, INVOICE_SUBJECT_TYPE};
 use wl_kernel::parties::PARTY_SUBJECT_TYPE;
-use wl_kernel::search::{SearchDocument, SearchDocumentRow, Searchable, kinds};
+use wl_kernel::search::{SearchDocument, SearchDocumentRow, Searchable, kinds, scope_in};
 
 use crate::credit_note::CreditNote;
 use crate::invoice::Invoice;
@@ -32,13 +35,18 @@ use crate::permissions;
 /// Declares `invoicing.invoice` and `invoicing.credit_note` for search.
 pub(crate) fn register(app: &mut Registry) {
     Searchable::of::<Invoice>(INVOICE_SUBJECT_TYPE)
+        .after(PARTY_SUBJECT_TYPE)
         .permission(permissions::VIEW)
         .label("Invoices")
         .link("/invoices/{id}")
         .portal_visible()
+        .portal_link("/portal/{party}/invoices")
+        .portal_permission(crate::portal::VIEW_PERMISSION)
         .document_in(|tx, invoice| Box::pin(invoice_document(tx, invoice)))
         .register();
     Searchable::of::<CreditNote>(CREDIT_NOTE_SUBJECT_TYPE)
+        .after(PARTY_SUBJECT_TYPE)
+        .after(INVOICE_SUBJECT_TYPE)
         .permission(permissions::VIEW)
         .label("Credit notes")
         .link("/credit-notes/{id}")
@@ -76,7 +84,15 @@ pub async fn invoice_document(tx: &mut Transaction, invoice: &Invoice) -> Result
         candidates.push(unit);
     }
     let scope = scope_in(tx, &candidates).await?;
-    Ok(SearchDocument::new(title)
+    let document = SearchDocument::new(title);
+    // The customer finds an issued invoice in the portal (BL-AGT-05); a
+    // draft is the company's own until it is issued.
+    let document = if number.is_empty() {
+        document
+    } else {
+        document.party(invoice.party_id)
+    };
+    Ok(document
         .secondary(customer)
         .keyword(
             snapshot
@@ -137,33 +153,6 @@ async fn party_name_in(tx: &mut Transaction, id: i64) -> Result<Option<String>> 
         .await?
         .map(|document| document.title)
         .filter(|name| !name.is_empty()))
-}
-
-/// The scope of the first of `candidates` that has one: its kernel
-/// machine's scope (read in `tx`), else the scope of its search document;
-/// global when none has one. (`wl_kernel::scopes::scope_of` reads outside
-/// the transaction, which a single SQLite connection cannot do while the
-/// indexing transaction is open.)
-async fn scope_in(tx: &mut Transaction, candidates: &[Subject]) -> Result<Scope> {
-    for subject in candidates {
-        if let Some(machine) =
-            wl_kernel::machines::get(&subject.subject_type).filter(|m| m.has_scope())
-        {
-            // A record that is gone (or a source a test made up) has no
-            // scope: the machine answers `NotFound`.
-            match machine.scope_in(tx, subject.subject_id).await {
-                Ok(scope) if !scope.is_global() => return Ok(scope),
-                Ok(_) | Err(Error::NotFound) => {}
-                Err(error) => return Err(error),
-            }
-        }
-        if let Some(document) = stored_in(tx, subject).await?
-            && !document.scope_type.is_empty()
-        {
-            return Ok(Scope::new(&document.scope_type, &document.scope_id));
-        }
-    }
-    Ok(Scope::global())
 }
 
 /// Writes the documents of `subjects` again in their own transaction.

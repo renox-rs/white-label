@@ -7,6 +7,12 @@
   <rx-stack>
     <rx-page-header :title="party_name" :subtitle="tx['home.title']"/>
     <rx-alert rx-if="read_only_notice" kind="warning" :message="read_only_notice"/>
+    <form method="get" action="/portal/search" role="search">
+      <rx-row>
+        <rx-input name="q" type="search" :label="tx['home.search']" hide-label id="wl-portal-home-q" :placeholder="tx['search.placeholder']" autocomplete="off"/>
+        <rx-button type="submit" :label="tx['search.submit']" icon="search"/>
+      </rx-row>
+    </form>
     <rx-card rx-if="party_links | length > 1">
       <rx-stack>
         <strong>{{ tx['home.parties'] }}</strong>

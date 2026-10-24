@@ -1,0 +1,33 @@
+{#- wl-portal: the portal search (BL-AGT-05): the signed-in user's own
+    records matching the query, grouped by the party they were found for,
+    each opening in the portal. Replace it with
+    resources/views/wl-portal/search.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['search.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['search.title']" :subtitle="tx['search.subtitle']"/>
+    <form method="get" action="/portal/search" role="search">
+      <rx-row>
+        <rx-input name="q" type="search" :label="tx['search.label']" hide-label id="wl-portal-search-q" :value="query" :placeholder="tx['search.placeholder']" autocomplete="off"/>
+        <rx-button type="submit" :label="tx['search.submit']" icon="search"/>
+      </rx-row>
+    </form>
+    <rx-alert rx-if="hint" kind="info" :message="hint"/>
+    <rx-empty rx-if="empty" :title="empty" icon="search"/>
+    <section rx-for="party in party_results" class="wl-portal-search-party" aria-label="{{ party.name }}">
+      <rx-card :title="party.name">
+        <rx-list :label="party.name">
+          <li rx-for="row in party.rows" data-result="{{ row.url }}">
+            <rx-stack>
+              <rx-row>
+                <a href="{{ row.url }}"><strong>{{ row.title }}</strong></a>
+                <rx-badge :text="row.label" kind="info"/>
+                <rx-badge rx-if="row.status" :text="row.status" kind="info"/>
+              </rx-row>
+              <span rx-if="row.secondary">{{ row.secondary }}</span>
+            </rx-stack>
+          </li>
+        </rx-list>
+      </rx-card>
+    </section>
+  </rx-stack>
+</rx-page>
