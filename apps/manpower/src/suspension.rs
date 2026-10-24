@@ -65,7 +65,7 @@ use crate::events::DeploymentSuspended;
 use crate::notices;
 use crate::permissions;
 use crate::site::Site;
-use crate::texts::english;
+use crate::texts::{english, refusal};
 
 /// The rule id.
 pub const RULE: &str = "MPW.RUL.12";
@@ -260,7 +260,7 @@ pub async fn apply(
         DeploymentStatus::Suspended if holds(&open, reason) => Applied::Unchanged,
         DeploymentStatus::Suspended => Applied::Added,
         _ if by.is_some() => {
-            return Err(refused(english("manpower.deployment.suspend_state", &[])));
+            return Err(refused(refusal("manpower.deployment.suspend_state", &[])));
         }
         _ => return Ok(Applied::Unchanged),
     };
@@ -338,7 +338,7 @@ pub async fn suspend(
     }
     let reason = reason.trim();
     if reason.is_empty() {
-        return Err(refused(english("manpower.deployment.suspend_reason", &[])));
+        return Err(refused(refusal("manpower.deployment.suspend_reason", &[])));
     }
     apply(
         state,

@@ -70,7 +70,7 @@ use crate::permissions;
 use crate::request::{self, ManpowerRequest, RequestStatus};
 use crate::seed::{ABSENCE_CATEGORY, ABSENCE_ROLE};
 use crate::site::Site;
-use crate::texts::english;
+use crate::texts::{english, refusal};
 
 /// The rule id.
 pub const RULE: &str = "MPW.RUL.09";
@@ -560,14 +560,14 @@ pub async fn record_report(
     require_manage(by)?;
     let case = AbsenceCase::find_or_404(&state.db, id).await?;
     if !case.is_open() {
-        return Err(refused(english("manpower.absence.closed", &[])));
+        return Err(refused(refusal("manpower.absence.closed", &[])));
     }
     let number = number.trim();
     if number.is_empty() {
-        return Err(refused(english("manpower.absence.report_number", &[])));
+        return Err(refused(refusal("manpower.absence.report_number", &[])));
     }
     if date > today() {
-        return Err(refused(english("manpower.absence.report_date", &[])));
+        return Err(refused(refusal("manpower.absence.report_date", &[])));
     }
     AbsenceCase::query()
         .where_(AbsenceCase::ID.eq(id))
@@ -694,11 +694,11 @@ pub async fn close(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> Re
     require_manage(by)?;
     let case = AbsenceCase::find_or_404(&state.db, id).await?;
     if !case.is_open() {
-        return Err(refused(english("manpower.absence.closed", &[])));
+        return Err(refused(refusal("manpower.absence.closed", &[])));
     }
     let reason = reason.trim();
     if reason.is_empty() {
-        return Err(refused(english("manpower.absence.reason", &[])));
+        return Err(refused(refusal("manpower.absence.reason", &[])));
     }
     close_case(state, id, reason, Some(by.id), today()).await
 }

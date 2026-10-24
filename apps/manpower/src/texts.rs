@@ -1765,13 +1765,65 @@ const TEXTS: &[(&str, &str)] = &[
     ("manpower.screen.portal.sheet.deemed", "Deemed approved"),
 ];
 
-/// The text for `key`: the app's translation when it has one, else the English one.
+/// The text for `key`: the app's translation when it has one, else the
+/// vertical's Arabic one for an Arabic reader, else the English one.
 pub(crate) fn t(lang: &Lang, key: &str) -> String {
     let found = lang.t(key, &[]);
     if found != key {
         return found;
     }
+    if let Some(text) = in_arabic(&lang.locale, key) {
+        return fill(text, &[]);
+    }
     english(key, &[])
+}
+
+/// The vertical's Arabic text of `key` when `locale` is Arabic.
+fn in_arabic(locale: &str, key: &str) -> Option<&'static str> {
+    crate::texts_ar::is_arabic(locale)
+        .then(|| crate::texts_ar::arabic(key))
+        .flatten()
+}
+
+/// The language of the request a refusal is built in, set on the Manpower
+/// routes by [`follow_locale`] (English outside a request, e.g. a job).
+#[derive(Clone)]
+struct ScreenLocale(String);
+
+/// A route layer of the Manpower routes: keeps the request's language where a
+/// service builds its refusal ([`refusal`]) without the request at hand.
+pub(crate) async fn follow_locale(
+    request: renox::axum::extract::Request,
+    next: renox::axum::middleware::Next,
+) -> Response {
+    if let Some(locale) = request.extensions().get::<renox::i18n::RequestLocale>() {
+        renox::context::set(ScreenLocale(locale.as_str().to_owned()));
+    }
+    next.run(request).await
+}
+
+/// A refusal shown to the person acting: `key` with `params` filled in, in
+/// Arabic when the request is in Arabic, else in English. Texts that are
+/// stored (history lines, notices, ticket texts) keep using [`english`]: they
+/// are read later by people in other languages.
+pub(crate) fn refusal(key: &str, params: &[(&str, &(dyn Display + Sync))]) -> String {
+    let arabic = renox::context::get::<ScreenLocale>().and_then(|locale| in_arabic(&locale.0, key));
+    match arabic {
+        Some(text) => fill(text, params),
+        None => english(key, params),
+    }
+}
+
+/// `text` with `params` filled in as `{{ name }}`.
+fn fill(text: &str, params: &[(&str, &(dyn Display + Sync))]) -> String {
+    let mut data = renox::serde_json::Map::new();
+    for (name, value) in params {
+        data.insert(
+            (*name).to_owned(),
+            renox::serde_json::Value::String(value.to_string()),
+        );
+    }
+    wl_kernel::notify::fill(text, &renox::serde_json::Value::Object(data))
 }
 
 /// The English text for `key` with `params` filled in as `{{ name }}`; the
@@ -1781,14 +1833,7 @@ pub(crate) fn english(key: &str, params: &[(&str, &(dyn Display + Sync))]) -> St
         .iter()
         .find(|(k, _)| *k == key)
         .map_or(key, |(_, text)| *text);
-    let mut data = renox::serde_json::Map::new();
-    for (name, value) in params {
-        data.insert(
-            (*name).to_owned(),
-            renox::serde_json::Value::String(value.to_string()),
-        );
-    }
-    wl_kernel::notify::fill(text, &renox::serde_json::Value::Object(data))
+    fill(text, params)
 }
 
 /// An amount in fils as `AED 42,000` (`AED 42,000.50` with fils).
@@ -1826,10 +1871,15 @@ pub(crate) fn screen_texts(lang: &Lang) -> std::collections::BTreeMap<&'static s
 }
 
 /// The text for `key` in the viewer's language with `params` filled in as
-/// `{{ name }}`: the app's translation when it has one, else the English one.
+/// `{{ name }}`: the app's translation when it has one, else the vertical's
+/// Arabic one for an Arabic reader, else the English one.
 pub(crate) fn tf(lang: &Lang, key: &str, params: &[(&str, &(dyn Display + Sync))]) -> String {
     let found = lang.t(key, &[]);
-    let text = if found == key { template(key) } else { &found };
+    let text: &str = if found != key {
+        found.as_str()
+    } else {
+        in_arabic(&lang.locale, key).unwrap_or_else(|| template(key))
+    };
     if text.is_empty() {
         return key.to_owned();
     }
@@ -1889,7 +1939,12 @@ mod tests {
                 continue;
             }
             let source = std::fs::read_to_string(&path).unwrap();
-            for call in source.split("english(").skip(1) {
+            let calls = source
+                .split("english(")
+                .skip(1)
+                .chain(source.split("refusal(").skip(1))
+                .chain(source.split("say(").skip(1));
+            for call in calls {
                 let call = call.trim_start();
                 let Some(rest) = call.strip_prefix('"') else {
                     continue;
@@ -1901,6 +1956,71 @@ mod tests {
             }
         }
         assert!(missing.is_empty(), "keys without a text: {missing:?}");
+    }
+
+    /// The `{{ name }}` placeholders of `text`.
+    fn placeholders(text: &str) -> Vec<String> {
+        text.split("{{")
+            .skip(1)
+            .filter_map(|part| part.split("}}").next())
+            .map(|name| name.trim().to_owned())
+            .collect()
+    }
+
+    #[test]
+    fn every_key_has_an_arabic_text_with_no_placeholder_of_its_own() {
+        use crate::texts_ar::{REVIEW, TEXTS_AR};
+        let missing: Vec<&str> = TEXTS
+            .iter()
+            .map(|(key, _)| *key)
+            .filter(|key| crate::texts_ar::arabic(key).is_none())
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "keys without an Arabic text: {missing:?}"
+        );
+        let extra: Vec<&str> = TEXTS_AR
+            .iter()
+            .map(|(key, _)| *key)
+            .filter(|key| !TEXTS.iter().any(|(k, _)| k == key))
+            .collect();
+        assert!(extra.is_empty(), "Arabic texts of no key: {extra:?}");
+        assert_eq!(TEXTS_AR.len(), TEXTS.len(), "an Arabic key is listed twice");
+        for (key, english) in TEXTS {
+            let arabic = crate::texts_ar::arabic(key).unwrap_or_default();
+            let known = placeholders(english);
+            for name in placeholders(arabic) {
+                assert!(known.contains(&name), "{key}: `{name}` is not filled in");
+            }
+            assert_eq!(
+                english.matches("\n").count(),
+                arabic.matches("\n").count(),
+                "{key}: the lines differ"
+            );
+        }
+        for key in REVIEW {
+            assert!(TEXTS.iter().any(|(k, _)| k == key), "{key} is not a text");
+        }
+    }
+
+    #[test]
+    fn arabic_is_read_for_arabic_locales_only() {
+        use crate::texts_ar::is_arabic;
+        assert!(is_arabic("ar") && is_arabic("ar-AE") && is_arabic("ar_AE") && is_arabic("AR"));
+        assert!(!is_arabic("en") && !is_arabic("fr") && !is_arabic("") && !is_arabic("arn"));
+        assert_eq!(in_arabic("en", "manpower.problems.dates"), None);
+        assert_eq!(
+            in_arabic("ar-AE", "manpower.problems.dates"),
+            Some("يجب أن يكون تاريخ الانتهاء بعد تاريخ البدء.")
+        );
+    }
+
+    #[test]
+    fn a_refusal_outside_a_request_is_english() {
+        assert_eq!(
+            refusal("manpower.renew.later", &[("end", &"01 Jan 2027")]),
+            "The new end date must be later than the current end date, 01 Jan 2027."
+        );
     }
 
     #[test]

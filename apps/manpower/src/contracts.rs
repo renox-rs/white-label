@@ -18,7 +18,7 @@ use crate::contract::{
 use crate::db::{answer, refused, set_contract};
 use crate::events::ContractActivated;
 use crate::permissions;
-use crate::texts::english;
+use crate::texts::refusal;
 
 /// What a new contract is made of.
 #[derive(Debug, Clone)]
@@ -103,24 +103,24 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewContract) -> Result
         return Err(Error::Forbidden);
     }
     if new.reference.trim().is_empty() {
-        return Err(refused(english("manpower.problems.reference", &[])));
+        return Err(refused(refusal("manpower.problems.reference", &[])));
     }
     blocked::ensure(state, Some(by), new.client, ActionKind::Start).await?;
     if new.end_date <= new.start_date {
-        return Err(refused(english("manpower.problems.dates", &[])));
+        return Err(refused(refusal("manpower.problems.dates", &[])));
     }
     if new.payment_terms_days < 1
         || new.notice_period_days < 1
         || new.deemed_approval_days.is_some_and(|days| days < 1)
     {
-        return Err(refused(english("manpower.problems.payment_terms", &[])));
+        return Err(refused(refusal("manpower.problems.payment_terms", &[])));
     }
     if directory(state)
         .find(&state.db, new.client)
         .await?
         .is_none()
     {
-        return Err(refused(english("manpower.problems.client_unknown", &[])));
+        return Err(refused(refusal("manpower.problems.client_unknown", &[])));
     }
     ClientContract::create(
         &state.db,
@@ -160,13 +160,13 @@ pub async fn record_signed(
     let contract = load(state, id).await?;
     require_manage(by, &contract)?;
     if contract.status != ContractStatus::Draft {
-        return Err(refused(english("manpower.problems.not_draft", &[])));
+        return Err(refused(refusal("manpower.problems.not_draft", &[])));
     }
     if on > today() {
-        return Err(refused(english("manpower.problems.signed_in_future", &[])));
+        return Err(refused(refusal("manpower.problems.signed_in_future", &[])));
     }
     if document.trim().is_empty() {
-        return Err(refused(english("manpower.problems.signed_document", &[])));
+        return Err(refused(refusal("manpower.problems.signed_document", &[])));
     }
     let mut tx = state.db.begin().await?;
     set_contract(
@@ -192,16 +192,16 @@ pub(crate) async fn readiness(
 ) -> Result<Vec<String>> {
     let mut problems = Vec::new();
     if contract.signed_on.is_none() {
-        problems.push(english("manpower.contract.not_signed", &[]));
+        problems.push(refusal("manpower.contract.not_signed", &[]));
     }
     let accepted = rate_cards(state)
         .accepted_version(state, &contract.subject(), contract.start_date)
         .await?;
     if accepted.is_none() {
-        problems.push(english("manpower.contract.no_rate_card", &[]));
+        problems.push(refusal("manpower.contract.no_rate_card", &[]));
     }
     if contract.end_date < on {
-        problems.push(english("manpower.contract.over", &[]));
+        problems.push(refusal("manpower.contract.over", &[]));
     }
     Ok(problems)
 }

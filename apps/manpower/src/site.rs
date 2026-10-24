@@ -11,7 +11,7 @@ use wl_kernel::{PartyId, Subject};
 
 use crate::db::refused;
 use crate::permissions;
-use crate::texts::english;
+use crate::texts::refusal;
 
 /// The subject type of a site.
 pub const SUBJECT_TYPE: &str = "manpower.site";
@@ -82,7 +82,7 @@ async fn check(
 ) -> Result<String> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(refused(english("manpower.problems.site_name", &[])));
+        return Err(refused(refusal("manpower.problems.site_name", &[])));
     }
     let same = Site::query()
         .where_(Site::CLIENT_PARTY_ID.eq(client.0))
@@ -91,7 +91,7 @@ async fn check(
         .into_iter()
         .any(|site| Some(site.id) != except && site.name.trim().eq_ignore_ascii_case(name));
     if same {
-        return Err(refused(english("manpower.problems.site_duplicate", &[])));
+        return Err(refused(refusal("manpower.problems.site_duplicate", &[])));
     }
     Ok(name.to_owned())
 }
@@ -146,7 +146,7 @@ pub async fn create_with(
         .await?
         .is_none()
     {
-        return Err(refused(english("manpower.problems.client_unknown", &[])));
+        return Err(refused(refusal("manpower.problems.client_unknown", &[])));
     }
     Site::create(
         &state.db,

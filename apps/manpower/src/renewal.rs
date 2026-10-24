@@ -46,7 +46,7 @@ use crate::contract::{ClientContract, ContractStatus, RENEW, RENEW_ON_HOLD};
 use crate::db::{answer, refused, set_contract};
 use crate::events::ContractRenewed;
 use crate::termination::withdraw_pending;
-use crate::texts::english;
+use crate::texts::{english, refusal};
 
 /// What a `renew` run carries to its guard and effect.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,11 +85,11 @@ pub fn renew_problem(contract: &ClientContract, input: &RenewInput) -> Option<St
     let mut problems = Vec::new();
     match input.end_date {
         Some(end) if end > contract.end_date => {}
-        Some(_) => problems.push(english(
+        Some(_) => problems.push(refusal(
             "manpower.renew.later",
             &[("end", &contract.end_date)],
         )),
-        None => problems.push(english("manpower.renew.no_date", &[])),
+        None => problems.push(refusal("manpower.renew.no_date", &[])),
     }
     let on = input.on.unwrap_or_else(today);
     let document = input
@@ -98,12 +98,12 @@ pub fn renew_problem(contract: &ClientContract, input: &RenewInput) -> Option<St
         .is_some_and(|document| !document.trim().is_empty());
     match input.signed_on {
         Some(signed) if document && signed <= on => {}
-        _ => problems.push(english("manpower.renew.not_signed", &[])),
+        _ => problems.push(refusal("manpower.renew.not_signed", &[])),
     }
     if let (Some(from), Some(end)) = (input.rates_from, input.end_date)
         && (from <= contract.start_date || from > end)
     {
-        problems.push(english(
+        problems.push(refusal(
             "manpower.renew.rates_date",
             &[("start", &contract.start_date), ("end", &end)],
         ));
@@ -119,7 +119,7 @@ pub(crate) async fn renew_effects(
     input: &RenewInput,
 ) -> Result {
     let Some(end) = input.end_date else {
-        return Err(refused(english("manpower.renew.no_date", &[])));
+        return Err(refused(refusal("manpower.renew.no_date", &[])));
     };
     let document = input.document.as_deref().map(str::trim).map(str::to_owned);
     set_contract(

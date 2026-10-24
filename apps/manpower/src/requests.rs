@@ -27,7 +27,7 @@ use crate::notices;
 use crate::permissions;
 use crate::request::{CANCEL, ManpowerRequest, RequestInput, SUBMIT};
 use crate::site::Site;
-use crate::texts::english;
+use crate::texts::{english, refusal};
 
 /// What a new request is made of.
 #[derive(Debug, Clone)]
@@ -68,7 +68,7 @@ async fn load(state: &AppState, id: i64) -> Result<ManpowerRequest> {
 pub async fn create(state: &AppState, by: &AuthUser, new: NewRequest) -> Result<ManpowerRequest> {
     let contract = ClientContract::find(&state.db, new.contract_id)
         .await?
-        .ok_or_else(|| refused(english("manpower.request.contract_unknown", &[])))?;
+        .ok_or_else(|| refused(refusal("manpower.request.contract_unknown", &[])))?;
     if !may_write(
         state,
         by,
@@ -84,20 +84,20 @@ pub async fn create(state: &AppState, by: &AuthUser, new: NewRequest) -> Result<
         contract.status,
         ContractStatus::Ended | ContractStatus::Cancelled
     ) {
-        return Err(refused(english("manpower.request.contract_over", &[])));
+        return Err(refused(refusal("manpower.request.contract_over", &[])));
     }
     let site = Site::find(&state.db, new.site_id).await?;
     if !site
         .as_ref()
         .is_some_and(|site| site.client_party_id == contract.client_party_id && site.active)
     {
-        return Err(refused(english("manpower.request.site", &[])));
+        return Err(refused(refusal("manpower.request.site", &[])));
     }
     if new.role.trim().is_empty() || new.shift_type.trim().is_empty() || new.headcount < 1 {
-        return Err(refused(english("manpower.request.fields", &[])));
+        return Err(refused(refusal("manpower.request.fields", &[])));
     }
     if new.end_date.is_some_and(|end| end < new.start_date) {
-        return Err(refused(english("manpower.request.dates", &[])));
+        return Err(refused(refusal("manpower.request.dates", &[])));
     }
     ManpowerRequest::create(
         &state.db,
@@ -132,7 +132,7 @@ async fn readiness(
     if request.start_date > contract.end_date
         || request.end_date.is_some_and(|end| end > contract.end_date)
     {
-        problems.push(english("manpower.request.outside_contract", &[]));
+        problems.push(refusal("manpower.request.outside_contract", &[]));
     }
     let on = request.start_date.max(today());
     let covered = rate_cards(state)
@@ -145,7 +145,7 @@ async fn readiness(
         )
         .await?;
     if !covered {
-        problems.push(english(
+        problems.push(refusal(
             "manpower.request.not_on_rate_card",
             &[("role", &request.role), ("shift", &request.shift_type)],
         ));
@@ -167,11 +167,11 @@ async fn status_problem(
         return Ok(None);
     }
     Ok(Some(if !staff {
-        english("manpower.request.portal_refused", &[])
+        refusal("manpower.request.portal_refused", &[])
     } else if contract.status == ContractStatus::OnHold {
         hold::refusal_in(tx, contract).await?
     } else {
-        english("manpower.request.contract_not_active", &[])
+        refusal("manpower.request.contract_not_active", &[])
     }))
 }
 
@@ -291,7 +291,7 @@ pub async fn cancel(
         } else {
             "manpower.screen.requests.active_many"
         };
-        return Err(refused(english(key, &[("count", &active)])));
+        return Err(refused(refusal(key, &[("count", &active)])));
     }
     let reason_for_deployments = english("manpower.request.cancelled_deployments", &[]);
     let mut tx = state.db.begin().await?;

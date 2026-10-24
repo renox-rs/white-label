@@ -49,7 +49,7 @@ use crate::notices;
 use crate::permissions;
 use crate::request::{ManpowerRequest, RequestKind, RequestStatus};
 use crate::site::Site;
-use crate::texts::english;
+use crate::texts::{english, refusal};
 
 /// The causes of a cover request.
 pub mod causes {
@@ -228,7 +228,7 @@ pub async fn open_by_hand(
         return Err(Error::Forbidden);
     }
     if !deployment.is_on_site() || to.is_some_and(|to| to < from) {
-        return Err(refused(english("manpower.cover.not_covered", &[])));
+        return Err(refused(refusal("manpower.cover.not_covered", &[])));
     }
     // A cover request by hand asks for a new worker, which a contract on
     // credit hold takes no more of (`MPW.ACL.14`). The cover the contract
@@ -252,7 +252,7 @@ pub async fn open_by_hand(
     .await?
     {
         Cover::Opened(request) | Cover::Existing(request) => Ok(request),
-        Cover::NotRequired => Err(refused(english("manpower.cover.contract_closed", &[]))),
+        Cover::NotRequired => Err(refused(refusal("manpower.cover.contract_closed", &[]))),
     }
 }
 

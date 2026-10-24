@@ -62,7 +62,7 @@ use crate::deployments::worker_name;
 use crate::notices;
 use crate::permissions;
 use crate::site::Site;
-use crate::texts::{english, money};
+use crate::texts::{english, money, refusal as say};
 
 /// Why a contract is on hold.
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -274,14 +274,14 @@ pub(crate) fn hold_input(ctx: &TransitionCtx) -> HoldInput {
 /// `other` needs its text.
 pub fn hold_problem(input: &HoldInput) -> Option<String> {
     if input.reasons.is_empty() {
-        return Some(english("manpower.hold.reason_required", &[]));
+        return Some(say("manpower.hold.reason_required", &[]));
     }
     if input
         .reasons
         .iter()
         .any(|reason| reason.kind == HoldReason::Other && reason.text.is_none())
     {
-        return Some(english("manpower.hold.text_required", &[]));
+        return Some(say("manpower.hold.text_required", &[]));
     }
     None
 }
@@ -429,7 +429,7 @@ pub async fn apply_reasons(
                     })
                 });
                 if known {
-                    return Err(refused(english("manpower.hold.already_held", &[])));
+                    return Err(refused(say("manpower.hold.already_held", &[])));
                 }
             }
             let mut tx = state.db.begin().await?;
@@ -442,7 +442,7 @@ pub async fn apply_reasons(
         }
         ContractStatus::Draft | ContractStatus::Ended | ContractStatus::Cancelled => {
             if by.is_some() {
-                Err(refused(english("manpower.hold.not_holdable", &[])))
+                Err(refused(say("manpower.hold.not_holdable", &[])))
             } else {
                 Ok(None)
             }
@@ -467,10 +467,10 @@ pub async fn hold_by_hand(
     text: Option<&str>,
 ) -> Result<ClientContract> {
     let kind = HoldReason::parse(reason)
-        .ok_or_else(|| refused(english("manpower.hold.reason_required", &[])))?;
+        .ok_or_else(|| refused(say("manpower.hold.reason_required", &[])))?;
     apply_reasons(state, id, vec![NewReason::by_hand(kind, text)], Some(by))
         .await?
-        .ok_or_else(|| refused(english("manpower.hold.not_holdable", &[])))
+        .ok_or_else(|| refused(say("manpower.hold.not_holdable", &[])))
 }
 
 /// What the open reasons of `open` say, in a line: `overdue (INV-1)`,
@@ -481,15 +481,13 @@ fn reason_summary(open: &[ContractHold]) -> String {
             let what = row.label.clone().unwrap_or_default();
             match (row.reason, what.is_empty()) {
                 (HoldReason::Overdue, false) => {
-                    english("manpower.hold.summary_overdue", &[("what", &what)])
+                    say("manpower.hold.summary_overdue", &[("what", &what)])
                 }
-                (HoldReason::Overdue, true) => english("manpower.hold.summary_overdue_plain", &[]),
+                (HoldReason::Overdue, true) => say("manpower.hold.summary_overdue_plain", &[]),
                 (HoldReason::BouncedCheque, false) => {
-                    english("manpower.hold.summary_cheque", &[("what", &what)])
+                    say("manpower.hold.summary_cheque", &[("what", &what)])
                 }
-                (HoldReason::BouncedCheque, true) => {
-                    english("manpower.hold.summary_cheque_plain", &[])
-                }
+                (HoldReason::BouncedCheque, true) => say("manpower.hold.summary_cheque_plain", &[]),
                 (HoldReason::Other, _) => row.reason_text.clone().unwrap_or_default(),
             }
         })
@@ -516,7 +514,7 @@ pub(crate) async fn refusal_in(tx: &mut Transaction, contract: &ClientContract) 
     let since = contract
         .held_at
         .map_or_else(|| "-".to_owned(), |at| dubai_date(at).to_string());
-    Ok(english(
+    Ok(say(
         "manpower.hold.refusal",
         &[("since", &since), ("reason", &reason_summary(&open))],
     ))

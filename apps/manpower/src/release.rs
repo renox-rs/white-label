@@ -58,7 +58,7 @@ use crate::db::{answer, refused, set_contract};
 use crate::hold::{ContractHold, HoldReason, overdue_invoices};
 use crate::notices;
 use crate::permissions;
-use crate::texts::english;
+use crate::texts::{english, refusal};
 
 /// The approval action of a manual release: both `release` and
 /// `release_terminating` ask the MD under it.
@@ -273,7 +273,7 @@ fn transition_for(contract: &ClientContract, system: bool) -> Result<&'static st
         (Some(ContractStatus::Terminating), false) => Ok(RELEASE_TERMINATING),
         (Some(ContractStatus::Active), true) => Ok(AUTO_RELEASE),
         (Some(ContractStatus::Terminating), true) => Ok(AUTO_RELEASE_TERMINATING),
-        _ => Err(refused(english("manpower.release.state_before", &[]))),
+        _ => Err(refused(refusal("manpower.release.state_before", &[]))),
     }
 }
 
@@ -292,7 +292,7 @@ pub async fn release(state: &AppState, by: &AuthUser, id: i64) -> Result<Release
         return Err(Error::Forbidden);
     }
     if contract.status != ContractStatus::OnHold {
-        return Err(refused(english("manpower.release.not_on_hold", &[])));
+        return Err(refused(refusal("manpower.release.not_on_hold", &[])));
     }
     let on = today();
     close_gone(state, id).await?;

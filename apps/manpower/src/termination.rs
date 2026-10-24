@@ -61,7 +61,7 @@ use crate::notices;
 use crate::permissions;
 use crate::release::close_open;
 use crate::request::{self, ManpowerRequest, RequestStatus};
-use crate::texts::english;
+use crate::texts::{english, refusal};
 
 /// The approval action of `terminate` (`MPW.ACL.17`).
 pub const ACTION: &str = "manpower.terminate";
@@ -117,18 +117,18 @@ pub(crate) fn terminate_input(ctx: &TransitionCtx) -> TerminateInput {
 pub fn terminate_problem(contract: &ClientContract, input: &TerminateInput) -> Option<String> {
     let mut problems = Vec::new();
     if !initiators::ALL.contains(&input.initiated_by.trim()) {
-        problems.push(english("manpower.terminate.initiated_by", &[]));
+        problems.push(refusal("manpower.terminate.initiated_by", &[]));
     }
     if input.reason.trim().is_empty() {
-        problems.push(english("manpower.terminate.reason", &[]));
+        problems.push(refusal("manpower.terminate.reason", &[]));
     }
     match (input.notice_on, input.end_date) {
         (Some(notice), Some(end)) => {
             if end > contract.end_date {
-                problems.push(english("manpower.terminate.later", &[]));
+                problems.push(refusal("manpower.terminate.later", &[]));
             }
             if end < notice {
-                problems.push(english("manpower.terminate.before_notice", &[]));
+                problems.push(refusal("manpower.terminate.before_notice", &[]));
             }
             let waived = input
                 .waiver
@@ -136,7 +136,7 @@ pub fn terminate_problem(contract: &ClientContract, input: &TerminateInput) -> O
                 .is_some_and(|waiver| !waiver.trim().is_empty());
             let earliest = notice + Duration::days(contract.notice_period_days);
             if end < earliest && !waived {
-                problems.push(english(
+                problems.push(refusal(
                     "manpower.terminate.short_notice",
                     &[
                         ("days", &contract.notice_period_days),
@@ -145,7 +145,7 @@ pub fn terminate_problem(contract: &ClientContract, input: &TerminateInput) -> O
                 ));
             }
         }
-        _ => problems.push(english("manpower.terminate.dates", &[])),
+        _ => problems.push(refusal("manpower.terminate.dates", &[])),
     }
     (!problems.is_empty()).then(|| problems.join("\n"))
 }
@@ -158,7 +158,7 @@ pub(crate) async fn terminate_effects(
     input: &TerminateInput,
 ) -> Result {
     let (Some(end), Some(notice)) = (input.end_date, input.notice_on) else {
-        return Err(refused(english("manpower.terminate.dates", &[])));
+        return Err(refused(refusal("manpower.terminate.dates", &[])));
     };
     let waiver = input
         .waiver

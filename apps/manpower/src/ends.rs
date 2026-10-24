@@ -53,7 +53,7 @@ use crate::deployments::{after_end, load, require_manage, tell_client_as, worker
 use crate::notices;
 use crate::permissions;
 use crate::site::{self, Site};
-use crate::texts::english;
+use crate::texts::{english, refusal};
 use wl_kernel::documents::today;
 
 /// What a user gives besides the reason.
@@ -114,12 +114,12 @@ pub async fn end(
     match reason {
         reasons::END_DATE => {
             if !deployment.end_date.is_some_and(|end| end <= on) {
-                problems.push(english("manpower.deployment.end_date_not_come", &[]));
+                problems.push(refusal("manpower.deployment.end_date_not_come", &[]));
             }
         }
         reasons::CLIENT_REJECTED => {
             if note.is_none() {
-                problems.push(english("manpower.end.note_required", &[]));
+                problems.push(refusal("manpower.end.note_required", &[]));
             }
         }
         reasons::CLIENT_NON_PAYMENT => {
@@ -128,9 +128,9 @@ pub async fn end(
             let last = details.end_date.unwrap_or(on);
             let earliest = on + Days::new(u64::try_from(contract.notice_period_days).unwrap_or(0));
             if last < on {
-                problems.push(english("manpower.end.before_today", &[]));
+                problems.push(refusal("manpower.end.before_today", &[]));
             } else if last < earliest && waiver.is_none() {
-                problems.push(english(
+                problems.push(refusal(
                     "manpower.end.short_notice",
                     &[
                         ("days", &contract.notice_period_days),

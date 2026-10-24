@@ -33,7 +33,7 @@ use crate::overlap;
 use crate::permissions;
 use crate::request::{FILL, FILL_PARTLY, ManpowerRequest};
 use crate::site::Site;
-use crate::texts::english;
+use crate::texts::{english, refusal};
 
 /// What a new deployment is made of.
 #[derive(Debug, Clone)]
@@ -108,29 +108,29 @@ pub async fn plan_with_warning(
 ) -> Result<(Deployment, Option<PlannedWarning>)> {
     let contract = ClientContract::find(&state.db, new.contract_id)
         .await?
-        .ok_or_else(|| refused(english("manpower.deployment.contract_unknown", &[])))?;
+        .ok_or_else(|| refused(refusal("manpower.deployment.contract_unknown", &[])))?;
     require_manage(by, contract.client())?;
     if matches!(
         contract.status,
         ContractStatus::Draft | ContractStatus::Ended | ContractStatus::Cancelled
     ) {
-        return Err(refused(english("manpower.deployment.contract_closed", &[])));
+        return Err(refused(refusal("manpower.deployment.contract_closed", &[])));
     }
     let site_ok = Site::find(&state.db, new.site_id)
         .await?
         .is_some_and(|site| site.client_party_id == contract.client_party_id && site.active);
     if !site_ok {
-        return Err(refused(english("manpower.request.site", &[])));
+        return Err(refused(refusal("manpower.request.site", &[])));
     }
     let known = workforce(state)
         .staff(state, new.employee)
         .await?
         .is_some_and(|profile| profile.listed);
     if !known {
-        return Err(refused(english("manpower.deployment.employee", &[])));
+        return Err(refused(refusal("manpower.deployment.employee", &[])));
     }
     if new.role.trim().is_empty() || new.shift_type.trim().is_empty() {
-        return Err(refused(english("manpower.request.fields", &[])));
+        return Err(refused(refusal("manpower.request.fields", &[])));
     }
     let work_days = new
         .work_days
@@ -148,7 +148,7 @@ pub async fn plan_with_warning(
             .as_deref()
             .is_some_and(|d| overlap::parse_days(d).is_none())
     {
-        return Err(refused(english("manpower.deployment.shift", &[])));
+        return Err(refused(refusal("manpower.deployment.shift", &[])));
     }
     if new.start_date < contract.start_date
         || new.start_date > contract.end_date
@@ -156,7 +156,7 @@ pub async fn plan_with_warning(
             .end_date
             .is_some_and(|end| end < new.start_date || end > contract.end_date)
     {
-        return Err(refused(english("manpower.deployment.dates", &[])));
+        return Err(refused(refusal("manpower.deployment.dates", &[])));
     }
     let mut kind = DeploymentKind::Standard;
     let mut covers = None;
@@ -165,12 +165,12 @@ pub async fn plan_with_warning(
         let request = ManpowerRequest::find(&state.db, request_id)
             .await?
             .filter(|request| request.client_contract_id == contract.id)
-            .ok_or_else(|| refused(english("manpower.deployment.request", &[])))?;
+            .ok_or_else(|| refused(refusal("manpower.deployment.request", &[])))?;
         if !request.status.takes_workers()
             || !request.role.eq_ignore_ascii_case(new.role.trim())
             || request.site_id != new.site_id
         {
-            return Err(refused(english("manpower.deployment.request", &[])));
+            return Err(refused(refusal("manpower.deployment.request", &[])));
         }
         if request.kind == crate::request::RequestKind::Replacement {
             kind = DeploymentKind::Cover;
@@ -236,7 +236,7 @@ async fn contract_problem(
     Ok(Some(if contract.status == ContractStatus::OnHold {
         hold::refusal_in(tx, contract).await?
     } else {
-        english("manpower.deployment.contract_not_active", &[])
+        refusal("manpower.deployment.contract_not_active", &[])
     }))
 }
 
@@ -254,17 +254,17 @@ async fn activation_problems(
         .is_active(state, deployment.employee())
         .await?
     {
-        problems.push(english("manpower.deployment.employee_not_active", &[]));
+        problems.push(refusal("manpower.deployment.employee_not_active", &[]));
     }
     if deployment.end_date.is_some_and(|end| end < on) {
-        problems.push(english("manpower.deployment.over", &[]));
+        problems.push(refusal("manpower.deployment.over", &[]));
     }
     if let Some(request_id) = deployment.request_id {
         let takes = ManpowerRequest::find(&state.db, request_id)
             .await?
             .is_some_and(|request| request.status.takes_workers());
         if !takes {
-            problems.push(english("manpower.deployment.request_closed", &[]));
+            problems.push(refusal("manpower.deployment.request_closed", &[]));
         }
     }
     Ok(problems)
@@ -640,14 +640,14 @@ async fn run_extend(
         problems.push(problem);
     }
     match deployment.end_date {
-        None => problems.push(english("manpower.deployment.open_ended", &[])),
+        None => problems.push(refusal("manpower.deployment.open_ended", &[])),
         Some(end) if new_end <= end => {
-            problems.push(english("manpower.deployment.extend_later", &[]));
+            problems.push(refusal("manpower.deployment.extend_later", &[]));
         }
         Some(_) => {}
     }
     if new_end > contract.end_date {
-        problems.push(english("manpower.deployment.beyond_contract", &[]));
+        problems.push(refusal("manpower.deployment.beyond_contract", &[]));
     }
     if let Some(problem) = overlap::problem(
         &mut tx,

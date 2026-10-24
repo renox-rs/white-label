@@ -43,6 +43,7 @@ pub mod site;
 pub mod suspension;
 pub mod termination;
 mod texts;
+mod texts_ar;
 pub mod visa_steps;
 
 use renox::db::Migration;
@@ -96,7 +97,8 @@ impl Module for Manpower {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes()
+        // The request's language reaches the refusals the services build.
+        pages::routes().route_layer(renox::axum::middleware::from_fn(texts::follow_locale))
     }
 
     fn migrations(&self) -> &'static [Migration] {

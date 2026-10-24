@@ -46,7 +46,7 @@ use crate::notices;
 use crate::permissions::{self, CLIENT_APPROVER_PORTAL_ROLES};
 use crate::screens::role_text;
 use crate::site::Site;
-use crate::texts::english;
+use crate::texts::refusal;
 
 /// What the contract said about timesheets from a moment on: one row each time
 /// `set_timesheet_terms` changed it. The first change keeps the values that were
@@ -253,15 +253,15 @@ pub async fn set_terms(
         contract.status,
         ContractStatus::Cancelled | ContractStatus::Ended
     ) {
-        return Err(refused(english("manpower.problems.terms_closed", &[])));
+        return Err(refused(refusal("manpower.problems.terms_closed", &[])));
     }
     if deemed_approval_days.is_some_and(|days| days < 1) {
-        return Err(refused(english("manpower.problems.deemed_days", &[])));
+        return Err(refused(refusal("manpower.problems.deemed_days", &[])));
     }
     if let Some(contact) = escalation_contact
         && directory(state).find(&state.db, contact).await?.is_none()
     {
-        return Err(refused(english("manpower.problems.client_unknown", &[])));
+        return Err(refused(refusal("manpower.problems.client_unknown", &[])));
     }
     let contact_id = escalation_contact.map(|party| party.0);
     let mut tx = state.db.begin().await?;
