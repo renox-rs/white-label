@@ -1,58 +1,40 @@
 {#- wl-hr: the leave waiting for the manager's decision (approve, or reject with
     a reason; a sick leave needs its sick note first) and what was decided
-    lately. Replace it with resources/views/wl-hr/leave_queue.html in the
-    app. -#}
+    lately, one renox::grid that fills the screen. The sheets of the row
+    actions come after it. Replace it with resources/views/wl-hr/leave_queue.html
+    in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['queue.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['queue.title']" :subtitle="tx['queue.subtitle']"/>
-    <rx-table :rows="waiting" as="row" :key="row.id" :caption="tx['queue.title']" card>
-      <rx-column :label="tx['queue.who']">{{ row.who }}</rx-column>
-      <rx-column :label="tx['my_leave.type']">{{ row.kind }}</rx-column>
-      <rx-column :label="tx['my_leave.period']">{{ row.period }}</rx-column>
-      <rx-column :label="tx['my_leave.days']" hide-narrow>{{ row.days }}</rx-column>
-      <rx-column :label="tx['sick.note']" hide-narrow>{{ row.note }}</rx-column>
-      <rx-row-actions>
-        <template rx-if="row.needs_note">
-          <rx-action-sheet :id="'note-' ~ row.id" :label="tx['sick.attach']" :action="route('wl_hr.sick_note', row.id)"
-                           :title="tx['sick.attach']" :description="tx['queue.note_description']" :submit-label="tx['sick.attach_submit']" icon="paperclip">
-            <rx-input name="document" type="number" :label="tx['sick.document']" :id="'note-document-' ~ row.id" required/>
-          </rx-action-sheet>
-        </template>
-        <template rx-if="row.can_decide">
-          <rx-action-sheet :id="'approve-' ~ row.id" :label="tx['queue.approve']" :action="route('wl_hr.leave_approve', row.id)"
-                           :title="tx['queue.approve']" :description="row.who ~ ' · ' ~ row.kind ~ ' · ' ~ row.period" :submit-label="tx['queue.approve']" icon="check"/>
-          <rx-action-sheet :id="'reject-' ~ row.id" :label="tx['queue.reject']" :action="route('wl_hr.leave_reject', row.id)"
-                           :title="tx['queue.reject']" :description="row.who ~ ' · ' ~ row.kind ~ ' · ' ~ row.period" :submit-label="tx['queue.reject']" icon="x">
-            <rx-textarea name="reason" :label="tx['queue.reject_reason']" :id="'reject-reason-' ~ row.id" required/>
-          </rx-action-sheet>
-        </template>
-      </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['queue.empty']" :message="tx['queue.empty_text']" icon="calendar-check"/></rx-slot>
-    </rx-table>
-    <rx-card :title="tx['queue.decided']">
-      <rx-table :rows="decided" as="row" :key="row.id" :caption="tx['queue.decided']">
-        <rx-column :label="tx['queue.who']">{{ row.who }}</rx-column>
-        <rx-column :label="tx['my_leave.type']">{{ row.kind }}</rx-column>
-        <rx-column :label="tx['my_leave.period']">{{ row.period }}</rx-column>
-        <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
-        <rx-column :label="tx['my_leave.reason']" hide-narrow>{{ row.reason }}</rx-column>
-        <rx-column :label="tx['sick.note']" hide-narrow>{{ row.note }}</rx-column>
-        <rx-row-actions>
-          <template rx-if="row.needs_note">
-            <rx-action-sheet :id="'dnote-' ~ row.id" :label="tx['sick.attach']" :action="route('wl_hr.sick_note', row.id)"
-                             :title="tx['sick.attach']" :description="tx['queue.note_description']" :submit-label="tx['sick.attach_submit']" icon="paperclip">
-              <rx-input name="document" type="number" :label="tx['sick.document']" :id="'dnote-document-' ~ row.id" required/>
-            </rx-action-sheet>
-          </template>
-          <template rx-if="row.can_cancel">
-            <rx-action-sheet :id="'dcancel-' ~ row.id" :label="tx['my_leave.cancel']" :action="route('wl_hr.leave_cancel', row.id)"
-                             :title="tx['my_leave.cancel']" :description="tx['my_leave.cancel_description']" :submit-label="tx['my_leave.cancel']" icon="x">
-              <rx-textarea name="reason" :label="tx['my_leave.cancel_reason']" :id="'dcancel-reason-' ~ row.id"/>
-            </rx-action-sheet>
-          </template>
-        </rx-row-actions>
-        <rx-slot name="empty"><rx-empty :title="tx['queue.decided_empty']" icon="calendar-check"/></rx-slot>
-      </rx-table>
-    </rx-card>
-  </rx-stack>
+  <rx-page-header :title="tx['queue.title']" :subtitle="tx['queue.subtitle']">
+    <rx-badge :kind="'warning' if waiting else 'info'" :text="waiting ~ ' · ' ~ tx['leave_status.requested']"/>
+  </rx-page-header>
+  <rx-grid :page="requests">
+    <template rx-if="column.key == 'who'">{{ row.who }}</template>
+    <template rx-elif="column.key == 'period'">{{ row.period }}</template>
+    <template rx-elif="column.key == 'days'">{{ row.days }}</template>
+    <template rx-elif="column.key == 'note'">{{ row.note }}</template>
+    <template rx-elif="column.key == 'actions'">
+      <rx-open-button rx-if="row.needs_note" :id="'note-' ~ row.id" :label="tx['sick.attach']" size="small"/>
+      <template rx-if="row.can_decide">
+        <rx-open-button :id="'approve-' ~ row.id" :label="tx['queue.approve']" size="small"/>
+        <rx-open-button :id="'reject-' ~ row.id" :label="tx['queue.reject']" size="small"/>
+      </template>
+      <rx-open-button rx-if="row.can_cancel" :id="'dcancel-' ~ row.id" :label="tx['my_leave.cancel']" size="small"/>
+    </template>
+  </rx-grid>
+  <rx-action-sheet rx-for="row in note_sheets" :button="false" :id="'note-' ~ row.id" :label="tx['sick.attach']" :action="route('wl_hr.sick_note', row.id)"
+                   :title="tx['sick.attach']" :description="tx['queue.note_description']" :submit-label="tx['sick.attach_submit']" icon="paperclip">
+    <rx-input name="document" type="number" :label="tx['sick.document']" :id="'note-document-' ~ row.id" required/>
+  </rx-action-sheet>
+  <template rx-for="row in decide_sheets">
+    <rx-action-sheet :button="false" :id="'approve-' ~ row.id" :label="tx['queue.approve']" :action="route('wl_hr.leave_approve', row.id)"
+                     :title="tx['queue.approve']" :description="row.who ~ ' · ' ~ row.kind ~ ' · ' ~ row.period" :submit-label="tx['queue.approve']" icon="check"/>
+    <rx-action-sheet :button="false" :id="'reject-' ~ row.id" :label="tx['queue.reject']" :action="route('wl_hr.leave_reject', row.id)"
+                     :title="tx['queue.reject']" :description="row.who ~ ' · ' ~ row.kind ~ ' · ' ~ row.period" :submit-label="tx['queue.reject']" icon="x">
+      <rx-textarea name="reason" :label="tx['queue.reject_reason']" :id="'reject-reason-' ~ row.id" required/>
+    </rx-action-sheet>
+  </template>
+  <rx-action-sheet rx-for="row in cancel_sheets" :button="false" :id="'dcancel-' ~ row.id" :label="tx['my_leave.cancel']" :action="route('wl_hr.leave_cancel', row.id)"
+                   :title="tx['my_leave.cancel']" :description="tx['my_leave.cancel_description']" :submit-label="tx['my_leave.cancel']" icon="x">
+    <rx-textarea name="reason" :label="tx['my_leave.cancel_reason']" :id="'dcancel-reason-' ~ row.id"/>
+  </rx-action-sheet>
 </rx-page>
