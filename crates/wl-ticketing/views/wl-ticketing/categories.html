@@ -9,16 +9,16 @@
   <rx-page-header :title="tx['categories.title']" :subtitle="tx['categories.subtitle']"/>
   <rx-grid :page="categories">
     <template rx-if="column.key == 'actions'">
-      <rx-open-button :id="'rename-' ~ row.key" :label="tx['categories.rename']" size="sm" icon="pencil"/>
-      <rx-open-button :id="'charging-' ~ row.key" :label="tx['categories.charging_change']" size="sm" icon="receipt"/>
-      <rx-open-button :id="'compliance-' ~ row.key" :label="tx['categories.compliance_change']" size="sm" icon="shield"/>
-      <rx-open-button :id="'contract-end-' ~ row.key" :label="tx['categories.contract_end_change']" size="sm" icon="calendar"/>
+      <rx-open-button :id="'rename-' ~ row.key" :label="tx['categories.rename']" size="small" icon="pencil"/>
+      <rx-open-button :id="'charging-' ~ row.key" :label="tx['categories.charging_change']" size="small" icon="receipt"/>
+      <rx-open-button :id="'compliance-' ~ row.key" :label="tx['categories.compliance_change']" size="small" icon="shield"/>
+      <rx-open-button :id="'contract-end-' ~ row.key" :label="tx['categories.contract_end_change']" size="small" icon="calendar"/>
       <template rx-if="row.platform">
         <span class="rx-subtitle">{{ tx['categories.platform_hint'] }}</span>
       </template>
       <template rx-else>
-        <rx-open-button :id="'active-' ~ row.key" :label="tx['categories.status_change']" size="sm" icon="refresh"/>
-        <rx-open-button :id="'delete-' ~ row.key" :label="tx['categories.delete']" size="sm" icon="trash"/>
+        <rx-open-button :id="'active-' ~ row.key" :label="tx['categories.status_change']" size="small" icon="refresh"/>
+        <rx-open-button :id="'delete-' ~ row.key" :label="tx['categories.delete']" size="small" icon="trash"/>
       </template>
     </template>
   </rx-grid>
