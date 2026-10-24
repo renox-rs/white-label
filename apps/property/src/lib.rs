@@ -67,8 +67,8 @@ pub use cancellation::CancelWait;
 pub use charge::{ChargeStatus, LeaseCharge};
 pub use charge_type::ChargeType;
 pub use events::{
-    LeaseActivated, LeaseAmended, LeaseCancelled, LeaseForceTerminated, LeaseNoticeWithdrawn,
-    LeaseTerminated,
+    AgreementEnded, LeaseActivated, LeaseAmended, LeaseCancelled, LeaseForceTerminated,
+    LeaseNoticeWithdrawn, LeaseTerminated,
 };
 pub use lease::{CreditChoice, Lease, LeaseStatus, RenewalDecision, VersionKind};
 pub use leases::{DraftEdit, EjariInput, NewLease, NewVersion};

@@ -216,6 +216,43 @@ pub async fn open(
     let statement = OwnerStatement::find(&state.db, id)
         .await?
         .ok_or(Error::NotFound)?;
+    open_as(state, Some(user.id), statement, line_id, comment).await
+}
+
+/// The owner `owner` disputes, from the owner portal as the portal user
+/// `user`, the line `line_id` of its published or settled statement `id`
+/// (BL-PRP-29): the flag is set and the ticket opened as when staff record it.
+/// The host checks the user's portal grant first (an `active` one: after the
+/// agreement ended the portal is read-only and the dispute is refused there;
+/// staff may still record it with [`open`]).
+///
+/// # Errors
+///
+/// 404 for a statement of another owner, or a line that is not on the
+/// statement; 422 as [`open`].
+pub async fn open_by_owner(
+    state: &AppState,
+    user: i64,
+    owner: wl_kernel::PartyId,
+    id: i64,
+    line_id: Option<i64>,
+    comment: &str,
+) -> Result<StatementDispute> {
+    let statement = OwnerStatement::find(&state.db, id)
+        .await?
+        .filter(|statement| statement.owner_party_id == owner.0)
+        .ok_or(Error::NotFound)?;
+    open_as(state, Some(user), statement, line_id, comment).await
+}
+
+/// Records the dispute of `statement` by `opened_by`: see [`open`].
+async fn open_as(
+    state: &AppState,
+    opened_by: Option<i64>,
+    statement: OwnerStatement,
+    line_id: Option<i64>,
+    comment: &str,
+) -> Result<StatementDispute> {
     if !disputable(statement.status) {
         return Err(refused(english("property.disputes.not_disputable", &[])));
     }
@@ -241,7 +278,7 @@ pub async fn open(
             description,
             comment: comment.to_owned(),
             status: DisputeStatus::Open,
-            opened_by: Some(user.id),
+            opened_by,
             opened_on: today(),
             ..Default::default()
         },

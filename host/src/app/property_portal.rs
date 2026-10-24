@@ -22,20 +22,31 @@
 //!   `GET /portal/{party}/lease-documents/{document}` ([`download`]); a
 //!   `read_only` grant keeps both after the lease ended.
 //!
+//! - the owner portal of 01 (BL-PRP-29, `POR.SLF.02`, `PRP.ACL.02`): the
+//!   audience `owner` ([`OWNER`], role `owner`), its *Statements* section
+//!   ([`StatementsSection`]: the published and settled statements of the
+//!   owner's agreements) and the dispute of a statement line from the portal
+//!   (`POST /portal/{party}/owner-statements/{statement}/dispute`,
+//!   [`dispute`]), which sets the dispute flag and opens the ticket as staff
+//!   do (BL-PRP-21). When the management agreement ends (`AgreementEnded`)
+//!   the owner's grants turn `read_only`: the statements still read for 90
+//!   days and a dispute is refused; wl-portal's daily timer closes the grant
+//!   on day 91 (an agreement ended on 2028-06-30 reads until 2028-09-28).
+//!
 //! The other tenant sections (invoices, deposit, requests) come with their
 //! modules' issues (BL-INV-31, BL-PAY-27, BL-TKT-14); [`SECTIONS`] is the
 //! order and permission each one registers with.
 
 use property::lease::LEASE_SUBJECT_TYPE;
 use property::portal::{PortalRow, TENANT_DOCUMENT_KINDS};
-use property::{Lease, LeaseForceTerminated, LeaseStatus, LeaseTerminated};
+use property::{AgreementEnded, Lease, LeaseForceTerminated, LeaseStatus, LeaseTerminated};
 use renox::Download;
 use renox::prelude::*;
 use wl_documents::{Document, DocumentKind, DocumentStatus};
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
 use wl_portal::sections::{PortalMenu, PortalSection, SectionFuture, SectionRow};
-use wl_portal::{AudienceDef, PortalAccess, RoleDef};
+use wl_portal::{AudienceDef, PortalAccess, PortalAction, PortalGuard, Refused, RoleDef};
 
 /// The audience key of the tenants.
 pub const TENANT_AUDIENCE: &str = "tenant";
@@ -67,6 +78,26 @@ pub const TENANT: AudienceDef = AudienceDef {
     ],
 };
 
+/// The audience key of the owners.
+pub const OWNER_AUDIENCE: &str = "owner";
+
+/// The owner audience of 01 (`POR.SLF.02`), read-only for 90 days after the
+/// management agreement ends.
+pub const OWNER: AudienceDef = AudienceDef {
+    key: OWNER_AUDIENCE,
+    label: "Owners",
+    close_after_days: 90,
+    roles: &[RoleDef {
+        key: "owner",
+        label: "Owner",
+        permissions: &[
+            "portal.statements.view",
+            "portal.statements.dispute",
+            "portal.documents.view",
+        ],
+    }],
+};
+
 /// The tenant sections: key, menu order and the portal permission each
 /// needs, for the modules that register them.
 pub const SECTIONS: &[(&str, i32, &str)] = &[
@@ -85,7 +116,42 @@ pub const SECTIONS: &[(&str, i32, &str)] = &[
 ///
 /// The database's errors.
 pub async fn install(state: &AppState) -> Result<usize> {
-    wl_portal::audiences::seed(&state.db, &TENANT).await
+    let tenants = wl_portal::audiences::seed(&state.db, &TENANT).await?;
+    let owners = wl_portal::audiences::seed(&state.db, &OWNER).await?;
+    Ok(tenants + owners)
+}
+
+/// The management agreement of `owner` ended on `on`: its owner grants turn
+/// `read_only` (BL-PRP-29). Returns how many did.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn agreement_ended(
+    state: &AppState,
+    owner: PartyId,
+    on: renox::chrono::NaiveDate,
+) -> Result<usize> {
+    let running = property::agreement::ManagementAgreement::query()
+        .where_(property::agreement::ManagementAgreement::OWNER_PARTY_ID.eq(owner.0))
+        .where_(
+            property::agreement::ManagementAgreement::STATUS
+                .is_in(property::agreement::AgreementStatus::REPORTING),
+        )
+        .first(&state.db)
+        .await?;
+    if running.is_some() {
+        return Ok(0);
+    }
+    let ended = PortalAccess::contract_ended(
+        state,
+        owner,
+        OWNER_AUDIENCE,
+        on,
+        "management agreement ended",
+    )
+    .await?;
+    Ok(ended.len())
 }
 
 /// A lease of `tenant` ended: `end` on the tenant's grants unless another
@@ -308,11 +374,98 @@ async fn download(
     ))
 }
 
-/// Registers the tenant sections with wl-portal (BL-PRP-30).
+/// *Statements*: the owner's published and settled statements.
+pub struct StatementsSection;
+
+impl PortalSection for StatementsSection {
+    fn title(&self) -> String {
+        "Statements".to_owned()
+    }
+
+    fn rows<'a>(
+        &'a self,
+        state: &'a AppState,
+        party: PartyId,
+    ) -> SectionFuture<'a, Vec<SectionRow>> {
+        Box::pin(async move {
+            Ok(section_rows(
+                property::portal::owner_statements(&state.db, party).await?,
+            ))
+        })
+    }
+
+    fn audience(&self) -> Option<&str> {
+        Some(OWNER_AUDIENCE)
+    }
+
+    fn permission(&self) -> Option<&str> {
+        Some("portal.statements.view")
+    }
+
+    fn order(&self) -> i32 {
+        10
+    }
+}
+
+/// The owner's dispute of a statement line.
+#[derive(serde::Deserialize, serde::Serialize, Validate, Debug)]
+pub struct DisputeForm {
+    /// The line disputed; empty for the whole statement.
+    pub line: Option<i64>,
+    /// Why, in the owner's words.
+    pub comment: Option<String>,
+}
+
+/// `POST /portal/{party}/owner-statements/{statement}/dispute`: the owner
+/// disputes a line of one of its published statements. 403 without an
+/// `active` owner grant for the party (a `read_only` one after the agreement
+/// ended is refused with the read-only notice) or without the dispute
+/// permission; 404 for a statement of another owner; 422 as staff's dispute.
+async fn dispute(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path((party, statement)): Path<(i64, i64)>,
+    Valid(form): Valid<DisputeForm>,
+) -> Result<Response> {
+    let party = PartyId(party);
+    let menu = PortalMenu::of(&state, user.id, party, today(), &lang)
+        .await?
+        .ok_or(Error::Forbidden)?;
+    if !menu.audiences.contains(OWNER_AUDIENCE)
+        || !menu.permissions.contains("portal.statements.dispute")
+    {
+        return Err(Error::Forbidden);
+    }
+    match PortalGuard::check(&state, user.id, party, PortalAction::Dispute).await? {
+        Ok(()) => {}
+        Err(Refused::GrantReadOnly(since)) => {
+            return Err(Error::Status(
+                StatusCode::FORBIDDEN,
+                wl_portal::read_only_notice(&lang, since),
+            ));
+        }
+        Err(_) => return Err(Error::Forbidden),
+    }
+    let comment = form.comment.unwrap_or_default();
+    property::statement_dispute::open_by_owner(
+        &state, user.id, party, statement, form.line, &comment,
+    )
+    .await?;
+    Ok((
+        Toast::success("Your dispute was sent. We will come back to you."),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// Registers the tenant sections (BL-PRP-30) and the owner's (BL-PRP-29)
+/// with wl-portal.
 pub fn register_sections() {
     wl_portal::register_section("lease", LeaseSection);
     wl_portal::register_section("cheques", ChequesSection);
     wl_portal::register_section("documents", DocumentsSection);
+    wl_portal::register_section("owner_statements", StatementsSection);
 }
 
 /// The module: the seed, its command, the sections and the contract-end
@@ -328,6 +481,11 @@ impl Module for PropertyPortal {
         Routes::new()
             .get("/portal/{party}/lease-documents/{document}", download)
             .name("property_portal.document")
+            .post(
+                "/portal/{party}/owner-statements/{statement}/dispute",
+                dispute,
+            )
+            .name("property_portal.statement_dispute")
             .require_auth()
     }
 
@@ -345,6 +503,11 @@ impl Module for PropertyPortal {
         app.seeder(|state: AppState| async move { install(&state).await.map(|_| ()) });
         app.listen(|event: LeaseTerminated, state: AppState| async move {
             lease_ended(&state, event.tenant, "lease terminated")
+                .await
+                .map(|_| ())
+        });
+        app.listen(|event: AgreementEnded, state: AppState| async move {
+            agreement_ended(&state, event.owner, event.ended_on)
                 .await
                 .map(|_| ())
         });

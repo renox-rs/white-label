@@ -1004,6 +1004,14 @@ pub async fn end(
         .run(state)
         .await?;
     let ended = load(state, id).await?;
+    state
+        .emit(crate::events::AgreementEnded {
+            agreement: ended.id,
+            owner: ended.owner(),
+            ended_on: ended.ended_on.unwrap_or_else(today),
+        })
+        .await
+        .map_err(TransitionError::Failed)?;
     settle_end(state, user, &ended, &units)
         .await
         .map_err(TransitionError::Failed)

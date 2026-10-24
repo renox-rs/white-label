@@ -152,6 +152,20 @@ pub struct LeaseTerminated {
 
 impl Event for LeaseTerminated {}
 
+/// A management agreement ended (`end`): the owner's portal turns read-only
+/// for 90 days (BL-PRP-29, §7.1 *Management agreement* `end`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgreementEnded {
+    /// The agreement.
+    pub agreement: i64,
+    /// The owner.
+    pub owner: PartyId,
+    /// The day it ended (Asia/Dubai).
+    pub ended_on: NaiveDate,
+}
+
+impl Event for AgreementEnded {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
