@@ -247,7 +247,7 @@ impl Module for Accounting {
         app.nav(
             "app",
             NavLink::route("accounting.aml_cases", "nav.aml_cases")
-                .icon("shield-alert")
+                .icon("circle-alert")
                 .group("nav.app")
                 .order(12)
                 .permission(permissions::AML_MANAGE),

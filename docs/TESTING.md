@@ -122,7 +122,7 @@ For each `*.RUL.NN`:
 
 - **Factories** for every model, producing valid records with sensible defaults.
 - **Demo datasets** ([DEMO-DATA.md](DEMO-DATA.md)) are loaded in acceptance tests, so the
-  scenarios run on the same data the sales demo shows. A demo that breaks fails the build: the demo commands are run in tests (`host/tests/demo_seed.rs` for `property:demo`, `*_demo.rs` for construction, clinics, manpower, manufacturing, edtech and auto, `logistics.rs` and `fnb.rs` for those two); 04 accounting has no demo command.
+  scenarios run on the same data the sales demo shows. A demo that breaks fails the build: the demo commands are run in tests (`host/tests/demo_seed.rs` for `property:demo`, `*_demo.rs` for construction, clinics, manpower, manufacturing, edtech, auto and accounting, `logistics.rs` and `fnb.rs` for those two).
 - **No production data** in tests, ever.
 - **Edge data:** Arabic names, mixed scripts, very long names, zero-rated and exempt VAT lines,
   amounts with fils, dates around month end, Ramadan hours, public holidays.

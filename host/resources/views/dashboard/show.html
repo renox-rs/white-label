@@ -22,6 +22,18 @@
     </app-section-head>
   </template>
 
+  <template rx-if="client_portal">
+    {#- A client user of an accounting firm: what waits for them and the
+        portal's sections (dashboard/accounting_tiles.rs). -#}
+    <app-section-head :title="t('dashboard.portal.accounting.title')" id="client-portal-title" :compact="true">
+      <rx-list label="{{ t('dashboard.portal.accounting.title') }}">
+        <li rx-for="item in client_portal"><app-icon-circle :icon="item.icon" :size="18"/><div class="rx-list__main">
+          <a href="{{ item.url }}">{{ item.title }}</a>
+        </div></li>
+      </rx-list>
+    </app-section-head>
+  </template>
+
   <template rx-if="awaiting">
     {#- Approvals the signed-in person may decide
         (wl_kernel::approvals::awaiting_items). -#}

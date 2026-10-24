@@ -177,7 +177,16 @@
     },
     "portal": {
       "timesheets_one": "1 timesheet waiting for you",
-      "timesheets_many": ":count timesheets waiting for you"
+      "timesheets_many": ":count timesheets waiting for you",
+      "accounting": {
+        "title": "Your accounting firm",
+        "approve_return": "Approve :number, period ending :period",
+        "sign_letter": "Sign the engagement letter of :number",
+        "kpi_pack": "KPI pack, :period",
+        "engagements": ":client: engagements",
+        "returns": ":client: returns",
+        "kpi_packs": ":client: KPI packs"
+      }
     },
     "tiles": {
       "sessions_today": "Sessions today",

@@ -24,6 +24,7 @@ use renox::audit::Audit;
 use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
+pub use app::accounting_demo;
 pub use app::accounting_seed::parties_for;
 pub use app::auto_demo;
 pub use app::auto_money;
@@ -102,6 +103,7 @@ pub const DEMO_COMMANDS: &[&str] = &[
     app::edtech_demo::COMMAND,
     app::auto_demo::COMMAND,
     app::manufacturing_demo::COMMAND,
+    app::accounting_demo::COMMAND,
 ];
 
 /// The refusal for `command` when `app_env` is a production environment.
@@ -253,6 +255,11 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // The 04 client's lead sources, checklists and SOPs (BL-ACC-23).
     if client_app == "accounting" {
         app = app.module(app::accounting_seed::AccountingSeed);
+        // The demo firm, after the installs: `accounting:demo`, and `db:seed`
+        // in local (never in production).
+        app = app.module(app::accounting_demo::AccountingDemo::new(
+            demo_client.clone(),
+        ));
     }
     // The Clinics client's service types (BL-CLN-12).
     if client_app == app::clinics_seed::CLINICS {

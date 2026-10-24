@@ -92,7 +92,7 @@ the current state machines and rules. A demo that fails to generate blocks the r
 | 01 Property | `clients/demo-properties` | `property:demo` | *Palm Grove Properties LLC* |
 | 02 Construction | `clients/demo-construction` | `construction:demo` | *Al Waha Interiors & Fit-out LLC* |
 | 03 Logistics | `clients/demo-logistics` | `logistics:demo` | *Najm Express Cargo LLC* |
-| 04 Accounting | `clients/demo-accounting` | none | F4 has a demo client but no demo command |
+| 04 Accounting | `clients/demo-accounting` | `accounting:demo` | *Falcon Ledger Accountants LLC* |
 | 05 Clinics | `clients/demo-clinics` | `clinics:demo` | *Palm Grove Clinic LLC* |
 | 06 F&B | `clients/demo-fnb` | `fnb:demo` | *Zaatar & Co. Kitchens LLC* |
 | 07 Manufacturing | `clients/demo-manufacturing` | `manufacturing:demo` | *Emirates Pack Industries LLC* |
@@ -270,8 +270,6 @@ awaiting reattempt · a vehicle grounded by an expired registration.
 **Profile.** Dubai firm, FTA-registered tax agency, 22 staff, 180 SME clients on monthly
 retainers. One legal entity.
 
-**Not implemented: no demo command in F4.** `clients/demo-accounting/client.toml` (*Falcon Ledger Accountants LLC*, not *Bayan*) boots the app with the modules parties, documents, notify, invoicing, ticketing, payments, sales, hr and portal, but there is no `accounting:demo` and no `host/src/app/accounting_demo`; `db:seed` creates only the base logins. The data of this section is therefore a specification, not something the host seeds yet.
-
 **Demo users.** Partner · Manager · Accountant · Tax specialist · MLRO · Billing admin ·
 Client owner (portal) · Client finance contact (portal).
 
@@ -300,6 +298,40 @@ realisation.
 
 **Must not appear.** Real client companies, real TRNs, real sanctions-list names (screening
 uses a fictional list).
+
+**Implemented as** `clients/demo-accounting/client.toml` and `host/src/app/accounting_demo/`
+(*Falcon Ledger Accountants LLC*, nine client companies; the story of the table above at a smaller
+size). `APP_ENV=local CLIENT_CONFIG=clients/demo-accounting/client.toml cargo run -p host --
+migrate`, then `-- accounting:demo` (or `-- db:seed`), then `-- serve`; the logins are on the login
+page, password `password123`. Every date is relative to today. Each client company has a UBO and a
+director, KYC documents on file (Desert Rose's trade licence expires in three weeks) and clear
+screenings on current lists; each engagement is onboarded through the app's own routes (the
+manager proposes it, the accountant records the tax profile and prepares the CDD file, the MLRO
+approves it, the letter is signed in the portal or recorded on paper, the manager activates it,
+which lays out the compliance calendar and starts the retainer).
+
+| Client | What it shows |
+|---|---|
+| Marina Bay Trading LLC | active; last quarter's return approved by the owner in the portal and filed, this quarter's with the client for approval; a published KPI pack; the owner and the finance contact in the portal; its request list received |
+| Desert Rose Interiors LLC | active; a return with the reviewer; last quarter's return filed and corrected by a voluntary disclosure; its CDD file due for review |
+| Oasis Fresh Foods LLC | active (monthly VAT); a return due in five days with the workpapers missing; a retainer invoice overdue; an AML concern closed with no action |
+| Al Waha General Trading FZE | high risk with enhanced due diligence; an AML concern under the MLRO's review; a re-screening possible match on its UBO; a return cancelled (the client files it) |
+| Palm Tech Solutions LLC | onboarding: the CDD file waiting for the MLRO, the letter out for signature |
+| Sand Dune Contracting LLC | suspended for non-payment: two invoices overdue, the deadline notice sent |
+| Coral Reef Restaurants LLC | ended at the client's request, nothing left to bill |
+| Pearl Fashion House LLC | declined: the letter was not signed |
+| Gulf Horizon Logistics LLC | active; a move to monthly VAT periods waiting for the partner; a KPI pack in draft |
+
+**Demo users:** partner, company admin, engagement manager, accountant, tax specialist, MLRO,
+billing admin, and in the portal Marina Bay's owner and finance contact and Desert Rose's owner (a
+client user's dashboard lists the return to approve, the letter to sign, the KPI packs and the
+portal sections of its company).
+
+**Screens.** `accounting:demo` ends by printing the screen map; the code is
+`host/src/app/accounting_demo/screens.rs` (`host::accounting_demo::screen_map`) and
+`host/tests/accounting_demo_screens.rs` opens every URL as its owner. The groups: **Start**,
+**Engagements** (each status, the tax profiles, the deadlines), **CDD and AML**, **Returns** (each
+status), **KPI packs**, **Money**, **People and documents** and the **client portal**.
 
 ---
 

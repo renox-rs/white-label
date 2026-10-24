@@ -249,9 +249,16 @@ async fn show(
     }
     let mut rows = Vec::new();
     for row in history(&state.db, AmlCase::TABLE, case.id).await? {
+        // The case is inserted in `open` (`insert_in_state`), its history
+        // row named `insert`: it reads as the case being opened.
+        let transition = if row.transition == "insert" {
+            crate::aml_machine::OPEN
+        } else {
+            row.transition.as_str()
+        };
         rows.push(HistoryRow {
             at: dubai_text(row.at),
-            action: text(&lang, &format!("aml.transition.{}", row.transition)),
+            action: text(&lang, &format!("aml.transition.{transition}")),
             by: match row.actor_id {
                 Some(id) => user_name(&state.db, id).await,
                 None => text(&lang, "history.system"),

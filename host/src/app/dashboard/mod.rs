@@ -14,6 +14,7 @@
 //! goods, certificates, exports, recalls, orders on hold) and, for any other app, [`generic_tiles`] (the shared modules' figures
 //! only: no Property table is read). The decisions and the activity are the same for all.
 
+mod accounting_tiles;
 mod activity_label;
 mod construction_tiles;
 mod edtech_tiles;
@@ -329,6 +330,8 @@ async fn show(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Resu
     let awaiting_count = awaiting.len();
     // The timesheets waiting for a client approver (Manpower portal).
     let portal_waiting = manpower_tiles::timesheets_waiting(&state, &user).await?;
+    // What waits for a client user of an accounting firm, and its portal.
+    let client_portal = accounting_tiles::portal_links(&state, &user, &lang).await?;
     Ok(view(
         "dashboard/show.html",
         context! {
@@ -337,6 +340,7 @@ async fn show(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Resu
             awaiting,
             awaiting_count,
             portal_waiting,
+            client_portal,
             portal_url => manpower_tiles::TIMESHEETS_URL,
             lead => figures.lead,
             tiles => figures.tiles,

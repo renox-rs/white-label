@@ -61,6 +61,58 @@ impl Subject {
     pub fn entity(&self) -> &str {
         self.subject_type.split('.').nth(1).unwrap_or_default()
     }
+
+    /// The subject as a page shows it when the module's own label is not at
+    /// hand: `accounting.engagement:7` as "Engagement #7".
+    pub fn words(&self) -> String {
+        words_of(&self.subject_type, self.subject_id)
+    }
+}
+
+/// [`Subject::words`] of a type and id kept in two columns: the entity in
+/// words, capitalised, and its number (`property.lease_renewal`, 3: "Lease
+/// renewal #3").
+pub fn words_of(subject_type: &str, id: i64) -> String {
+    let entity = subject_type.rsplit('.').next().unwrap_or(subject_type);
+    let words = entity.replace('_', " ");
+    let mut chars = words.chars();
+    let words: String = match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    };
+    format!("{words} #{id}")
+}
+
+/// [`words_of`] as SQL, for a grid column over a type and an id kept in two
+/// columns (`type_column`, `id_column` of the grid's table `{T}`): each type
+/// of `types` reads as its entity and number ("Engagement #12"), so the
+/// column shows, sorts, searches and exports as words and never as
+/// `accounting.engagement #12`. A type missing from `types` (a row saved
+/// while the page was built), or one with characters a type never has, shows
+/// its number alone, `#12`. A bare type (`ticket`) reads as `Ticket #12`. Read `types` from the table first (`pluck`).
+pub fn words_sql(type_column: &str, id_column: &str, types: &[String]) -> String {
+    let id = format!("CAST({{T}}.\"{id_column}\" AS TEXT)");
+    let cases: String = types
+        .iter()
+        // A type is lower-case words and dots (`property.lease`, or a
+        // bare `ticket` some records keep): nothing that could end the SQL
+        // string.
+        .filter(|t| {
+            t.starts_with(|c: char| c.is_ascii_lowercase())
+                && t.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.')
+        })
+        .map(|t| {
+            let words = words_of(t, 0);
+            let prefix = words.strip_suffix('0').unwrap_or(&words);
+            format!(" WHEN '{t}' THEN '{}' || {id}", prefix.replace('\'', "''"))
+        })
+        .collect();
+    if cases.is_empty() {
+        format!("'#' || {id}")
+    } else {
+        format!("CASE {{T}}.\"{type_column}\"{cases} ELSE '#' || {id} END")
+    }
 }
 
 /// `property.lease:42`, the form used in occurrence keys and logs.
@@ -99,6 +151,33 @@ fn is_type(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_subject_in_words_is_its_entity_and_number() {
+        assert_eq!(
+            Subject::new("accounting.engagement", 7).words(),
+            "Engagement #7"
+        );
+        assert_eq!(words_of("property.lease_renewal", 3), "Lease renewal #3");
+    }
+
+    #[test]
+    fn the_words_as_sql_name_each_known_type_and_skip_a_bad_one() {
+        let sql = words_sql(
+            "subject_type",
+            "subject_id",
+            &["accounting.engagement".to_owned(), "x'; drop".to_owned()],
+        );
+        assert_eq!(
+            sql,
+            "CASE {T}.\"subject_type\" WHEN 'accounting.engagement' THEN 'Engagement #' || \
+             CAST({T}.\"subject_id\" AS TEXT) ELSE '#' || CAST({T}.\"subject_id\" AS TEXT) END"
+        );
+        assert_eq!(
+            words_sql("subject_type", "subject_id", &[]),
+            "'#' || CAST({T}.\"subject_id\" AS TEXT)"
+        );
+    }
 
     #[test]
     fn it_round_trips_through_text() {
