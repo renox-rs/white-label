@@ -16,14 +16,18 @@
 //! The transitions are the machine's ([`crate::statement_machine`]): `approve`,
 //! `return`, `publish`, `revise`; the page offers the ones the user may run now.
 
+use std::collections::BTreeMap;
+
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::state_machine::{Outcome, StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::block_guard::{self, ActionKind, GuardedError};
 use wl_kernel::parties::directory;
 
-use super::{Texts, text, user_name};
+use super::{Texts, padded, text, user_name};
 use crate::agreement::ManagementAgreement;
 use crate::money_text;
 use crate::parse::parse_aed;
@@ -95,23 +99,93 @@ pub(super) async fn owner_name(state: &AppState, lang: &Lang, id: i64) -> String
         .unwrap_or_else(|| format!("#{id}"))
 }
 
-/// One statement of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct StatementRow {
-    /// The primary key.
-    pub id: i64,
-    /// The number.
-    pub number: String,
-    /// The owner's name.
-    pub owner: String,
-    /// The period.
-    pub period: String,
-    /// The balance.
-    pub balance: String,
-    /// The status in the page's language.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
+/// The statements grid: search on the number and the owner, filter by
+/// status, sum of the balances. The owner's name comes from the parties
+/// directory, so the template draws it (`custom`). The number is built from the agreement, the
+/// period and the revision, as [`OwnerStatement::number`] does.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let statuses: Vec<(String, String)> = StatementStatus::ALL
+        .iter()
+        .map(|status| {
+            (
+                status.as_str().to_owned(),
+                t(&format!("statements.status.{}", status.as_str())),
+            )
+        })
+        .collect();
+    let number = format!(
+        "'OS-' || {} || '-' || substr(CAST({{T}}.\"period_start\" AS TEXT), 1, 4) \
+         || substr(CAST({{T}}.\"period_start\" AS TEXT), 6, 2) \
+         || ' r' || CAST({{T}}.\"revision\" AS TEXT)",
+        padded("agreement_id", 4)
+    );
+    let grid = Grid::new("property-statements")
+        .title(&t("statements.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &t("statements.number"))
+                .computed(&number)
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/property/statements/{id}"),
+        )
+        .column(Column::custom("owner", &t("statements.owner")).mobile())
+        .column(Column::date("period_start", &t("statements.period_start")).mobile())
+        .column(Column::date("period_end", &t("statements.period_end")))
+        .column(
+            Column::money("brought_forward", &t("statements.brought_forward"))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("collected", &t("statements.collected"))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("expenses", &t("statements.expenses"))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("fee", &t("statements.fee"))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("adjustments", &t("statements.adjustments"))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("balance", &t("statements.balance"))
+                .computed(
+                    "{T}.\"brought_forward\" + {T}.\"collected\" - {T}.\"expenses\" \
+                     - {T}.\"fee\" + {T}.\"adjustments\"",
+                )
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("settled", "success"),
+                    ("draft", "info"),
+                    ("approved", "info"),
+                    ("published", "info"),
+                    ("superseded", "info"),
+                ])
+                .mobile(),
+        )
+        .sort_by("-period_start")
+        .row_url("/property/statements/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("statements.empty"), Some(&t("statements.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list page needs.
@@ -119,38 +193,37 @@ pub struct StatementRow {
 #[view(template = "property/statements.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    statements: Vec<StatementRow>,
+    statements: GridPage<OwnerStatement>,
 }
 
 /// `GET /property/statements`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if !may_see(&user) {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
-    for found in OwnerStatement::query()
-        .order_by_desc(OwnerStatement::PERIOD_START)
-        .order_by_desc(OwnerStatement::ID)
-        .get(&state.db)
-        .await?
-    {
-        rows.push(StatementRow {
-            id: found.id,
-            number: found.number(),
-            owner: owner_name(&state, &lang, found.owner_party_id).await,
-            period: format!("{} → {}", found.period_start, found.period_end),
-            balance: money_text(found.balance()),
-            status: text(
-                &lang,
-                &format!("statements.status.{}", found.status.as_str()),
-            ),
-            status_kind: status_kind(found.status),
-        });
+    // The export is for the same people who see the list.
+    let grid = grid(&lang, true);
+    let query = OwnerStatement::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
     }
+    let page = grid.page(query, &request).await?;
+    let mut owners = BTreeMap::new();
+    for found in page.items() {
+        let name = owner_name(&state, &lang, found.owner_party_id).await;
+        owners.insert(found.id, name);
+    }
+    let statements = page.extend(|found| json!({ "owner": owners.get(&found.id) }));
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        statements: rows,
-    }))
+        statements,
+    })
+    .into_response())
 }
 
 /// A line of the statement.

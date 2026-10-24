@@ -1,27 +1,18 @@
 {#- property: the enquiries, newest first, with the lead source and the
-    campaign they came from, and the action that records a new one. Replace it
-    with resources/views/property/enquiries.html in the app. -#}
+  campaign they came from, and the action that records a new one. Replace it
+  with resources/views/property/enquiries.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['enquiries.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['enquiries.title']" :subtitle="tx['enquiries.subtitle']" :back="route('property.index')" :back-label="tx['portfolio.title']">
-      <template rx-if="can_record">
-        <rx-action-sheet id="enquiry-new" :label="tx['enquiries.new']" :action="route('property.enquiry_create')"
-                         :title="tx['enquiries.new']" :description="tx['enquiries.new_description']" :submit-label="tx['enquiries.new']" icon="plus">
-          <rx-input name="prospect" :label="tx['enquiries.prospect']" id="enquiry-new-prospect" required/>
-          <rx-input name="contact" :label="tx['enquiries.contact']" id="enquiry-new-contact"/>
-          <rx-select name="source" :label="tx['enquiries.source']" :options="sources" :selected="'walk_in'" id="enquiry-new-source"/>
-          <rx-input name="campaign" :label="tx['enquiries.campaign']" id="enquiry-new-campaign"/>
-          <rx-input name="notes" :label="tx['enquiries.notes']" id="enquiry-new-notes"/>
-        </rx-action-sheet>
-      </template>
-    </rx-page-header>
-    <rx-table :rows="enquiries" as="row" :key="row.id" :caption="tx['enquiries.title']" card>
-      <rx-column :label="tx['enquiries.prospect']">{{ row.prospect }}</rx-column>
-      <rx-column :label="tx['enquiries.contact']" hide-narrow>{{ row.contact }}</rx-column>
-      <rx-column :label="tx['enquiries.source']">{{ row.source }}</rx-column>
-      <rx-column :label="tx['enquiries.campaign']" hide-narrow>{{ row.campaign }}</rx-column>
-      <rx-column :label="tx['enquiries.received']" hide-narrow>{{ row.received }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['enquiries.empty']" icon="inbox"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['enquiries.title']" :subtitle="tx['enquiries.subtitle']" :back="route('property.index')" :back-label="tx['portfolio.title']">
+    <template rx-if="can_record">
+      <rx-action-sheet id="enquiry-new" :label="tx['enquiries.new']" :action="route('property.enquiry_create')"
+                       :title="tx['enquiries.new']" :description="tx['enquiries.new_description']" :submit-label="tx['enquiries.new']" icon="plus">
+        <rx-input name="prospect" :label="tx['enquiries.prospect']" id="enquiry-new-prospect" required/>
+        <rx-input name="contact" :label="tx['enquiries.contact']" id="enquiry-new-contact"/>
+        <rx-select name="source" :label="tx['enquiries.source']" :options="sources" :selected="'walk_in'" id="enquiry-new-source"/>
+        <rx-input name="campaign" :label="tx['enquiries.campaign']" id="enquiry-new-campaign"/>
+        <rx-input name="notes" :label="tx['enquiries.notes']" id="enquiry-new-notes"/>
+      </rx-action-sheet>
+    </template>
+  </rx-page-header>
+  <rx-grid :page="enquiries"/>
 </rx-page>

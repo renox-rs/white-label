@@ -34,9 +34,12 @@
 //! The actions answer with a toast and a refresh, as the sheets post them by
 //! htmx; a refusal answers 422 with its reason.
 
+use std::collections::BTreeMap;
+
 use renox::chrono::NaiveDate;
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
-use renox::serde_json::Value;
+use renox::serde_json::{Value, json};
 use renox::state_machine::{self, StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::approvals::{self, ApprovalCard};
@@ -44,7 +47,7 @@ use wl_kernel::cheques::ChequeSummary;
 use wl_kernel::invoicing::{InvoiceId, invoicer};
 use wl_kernel::parties::directory;
 
-use super::{Texts, buildings_with, field_error, lease_kind, text};
+use super::{Texts, buildings_with, field_error, lease_kind, padded, text};
 use crate::arrears::{self, ArrearsDemand, NewPlan, PaymentPlan};
 use crate::building::Building;
 use crate::cancellation::{self, CancelRequest};
@@ -163,27 +166,97 @@ async fn unit_label(state: &AppState, unit_id: i64) -> String {
     }
 }
 
-/// One lease of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct LeaseRow {
-    /// The primary key.
-    pub id: i64,
-    /// The lease number with its version.
-    pub number: String,
-    /// The unit.
-    pub unit: String,
-    /// The tenant's name.
-    pub tenant: String,
-    /// The term, `2027-01-01 to 2027-12-31`.
-    pub term: String,
-    /// The annual rent.
-    pub annual_rent: String,
-    /// The status in the page's language.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
-    /// Renewal, amendment or empty for the first version.
-    pub kind: String,
+/// The leases grid: search on the number, unit and Ejari number,
+/// filters by status and version, sum of the annual rent.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let statuses: Vec<(String, String)> = LeaseStatus::ALL
+        .iter()
+        .map(|status| {
+            (
+                status.as_str().to_owned(),
+                t(&format!("leases.status.{}", status.as_str())),
+            )
+        })
+        .collect();
+    let kinds: Vec<(String, String)> = VersionKind::ALL
+        .iter()
+        .map(|kind| {
+            let label = match kind {
+                VersionKind::New => t("leases.kind.new"),
+                other => kind_text(lang, *other),
+            };
+            (kind.as_str().to_owned(), label)
+        })
+        .collect();
+    let number = format!(
+        "'L-' || {} || ' v' || CAST({{T}}.\"version\" AS TEXT)",
+        padded("root_id", 6)
+    );
+    let grid = Grid::new("property-leases")
+        .title(&t("leases.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &t("leases.number"))
+                .computed(&number)
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/property/leases/{id}"),
+        )
+        .column(
+            Column::text("unit", &t("leases.unit"))
+                .computed(
+                    "(SELECT \"property_buildings\".\"code\" || ' / ' || \"property_units\".\"number\" \
+                     FROM \"property_units\" JOIN \"property_buildings\" \
+                     ON \"property_buildings\".\"id\" = \"property_units\".\"building_id\" \
+                     WHERE \"property_units\".\"id\" = {T}.\"unit_id\")",
+                )
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::custom("tenant", &t("leases.tenant")).mobile())
+        .column(Column::date("start_date", &t("leases.start_date")))
+        .column(Column::date("end_date", &t("leases.end_date")))
+        .column(
+            Column::money("annual_rent", &t("leases.annual_rent"))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("deposit_amount", &t("leases.deposit"))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(Column::select("version_kind", &t("leases.kind_label"), kinds))
+        .column(
+            Column::text("ejari_number", &t("handover.ejari_number"))
+                .hidden()
+                .searchable(),
+        )
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("active", "success"),
+                    ("renewed", "success"),
+                    ("draft", "info"),
+                    ("pending_signature", "info"),
+                    ("renewal_due", "warning"),
+                    ("expired", "warning"),
+                    ("notice_given", "warning"),
+                    ("amended", "info"),
+                    ("terminated", "info"),
+                    ("cancelled", "info"),
+                ])
+                .mobile(),
+        )
+        .sort_by("-id")
+        .row_url("/property/leases/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("leases.empty"), Some(&t("leases.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list needs.
@@ -191,7 +264,7 @@ pub struct LeaseRow {
 #[view(template = "property/leases.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    leases: Vec<LeaseRow>,
+    leases: GridPage<Lease>,
 }
 
 /// The text of a version kind; empty for the first version.
@@ -203,27 +276,35 @@ pub(crate) fn kind_text(lang: &Lang, kind: VersionKind) -> String {
 }
 
 /// `GET /property/leases`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     let scopes = buildings_with(&user, permissions::LEASES_VIEW)?;
-    let query = scopes.apply(Lease::query().order_by_desc(Lease::ID), &["building_id"]);
-    let mut rows = Vec::new();
-    for lease in query.get(&state.db).await? {
-        rows.push(LeaseRow {
-            id: lease.id,
-            number: lease.number_with_version(),
-            unit: unit_label(&state, lease.unit_id).await,
-            tenant: party_name(&state, &lang, lease.tenant_party_id).await,
-            term: format!("{} → {}", lease.start_date, lease.end_date),
-            annual_rent: crate::money_text(lease.annual_rent),
-            status: text(&lang, &format!("leases.status.{}", lease.status.as_str())),
-            status_kind: lease_kind(lease.status),
-            kind: kind_text(&lang, lease.version_kind),
-        });
+    let query = scopes.apply(Lease::query(), &["building_id"]);
+    let can_export = user.has_permission_anywhere(permissions::LEASES_MANAGE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
     }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    // The tenants' names come from the parties directory.
+    let page = grid.page(query, &request).await?;
+    let mut tenants = BTreeMap::new();
+    for lease in page.items() {
+        let name = party_name(&state, &lang, lease.tenant_party_id).await;
+        tenants.insert(lease.id, name);
+    }
+    let leases = page.extend(|lease| json!({ "tenant": tenants.get(&lease.id) }));
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        leases: rows,
-    }))
+        leases,
+    })
+    .into_response())
 }
 
 /// A charge of the payment plan.
