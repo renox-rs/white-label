@@ -9,12 +9,13 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Action, Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 
 use super::alert::{AlertKind, ComplianceAlert};
 use super::service::close_by_hand;
-use crate::documents::dubai_text;
 use crate::scopes::COMPANY_ADMIN_ROLE;
 use crate::texts;
 
@@ -27,29 +28,12 @@ pub const CLOSE_ROUTE: &str = "wl_kernel.compliance.close";
 /// The texts a template reads as `tx['key']`.
 type Texts = BTreeMap<&'static str, String>;
 
-/// One open alert as the page lists it.
-#[derive(Debug, Clone, Serialize)]
-pub struct AlertRow {
-    /// The alert's id.
-    pub id: i64,
-    /// The rule id.
-    pub rule: String,
-    /// What happened, in words.
-    pub what: String,
-    /// The record the run is about.
-    pub subject: String,
-    /// When the alert was raised (Asia/Dubai).
-    pub raised_at: String,
-    /// The owner's task number, or `—`.
-    pub task: String,
-}
-
 /// What the page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-kernel/compliance_alerts.html")]
 pub struct ComplianceAlertsPage {
     tx: Texts,
-    alerts: Vec<AlertRow>,
+    alerts: GridPage<ComplianceAlert>,
 }
 
 /// The routes, for logged-in users; who may close an alert is checked per
@@ -68,12 +52,6 @@ fn page_texts(lang: &Lang) -> Texts {
     [
         "title",
         "subtitle",
-        "rule",
-        "what",
-        "subject",
-        "raised_at",
-        "task",
-        "actions",
         "close",
         "close_title",
         "note",
@@ -92,38 +70,85 @@ fn page_texts(lang: &Lang) -> Texts {
     .collect()
 }
 
-/// What happened, as a row shows it.
-fn what_of(lang: &Lang, alert: &ComplianceAlert) -> String {
-    let key = match alert.kind {
-        AlertKind::Failed => "failed",
-        AlertKind::Stopped => "stopped",
-        AlertKind::Missed => "missed",
-    };
-    texts::t(lang, &format!("wl_kernel.compliance.kind.{key}"))
+/// The grid of the open alerts: search on the rule, filters by rule and
+/// kind, sorted by when they were raised. The record and the close button
+/// (a row action that opens the sheet of the page) are the grid's own.
+fn alerts_grid(lang: &Lang) -> Grid {
+    let t = |key: &str| texts::t(lang, &format!("wl_kernel.compliance.page.{key}"));
+    let kinds: Vec<(String, String)> = [
+        ("failed", AlertKind::Failed),
+        ("stopped", AlertKind::Stopped),
+        ("missed", AlertKind::Missed),
+    ]
+    .iter()
+    .map(|(key, kind)| {
+        (
+            kind.as_str().to_owned(),
+            texts::t(lang, &format!("wl_kernel.compliance.kind.{key}")),
+        )
+    })
+    .collect();
+    Grid::new("kernel-compliance-alerts")
+        .title(&t("title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("rule", &t("rule"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable(),
+        )
+        .column(
+            Column::select("kind", &t("what"), kinds)
+                .badges(&[
+                    ("failed", "danger"),
+                    ("stopped", "danger"),
+                    ("missed", "warning"),
+                ])
+                .mobile(),
+        )
+        .column(Column::custom("subject", &t("subject")).mobile())
+        .column(Column::datetime("created_at", &t("raised_at")))
+        .column(Column::text("ticket_number", &t("task")).searchable())
+        .column(Column::text("owner_role", &t("owner_role")).hidden())
+        .column(Column::text("error", &t("error")).hidden())
+        .sort_by("created_at")
+        .cards_on_mobile()
+        .row_action(Action::new(&t("close"), "/compliance-alerts/{id}/close").sheet("close-alert"))
+        .empty_state(&t("empty"), None)
 }
 
-async fn list(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn list(
+    State(db): State<Db>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
+    // The alerts the viewer may act on: a company admin all, anyone else the
+    // ones of the rules whose owner role they hold.
     let admin = user.has_role(COMPANY_ADMIN_ROLE);
-    let alerts = ComplianceAlert::open(&db)
+    let visible: Vec<i64> = ComplianceAlert::open(&db)
         .await?
         .into_iter()
         .filter(|alert| admin || user.has_role(&alert.owner_role))
-        .map(|alert| AlertRow {
-            id: alert.id,
-            rule: alert.rule.clone(),
-            what: what_of(&lang, &alert),
-            subject: alert.subject().to_string(),
-            raised_at: alert.created_at.map_or_else(|| "—".to_owned(), dubai_text),
-            task: alert
-                .ticket_number
-                .clone()
-                .unwrap_or_else(|| "—".to_owned()),
-        })
+        .map(|alert| alert.id)
         .collect();
+    let query = ComplianceAlert::query().where_(ComplianceAlert::ID.is_in(if visible.is_empty() {
+        vec![-1]
+    } else {
+        visible
+    }));
+    let alerts = alerts_grid(&lang)
+        .page(query, &request)
+        .await?
+        .extend(|alert| json!({ "subject": alert.subject().to_string() }));
     Ok(View::typed(ComplianceAlertsPage {
         tx: page_texts(&lang),
         alerts,
-    }))
+    })
+    .into_response())
 }
 
 /// The form of the close action.

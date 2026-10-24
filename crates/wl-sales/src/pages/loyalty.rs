@@ -18,7 +18,9 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Action, Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::validation::{Errors, ValidationError};
 use serde::Serialize;
 use wl_kernel::PartyId;
@@ -99,32 +101,70 @@ pub struct ProgrammeView {
     pub closing: String,
 }
 
-/// One account as the list shows it.
+/// The members grid: search on the code, name and mobile number, filter by
+/// status, the balance in points (the visits of a per-visit programme). The
+/// member's name, the reminder note and the row buttons are drawn by the
+/// template (`custom`).
+pub(crate) fn grid(lang: &Lang, per_visit: bool, can_export: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let statuses = vec![
+        ("active".to_owned(), t("loyalty.status.active")),
+        ("closed".to_owned(), t("loyalty.status.closed")),
+    ];
+    let balance = if per_visit {
+        Column::number("visits", &t("loyalty.balance"))
+    } else {
+        Column::number("points_balance", &t("loyalty.balance")).summary(Summary::Sum)
+    };
+    let grid = Grid::new("sales-loyalty-members")
+        .title(&t("loyalty.accounts"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("code", &t("loyalty.code"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable(),
+        )
+        .column(Column::custom("party", &t("loyalty.member")).mobile())
+        .column(
+            Column::related(
+                "member_name",
+                &t("loyalty.member"),
+                "wl_parties_parties",
+                "party_id",
+                "display_name",
+            )
+            .hidden()
+            .searchable(),
+        )
+        .column(Column::text("mobile", &t("loyalty.mobile")).searchable())
+        .column(balance.mobile())
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[("active", "success"), ("closed", "info")])
+                .mobile(),
+        )
+        .column(Column::custom("reminder", &t("loyalty.reminder")))
+        .column(Column::custom("actions", ""))
+        .sort_by("-id")
+        .cards_on_mobile()
+        .empty_state(
+            &t("loyalty.no_accounts"),
+            Some(&t("loyalty.no_accounts_hint")),
+        );
+    if can_export { grid.exports() } else { grid }
+}
+
+/// What a member's sheets need: the points that leaving would forfeit.
 #[derive(Serialize, Debug, Clone)]
-pub struct AccountRow {
-    /// The primary key.
+pub struct AccountSheet {
+    /// The account.
     pub id: i64,
-    /// The member's code.
-    pub code: String,
-    /// The member's name.
-    pub party: String,
-    /// The mobile number.
-    pub mobile: String,
-    /// The balance in points, or the visits since the last reward.
-    pub balance: i64,
-    /// The status in words.
-    pub status_label: String,
-    /// The badge colour.
-    pub status_kind: &'static str,
-    /// *Reminder not delivered* when the last expiry reminder gave up.
-    pub reminder_note: String,
-    /// Whether the account is open (it can be adjusted or closed).
-    pub open: bool,
-    /// The points leaving would forfeit (shown on the sheet that records a
-    /// member's request to leave).
+    /// The points leaving would forfeit.
     pub leave_points: i64,
-    /// Whether the account is paused: the party is on hold.
-    pub paused: bool,
 }
 
 /// What the page needs.
@@ -133,54 +173,72 @@ pub struct AccountRow {
 pub(crate) struct IndexPage {
     tx: Texts,
     programme: Option<ProgrammeView>,
-    accounts: Vec<AccountRow>,
+    accounts: GridPage<LoyaltyAccount>,
+    sheets: Vec<AccountSheet>,
+    subtitle: String,
     can_manage: bool,
     can_enrol: bool,
     can_adjust: bool,
 }
 
-/// `GET /loyalty`: the programme and the latest accounts.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+/// `GET /loyalty`: the programme and its members (`?export=` with
+/// `loyalty.manage`).
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     let db = state.db.clone();
     let programme = LoyaltyProgramme::first_active(&db).await?;
     let per_visit = programme
         .as_ref()
         .is_some_and(|p| p.earn_kind == EarnKind::PerVisit);
-    let mut accounts = Vec::new();
-    for a in LoyaltyAccount::query()
-        .order_by_desc(LoyaltyAccount::ID)
-        .get(&db)
-        .await?
-        .into_iter()
-        .take(50)
-    {
+    let can_manage = user.has_permission(permissions::LOYALTY_MANAGE);
+    let grid = grid(&lang, per_visit, can_manage);
+    if request.param("export").is_some() && !can_manage {
+        return Err(Error::Forbidden);
+    }
+    let query = LoyaltyAccount::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut extra = Vec::new();
+    let mut sheets = Vec::new();
+    for a in page.items() {
         let leave_points = if a.is_active() {
-            closure::forfeit_of(&db, &a).await?.points
+            closure::forfeit_of(&db, a).await?.points
         } else {
             0
         };
-        accounts.push(AccountRow {
-            id: a.id,
-            code: a.code.clone(),
-            party: super::party_name(&state, &lang, a.party_id).await,
-            mobile: a.mobile.clone(),
-            balance: if per_visit {
-                a.visits
-            } else {
-                a.points_balance
-            },
-            status_label: text(&lang, &format!("loyalty.status.{}", a.status.as_str())),
-            status_kind: if a.is_active() { "success" } else { "info" },
-            reminder_note: if a.expiry_reminder_failed_at.is_some() {
+        if a.is_active() {
+            sheets.push(AccountSheet {
+                id: a.id,
+                leave_points,
+            });
+        }
+        extra.push(json!({
+            "party": super::party_name(&state, &lang, a.party_id).await,
+            "reminder": if a.expiry_reminder_failed_at.is_some() {
                 text(&lang, "loyalty.reminder_not_delivered")
             } else {
                 String::new()
             },
-            open: a.is_active(),
-            leave_points,
-            paused: a.paused,
-        });
+            "open": a.is_active(),
+        }));
     }
+    let mut extra = extra.into_iter();
+    let accounts = page.extend(|_| extra.next().unwrap_or_default());
+    let subtitle = if programme.is_some() {
+        text(&lang, "loyalty.subtitle")
+    } else {
+        format!(
+            "{} {}",
+            text(&lang, "loyalty.subtitle"),
+            text(&lang, "loyalty.no_programme")
+        )
+    };
     let view = programme.map(|p| {
         let rate: [(&str, &dyn std::fmt::Display); 1] = [("rate", &p.earn_rate)];
         let key = match p.earn_kind {
@@ -201,10 +259,13 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         tx: texts::all(&lang),
         programme: view,
         accounts,
-        can_manage: user.has_permission(permissions::LOYALTY_MANAGE),
+        sheets,
+        subtitle,
+        can_manage,
         can_enrol: user.has_permission(permissions::LOYALTY_ENROL),
         can_adjust: user.has_permission(permissions::LOYALTY_ADJUST),
-    }))
+    })
+    .into_response())
 }
 
 /// `POST /loyalty/programme`: turns the programme on. Fields: `name`,
@@ -369,19 +430,40 @@ async fn attach_sales_order(
         .into_response())
 }
 
-/// One account over the daily sales limit.
-#[derive(Serialize, Debug, Clone)]
-pub struct ReviewRow {
-    /// The primary key.
-    pub id: i64,
-    /// The member's code.
-    pub code: String,
-    /// The member's name.
-    pub party: String,
-    /// The day.
-    pub on_date: String,
-    /// The earning sales of that day so far.
-    pub sales_count: i64,
+/// The review grid: the accounts that earned on more sales in a day than the
+/// limit, with "Mark reviewed" in each row's menu.
+pub(crate) fn review_grid(lang: &Lang) -> Grid {
+    let t = |key: &str| text(lang, key);
+    Grid::new("sales-loyalty-review")
+        .title(&t("loyalty.review.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::related(
+                "code",
+                &t("loyalty.code"),
+                "wl_sales_loyalty_accounts",
+                "account_id",
+                "code",
+            )
+            .frozen()
+            .mobile()
+            .searchable(),
+        )
+        .column(Column::custom("party", &t("loyalty.member")).mobile())
+        .column(Column::date("on_date", &t("loyalty.review.day")).mobile())
+        .column(Column::number("sales_count", &t("loyalty.review.sales")).mobile())
+        .sort_by("-on_date")
+        .row_action(
+            Action::new(&t("loyalty.review.resolve"), "/loyalty/review/{id}/resolve")
+                .confirm(&t("loyalty.review.resolve")),
+        )
+        .cards_on_mobile()
+        .empty_state(
+            &t("loyalty.review.empty"),
+            Some(&t("loyalty.review.empty_hint")),
+        )
 }
 
 /// What the review page needs.
@@ -389,35 +471,34 @@ pub struct ReviewRow {
 #[view(template = "wl-sales/loyalty_review.html")]
 pub(crate) struct ReviewPage {
     tx: Texts,
-    reviews: Vec<ReviewRow>,
+    reviews: GridPage<LoyaltyReview>,
 }
 
 /// `GET /loyalty/review`: the accounts that earned on more sales in a day
 /// than the limit and that no manager has reviewed (`SAL.ACL.08`).
-async fn review(State(state): State<AppState>, lang: Lang) -> Result<View> {
+async fn review(
+    State(state): State<AppState>,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     let db = state.db.clone();
-    let open = LoyaltyReview::query()
-        .where_(LoyaltyReview::RESOLVED_AT.is_null())
-        .order_by_desc(LoyaltyReview::ID)
-        .get(&db)
-        .await?;
-    let mut reviews = Vec::new();
-    for item in open {
-        let Some(account) = LoyaltyAccount::find(&db, item.account_id).await? else {
-            continue;
+    let query = LoyaltyReview::query().where_(LoyaltyReview::RESOLVED_AT.is_null());
+    let page = review_grid(&lang).page(query, &request).await?;
+    let mut parties = Vec::new();
+    for item in page.items() {
+        let name = match LoyaltyAccount::find(&db, item.account_id).await? {
+            Some(account) => super::party_name(&state, &lang, account.party_id).await,
+            None => String::new(),
         };
-        reviews.push(ReviewRow {
-            id: item.id,
-            code: account.code.clone(),
-            party: super::party_name(&state, &lang, account.party_id).await,
-            on_date: item.on_date.to_string(),
-            sales_count: item.sales_count,
-        });
+        parties.push(json!({ "party": name }));
     }
+    let mut parties = parties.into_iter();
+    let reviews = page.extend(|_| parties.next().unwrap_or_default());
     Ok(View::typed(ReviewPage {
         tx: texts::all(&lang),
         reviews,
-    }))
+    })
+    .into_response())
 }
 
 /// `POST /loyalty/review/{id}/resolve`: a manager reviewed the account.

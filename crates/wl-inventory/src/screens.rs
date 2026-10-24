@@ -15,12 +15,13 @@
 use std::collections::BTreeMap;
 
 use renox::chrono::NaiveDate;
+use renox::grid::{Column, Grid};
 use renox::prelude::*;
 use serde::Serialize;
 use wl_kernel::PartyId;
 
 use crate::item::Item;
-use crate::item_supplier::LastPrice;
+use crate::item_supplier::{LastPrice, PreferredSupplierRequest, RequestStatus};
 use crate::location::Location;
 use crate::preferred_change::{RequestView, SideView};
 use crate::reorder::{ReorderSuggestion, SuggestionStatus};
@@ -507,26 +508,63 @@ pub(crate) async fn score(
     .into_response()
 }
 
-/// A pending request in the list.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct RequestRow {
-    id: i64,
-    url: String,
-    item: String,
-    item_url: String,
-    kind: String,
-    from: String,
-    to: String,
-    status: String,
-    status_kind: &'static str,
-}
-
 /// What the list needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-inventory/preferred_requests.html")]
 pub(crate) struct RequestsPage {
     tx: Texts,
-    rows: Vec<RequestRow>,
+    rows: renox::grid::GridPage<PreferredSupplierRequest>,
+}
+
+/// The requests grid: search on the item, filters by the change asked for.
+/// The item links to its suppliers (`custom`); the suppliers are the names of
+/// the parties.
+pub(crate) fn requests_grid(lang: &Lang) -> Grid {
+    let text = |key: &str| t(lang, &format!("wl_inventory.screen.{key}"));
+    Grid::new("inventory-preferred-requests")
+        .title(&text("requests.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::number("id", &text("requests.number"))
+                .frozen()
+                .mobile()
+                .link("/preferred-requests/{id}"),
+        )
+        .column(Column::custom("item", &text("item")).mobile())
+        .column(
+            Column::related(
+                "item_name",
+                &text("item"),
+                "wl_inventory_items",
+                "item_id",
+                "name_en",
+            )
+            .hidden()
+            .searchable(),
+        )
+        .column(Column::select(
+            "kind",
+            &text("requests.kind"),
+            ["replace", "deactivate"]
+                .map(|kind| (kind.to_owned(), word(lang, "request_kind", kind))),
+        ))
+        .column(Column::custom("from", &text("requests.from")))
+        .column(Column::custom("to", &text("requests.to")).mobile())
+        .column(
+            Column::select(
+                "status",
+                &text("requests.status"),
+                ["pending"].map(|status| (status.to_owned(), word(lang, "state", status))),
+            )
+            .badges(&[("pending", "warning")])
+            .mobile(),
+        )
+        .sort_by("id")
+        .row_url("/preferred-requests/{id}")
+        .cards_on_mobile()
+        .empty_state(&text("requests.empty"), Some(&text("requests.empty_text")))
 }
 
 /// The text of a request's status.
@@ -548,36 +586,44 @@ async fn item_label(state: &AppState, id: i64) -> Result<String> {
     ))
 }
 
-/// A supplier of a request, or "no supplier".
-async fn side_name(state: &AppState, lang: &Lang, side: Option<&SideView>) -> String {
-    match side {
-        Some(side) => party_name(state, lang, side.supplier_party_id).await,
-        None => t(lang, "wl_inventory.screen.request.none"),
-    }
-}
-
-/// The list of pending requests.
+/// The list of pending requests, a page of the grid.
 pub(crate) async fn requests(
     state: &AppState,
     lang: &Lang,
-    views: &[RequestView],
+    request: renox::grid::GridRequest,
 ) -> Result<Response> {
-    let mut rows = Vec::with_capacity(views.len());
-    for view in views {
-        let (status, status_kind) = request_status(lang, view.status);
-        rows.push(RequestRow {
-            id: view.id,
-            url: request_url(view.id),
-            item: item_label(state, view.item_id).await?,
-            item_url: item_url(view.item_id),
-            kind: word(lang, "request_kind", &view.kind),
-            from: side_name(state, lang, view.from.as_ref()).await,
-            to: side_name(state, lang, view.to.as_ref()).await,
-            status,
-            status_kind,
-        });
+    let grid = requests_grid(lang);
+    let query = PreferredSupplierRequest::query()
+        .where_(PreferredSupplierRequest::STATUS.eq(RequestStatus::Pending));
+    let page = grid.page(query, &request).await?;
+    let nobody = t(lang, "wl_inventory.screen.request.none");
+    let mut names = std::collections::HashMap::new();
+    for found in page.items() {
+        let supplier = |id: Option<i64>| {
+            let nobody = nobody.clone();
+            async move {
+                match id.filter(|id| *id != 0) {
+                    Some(id) => party_name(state, lang, id).await,
+                    None => nobody,
+                }
+            }
+        };
+        names.insert(
+            found.id,
+            renox::serde_json::json!({
+                "item_label": item_label(state, found.item_id).await?,
+                "item_url": item_url(found.item_id),
+                "from": supplier(Some(found.from_supplier_party_id)).await,
+                "to": supplier(found.to_supplier_party_id).await,
+            }),
+        );
     }
-    Ok(View::typed(RequestsPage { tx: tx(lang), rows }).into_response())
+    let page = page.extend(|found| names.get(&found.id).cloned().unwrap_or_default());
+    Ok(View::typed(RequestsPage {
+        tx: tx(lang),
+        rows: page,
+    })
+    .into_response())
 }
 
 /// One side of a request.

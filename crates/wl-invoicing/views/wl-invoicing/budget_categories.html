@@ -1,23 +1,13 @@
-{#- wl-invoicing: the budget categories: code, name, kind, parent, the role
-    told by FIN.RUL.24 and the mapping keys each collects. Replace it with
+{#- wl-invoicing: the budget categories, a renox::grid (search on the code and
+    name, filters by kind) that fills the screen: code, name, kind, parent, the
+    role told by FIN.RUL.24 and the mapping keys each collects. Replace it with
     resources/views/wl-invoicing/budget_categories.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['budget.category.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['budget.category.title']" :back="route('wl_invoicing.budgets')" :back-label="tx['budget.title']">
-      <rx-link-button rx-if="can_manage" :href="route('wl_invoicing.budget_category_new')" :label="tx['budget.category.new_title']" icon="plus"/>
-    </rx-page-header>
-    <rx-table :rows="rows" as="row" :key="row.id" card>
-      <rx-column :label="tx['budget.category.code']">{{ row.code }}</rx-column>
-      <rx-column :label="tx['budget.fields.name']">{{ row.name }}</rx-column>
-      <rx-column :label="tx['budget.category.kind']">{{ row.kind }}</rx-column>
-      <rx-column :label="tx['budget.category.parent']" hide-narrow>{{ row.parent }}</rx-column>
-      <rx-column :label="tx['budget.category.owner_role']" hide-narrow>{{ row.owner_role }}</rx-column>
-      <rx-column :label="tx['budget.category.keys']" hide-narrow>{{ row.keys }}</rx-column>
-      <rx-column :label="tx['budget.category.active']"><rx-badge rx-if="row.active" kind="success" :text="tx['budget.category.on']"/><rx-badge rx-if="not row.active" kind="info" :text="tx['budget.category.off']"/></rx-column>
-      <rx-column label="">
-        <a rx-if="can_manage" href="{{ route('wl_invoicing.budget_category_edit', row.id) }}">{{ tx['budget.category.edit'] }}</a>
-      </rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['budget.category.empty']" icon="list"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['budget.category.title']" :back="route('wl_invoicing.budgets')" :back-label="tx['budget.title']">
+    <rx-link-button rx-if="can_manage" :href="route('wl_invoicing.budget_category_new')" :label="tx['budget.category.new_title']" icon="plus"/>
+  </rx-page-header>
+  <rx-grid :page="rows">
+    <template rx-if="column.key == 'keys'">{{ row.keys }}</template>
+    <a rx-elif="column.key == 'actions'" href="{{ route('wl_invoicing.budget_category_edit', row.id) }}">{{ tx['budget.category.edit'] }}</a>
+  </rx-grid>
 </rx-page>

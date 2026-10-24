@@ -11,7 +11,7 @@ The generic parts are Renox issues: R26 OAuth 2.1 authorization server
 ([renox#84](https://github.com/renox-rs/renox/issues/84)). This epic holds the business parts.
 
 Not from a review: the **Review items** line names the decision point instead. On GitHub: epic
-[#540](https://github.com/renox-rs/white-label/issues/540), issues #541–#550
+[#540](https://github.com/renox-rs/white-label/issues/540), issues #541–#550 and #552–#554
 ([github-issues.md](../github-issues.md)).
 
 | ID | Title | Priority | Size | Milestone | Depends on |
@@ -26,13 +26,20 @@ Not from a review: the **Review items** line names the decision point instead. O
 | BL-AGT-08 | Agent actions: chosen transitions and drafts with preview and confirm | high | m | Later | BL-AGT-07; renox#84 |
 | BL-AGT-09 | Agent inbox: what needs the user's attention | medium | s | Later | BL-AGT-07 |
 | BL-AGT-10 | Send a message from a template through the agent | medium | s | Later | BL-AGT-08 |
+| BL-AGT-11 | Register the shared modules built in F2–F10 for search and related records | high | m | Launch 02 | BL-AGT-01, BL-AGT-03 |
+| BL-AGT-12 | Verticals 02–05: register their records for search and related records | high | m | Launch 02 | BL-AGT-11 |
+| BL-AGT-13 | Verticals 06–10: register their records for search and related records | high | m | Launch 06 | BL-AGT-11 |
+
+BL-AGT-11 to -13 were added on 2026-10-24, after F1–F10 were merged: the vertical phases that
+BL-AGT-04 left the other verticals to are already built, so their registrations need issues of
+their own.
 
 ---
 
 ### BL-AGT-01 — wl-kernel: register searchable record types and keep one search index
 
 **Labels:** `module:wl-kernel` `area:ai-agents` `priority:high` `size:m` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** Base: wl-kernel `Subject`; Renox full-text search and Arabic normalisation (R22) · **Blocks:** BL-AGT-02, BL-AGT-04, BL-AGT-06
+**Depends on:** Base: wl-kernel `Subject`; Renox full-text search and Arabic normalisation (R22) · **Blocks:** BL-AGT-02, BL-AGT-04, BL-AGT-06, BL-AGT-11
 **Review items:** Decision 0006 points 1 and "How search works" 1–2; `PLT.SRC.01`
 
 #### Goal
@@ -96,7 +103,7 @@ tool.
 - [ ] The capability map and the vertical documents list `PLT.REL.01` and `PLT.AGT.01`–`03`, and the summary counts match.
 
 #### Out of scope
-The search page (BL-AGT-02); registering each module (BL-AGT-04); portal search (BL-AGT-05).
+The search page (BL-AGT-02); registering each module (BL-AGT-04, BL-AGT-11 to BL-AGT-13); portal search (BL-AGT-05).
 
 ---
 
@@ -164,7 +171,7 @@ Related records on the record page (BL-AGT-03); portal (BL-AGT-05).
 ### BL-AGT-03 — wl-kernel: related records of any record, in a panel
 
 **Labels:** `module:wl-kernel` `area:ai-agents` `priority:high` `size:m` `surface:back-office` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** Base: wl-kernel `Subject` · **Blocks:** BL-AGT-04, BL-AGT-07
+**Depends on:** Base: wl-kernel `Subject` · **Blocks:** BL-AGT-04, BL-AGT-07, BL-AGT-11
 **Review items:** Decision 0006 "How search works" 3; `PLT.REL.01`
 
 #### Goal
@@ -213,7 +220,7 @@ everything about invoice X" without the user knowing which module holds what. Th
 - [ ] `related(...)` returns the same groups as the panel (test).
 
 #### Out of scope
-Registering each module's relations (BL-AGT-04).
+Registering each module's relations (BL-AGT-04, BL-AGT-11 to BL-AGT-13).
 
 ---
 
@@ -226,7 +233,7 @@ Registering each module's relations (BL-AGT-04).
 #### Goal
 The records of the F1 modules and of 01 Property become findable and show their related records:
 parties, invoices and credit notes, payments, cheques, deposits and refunds, tickets, documents,
-units, buildings and leases. Later verticals follow this issue as the pattern.
+units, buildings and leases. BL-AGT-11 to BL-AGT-13 follow this issue as the pattern.
 
 #### Surfaces
 - **System:** registrations in each module's `register()`; seeds rebuild the index.
@@ -263,7 +270,7 @@ None.
 - [ ] Every registered type has a test that its document and its relations are produced.
 
 #### Out of scope
-Verticals 02–10 (each vertical's phase registers its own entities).
+The modules built in F2–F10 (BL-AGT-11) and verticals 02–10 (BL-AGT-12, BL-AGT-13).
 
 ---
 
@@ -466,7 +473,7 @@ and approvals as the screen.
 - [ ] History shows "via Claude".
 
 #### Out of scope
-Messages (BL-AGT-10); actions for verticals 02–10 (each phase adds its own).
+Messages (BL-AGT-10); actions for verticals 02–10 (follow-up issues per vertical once this one has proven the pattern on Property).
 
 ---
 
@@ -549,3 +556,159 @@ template's own rules apply (consent, quiet hours, opt-out). No free-text body in
 
 #### Out of scope
 Marketing broadcasts (BL-NTF-07).
+
+---
+
+### BL-AGT-11 — shared modules of F2–F10: register for search and related records
+
+**Labels:** `module:wl-kernel` `area:ai-agents` `priority:high` `size:m` `surface:system` · **Milestone:** Launch 02 · **Size:** m
+**Depends on:** BL-AGT-01, BL-AGT-03 · **Blocks:** BL-AGT-12, BL-AGT-13
+**Review items:** Decision 0006 "Order" 1; `PLT.SRC.01`, `PLT.REL.01` are MVP in all ten verticals
+
+#### Goal
+The shared modules that F2–F10 built (`wl-attendance`, `wl-inventory`, `wl-delivery`,
+`wl-scheduling`, `wl-hr`, `wl-sales`) register their main records, so a search for a purchase
+order, a lot, a delivery, a booking, an employee or a sales order works in every vertical that
+uses them, and their records show in each other's *Related* panel.
+
+#### Surfaces
+- **System:** registrations in each module's `register()`; the demo seeds of the ten clients
+  end with a full index.
+
+#### Files to read
+- BL-AGT-01, BL-AGT-03, BL-AGT-04 (the pattern)
+- `docs/modules/wl-attendance.md`, `wl-inventory.md`, `wl-delivery.md`, `wl-scheduling.md`,
+  `wl-hr.md`, `wl-sales.md` §3 (entities); `crates/<module>/src/lib.rs` `register()`
+
+#### Terms
+- **Main record:** a record with its own number or name that people look for; lines, balances
+  and movements are reached through *Related*, not indexed on their own.
+
+#### Spec excerpt (authoritative for this issue)
+| Module | Searchable types | Identifiers | Relations (examples) |
+|---|---|---|---|
+| `wl-inventory` | item, purchase order, goods receipt, lot, dispatch, asset | SKU, barcode, PO / GRN / dispatch number, lot number, serial number | PO → receipts → supplier bills; lot → movements, holds, recalls; item → suppliers |
+| `wl-sales` | lead, sales order, counter sale, sales return, package | order / sale / return number | order → invoice, delivery, dispatch, returns, customer |
+| `wl-delivery` | delivery, run | delivery and run number, tracking number | delivery → order, attempts, proof of delivery, COD |
+| `wl-scheduling` | booking, resource | booking number | booking → party, resource, invoice |
+| `wl-hr` | employee, leave request, payroll run, final settlement | employee number; Emirates ID, passport and labour card (hashed) | employee → visa case, leave, timesheets, payroll lines, documents |
+| `wl-attendance` | timesheet, work location | timesheet number | timesheet → employee or crew, client, invoice |
+
+- Salary, bank and payroll amounts are `financial`: never in the full-text columns
+  (BL-AGT-01).
+
+#### Edge cases decided
+- A module not enabled in a client (`client.toml`) registers nothing there.
+- A serial number shared by two items of different suppliers: both match.
+
+#### Must not
+- Must not index stock movements, attendance records or payroll lines one by one.
+
+#### Done when
+- [ ] Given the F7 demo client, a lot number finds the lot, and *Related* shows its holds and the dispatches that shipped it.
+- [ ] Given the F9 demo client, an employee number finds the employee; a search for a passport number in clear text finds them only on the exact value, and the result shows it masked.
+- [ ] Given the F3 demo client, a tracking number finds the delivery and its run.
+- [ ] Every registered type has a test that its document and relations are produced.
+
+#### Out of scope
+Each vertical's own records (BL-AGT-12, BL-AGT-13).
+
+---
+
+### BL-AGT-12 — verticals 02–05: register their records for search and related records
+
+**Labels:** `vertical:02-construction` `vertical:03-logistics` `vertical:04-accounting` `vertical:05-clinics` `area:ai-agents` `priority:high` `size:m` `surface:system` · **Milestone:** Launch 02 · **Size:** m
+**Depends on:** BL-AGT-11 · **Blocks:** None
+**Review items:** Decision 0006 "Order" 1
+
+#### Goal
+The records each of these verticals adds become findable by their number or name, with their
+related records: a QS finds an IPA by number, a dispatcher a shipment by its AWB, a partner an
+engagement by the client's name, a receptionist an appointment by the patient's file number.
+
+#### Surfaces
+- **System:** registrations in `apps/construction`, `apps/logistics`, `apps/accounting`,
+  `apps/clinics`.
+
+#### Files to read
+- BL-AGT-04 (the pattern); `docs/verticals/02-construction.md` … `05-clinics.md` §4;
+  `apps/<vertical>/src/lib.rs`
+
+#### Terms
+- **IPA:** interim payment application. **AWB:** air waybill. **CDD:** customer due diligence.
+
+#### Spec excerpt (authoritative for this issue)
+| Vertical | Searchable types | Identifiers |
+|---|---|---|
+| 02 Construction | project, IPA, variation, guarantee, retention | project code, IPA and variation number, guarantee number |
+| 03 Logistics | shipment, freight job, remittance, claim | shipment and job number, AWB / B/L / container number, COD remittance number |
+| 04 Accounting | engagement, tax return, CDD file, AML case | engagement number, client TRN, return period and reference |
+| 05 Clinics | patient (name and file number only), appointment (visit), insurance claim, authorisation | patient file number, claim and authorisation number, Emirates ID (hashed) |
+
+- Clinics: diagnoses, clinical notes, results and anything of class `health` are never
+  indexed; a patient's result shows the name, file number and the next appointment only. Agent
+  access for 05 stays locked (BL-AGT-06).
+
+#### Edge cases decided
+- A container number used on several freight jobs over time: all match, the latest first.
+
+#### Must not
+- Must not put any `health` field in a search document.
+
+#### Done when
+- [ ] For each of 02–05, a test finds a seeded record by each identifier listed above and shows its related records.
+- [ ] Given the clinics demo, a search for a diagnosis word written in a visit note finds nothing.
+
+#### Out of scope
+Verticals 06–10 (BL-AGT-13); agent actions.
+
+---
+
+### BL-AGT-13 — verticals 06–10: register their records for search and related records
+
+**Labels:** `vertical:06-fnb` `vertical:07-manufacturing` `vertical:08-auto` `vertical:09-manpower` `vertical:10-edtech` `area:ai-agents` `priority:high` `size:m` `surface:system` · **Milestone:** Launch 06 · **Size:** m
+**Depends on:** BL-AGT-11 · **Blocks:** None
+**Review items:** Decision 0006 "Order" 1
+
+#### Goal
+The records each of these verticals adds become findable by their number or name, with their
+related records: an outlet manager finds an aggregator order by its platform number, a planner a
+work order, a service advisor a job card by the car's plate, an account manager a deployment, a
+counsellor a student's enrolment.
+
+#### Surfaces
+- **System:** registrations in `apps/fnb`, `apps/manufacturing`, `apps/auto`, `apps/manpower`,
+  `apps/edtech`.
+
+#### Files to read
+- BL-AGT-04 (the pattern); `docs/verticals/06-fnb.md` … `10-edtech.md` §4;
+  `apps/<vertical>/src/lib.rs`
+
+#### Terms
+- **NCR:** non-conformance report. **Job card:** a workshop's work order for one vehicle.
+
+#### Spec excerpt (authoritative for this issue)
+| Vertical | Searchable types | Identifiers |
+|---|---|---|
+| 06 F&B | order (own and aggregator), production batch, aggregator payout | order number, aggregator order number, batch number |
+| 07 Manufacturing | work order, NCR, return inspection | work order and NCR number, customer PO number |
+| 08 Auto | job card, insurance claim, supplier warranty claim, fleet contract | job card number, plate number, VIN, claim number |
+| 09 Manpower | client request, deployment, client contract, site | deployment and request number, contract number |
+| 10 EdTech | course, batch, enrolment, certificate | enrolment number, certificate number |
+
+- Plate numbers are normalised like other identifiers (`DXB A 12345` = `dxb-a-12345`).
+- A certificate number search also serves the public verification page only through its own
+  route, never through this index.
+
+#### Edge cases decided
+- A plate moved to another car: the job cards of both cars match, the latest first.
+
+#### Must not
+- Must not index a student's or worker's identity numbers in clear text.
+
+#### Done when
+- [ ] For each of 06–10, a test finds a seeded record by each identifier listed above and shows its related records.
+- [ ] Given the auto demo, a plate typed with spaces, dashes or in lower case finds the same job cards.
+
+#### Out of scope
+Verticals 02–05 (BL-AGT-12); agent actions.

@@ -18,6 +18,7 @@
 
 use renox::auth::permissions::Scope;
 use renox::chrono::Weekday;
+use renox::grid::GridRequest;
 use renox::nav::NavLink;
 use renox::prelude::*;
 use serde::Serialize;
@@ -611,7 +612,7 @@ impl Module for NegativeFlow {
     }
 }
 
-async fn show(State(state): State<AppState>) -> Result<Response> {
+async fn show(State(state): State<AppState>, request: GridRequest) -> Result<Response> {
     let settings = state.provided::<NegativeFlow>().ok_or(Error::NotFound)?;
     // The 03 client has its own table (BL-LOG-26): the rows of the Property
     // client name Property's tickets, leases and cheques.
@@ -626,7 +627,21 @@ async fn show(State(state): State<AppState>) -> Result<Response> {
     } else {
         rows(&settings.client_app, &settings.entities)
     };
-    Ok(view("settings/negative_flow.html", context! { rows }).into_response())
+    let (rows, groups, q, group) = super::compliance_settings::narrow(
+        rows,
+        &request,
+        |row| &row.group,
+        |row| {
+            [&row.number, &row.setting, &row.value, &row.source]
+                .map(String::as_str)
+                .join(" ")
+        },
+    );
+    Ok(view(
+        "settings/negative_flow.html",
+        context! { rows, groups, q, group },
+    )
+    .into_response())
 }
 
 #[cfg(test)]

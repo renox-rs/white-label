@@ -304,7 +304,7 @@ async fn a_released_order_reserves_its_stock_and_cancelling_it_gives_it_back() {
         .await;
     page.assert_ok();
     page.assert_see("Reserved for orders");
-    page.assert_see("10 pcs");
+    page.assert_see("10.000 pcs");
 
     // The cancel flow of the order gives the stock back.
     app.acting_as(&sales);

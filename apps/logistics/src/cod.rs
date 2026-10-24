@@ -29,6 +29,7 @@
 use std::collections::BTreeMap;
 
 use renox::db::{DateTime, Transaction};
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::delivery::{CodAbsorber, CodDecision, CodDifferenceRule, DeliveryFuture};
@@ -314,22 +315,101 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
+/// The COD differences grid: the shipments with a difference, searchable on
+/// the number, client, reason and instruction, with sums of the money.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let text = |key: &str| crate::pages::text(lang, key);
+    let grid = Grid::new("logistics-cod-differences")
+        .title(&text("cod_title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &text("number"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable()
+                .link("/shipments/{id}"),
+        )
+        .column(
+            Column::related(
+                "client",
+                &text("client"),
+                "wl_parties_parties",
+                "client_party_id",
+                "display_name",
+            )
+            .searchable(),
+        )
+        .column(
+            Column::money("cod_amount", &wl_kernel::money_label(&text("cod")))
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money(
+                "cod_collected",
+                &wl_kernel::money_label(&text("cod_collected")),
+            )
+            .summary(Summary::Sum),
+        )
+        .column(
+            Column::money(
+                "cod_difference",
+                &wl_kernel::money_label(&text("cod_difference")),
+            )
+            .mobile()
+            .summary(Summary::Sum),
+        )
+        .column(Column::text("cod_absorbed_by", &text("cod_absorbed_by")).mobile())
+        .column(
+            Column::text("cod_difference_reason", &text("reason"))
+                .searchable()
+                .hidden(),
+        )
+        .column(
+            Column::text("cod_instruction", &text("cod_instruction"))
+                .searchable()
+                .hidden(),
+        )
+        .sort_by("number")
+        .row_url("/shipments/{id}")
+        .cards_on_mobile()
+        .empty_state(&text("cod_empty"), Some(&text("cod_empty_text")));
+    if can_export { grid.exports() } else { grid }
+}
+
 /// What the report needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "logistics/cod_differences.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
     totals: Vec<ByAbsorber>,
-    rows: Vec<DifferenceRow>,
+    rows: GridPage<Shipment>,
     losses: i64,
 }
 
 /// `GET /cod-differences`: the report (`remittances.view`).
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<Response> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if !user.has_permission(permissions::REMITTANCES_VIEW) {
         return Err(Error::Forbidden);
     }
-    let (totals, rows) = report(&state.db).await?;
+    let can_export = user.has_permission(permissions::REMITTANCES_PREPARE);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    let grid = grid(&lang, can_export);
+    let query = Shipment::query().where_(Shipment::COD_DIFFERENCE.gt(0));
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let rows = grid.page(query, &request).await?;
+    let (totals, _) = report(&state.db).await?;
     Ok(View::typed(IndexPage {
         tx: tx(&lang),
         totals,

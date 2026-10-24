@@ -15,7 +15,11 @@
 //! and the first day name the contract and stay (a different one is a new
 //! contract). Each change is audited with the terms before it.
 
+use std::collections::BTreeMap;
+
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::{subject_label, today};
 use wl_kernel::{PartyId, Subject};
@@ -49,31 +53,15 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
-/// One contract of the list.
+/// What the edit sheet of one contract starts with.
 #[derive(Serialize, Debug, Clone)]
-pub struct ContractRow {
+pub struct ContractSheet {
     /// The primary key.
     pub id: i64,
     /// The payer's name.
     pub payer: String,
     /// The plan, or a dash for every plan.
     pub plan: String,
-    /// The payer agreement, or a dash.
-    pub agreement: String,
-    /// The copay as a percentage.
-    pub copay: String,
-    /// The deductible of a visit.
-    pub deductible: String,
-    /// The first day.
-    pub valid_from: String,
-    /// The last day, or a dash.
-    pub valid_to: String,
-    /// The tariff: `laser AED 450.00, peel excluded`.
-    pub tariffs: String,
-    /// The windows: `30 days to send, 30 to resubmit (2 times)`.
-    pub windows: String,
-    /// Whether the patient may be billed for a share not submitted in time.
-    pub missed_billing: String,
     /// The agreement's id, for the edit form's picker.
     pub agreement_id: String,
     /// The copay as the edit form shows it (`20`, `12.5`).
@@ -99,7 +87,8 @@ pub struct ContractRow {
 #[view(template = "clinics/contracts.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    contracts: Vec<ContractRow>,
+    contracts: GridPage<PayerContract>,
+    sheets: Vec<ContractSheet>,
     contract_options: Vec<[String; 2]>,
     contract_selected: String,
     covered_options: Vec<[String; 2]>,
@@ -108,6 +97,56 @@ pub(crate) struct IndexPage {
     today: String,
     can_manage: bool,
     can_set_missed_billing: bool,
+}
+
+/// The contracts grid: search on the plan, filters on the dates, the
+/// deductible and whether the patient may be billed for a missed window. The
+/// payer, agreement, copay, windows and tariffs are drawn by the template
+/// (`custom`), and so is the edit button of each row.
+pub(crate) fn grid(lang: &Lang, can_export: bool, can_edit: bool) -> Grid {
+    let mut grid = Grid::new("clinics-contracts")
+        .title(&text(lang, "contract.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::custom("payer", &text(lang, "policies.payer"))
+                .frozen()
+                .mobile(),
+        )
+        .column(
+            Column::text("plan", &text(lang, "contract.plan"))
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::custom(
+            "agreement",
+            &text(lang, "contract.agreement"),
+        ))
+        .column(Column::custom("copay", &text(lang, "contract.copay")).mobile())
+        .column(Column::money(
+            "deductible",
+            &wl_kernel::money_label(&text(lang, "contract.deductible")),
+        ))
+        .column(Column::date("valid_from", &text(lang, "contract.valid_from")).hidden())
+        .column(Column::date("valid_to", &text(lang, "contract.valid_to")).mobile())
+        .column(Column::custom("windows", &text(lang, "contract.windows")).hidden())
+        .column(
+            Column::bool(
+                "bill_missed_to_patient",
+                &text(lang, "contract.missed_billing"),
+            )
+            .hidden(),
+        )
+        .column(Column::custom("tariffs", &text(lang, "contract.tariffs")).hidden());
+    if can_edit {
+        grid = grid.column(Column::custom("edit", &text(lang, "contract.edit")).frozen_right());
+    }
+    let grid = grid.sort_by("-id").cards_on_mobile().empty_state(
+        &text(lang, "contract.empty"),
+        Some(&text(lang, "contract.subtitle")),
+    );
+    if can_export { grid.exports() } else { grid }
 }
 
 /// A copay in basis points as a percentage: `20%`, `12.5%`.
@@ -133,70 +172,100 @@ fn parse_percent(text: &str) -> Option<i64> {
     (0..=10_000).contains(&basis_points).then_some(basis_points)
 }
 
-/// `GET /clinics/contracts`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+/// The tariff of a contract as the list reads it:
+/// `laser AED 450.00, peel excluded`.
+fn tariffs_text(
+    lang: &Lang,
+    names: &std::collections::BTreeMap<String, String>,
+    tariffs: &[PayerTariff],
+) -> String {
+    let shown = tariffs
+        .iter()
+        .map(|t| {
+            let what = service_names::name_of(names, &t.service_code);
+            if !t.covered {
+                format!("{what} {}", text(lang, "contract.covered_no"))
+            } else {
+                match t.price {
+                    Some(price) => format!("{what} {}", money_text(price)),
+                    None => what,
+                }
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    if shown.is_empty() {
+        text(lang, "none")
+    } else {
+        shown
+    }
+}
+
+/// `GET /clinics/contracts` (`?export=` needs `insurance.manage`).
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     require(&user, permissions::POLICIES_VIEW)?;
-    let all = PayerContract::query()
-        .order_by_desc(PayerContract::ID)
-        .get(&state.db)
-        .await?;
+    let can_manage = user.has_permission(permissions::AUTHORISATIONS_MANAGE);
+    let grid = grid(&lang, can_manage, can_manage);
+    if request.param("export").is_some() && !can_manage {
+        return Err(Error::Forbidden);
+    }
+    let query = PayerContract::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
     let dash = text(&lang, "none");
     let service_names = service_names::names(&state, &lang.locale).await?;
-    let mut rows = Vec::with_capacity(all.len());
-    let mut contract_options = Vec::with_capacity(all.len());
-    for c in &all {
-        let payer = party_name(&state, &lang, c.payer()).await;
-        let tariffs = PayerTariff::of_contract(&state.db, c.id)
+    // The payer, agreement and tariff of the contracts on this page.
+    let mut payers = BTreeMap::new();
+    let mut agreements = BTreeMap::new();
+    let mut tariffs = BTreeMap::new();
+    for c in page.items() {
+        payers.insert(c.id, party_name(&state, &lang, c.payer()).await);
+        if let Some(id) = c.agreement_id {
+            let label = subject_label(
+                &state.db,
+                &Subject::new(wl_kernel::invoicing::PAYER_AGREEMENT_SUBJECT_TYPE, id),
+            )
             .await?
+            .unwrap_or_else(|| format!("#{id}"));
+            agreements.insert(c.id, label);
+        }
+        let found = PayerTariff::of_contract(&state.db, c.id).await?;
+        tariffs.insert(c.id, tariffs_text(&lang, &service_names, &found));
+    }
+    let sheets: Vec<ContractSheet> = if can_manage {
+        page.items()
             .iter()
-            .map(|t| {
-                let what = service_names::name_of(&service_names, &t.service_code);
-                if !t.covered {
-                    format!("{what} {}", text(&lang, "contract.covered_no"))
-                } else {
-                    match t.price {
-                        Some(price) => format!("{what} {}", money_text(price)),
-                        None => what,
-                    }
-                }
+            .map(|c| ContractSheet {
+                id: c.id,
+                payer: payers.get(&c.id).cloned().unwrap_or_default(),
+                plan: c.plan.clone().unwrap_or_else(|| dash.clone()),
+                agreement_id: c.agreement_id.map(|id| id.to_string()).unwrap_or_default(),
+                copay_edit: percent(c.copay_bp).trim_end_matches('%').to_owned(),
+                deductible_edit: format!("{}.{:02}", c.deductible / 100, c.deductible % 100),
+                valid_to_edit: c.valid_to.map(|d| d.to_string()).unwrap_or_default(),
+                first_days: c.first_submission_days,
+                resubmission_days: c.resubmission_days,
+                resubmission_limit: c.resubmission_limit,
+                reminder_days: c.reminder_days,
+                late_edit: if c.accepts_late_claims { "yes" } else { "no" },
             })
-            .collect::<Vec<_>>()
-            .join(", ");
-        contract_options.push([
-            c.id.to_string(),
-            format!(
-                "{} — {}",
-                payer,
-                c.plan.clone().unwrap_or_else(|| dash.clone())
-            ),
-        ]);
-        rows.push(ContractRow {
-            id: c.id,
-            payer,
-            plan: c.plan.clone().unwrap_or_else(|| dash.clone()),
-            agreement: match c.agreement_id {
-                Some(id) => subject_label(
-                    &state.db,
-                    &Subject::new(wl_kernel::invoicing::PAYER_AGREEMENT_SUBJECT_TYPE, id),
-                )
-                .await?
-                .unwrap_or_else(|| format!("#{id}")),
-                None => dash.clone(),
-            },
-            agreement_id: c.agreement_id.map(|id| id.to_string()).unwrap_or_default(),
-            copay_edit: percent(c.copay_bp).trim_end_matches('%').to_owned(),
-            deductible_edit: format!("{}.{:02}", c.deductible / 100, c.deductible % 100),
-            valid_to_edit: c.valid_to.map(|d| d.to_string()).unwrap_or_default(),
-            first_days: c.first_submission_days,
-            resubmission_days: c.resubmission_days,
-            resubmission_limit: c.resubmission_limit,
-            reminder_days: c.reminder_days,
-            late_edit: if c.accepts_late_claims { "yes" } else { "no" },
-            copay: percent(c.copay_bp),
-            deductible: money_text(c.deductible),
-            valid_from: c.valid_from.to_string(),
-            valid_to: c.valid_to.map_or_else(|| dash.clone(), |d| d.to_string()),
-            windows: text_with(
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let page = page.extend(|c| {
+        json!({
+            "payer": payers.get(&c.id),
+            "agreement": agreements.get(&c.id).unwrap_or(&dash),
+            "copay": percent(c.copay_bp),
+            "windows": text_with(
                 &lang,
                 "contract.windows_text",
                 &[
@@ -206,20 +275,25 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
                     ("limit", &c.resubmission_limit),
                 ],
             ),
-            missed_billing: text(
-                &lang,
-                if c.bill_missed_to_patient {
-                    "contract.missed_billing_yes"
-                } else {
-                    "contract.missed_billing_no"
-                },
+            "tariffs": tariffs.get(&c.id),
+        })
+    });
+    // The pickers of the tariff and missed-window sheets name every contract.
+    let all = PayerContract::query()
+        .order_by_desc(PayerContract::ID)
+        .get(&state.db)
+        .await?;
+    let mut contract_options = Vec::with_capacity(all.len());
+    for c in &all {
+        let payer = party_name(&state, &lang, c.payer()).await;
+        contract_options.push([
+            c.id.to_string(),
+            format!(
+                "{} — {}",
+                payer,
+                c.plan.clone().unwrap_or_else(|| dash.clone())
             ),
-            tariffs: if tariffs.is_empty() {
-                dash.clone()
-            } else {
-                tariffs
-            },
-        });
+        ]);
     }
     let contract_selected = contract_options
         .first()
@@ -227,7 +301,8 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .unwrap_or_default();
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        contracts: rows,
+        contracts: page,
+        sheets,
         contract_options,
         contract_selected,
         covered_options: vec![
@@ -243,9 +318,10 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             ["yes".to_owned(), text(&lang, "contract.missed_billing_yes")],
         ],
         today: today().to_string(),
-        can_manage: user.has_permission(permissions::AUTHORISATIONS_MANAGE),
+        can_manage,
         can_set_missed_billing: user.has_permission(permissions::MISSED_WINDOW_BILLING),
-    }))
+    })
+    .into_response())
 }
 
 /// The form that records a contract.

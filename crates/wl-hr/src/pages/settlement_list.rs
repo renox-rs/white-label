@@ -10,16 +10,15 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use serde::Serialize;
 use wl_kernel::documents::today;
 
 use crate::config::config_of;
 use crate::employee::Employee;
-use crate::pages::payroll::{aed_text, date_text};
-use crate::pages::settlements::{kind, reason_text};
+use crate::pages::payroll::date_text;
 use crate::settlement::{FinalSettlement, SettlementStatus};
-use crate::settlement_payment::paid_total;
 use crate::{permissions, texts};
 
 type Texts = BTreeMap<&'static str, String>;
@@ -32,45 +31,129 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
-/// One settlement of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct SettlementRow {
-    /// The primary key.
-    pub id: i64,
-    /// Its page.
-    pub url: String,
-    /// The employee's name.
-    pub employee: String,
-    /// The reason in words.
-    pub reason: String,
-    /// The status in words.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
-    /// The dues.
-    pub dues: String,
-    /// The recoveries.
-    pub recoveries: String,
-    /// The net.
-    pub net: String,
-    /// What was paid.
-    pub paid: String,
-    /// The legal deadline, or empty without a last working day.
-    pub deadline: String,
-    /// Whether the deadline has passed and the settlement is not paid.
-    pub overdue: bool,
-}
-
 /// The list page.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-hr/settlements.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    settlements: Vec<SettlementRow>,
+    settlements: GridPage<FinalSettlement>,
 }
 
-/// `GET /hr/settlements`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+/// The settlements grid: filters by status, the dues, recoveries, net and
+/// paid in AED with their sums. The employee's name and the legal deadline
+/// (a badge when overdue) are drawn by the template (`custom`).
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| texts::t(lang, &format!("wl_hr.{key}"));
+    let statuses: Vec<(String, String)> = [
+        SettlementStatus::Draft,
+        SettlementStatus::Approved,
+        SettlementStatus::Disputed,
+        SettlementStatus::Paid,
+        SettlementStatus::Closed,
+        SettlementStatus::Cancelled,
+    ]
+    .iter()
+    .map(|status| {
+        (
+            status.as_str().to_owned(),
+            t(&format!("settlement.status.{}", status.as_str())),
+        )
+    })
+    .collect();
+    let grid = Grid::new("hr-settlements")
+        .title(&t("settlement.list.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::related(
+                "employee_number",
+                &t("employees.number"),
+                "wl_hr_employees",
+                "employee_id",
+                "employee_number",
+            )
+            .frozen()
+            .mobile()
+            .searchable()
+            .link("/hr/settlements/{id}"),
+        )
+        .column(Column::custom("employee", &t("settlement.list.employee")).mobile())
+        // The reason in words (`end_of_contract` reads *End of contract*), as SQL
+        // so that search, sort and export see the words too.
+        .column(
+            Column::text("reason_words", &t("settlement.reason"))
+                .computed(
+                    "UPPER(SUBSTR(REPLACE({T}.\"reason\", '_', ' '), 1, 1)) \
+                     || SUBSTR(REPLACE({T}.\"reason\", '_', ' '), 2)",
+                )
+                .searchable(),
+        )
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("draft", "info"),
+                    ("approved", "success"),
+                    ("disputed", "warning"),
+                    ("paid", "success"),
+                    ("closed", "success"),
+                    ("cancelled", "info"),
+                ])
+                .mobile(),
+        )
+        .column(
+            Column::money("dues", &wl_kernel::money_label(&t("settlement.list.dues")))
+                .computed(
+                    "({T}.\"unpaid_salary\" + {T}.\"leave_encashment\" + {T}.\"gratuity\" \
+                     + {T}.\"notice_pay\" + {T}.\"other_dues\")",
+                )
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money(
+                "recoveries_total",
+                &wl_kernel::money_label(&t("settlement.list.recoveries")),
+            )
+            .computed(
+                "({T}.\"recoveries\" + {T}.\"advance_recoveries\" + {T}.\"fine_recoveries\" \
+                     + {T}.\"court_debt_recoveries\" + {T}.\"damage_recoveries\")",
+            )
+            .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("net", &wl_kernel::money_label(&t("settlement.list.net")))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("paid", &wl_kernel::money_label(&t("settlement.list.paid")))
+                .computed(
+                    "(SELECT COALESCE(SUM(\"wl_hr_settlement_payments\".\"amount\"), 0) \
+                     FROM \"wl_hr_settlement_payments\" \
+                     WHERE \"wl_hr_settlement_payments\".\"settlement_id\" = {T}.\"id\")",
+                )
+                .summary(Summary::Sum),
+        )
+        .column(Column::date("last_working_day", &t("employees.last_working_day")).hidden())
+        .column(Column::custom("deadline", &t("settlement.deadline")).mobile())
+        .sort_by("-id")
+        .row_url("/hr/settlements/{id}")
+        .cards_on_mobile()
+        .empty_state(
+            &t("settlement.list.empty"),
+            Some(&t("settlement.list.empty_hint")),
+        );
+    if can_export { grid.exports() } else { grid }
+}
+
+/// `GET /hr/settlements`: the grid, or its export (`?export=`, with
+/// `settlements.prepare` or `settlements.approve`).
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if ![
         permissions::SETTLEMENTS_PREPARE,
         permissions::SETTLEMENTS_APPROVE,
@@ -81,42 +164,41 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
     {
         return Err(Error::Forbidden);
     }
+    let can_export = user.has_permission(permissions::SETTLEMENTS_PREPARE)
+        || user.has_permission(permissions::SETTLEMENTS_APPROVE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(FinalSettlement::query(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(FinalSettlement::query(), &request).await?;
     let days = config_of(&state).settlement_deadline_days;
-    let mut rows = Vec::new();
-    for s in FinalSettlement::query()
-        .order_by_desc(FinalSettlement::ID)
-        .get(&state.db)
-        .await?
-    {
-        let employee = match Employee::find(&state.db, s.employee_id).await? {
+    let mut names: BTreeMap<i64, String> = BTreeMap::new();
+    for settlement in page.items() {
+        let name = match Employee::find(&state.db, settlement.employee_id).await? {
             Some(e) => crate::pages::employees::employee_name(&state, &lang, &e).await,
-            None => format!("#{}", s.employee_id),
+            None => format!("#{}", settlement.employee_id),
         };
+        names.insert(settlement.id, name);
+    }
+    let day = today();
+    let settlements = page.extend(|s| {
         let deadline = s.deadline(days);
         let open = matches!(
             s.status,
             SettlementStatus::Draft | SettlementStatus::Approved | SettlementStatus::Disputed
         );
-        rows.push(SettlementRow {
-            id: s.id,
-            url: format!("/hr/settlements/{}", s.id),
-            employee,
-            reason: reason_text(&s.reason),
-            status: texts::t(
-                &lang,
-                &format!("wl_hr.settlement.status.{}", s.status.as_str()),
-            ),
-            status_kind: kind(s.status),
-            dues: aed_text(s.dues()),
-            recoveries: aed_text(s.recoveries_total()),
-            net: aed_text(s.net),
-            paid: aed_text(paid_total(&state.db, s.id).await?),
-            deadline: deadline.map(date_text).unwrap_or_default(),
-            overdue: open && deadline.is_some_and(|d| d < today()),
-        });
-    }
+        renox::serde_json::json!({
+            "employee": names.get(&s.id).cloned().unwrap_or_default(),
+            "deadline": deadline.map(date_text).unwrap_or_default(),
+            "overdue": open && deadline.is_some_and(|d| d < day),
+        })
+    });
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        settlements: rows,
-    }))
+        settlements,
+    })
+    .into_response())
 }

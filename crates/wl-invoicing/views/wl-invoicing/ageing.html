@@ -1,6 +1,8 @@
 {#- wl-invoicing: the receivables ageing: per party the open balance by days
     past due, the disputed part and the total, with a legal entity filter.
-    Replace it with resources/views/wl-invoicing/ageing.html in the app. -#}
+    Replace it with resources/views/wl-invoicing/ageing.html in the app.
+    Left as cards on purpose (#525): the rows are computed in Rust per party
+    and currency, not records of a model, so the standard grid cannot draw it. -#}
 <rx-page layout="layouts/app.html" :title="tx['ageing.title']">
   <rx-stack>
     <rx-page-header :title="tx['ageing.title']" :subtitle="tx['ageing.as_of'] ~ ' ' ~ on ~ '. ' ~ tx['ageing.days_past_due'] ~ ': ' ~ legend"/>

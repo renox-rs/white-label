@@ -14,6 +14,7 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::validation::{Errors, ValidationError};
 use serde::Serialize;
@@ -92,21 +93,65 @@ pub(crate) fn parse_milli(text: &str) -> Option<i64> {
     whole.checked_mul(1000)?.checked_add(fraction)
 }
 
-/// One sale as the list shows it.
-#[derive(Serialize, Debug, Clone)]
-pub struct SaleRow {
-    /// The primary key.
-    pub id: i64,
-    /// The receipt number.
-    pub number: String,
-    /// The customer's name, if the sale names one.
-    pub customer: Option<String>,
-    /// The total, `AED 105.00`.
-    pub total: String,
-    /// The status in words.
-    pub status_label: String,
-    /// The badge colour.
-    pub status_kind: &'static str,
+/// The counter sales grid: search on the receipt and the customer, filter
+/// by status, sum of the totals.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let statuses: Vec<(String, String)> = CounterSaleStatus::ALL
+        .iter()
+        .map(|status| {
+            (
+                status.as_str().to_owned(),
+                text(lang, &format!("counter.status.{}", status.as_str())),
+            )
+        })
+        .collect();
+    let grid = Grid::new("sales-counter-sales")
+        .title(&t("counter.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &t("counter.number"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable()
+                .link("/counter-sales/{id}"),
+        )
+        .column(
+            Column::related(
+                "customer",
+                &t("counter.customer_name"),
+                "wl_parties_parties",
+                "party_id",
+                "display_name",
+            )
+            .mobile()
+            .searchable(),
+        )
+        .column(
+            Column::money("gross_total", &wl_kernel::money_label(&t("counter.total")))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("vat_total", &wl_kernel::money_label(&t("counter.vat")))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[("open", "info"), ("completed", "success")])
+                .mobile(),
+        )
+        .column(Column::datetime("completed_at", &t("counter.completed_at")).hidden())
+        .column(Column::datetime("created_at", &t("counter.created_at")).hidden())
+        .sort_by("-created_at")
+        .row_url("/counter-sales/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("counter.empty"), Some(&t("counter.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list needs.
@@ -114,35 +159,25 @@ pub struct SaleRow {
 #[view(template = "wl-sales/counter_sales.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    sales: Vec<SaleRow>,
+    sales: GridPage<CounterSale>,
 }
 
-/// `GET /counter-sales`: the latest sales, newest first.
-async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
-    let latest = CounterSale::query()
-        .order_by_desc(CounterSale::ID)
-        .get(&state.db)
-        .await?
-        .into_iter()
-        .take(50);
-    let mut sales = Vec::new();
-    for sale in latest {
-        sales.push(SaleRow {
-            id: sale.id,
-            number: sale.number.clone(),
-            customer: match sale.party_id {
-                Some(id) => Some(super::party_name(&state, &lang, id).await),
-                None => None,
-            },
-            total: money(sale.gross_total),
-            status_label: text(&lang, &format!("counter.status.{}", sale.status.as_str())),
-            status_kind: status_kind(sale.status),
-        });
+/// `GET /counter-sales`: the sales, newest first (`?export=` with `pos.review`).
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
+    let can_export = user.has_permission(permissions::POS_REVIEW);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    let query = CounterSale::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
     }
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        sales,
-    }))
+        sales: grid.page(query, &request).await?,
+    })
+    .into_response())
 }
 
 /// `POST /counter-sales`: opens a cart for the signed-in cashier.

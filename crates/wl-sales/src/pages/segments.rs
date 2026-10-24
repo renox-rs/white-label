@@ -17,7 +17,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::validation::{Errors, ValidationError};
 use serde::Serialize;
 
@@ -127,19 +129,45 @@ pub fn describe(lang: &Lang, rule: &Rule) -> String {
     }
 }
 
-/// One segment in the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct SegmentRow {
-    /// The primary key.
-    pub id: i64,
-    /// The name.
-    pub name: String,
-    /// `All` or `Any` in words.
-    pub mode: String,
-    /// The rules in words.
-    pub rules: String,
-    /// The last preview count, empty when none.
-    pub count: String,
+/// The match mode in words.
+fn mode_text(lang: &Lang, mode: MatchMode) -> String {
+    text(lang, &format!("segments.mode.{}", mode.as_str()))
+}
+
+/// The segments grid: search on the name, filter by match mode, the rules in
+/// words (`custom`, worked out from the stored JSON) and the last count.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let modes: Vec<(String, String)> = MatchMode::ALL
+        .iter()
+        .map(|mode| (mode.as_str().to_owned(), mode_text(lang, *mode)))
+        .collect();
+    let grid = Grid::new("sales-segments")
+        .title(&t("segments.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("name", &t("segments.name"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/segments/{id}"),
+        )
+        .column(Column::select("match_mode", &t("segments.match"), modes))
+        .column(Column::custom("rules", &t("segments.rules")).mobile())
+        .column(
+            Column::number("last_member_count", &t("segments.count"))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(Column::datetime("last_counted_at", &t("segments.counted_at")).hidden())
+        .column(Column::bool("archived", &t("segments.archived")).hidden())
+        .sort_by("name")
+        .row_url("/segments/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("segments.empty"), Some(&t("segments.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list needs.
@@ -147,41 +175,36 @@ pub struct SegmentRow {
 #[view(template = "wl-sales/segments.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    segments: Vec<SegmentRow>,
+    segments: GridPage<Segment>,
 }
 
-/// The match mode in words.
-fn mode_text(lang: &Lang, mode: MatchMode) -> String {
-    text(lang, &format!("segments.mode.{}", mode.as_str()))
-}
-
-/// `GET /segments`: the segments with their rules and last count.
-async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
-    let rows = Segment::query()
-        .order_by(Segment::NAME)
-        .get(&db)
-        .await?
-        .into_iter()
-        .map(|s| SegmentRow {
-            id: s.id,
-            mode: mode_text(&lang, s.match_mode),
-            rules: s
+/// `GET /segments`: the segments with their rules and last count
+/// (`?export=` with `segments.export`).
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
+    let can_export = user.has_permission(permissions::SEGMENTS_EXPORT);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    let query = Segment::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let segments = grid.page(query, &request).await?.extend(|s| {
+        json!({
+            "rules": s
                 .rules()
                 .iter()
                 .map(|r| describe(&lang, r))
                 .collect::<Vec<_>>()
                 .join("; "),
-            count: s
-                .last_member_count
-                .map(|c| c.to_string())
-                .unwrap_or_default(),
-            name: s.name,
         })
-        .collect();
+    });
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        segments: rows,
-    }))
+        segments,
+    })
+    .into_response())
 }
 
 /// What the editor needs.

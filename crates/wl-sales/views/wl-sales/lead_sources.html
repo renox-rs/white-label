@@ -1,39 +1,35 @@
-{#- wl-sales: the lead sources. Each row can be renamed, switched off or on;
-    a source in use is marked and is never deleted. Replace it with
-    resources/views/wl-sales/lead_sources.html in the app. -#}
+{#- wl-sales: the lead sources, a renox::grid that fills the screen. Each row
+    can be renamed, switched off or on; a source in use is marked and is never
+    deleted. Replace it with resources/views/wl-sales/lead_sources.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['lead_sources.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['lead_sources.title']" :subtitle="tx['lead_sources.subtitle']">
-      <rx-action-sheet id="add-lead-source" :label="tx['lead_sources.add']" :action="route('wl_sales.lead_sources.store')"
-                       :title="tx['lead_sources.add_title']" :description="tx['lead_sources.add_description']" :submit-label="tx['lead_sources.add']" variant="primary" icon="plus">
-        <rx-input name="code" :label="tx['fields.code']" id="add-lead-source-code" required/>
-        <rx-input name="name_en" :label="tx['fields.name_en']" id="add-lead-source-name-en" required/>
-        <rx-input name="name_ar" :label="tx['fields.name_ar']" id="add-lead-source-name-ar"/>
-      </rx-action-sheet>
-    </rx-page-header>
-    <rx-table :rows="sources" as="source" :key="source.id" :caption="tx['lead_sources.title']" card>
-      <rx-column :label="tx['fields.name_en']">{{ source.name }} <rx-badge rx-if="source.in_use" kind="info" :text="tx['lead_sources.in_use']"/></rx-column>
-      <rx-column :label="tx['fields.code']" hide-narrow>{{ source.code }}</rx-column>
-      <rx-column :label="tx['fields.status']">
-        <rx-badge rx-if="source.active" kind="success" :text="tx['status.active']"/>
-        <rx-badge rx-else kind="warning" :text="tx['status.inactive']"/>
-      </rx-column>
-      <rx-row-actions>
-        <rx-action-sheet :id="'rename-lead-source-' ~ source.id" :label="tx['lead_sources.rename']" :action="route('wl_sales.lead_sources.update', source.id)"
-                         :title="tx['lead_sources.rename_title'] | replace(':code', source.code)" :submit-label="tx['lead_sources.rename']" icon="pencil">
-          <rx-input name="name_en" :label="tx['fields.name_en']" :value="source.name_en" :id="'rename-lead-source-name-en-' ~ source.id" required/>
-          <rx-input name="name_ar" :label="tx['fields.name_ar']" :value="source.name_ar" :id="'rename-lead-source-name-ar-' ~ source.id"/>
-        </rx-action-sheet>
-        <template rx-if="source.active">
-          <rx-confirm :id="'deactivate-lead-source-' ~ source.id" :label="tx['lead_sources.deactivate']" :action="route('wl_sales.lead_sources.deactivate', source.id)" method="POST"
-                      :title="tx['lead_sources.deactivate_title'] | replace(':code', source.code)" :message="tx['lead_sources.deactivate_message']" :confirm-label="tx['lead_sources.deactivate']" :cancel-label="tx['cancel']" icon="x"/>
-        </template>
-        <template rx-else>
-          <rx-confirm :id="'activate-lead-source-' ~ source.id" :label="tx['lead_sources.activate']" :action="route('wl_sales.lead_sources.activate', source.id)" method="POST"
-                      :title="tx['lead_sources.activate']" :message="source.code" :confirm-label="tx['lead_sources.activate']" :cancel-label="tx['cancel']" icon="check"/>
-        </template>
-      </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['lead_sources.empty']" :message="tx['lead_sources.empty_hint']" icon="inbox"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['lead_sources.title']" :subtitle="tx['lead_sources.subtitle']">
+    <rx-action-sheet id="add-lead-source" :label="tx['lead_sources.add']" :action="route('wl_sales.lead_sources.store')"
+                     :title="tx['lead_sources.add_title']" :description="tx['lead_sources.add_description']" :submit-label="tx['lead_sources.add']" variant="primary" icon="plus">
+      <rx-input name="code" :label="tx['fields.code']" id="add-lead-source-code" required/>
+      <rx-input name="name_en" :label="tx['fields.name_en']" id="add-lead-source-name-en" required/>
+      <rx-input name="name_ar" :label="tx['fields.name_ar']" id="add-lead-source-name-ar"/>
+    </rx-action-sheet>
+  </rx-page-header>
+  <rx-grid :page="sources">
+    <template rx-if="column.key == 'in_use'">
+      <rx-badge rx-if="row.in_use" kind="info" :text="tx['lead_sources.in_use']"/>
+    </template>
+    <template rx-elif="column.key == 'actions'">
+      <rx-open-button :id="'rename-lead-source-' ~ row.id" :label="tx['lead_sources.rename']" icon="pencil" size="small"/>
+      <rx-open-button rx-if="row.active" :id="'deactivate-lead-source-' ~ row.id" :label="tx['lead_sources.deactivate']" variant="plain-danger" icon="x" size="small"/>
+      <rx-open-button rx-else :id="'activate-lead-source-' ~ row.id" :label="tx['lead_sources.activate']" icon="check" size="small"/>
+    </template>
+  </rx-grid>
+  {#- The sheets of the sources on this page. -#}
+  <template rx-for="source in sheets">
+    <rx-action-sheet :button="false" :id="'rename-lead-source-' ~ source.id" :label="tx['lead_sources.rename']" :action="route('wl_sales.lead_sources.update', source.id)"
+                     :title="tx['lead_sources.rename_title'] | replace(':code', source.code)" :submit-label="tx['lead_sources.rename']" icon="pencil">
+      <rx-input name="name_en" :label="tx['fields.name_en']" :value="source.name_en" :id="'rename-lead-source-name-en-' ~ source.id" required/>
+      <rx-input name="name_ar" :label="tx['fields.name_ar']" :value="source.name_ar" :id="'rename-lead-source-name-ar-' ~ source.id"/>
+    </rx-action-sheet>
+    <rx-confirm rx-if="source.active" :button="false" :id="'deactivate-lead-source-' ~ source.id" :label="tx['lead_sources.deactivate']" :action="route('wl_sales.lead_sources.deactivate', source.id)" method="POST"
+                :title="tx['lead_sources.deactivate_title'] | replace(':code', source.code)" :message="tx['lead_sources.deactivate_message']" :confirm-label="tx['lead_sources.deactivate']" :cancel-label="tx['cancel']" icon="x"/>
+    <rx-confirm rx-else :button="false" :id="'activate-lead-source-' ~ source.id" :label="tx['lead_sources.activate']" :action="route('wl_sales.lead_sources.activate', source.id)" method="POST"
+                :title="tx['lead_sources.activate']" :message="source.code" :confirm-label="tx['lead_sources.activate']" :cancel-label="tx['cancel']" icon="check"/>
+  </template>
 </rx-page>

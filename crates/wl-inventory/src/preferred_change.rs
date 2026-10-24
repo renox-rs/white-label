@@ -898,9 +898,14 @@ async fn list_requests(
     user: AuthUser,
     lang: Lang,
     headers: HeaderMap,
+    request: renox::grid::GridRequest,
 ) -> Result<Response> {
     if !may_read(&state, &user).await? {
         return Err(Error::Forbidden);
+    }
+    // A browser gets the grid; everything else gets the JSON.
+    if wl_kernel::negotiate::wants_html(&headers) {
+        return crate::screens::requests(&state, &lang, request).await;
     }
     let costs = holds(&state, &user, permissions::STOCK_COST_VIEW).await?;
     let mut pending = PreferredSupplierRequest::query()
@@ -911,9 +916,6 @@ async fn list_requests(
     let mut views = Vec::new();
     for request in &pending {
         views.push(view_of(&state, request, costs).await?);
-    }
-    if wl_kernel::negotiate::wants_html(&headers) {
-        return crate::screens::requests(&state, &lang, &views).await;
     }
     json_response(&views)
 }

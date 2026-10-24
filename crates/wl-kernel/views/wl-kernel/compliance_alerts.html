@@ -1,25 +1,18 @@
 {#- wl-kernel: the open compliance alerts (wl-kernel §5.15, PLT.RUL.04) the
-    viewer may act on: a rule that protects a legal duty failed, was stopped
-    or did not run on schedule. The owner records how the duty was met (a
-    note is required); a successful rerun closes the alert by itself.
-    Replace it with resources/views/wl-kernel/compliance_alerts.html in the
-    app. -#}
+    viewer may act on, a renox::grid (search on the rule, filters by rule and
+    kind) that fills the screen: a rule that protects a legal duty failed, was
+    stopped or did not run on schedule. The owner records how the duty was met
+    (a note is required) from the row's menu; a successful rerun closes the
+    alert by itself. Replace it with
+    resources/views/wl-kernel/compliance_alerts.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['title']">
-  <rx-stack>
-    <rx-page-header :title="tx['title']" :subtitle="tx['subtitle']"/>
-    <rx-table :rows="alerts" as="alert" :key="alert.id" :caption="tx['title']" card>
-      <rx-column :label="tx['rule']">{{ alert.rule }}</rx-column>
-      <rx-column :label="tx['what']">{{ alert.what }}</rx-column>
-      <rx-column :label="tx['subject']" hide-narrow>{{ alert.subject }}</rx-column>
-      <rx-column :label="tx['raised_at']" hide-narrow>{{ alert.raised_at }}</rx-column>
-      <rx-column :label="tx['task']" hide-narrow>{{ alert.task }}</rx-column>
-      <rx-column :label="tx['actions']">
-        <rx-action-sheet :id="'close-' ~ alert.id" :label="tx['close']" :action="route('wl_kernel.compliance.close', alert.id)" :title="tx['close_title']" :submit-label="tx['close']" icon="check">
-          <rx-textarea name="note" :label="tx['note']" :hint="tx['note_hint']" :id="'close-note-' ~ alert.id" required/>
-          <rx-input name="attachment" :label="tx['attachment']" :hint="tx['attachment_hint']" :id="'close-attachment-' ~ alert.id"/>
-        </rx-action-sheet>
-      </rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['empty']" icon="shield-check"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['title']" :subtitle="tx['subtitle']"/>
+  <rx-grid :page="alerts">
+    <template rx-if="column.key == 'subject'">{{ row.subject }}</template>
+  </rx-grid>
+  {#- The row menu's "close" opens this sheet; the grid points its form at the alert. -#}
+  <rx-action-sheet id="close-alert" :label="tx['close']" action="" :title="tx['close_title']" :submit-label="tx['close']" icon="check" :button="false">
+    <rx-textarea name="note" :label="tx['note']" :hint="tx['note_hint']" id="close-alert-note" required/>
+    <rx-input name="attachment" :label="tx['attachment']" :hint="tx['attachment_hint']" id="close-alert-attachment"/>
+  </rx-action-sheet>
 </rx-page>

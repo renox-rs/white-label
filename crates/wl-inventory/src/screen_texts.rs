@@ -164,6 +164,7 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
         "A request appears here when someone asks to change an item's preferred supplier.",
     ),
     ("wl_inventory.screen.requests.nobody", "Nobody"),
+    ("wl_inventory.screen.requests.status", "Status"),
     // One request.
     (
         "wl_inventory.screen.request.title",

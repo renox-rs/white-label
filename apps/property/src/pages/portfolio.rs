@@ -12,11 +12,12 @@
 //! The create-lease sheet on a unit is `property.lease_create`
 //! ([`super::leases`]).
 
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use serde::{Deserialize, Serialize};
 
-use super::{Texts, buildings_with, text, unit_kind};
+use super::{Texts, building_name_sql, buildings_with, text, unit_kind};
 use crate::building::{Building, NewBuilding, create_building};
 use crate::parse::{parse_aed, parse_milli};
 use crate::permissions;
@@ -43,41 +44,12 @@ pub fn routes() -> Routes {
         .require_auth()
 }
 
-/// One building of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct BuildingRow {
-    /// The primary key.
-    pub id: i64,
-    /// The code.
-    pub code: String,
-    /// The name in the page's language.
-    pub name: String,
-    /// The emirate.
-    pub emirate: String,
-    /// How many units.
-    pub units: i64,
-    /// How many are occupied (or on notice).
-    pub occupied: i64,
-    /// How many can be leased.
-    pub available: i64,
-    /// Occupied of all, as a percentage text, e.g. `83%`.
-    pub occupancy: String,
-}
-
-/// Occupied of `units`, as a percentage text; `-` for none.
-pub fn occupancy_text(occupied: i64, units: i64) -> String {
-    if units <= 0 {
-        return "-".to_owned();
-    }
-    format!("{}%", (occupied * 100 + units / 2) / units)
-}
-
 /// What the portfolio page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "property/index.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    buildings: Vec<BuildingRow>,
+    buildings: GridPage<Building>,
     emirates: Vec<(String, String)>,
     can_manage: bool,
     non_compliant: usize,
@@ -100,46 +72,109 @@ fn emirates(lang: &Lang) -> Vec<(String, String)> {
     .collect()
 }
 
+/// The buildings grid: search on the name, code and community, filter by
+/// emirate, counts of the units and their occupancy.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let units = "SELECT COUNT(*) FROM \"property_units\" \
+                 WHERE \"property_units\".\"building_id\" = {T}.\"id\"";
+    let occupied =
+        format!("{units} AND \"property_units\".\"status\" IN ('occupied', 'notice_given')");
+    let available = format!("{units} AND \"property_units\".\"status\" = 'available'");
+    let grid = Grid::new("property-buildings")
+        .title(&t("portfolio.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("name", &t("buildings.name"))
+                .computed(&building_name_sql(lang, "{T}"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/property/buildings/{id}"),
+        )
+        .column(
+            Column::text("code", &t("buildings.code"))
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::select("emirate", &t("buildings.emirate"), emirates(lang)).mobile())
+        .column(
+            Column::text("community", &t("buildings.community"))
+                .hidden()
+                .searchable(),
+        )
+        .column(
+            Column::number("units", &t("buildings.units"))
+                .computed(&format!("({units})"))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::number("occupied", &t("buildings.occupied"))
+                .computed(&format!("({occupied})"))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::number("available", &t("buildings.available"))
+                .computed(&format!("({available})"))
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::number("occupancy", &t("buildings.occupancy_percent"))
+                .computed(&format!(
+                    "(CASE WHEN ({units}) = 0 THEN 0 \
+                     ELSE (({occupied}) * 100 + ({units}) / 2) / ({units}) END)"
+                ))
+                .mobile(),
+        )
+        .column(
+            Column::text("plot_number", &t("buildings.plot_number"))
+                .hidden()
+                .searchable(),
+        )
+        .column(
+            Column::text("premise_number", &t("buildings.premise_number"))
+                .hidden()
+                .searchable(),
+        )
+        .sort_by("code")
+        .row_url("/property/buildings/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("portfolio.empty"), Some(&t("portfolio.empty_hint")));
+    if can_export { grid.exports() } else { grid }
+}
+
 /// `GET /property`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     let scopes = buildings_with(&user, permissions::UNITS_VIEW)?;
-    let mut rows = Vec::new();
-    for building in Building::query()
-        .order_by(Building::CODE)
-        .get(&state.db)
-        .await?
-    {
-        if !scopes.contains(&building.id) {
-            continue;
-        }
-        let units = Unit::of_building(&state.db, building.id).await?;
-        let count = |wanted: &[UnitStatus]| {
-            i64::try_from(units.iter().filter(|u| wanted.contains(&u.status)).count())
-                .unwrap_or(i64::MAX)
-        };
-        let occupied = count(&[UnitStatus::Occupied, UnitStatus::NoticeGiven]);
-        let total = i64::try_from(units.len()).unwrap_or(i64::MAX);
-        rows.push(BuildingRow {
-            id: building.id,
-            code: building.code.clone(),
-            name: building.display_name(&lang.locale),
-            emirate: text(&lang, &format!("emirates.{}", building.emirate)),
-            units: total,
-            occupied,
-            available: count(&[UnitStatus::Available]),
-            occupancy: occupancy_text(occupied, total),
-        });
+    let query = scopes.apply(Building::query(), &["id"]);
+    let can_manage = user.has_permission(permissions::UNITS_MANAGE);
+    let grid = grid(&lang, can_manage);
+    if request.param("export").is_some() && !can_manage {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
     }
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        buildings: rows,
+        buildings: grid.page(query, &request).await?,
         emirates: emirates(&lang),
-        can_manage: user.has_permission(permissions::UNITS_MANAGE),
+        can_manage,
         non_compliant: super::compliance::count_for(&state, &user).await?,
         can_see_compliance: !user
             .scopes_with::<Building>(permissions::COMPLIANCE_VIEW)
             .is_empty(),
-    }))
+    })
+    .into_response())
 }
 
 /// A transition offered on a unit.
@@ -476,14 +511,6 @@ async fn unit_create(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn occupancy_is_a_rounded_percentage() {
-        assert_eq!(occupancy_text(5, 6), "83%");
-        assert_eq!(occupancy_text(0, 4), "0%");
-        assert_eq!(occupancy_text(4, 4), "100%");
-        assert_eq!(occupancy_text(0, 0), "-");
-    }
 
     #[test]
     fn an_area_reads_without_trailing_zeros() {

@@ -1,13 +1,15 @@
 {#- wl-sales: the acquisition report: per source, campaign, channel, brand,
     branch or month the leads, conversion, new customers, cost, cost per lead,
     CAC and ROAS ("—" when undefined), within the user's scope, with a CSV
-    export. Replace it with resources/views/wl-sales/acquisition_report.html
+    export. The rows are worked out from the leads, sales and costs in the
+    user's scope and grouped as chosen, not read from one table, so this stays
+    a table (not a renox::grid) in a panel that fills the screen. Replace it with resources/views/wl-sales/acquisition_report.html
     in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['report.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['report.title']" :subtitle="tx['report.subtitle']">
-      <rx-link-button :href="route('wl_sales.acquisition_report.csv') ~ '?' ~ csv_query" :label="tx['report.csv']" variant="secondary" icon="download"/>
-    </rx-page-header>
+  <rx-page-header :title="tx['report.title']" :subtitle="tx['report.subtitle']">
+    <rx-link-button :href="route('wl_sales.acquisition_report.csv') ~ '?' ~ csv_query" :label="tx['report.csv']" variant="secondary" icon="download"/>
+  </rx-page-header>
+  <section class="rx-pane rx-fill">
     <rx-form method="GET" action="{{ route('wl_sales.acquisition_report') }}">
       <rx-row>
         <rx-select name="group" :label="tx['report.group']" :options="groups" :selected="group" id="report-group"/>
@@ -52,5 +54,5 @@
       </tr>
     </rx-simple-table>
     <rx-empty rx-if="not rows" :title="tx['report.empty']" icon="chart-bar"/>
-  </rx-stack>
+  </section>
 </rx-page>

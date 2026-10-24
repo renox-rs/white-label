@@ -435,10 +435,11 @@ async fn people_who_may_not_write_requests_see_no_button_and_get_403() {
 async fn the_list_and_the_page_are_built_to_fit_a_phone() {
     let app = demo().await;
     let list = page(&app, AMAL, "/manpower/requests").await;
-    says(&list, &["rx-table-wrap", "rx-sheet"]);
+    // The list is the standard grid: it scrolls in its own `rx-grid__scroll`.
+    says(&list, &["rx-grid__scroll", "rx-sheet"]);
     assert_eq!(
         list.matches("<table").count(),
-        list.matches("rx-table-wrap").count(),
+        list.matches("class=\"rx-grid__scroll\"").count(),
         "every table scrolls inside its own box"
     );
     let id = request_in(&app, "partially_filled").await;

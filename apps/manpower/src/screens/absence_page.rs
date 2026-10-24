@@ -18,9 +18,13 @@
 //! - The JSON of the list stays the open cases, as before; the page lists
 //!   all of them.
 
+use std::collections::BTreeMap;
+
 use renox::axum::http::HeaderMap;
 use renox::chrono::NaiveDate;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::Serialize;
 use wl_kernel::Subject;
 use wl_kernel::documents::today;
@@ -45,17 +49,55 @@ fn days_absent(case: &AbsenceCase, until: NaiveDate) -> i64 {
     (until - case.last_present_on).num_days().max(0)
 }
 
-/// A case as the list shows it.
-#[derive(Debug, Clone, Serialize)]
-pub(crate) struct CaseRow {
-    url: String,
-    worker: String,
-    client: String,
-    days: i64,
-    contacts: String,
-    report: String,
-    status: String,
-    status_kind: &'static str,
+/// The absence cases grid: search on the MoHRE report number, filters by
+/// status and dates. The worker, the client, the contact attempts and the
+/// report line are drawn by the template.
+fn cases_grid(lang: &Lang) -> Grid {
+    let text = |key: &str| t(lang, &format!("manpower.screen.{key}"));
+    Grid::new("manpower-absence")
+        .title(&text("absence.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::custom("worker", &text("absence.worker"))
+                .frozen()
+                .mobile(),
+        )
+        .column(Column::custom("client", &text("absence.client")).mobile())
+        .column(Column::date(
+            "last_present_on",
+            &text("absence.last_present"),
+        ))
+        .column(Column::custom("days", &text("absence.days_column")).mobile())
+        .column(Column::custom("contacts", &text("absence.contacts")))
+        .column(Column::custom("report", &text("absence.report")))
+        .column(
+            Column::select(
+                "status",
+                &text("absence.status"),
+                [
+                    ("open", word(lang, "absence_status", "open")),
+                    ("closed", word(lang, "absence_status", "closed")),
+                ],
+            )
+            .computed("CASE WHEN {T}.\"closed_on\" IS NULL THEN 'open' ELSE 'closed' END")
+            .badges(&[("open", "warning"), ("closed", "info")])
+            .mobile(),
+        )
+        .column(Column::date("opened_on", &text("absence.opened")).hidden())
+        .column(Column::date("closed_on", &text("absence.closed_title")).hidden())
+        .column(
+            Column::text("report_number", &text("absence.report_number"))
+                .searchable()
+                .hidden(),
+        )
+        .column(Column::date("report_date", &text("absence.report_date")).hidden())
+        .sort_by("-opened_on")
+        .row_url("/manpower/absence/{id}")
+        .cards_on_mobile()
+        .exports()
+        .empty_state(&text("absence.empty"), Some(&text("absence.empty_text")))
 }
 
 /// What the list page needs.
@@ -63,7 +105,7 @@ pub(crate) struct CaseRow {
 #[view(template = "manpower/absence_cases.html")]
 pub(crate) struct CasesPage {
     tx: Texts,
-    cases: Vec<CaseRow>,
+    cases: GridPage<AbsenceCase>,
 }
 
 /// A fact of the overview.
@@ -174,38 +216,48 @@ pub(crate) async fn list(
     user: AuthUser,
     lang: Lang,
     headers: HeaderMap,
+    request: GridRequest,
 ) -> Result<Response> {
     if !wl_kernel::negotiate::wants_html(&headers) {
         return crate::pages::absence_json(&state, &user).await;
     }
-    let mut rows = Vec::new();
-    for case in absence::all_cases(&state, &user).await? {
+    // Only HR (`absence.manage`) sees the cases, and all of them.
+    absence::require_manage(&user)?;
+    let grid = cases_grid(&lang);
+    let query = AbsenceCase::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut lines = BTreeMap::new();
+    for case in page.items() {
         let deployment = Deployment::find(&state.db, case.deployment_id).await?;
         let until = case.closed_on.unwrap_or_else(today);
         let failed = workforce(&state)
             .failed_contact_days(&state.db, case.employee(), case.last_present_on)
             .await?;
-        let (status, status_kind) = status_of(&lang, &case);
-        rows.push(CaseRow {
-            url: url(case.id),
-            worker: worker_name(&state, &lang.locale, case.employee()).await,
-            client: party_text(
-                &state,
-                &lang,
-                deployment.as_ref().map(|d| d.client_party_id),
-                &t(&lang, "manpower.screen.not_set"),
-            )
-            .await,
-            days: days_absent(&case, until),
-            contacts: contacts_text(&lang, failed.len()),
-            report: report_text(&lang, &case),
-            status,
-            status_kind,
-        });
+        lines.insert(
+            case.id,
+            json!({
+                "worker": worker_name(&state, &lang.locale, case.employee()).await,
+                "client": party_text(
+                    &state,
+                    &lang,
+                    deployment.as_ref().map(|d| d.client_party_id),
+                    &t(&lang, "manpower.screen.not_set"),
+                )
+                .await,
+                "days": days_absent(case, until),
+                "contacts": contacts_text(&lang, failed.len()),
+                "report": report_text(&lang, case),
+                "url": url(case.id),
+            }),
+        );
     }
+    let page = page.extend(|case| lines.get(&case.id).cloned().unwrap_or_default());
     Ok(View::typed(CasesPage {
         tx: screen_texts(&lang),
-        cases: rows,
+        cases: page,
     })
     .into_response())
 }

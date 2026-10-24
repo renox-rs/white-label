@@ -152,7 +152,7 @@ async fn the_manager_decides_the_queue_and_a_sick_leave_needs_its_note() {
             .await
             .assert_ok()
             .assert_see("Nothing to decide")
-            .assert_dont_see("Annual leave");
+            .assert_dont_see("2026-11-09 - 2026-11-10");
 
         t.app.acting_as(&hana);
         t.app
@@ -226,13 +226,12 @@ async fn the_manager_decides_the_queue_and_a_sick_leave_needs_its_note() {
             LeaveStatus::Approved
         );
 
-        // The queue is empty; the decisions are listed below it, and the
+        // Nothing waits any more; the decisions are listed in the same grid, and the
         // approved leave that has not started can still be cancelled.
         t.app
             .get("/hr/leave/queue")
             .await
             .assert_ok()
-            .assert_see("Nothing to decide")
             .assert_see("Too many are away that week")
             .assert_see("Rejected")
             .assert_see("Approved")

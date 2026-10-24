@@ -26,6 +26,7 @@
 //! A successful action answers a redirect (303) with a toast. A refused
 //! action answers 422 with the reason (403 without the permission).
 
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use serde::Serialize;
@@ -133,20 +134,6 @@ fn back_to(lang: &Lang, key: &str, id: i64) -> Result<Response> {
         .into_response())
 }
 
-/// One remittance of the list.
-#[derive(Serialize, Debug, Clone)]
-pub(crate) struct Row {
-    number: String,
-    client_party_id: i64,
-    cod_total: i64,
-    fee_total: i64,
-    adjustment_total: i64,
-    net: i64,
-    status: String,
-    status_kind: &'static str,
-    url: String,
-}
-
 /// A bank account change of the list.
 #[derive(Serialize, Debug, Clone)]
 pub(crate) struct ChangeRow {
@@ -160,41 +147,114 @@ pub(crate) struct ChangeRow {
     can_withdraw: bool,
 }
 
+/// The remittances grid (draft, approved, paid and returned in one list):
+/// search on the number and client, a filter by status, sums of the money.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let text = |key: &str| crate::pages::text(lang, key);
+    let statuses: Vec<(String, String)> = [
+        RemittanceStatus::Draft,
+        RemittanceStatus::Approved,
+        RemittanceStatus::Paid,
+        RemittanceStatus::PaymentReturned,
+    ]
+    .into_iter()
+    .map(|status| (status.as_str().to_owned(), status_word(lang, status)))
+    .collect();
+    let grid = Grid::new("logistics-remittances")
+        .title(&text("remit_title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &text("remit_number"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable()
+                .link("/remittances/{id}"),
+        )
+        .column(
+            Column::related(
+                "client",
+                &text("client"),
+                "wl_parties_parties",
+                "client_party_id",
+                "display_name",
+            )
+            .mobile()
+            .searchable(),
+        )
+        .column(Column::date("period_end", &text("remit_period")).hidden())
+        .column(
+            Column::money("cod_total", &wl_kernel::money_label(&text("remit_cod")))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("fee_total", &wl_kernel::money_label(&text("remit_fees")))
+                .hidden()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::money(
+                "adjustment_total",
+                &wl_kernel::money_label(&text("remit_adjustments")),
+            )
+            .hidden()
+            .summary(Summary::Sum),
+        )
+        .column(
+            Column::money("net", &wl_kernel::money_label(&text("remit_net")))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::select("status", &text("state"), statuses)
+                .badges(&[
+                    ("draft", "info"),
+                    ("approved", "warning"),
+                    ("paid", "success"),
+                    ("payment_returned", "danger"),
+                ])
+                .mobile(),
+        )
+        .sort_by("-number")
+        .row_url("/remittances/{id}")
+        .cards_on_mobile()
+        .empty_state(&text("remit_empty"), Some(&text("remit_empty_text")));
+    if can_export { grid.exports() } else { grid }
+}
+
 /// What the list needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "logistics/remittances.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    remittances: Vec<Row>,
+    remittances: GridPage<Remittance>,
     account_changes: Vec<ChangeRow>,
     can_build: bool,
     can_add_adjustment: bool,
     can_request_account: bool,
 }
 
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<Response> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if !user.has_permission(permissions::REMITTANCES_VIEW) {
         return Err(Error::Forbidden);
     }
-    let found = Remittance::query()
-        .order_by_desc(Remittance::ID)
-        .limit(200)
-        .get(&state.db)
-        .await?;
-    let remittances = found
-        .iter()
-        .map(|r| Row {
-            number: r.number.clone(),
-            client_party_id: r.client_party_id,
-            cod_total: r.cod_total,
-            fee_total: r.fee_total,
-            adjustment_total: r.adjustment_total,
-            net: r.net,
-            status: status_word(&lang, r.status),
-            status_kind: status_kind(r.status),
-            url: format!("/remittances/{}", r.id),
-        })
-        .collect();
+    let can_export = user.has_permission(permissions::REMITTANCES_PREPARE);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    let grid = grid(&lang, can_export);
+    if let Some(file) = grid.export(Remittance::query(), &request).await? {
+        return Ok(file);
+    }
+    let remittances = grid.page(Remittance::query(), &request).await?;
     let open = AccountChange::query()
         .where_(AccountChange::STATUS.is_in(AccountChangeStatus::OPEN))
         .order_by_desc(AccountChange::ID)

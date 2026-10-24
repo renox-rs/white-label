@@ -1,26 +1,21 @@
-{#- wl-notify: the message log, newest first. A message that gave up or fell
-    back reads "Not delivered (…)", never "Sent"; the Sent counter counts
-    only sent, delivered and read messages. Replace it with
+{#- wl-notify: the message log, newest first, a renox::grid (search on the
+    type, recipient and error, filters by channel, status and date) that fills
+    the screen and pages through every message. A message that gave up or fell
+    back reads "Not delivered (…)", never "Sent"; the Sent counter counts only
+    sent, delivered and read messages. Replace it with
     resources/views/wl-notify/log.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['log.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['log.title']" :subtitle="tx['log.subtitle']"/>
-    <rx-stats columns="4">
-      <rx-stat :label="tx['counters.sent']" :value="counts.sent"/>
-      <rx-stat :label="tx['counters.pending']" :value="counts.pending"/>
-      <rx-stat :label="tx['counters.not_delivered']" :value="counts.not_delivered"/>
-      <rx-stat :label="tx['counters.suppressed']" :value="counts.suppressed"/>
-    </rx-stats>
-    <rx-table :rows="messages" as="message" :key="message.id" :caption="tx['log.title']" card>
-      <rx-column :label="tx['fields.created_at']">{{ message.created_at | date('%Y-%m-%d %H:%M') if message.created_at else "—" }}</rx-column>
-      <rx-column :label="tx['fields.key']">{{ message.type_key }}</rx-column>
-      <rx-column :label="tx['fields.subject']" hide-narrow>{{ message.subject }}</rx-column>
-      <rx-column :label="tx['fields.recipient']">{{ message.recipient }}</rx-column>
-      <rx-column :label="tx['fields.channel']">{{ message.channel }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge rx-if="message.tone" :kind="message.tone" :text="message.status"/><rx-badge rx-else :text="message.status"/></rx-column>
-      <rx-column :label="tx['fields.attempts']" align="num" hide-narrow>{{ message.attempts }}</rx-column>
-      <rx-column :label="tx['fields.last_error']" hide-narrow>{{ message.last_error or "—" }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['log.empty']" :message="tx['log.empty_hint']" icon="mail"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  {#- The counters are a strip of badges in the header, so the grid keeps the height. -#}
+  <rx-page-header :title="tx['log.title']" :subtitle="tx['log.subtitle']">
+    <rx-badge kind="info" :text="counts.sent ~ ' · ' ~ tx['counters.sent']"/>
+    <rx-badge :text="counts.pending ~ ' · ' ~ tx['counters.pending']"/>
+    <rx-badge :kind="'error' if counts.not_delivered else 'info'" :text="counts.not_delivered ~ ' · ' ~ tx['counters.not_delivered']"/>
+    <rx-badge :text="counts.suppressed ~ ' · ' ~ tx['counters.suppressed']"/>
+  </rx-page-header>
+  <rx-grid :page="messages">
+    <template rx-if="column.key == 'subject'">{{ row.subject }}</template>
+    <template rx-elif="column.key == 'outcome'">
+      <rx-badge rx-if="row.outcome" :kind="row.tone" :text="row.outcome"/>
+    </template>
+  </rx-grid>
 </rx-page>

@@ -16,7 +16,9 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::state_machine::{Available, StateMachine};
 use renox::validation::{Errors, ValidationError};
 use serde::Serialize;
@@ -89,21 +91,93 @@ fn status_kind(status: ReturnStatus) -> &'static str {
     }
 }
 
-/// One return as the list shows it.
-#[derive(Serialize, Debug, Clone)]
-pub struct ReturnRow {
-    /// The primary key.
-    pub id: i64,
-    /// The return number.
-    pub number: String,
-    /// The sale returned, e.g. `sales.counter_sale:4`.
-    pub sale: String,
-    /// The value with VAT, `AED 52.50`.
-    pub value: String,
-    /// The status in words.
-    pub status_label: String,
-    /// The badge colour.
-    pub status_kind: &'static str,
+/// The returns grid: search on the number and the customer, filters by
+/// status, kind and resolution, sum of the values. The sale (a receipt or
+/// order number) is drawn by the template (`custom`).
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let words = |prefix: &str, names: Vec<&str>| -> Vec<(String, String)> {
+        names
+            .into_iter()
+            .map(|n| (n.to_owned(), text(lang, &format!("{prefix}.{n}"))))
+            .collect()
+    };
+    let grid = Grid::new("sales-returns")
+        .title(&t("returns.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &t("returns.number"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .copyable()
+                .link("/sales-returns/{id}"),
+        )
+        .column(Column::custom("sale", &t("returns.sale")).mobile())
+        .column(
+            Column::related(
+                "customer",
+                &t("orders.customer_name"),
+                "wl_parties_parties",
+                "party_id",
+                "display_name",
+            )
+            .hidden()
+            .searchable(),
+        )
+        .column(
+            Column::select(
+                "kind",
+                &t("returns.kind"),
+                words(
+                    "returns.kind",
+                    ReturnKind::ALL.iter().map(|k| k.as_str()).collect(),
+                ),
+            )
+            .hidden(),
+        )
+        .column(
+            Column::select(
+                "resolution",
+                &t("returns.resolution"),
+                words(
+                    "returns.resolution",
+                    ReturnResolution::ALL.iter().map(|r| r.as_str()).collect(),
+                ),
+            )
+            .hidden(),
+        )
+        .column(
+            Column::money("gross_value", &wl_kernel::money_label(&t("returns.value")))
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::select(
+                "status",
+                &t("fields.status"),
+                words(
+                    "returns.status",
+                    ReturnStatus::ALL.iter().map(|s| s.as_str()).collect(),
+                ),
+            )
+            .badges(&[
+                ("requested", "info"),
+                ("received", "info"),
+                ("resolved", "success"),
+                ("reversed", "warning"),
+                ("rejected", "warning"),
+            ])
+            .mobile(),
+        )
+        .column(Column::datetime("created_at", &t("returns.created_at")).hidden())
+        .sort_by("-created_at")
+        .row_url("/sales-returns/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("returns.empty"), Some(&t("returns.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list needs.
@@ -111,7 +185,7 @@ pub struct ReturnRow {
 #[view(template = "wl-sales/sales_returns.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    returns: Vec<ReturnRow>,
+    returns: GridPage<SalesReturn>,
 }
 
 /// The sale a return is about, by its receipt or order number (the subject
@@ -123,29 +197,35 @@ async fn sale_label(db: &Db, r: &SalesReturn) -> Result<String> {
         .unwrap_or_else(|| sale.to_string()))
 }
 
-/// `GET /sales-returns`: the latest returns, newest first.
-async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
-    let latest = SalesReturn::query()
-        .order_by_desc(SalesReturn::ID)
-        .get(&db)
-        .await?
-        .into_iter()
-        .take(50);
-    let mut returns = Vec::new();
-    for r in latest {
-        returns.push(ReturnRow {
-            id: r.id,
-            number: r.number.clone(),
-            sale: sale_label(&db, &r).await?,
-            value: money(r.gross_value),
-            status_label: text(&lang, &format!("returns.status.{}", r.status.as_str())),
-            status_kind: status_kind(r.status),
-        });
+/// `GET /sales-returns`: the returns, newest first (`?export=` with
+/// `returns.handle`).
+async fn index(
+    State(db): State<Db>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
+    let can_export = user.has_permission(permissions::RETURNS_HANDLE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
     }
+    let query = SalesReturn::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut labels = Vec::new();
+    for r in page.items() {
+        labels.push(sale_label(&db, r).await?);
+    }
+    let mut labels = labels.into_iter();
+    let returns = page.extend(|_| json!({ "sale": labels.next().unwrap_or_default() }));
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         returns,
-    }))
+    })
+    .into_response())
 }
 
 /// What the return page needs.

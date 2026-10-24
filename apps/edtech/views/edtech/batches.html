@@ -2,31 +2,24 @@
     seats and status in words, and the action that plans one. Replace it with
     resources/views/edtech/batches.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['batches.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['batches.title']" :subtitle="tx['batches.subtitle']">
-      <template rx-if="can_manage">
-        <rx-action-sheet id="batch-new" :label="tx['batches.new']" :action="route('edtech.batch_create')"
-                         :title="tx['batches.new']" :description="tx['batches.new_description']" :submit-label="tx['batches.new']" icon="plus">
-          <rx-select name="course" :label="tx['batches.course']" :options="course_options" :selected="course_selected" id="batch-new-course"/>
-          <rx-input name="capacity" type="number" :label="tx['batches.capacity']" id="batch-new-capacity" required/>
-          <rx-input name="start_date" type="date" :label="tx['batches.start_date']" id="batch-new-start" required/>
-          <rx-input name="end_date" type="date" :label="tx['batches.end_date']" id="batch-new-end" required/>
-          <rx-input name="weekdays" :label="tx['batches.weekdays']" :hint="tx['batches.weekdays_hint']" id="batch-new-weekdays" required/>
-          <rx-input name="start_time" :label="tx['batches.start_time']" :hint="tx['batches.start_time_hint']" id="batch-new-time" required/>
-          <rx-input name="duration" type="number" :label="tx['batches.duration']" id="batch-new-duration" required/>
-          <rx-select name="tutor" :label="tx['batches.tutor_pick']" :options="tutor_options" :selected="''" id="batch-new-tutor"/>
-          <rx-select name="room" :label="tx['batches.room_pick']" :options="room_options" :selected="''" id="batch-new-room"/>
-        </rx-action-sheet>
-      </template>
-    </rx-page-header>
-    <rx-table :rows="batches" as="row" :key="row.id" :caption="tx['batches.title']" card>
-      <rx-column :label="tx['batches.number']"><a href="{{ route('edtech.batch', row.id) }}">{{ row.number }}</a></rx-column>
-      <rx-column :label="tx['batches.course']">{{ row.course }}</rx-column>
-      <rx-column :label="tx['batches.dates']" hide-narrow>{{ row.dates }}</rx-column>
-      <rx-column :label="tx['batches.pattern']" hide-narrow>{{ row.pattern }}</rx-column>
-      <rx-column :label="tx['batches.seats']">{{ row.seats }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['batches.empty']" icon="users"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['batches.title']" :subtitle="tx['batches.subtitle']">
+    <template rx-if="can_manage">
+      <rx-action-sheet id="batch-new" :label="tx['batches.new']" :action="route('edtech.batch_create')"
+                       :title="tx['batches.new']" :description="tx['batches.new_description']" :submit-label="tx['batches.new']" icon="plus">
+        <rx-select name="course" :label="tx['batches.course']" :options="course_options" :selected="course_selected" id="batch-new-course"/>
+        <rx-input name="capacity" type="number" :label="tx['batches.capacity']" id="batch-new-capacity" required/>
+        <rx-input name="start_date" type="date" :label="tx['batches.start_date']" id="batch-new-start" required/>
+        <rx-input name="end_date" type="date" :label="tx['batches.end_date']" id="batch-new-end" required/>
+        <rx-input name="weekdays" :label="tx['batches.weekdays']" :hint="tx['batches.weekdays_hint']" id="batch-new-weekdays" required/>
+        <rx-input name="start_time" :label="tx['batches.start_time']" :hint="tx['batches.start_time_hint']" id="batch-new-time" required/>
+        <rx-input name="duration" type="number" :label="tx['batches.duration']" id="batch-new-duration" required/>
+        <rx-select name="tutor" :label="tx['batches.tutor_pick']" :options="tutor_options" :selected="''" id="batch-new-tutor"/>
+        <rx-select name="room" :label="tx['batches.room_pick']" :options="room_options" :selected="''" id="batch-new-room"/>
+      </rx-action-sheet>
+    </template>
+  </rx-page-header>
+  <rx-grid :page="batches">
+    <template rx-if="column.key == 'pattern'">{{ row.pattern }}</template>
+    <template rx-elif="column.key == 'seats'">{{ row.seats }}</template>
+  </rx-grid>
 </rx-page>

@@ -1,23 +1,17 @@
-{#- fnb: the daily closings of the outlets by business day, with their sales,
-    the cash counted and the difference, and the sheet that opens today's
-    closing. Replace it with resources/views/fnb/closings.html in the app. -#}
+{#- fnb: the daily closings of the outlets by business day, a renox::grid
+    (search on the outlet, filters by status, sums of the cash counted and the
+    difference) that fills the screen, with the sheet that opens today's
+    closing in the header. Replace it with resources/views/fnb/closings.html in
+    the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['closing.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['closing.title']" :subtitle="tx['closing.subtitle']">
-      <rx-action-sheet rx-if="can_open" id="closing-open" :label="tx['closing.open']" :action="route('fnb.closing_open')"
-                       :title="tx['closing.open_title']" :description="tx['closing.open_description']" :submit-label="tx['closing.open']" icon="plus">
-        <rx-select name="outlet" :label="tx['closing.outlet']" id="closing-open-outlet" :options="outlets" :selected="''"/>
-      </rx-action-sheet>
-    </rx-page-header>
-    <rx-table :rows="rows" as="closing" :key="closing.id" :caption="tx['closing.title']">
-      <rx-column :label="tx['closing.date']"><a href="{{ closing.url }}">{{ closing.date }}</a></rx-column>
-      <rx-column :label="tx['closing.outlet']">{{ closing.outlet }}</rx-column>
-      <rx-column :label="tx['closing.orders']" align="num" hide-narrow>{{ closing.orders }}</rx-column>
-      <rx-column :label="tx['closing.sales']" align="num" hide-narrow>{{ closing.sales }}</rx-column>
-      <rx-column :label="tx['closing.counted']" align="num" hide-narrow>{{ closing.counted }}</rx-column>
-      <rx-column :label="tx['closing.variance']" align="num" hide-narrow>{{ closing.variance }}</rx-column>
-      <rx-column :label="tx['state']"><rx-badge :kind="closing.status_kind" :text="closing.status"/></rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['closing.empty']" :message="tx['closing.empty_text']" icon="calendar-check"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['closing.title']" :subtitle="tx['closing.subtitle']">
+    <rx-action-sheet rx-if="can_open" id="closing-open" :label="tx['closing.open']" :action="route('fnb.closing_open')"
+                     :title="tx['closing.open_title']" :description="tx['closing.open_description']" :submit-label="tx['closing.open']" icon="plus">
+      <rx-select name="outlet" :label="tx['closing.outlet']" id="closing-open-outlet" :options="outlets" :selected="''"/>
+    </rx-action-sheet>
+  </rx-page-header>
+  <rx-grid :page="rows">
+    <template rx-if="column.key == 'orders'">{{ row.orders }}</template>
+    <template rx-elif="column.key == 'sales'">{{ row.sales | money(currency='AED') }}</template>
+  </rx-grid>
 </rx-page>

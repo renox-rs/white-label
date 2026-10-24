@@ -24,7 +24,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use renox::chrono::NaiveDate;
-use renox::grid::{Column, Grid, GridPage, GridRequest};
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::{self, TransitionError};
@@ -96,12 +96,12 @@ fn status_kind(status: CreditNoteStatus) -> &'static str {
 
 /// The credit notes grid: search on the number and the party, filters by
 /// status and issuing entity, money in each credit note's currency.
-pub fn grid(lang: &Lang) -> Grid {
-    grid_with(&texts_in(lang))
+pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+    grid_with(&texts_in(lang), can_export)
 }
 
 /// [`grid`] with the texts of `t`.
-fn grid_with(t: Text<'_>) -> Grid {
+fn grid_with(t: Text<'_>, can_export: bool) -> Grid {
     let statuses: Vec<(String, String)> = CreditNoteStatus::ALL
         .iter()
         .map(|s| {
@@ -111,8 +111,11 @@ fn grid_with(t: Text<'_>) -> Grid {
             )
         })
         .collect();
-    Grid::new("wl-invoicing-credit-notes")
+    let grid = Grid::new("wl-invoicing-credit-notes")
         .title(&t("credit_note.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::text("number", &t("fields.number"))
                 .frozen()
@@ -142,10 +145,15 @@ fn grid_with(t: Text<'_>) -> Grid {
             "code",
         ))
         .column(Column::date("issue_date", &t("fields.issue_date")))
-        .column(Column::money("gross_total", &t("fields.gross_total")).currency_from("currency"))
+        .column(
+            Column::money("gross_total", &t("fields.gross_total"))
+                .currency_from("currency")
+                .summary(Summary::Sum),
+        )
         .column(
             Column::money("remaining", &t("credit_note.fields.remaining"))
                 .currency_from("currency")
+                .summary(Summary::Sum)
                 .mobile(),
         )
         .column(
@@ -161,7 +169,8 @@ fn grid_with(t: Text<'_>) -> Grid {
         .sort_by("-created_at")
         .row_url("/credit-notes/{id}")
         .cards_on_mobile()
-        .empty_state(&t("credit_note.empty"), None)
+        .empty_state(&t("credit_note.empty"), None);
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list page needs.
@@ -178,7 +187,7 @@ async fn index(
     user: AuthUser,
     lang: Lang,
     request: GridRequest,
-) -> Result<View> {
+) -> Result<Response> {
     // The credit notes of the invoices in the user's scope.
     let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
     let query = reach
@@ -189,11 +198,20 @@ async fn index(
             wl_kernel::invoicing::INVOICE_SUBJECT_TYPE,
         )
         .await?;
-    let credit_notes = grid(&lang).page(query, &request).await?;
+    let can_export = crate::may_export(&user, permissions::CREDIT);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let credit_notes = grid.page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         credit_notes,
-    }))
+    })
+    .into_response())
 }
 
 /// One line of a credit note.
@@ -809,7 +827,7 @@ mod tests {
 
     #[test]
     fn the_grid_lists_the_credit_note_columns() {
-        let grid = grid_with(&english_text);
+        let grid = grid_with(&english_text, false);
         let keys: Vec<&str> = grid.columns().iter().map(Column::key).collect();
         assert_eq!(
             keys,

@@ -380,6 +380,24 @@ async fn boot_with(
         .await
         .expect("wl:install runs");
     seed::install(app.db()).await.expect("the defaults seed");
+    if !real_parties {
+        // The grids show the client's name from wl-parties' table, which
+        // this app lacks without the real module: a stand-in with a party
+        // for every id the tests use ("Party 501" as the fake directory).
+        renox::db::sql(
+            r#"CREATE TABLE IF NOT EXISTS "wl_parties_parties" (id INTEGER PRIMARY KEY, display_name TEXT NOT NULL)"#,
+        )
+        .execute(app.db())
+        .await
+        .expect("the stand-in table");
+        renox::db::sql(
+            r#"WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1000)
+               INSERT INTO "wl_parties_parties" (id, display_name) SELECT i, 'Party ' || i FROM n"#,
+        )
+        .execute(app.db())
+        .await
+        .expect("the stand-in rows");
+    }
 
     let manage = [
         perm::SHIPMENTS_VIEW,

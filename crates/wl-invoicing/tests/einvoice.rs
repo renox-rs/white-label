@@ -501,7 +501,7 @@ async fn the_board_lists_the_transmissions_for_those_who_may_see_them() {
         .assert_see(&invoice.number.clone().unwrap())
         .assert_see("Submitted");
     t.app
-        .get("/einvoices?status=rejected")
+        .get("/einvoices?in.status=rejected")
         .await
         .assert_ok()
         .assert_dont_see(&invoice.number.clone().unwrap());

@@ -1,14 +1,10 @@
 {#- wl-parties: the open possible-match tasks, for the compliance role only
-    (parties.block_reason.view). Replace it with resources/views/wl-parties/screening_tasks.html in the app. -#}
+    (parties.block_reason.view), a renox::grid (search on the party and its
+    code, export with parties.export). Replace it with
+    resources/views/wl-parties/screening_tasks.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['screening.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['screening.title']" :subtitle="tx['screening.subtitle']"/>
-    <rx-table :rows="tasks" as="task" :key="task.id" :caption="tx['screening.title']" card>
-      <rx-column :label="tx['screening.fields.party']"><a href="{{ route('wl_parties.screening_task', task.id) }}">{{ task.party }}</a></rx-column>
-      <rx-column :label="tx['screening.fields.code']" hide-narrow>{{ task.code }}</rx-column>
-      <rx-column :label="tx['screening.fields.due']">{{ task.due }}</rx-column>
-      <rx-column :label="tx['screening.fields.candidates']" align="num">{{ task.candidates }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['screening.empty']" :message="tx['screening.empty_hint']" icon="inbox"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['screening.title']" :subtitle="tx['screening.subtitle']"/>
+  <rx-grid :page="tasks">
+    <template rx-if="column.key == 'due'">{{ row.due }}</template>
+  </rx-grid>
 </rx-page>

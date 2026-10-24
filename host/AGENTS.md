@@ -309,6 +309,14 @@ in files under `public/` (no inline scripts or `style=` attributes: they break u
   breathe. Don't give pages fixed heights or write viewport CSS per page: the shell does it.
   Public pages (`layouts/public.html`: the home page) are not dashboards and scroll as a
   document.
+- **Every list screen is a `renox::grid::Grid` that fills the screen** (tracking issue #523).
+  Before writing or changing a page that lists records, or converting an `<rx-table>` list, load
+  the project skill `standard-grid` (`.claude/skills/standard-grid/SKILL.md`): the 13-point
+  baseline (search, sort, filters, pagination, dynamic columns, `.remember()`,
+  `.advanced_filter()`, role-limited export, empty state, summaries on money columns) and the
+  fill rule (`<rx-grid>` a direct child of `<rx-page>`, never wrapped in `rx-stack` or
+  `rx-card`, nothing below it). Check the page with
+  `node .claude/skills/standard-grid/check-fill.js <base-url> <path>…` before calling it done.
 - Pages are built from the UI kit (`renox/ui.html`, docs/ui.md), not from your own markup and
   CSS, as tags: `<rx-navbar>`/`<rx-nav-link>` (or `<rx-sidebar>` in `<rx-shell fill>` for a dashboard app),
   `<rx-page-header>`, `<rx-card>`, the fields (`<rx-input>`, `<rx-select>`, `<rx-toolbar>` for

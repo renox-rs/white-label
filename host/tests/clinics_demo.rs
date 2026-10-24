@@ -387,8 +387,15 @@ async fn the_pages_name_a_service_in_words() {
     ] {
         let page = app.get(&path).await;
         page.assert_ok();
+        let grid = path.ends_with("/appointments") || path.ends_with("/contracts");
         for code in codes {
-            page.assert_dont_see(code);
+            if grid {
+                // The grid's filter lists the code as an option value; no cell
+                // of a row may show it.
+                page.assert_dont_see(&format!("{code}</span>"));
+            } else {
+                page.assert_dont_see(code);
+            }
         }
     }
     app.get("/clinics/appointments")

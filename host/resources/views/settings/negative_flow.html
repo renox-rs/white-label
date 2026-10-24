@@ -1,12 +1,21 @@
 <rx-page layout="layouts/app.html" title="{{ t('settings.negative_flow.title') }}">
-  <rx-stack>
-    <app-page-title icon="sliders-horizontal" title="{{ t('settings.negative_flow.title') }}" subtitle="{{ t('settings.negative_flow.subtitle') }}"/>
-    <rx-table :rows="rows" as="row" :key="row.number" caption="{{ t('settings.negative_flow.title') }}" card>
-      <rx-column label="{{ t('settings.negative_flow.number') }}">{{ row.number }}</rx-column>
-      <rx-column label="{{ t('settings.negative_flow.group') }}" hide-narrow>{{ row.group }}</rx-column>
-      <rx-column label="{{ t('settings.negative_flow.setting') }}">{{ row.setting }}</rx-column>
-      <rx-column label="{{ t('settings.negative_flow.value') }}">{{ row.value }}</rx-column>
-      <rx-column label="{{ t('settings.negative_flow.source') }}" hide-narrow>{{ row.source }}</rx-column>
+  <rx-page-header title="{{ t('settings.negative_flow.title') }}" subtitle="{{ t('settings.negative_flow.subtitle') }}"/>
+  {#- Search and group filter: the rows come from code, so the handler narrows them (?q=, ?group=). -#}
+  <form method="get">
+    <rx-toolbar>
+      <rx-input name="q" type="search" label="{{ t('settings.search') }}" :value="q" id="settings-q"/>
+      <rx-select name="group" label="{{ t('settings.group_filter') }}" :options="groups" :placeholder="t('settings.all_groups')" :selected="group" id="settings-group"/>
+      <rx-button type="submit" label="{{ t('settings.show') }}" icon="search"/>
+    </rx-toolbar>
+  </form>
+  <section class="rx-pane rx-fill">
+    <rx-table rx-if="rows" :rows="rows" as="row" :key="row.number" caption="{{ t('settings.negative_flow.title') }}">
+        <rx-column label="{{ t('settings.negative_flow.number') }}">{{ row.number }}</rx-column>
+        <rx-column label="{{ t('settings.negative_flow.group') }}" hide-narrow>{{ row.group }}</rx-column>
+        <rx-column label="{{ t('settings.negative_flow.setting') }}">{{ row.setting }}</rx-column>
+        <rx-column label="{{ t('settings.negative_flow.value') }}">{{ row.value }}</rx-column>
+        <rx-column label="{{ t('settings.negative_flow.source') }}" hide-narrow>{{ row.source }}</rx-column>
     </rx-table>
-  </rx-stack>
+    <rx-empty rx-else :title="t('settings.none')" :message="t('settings.none_text')" icon="search"/>
+  </section>
 </rx-page>

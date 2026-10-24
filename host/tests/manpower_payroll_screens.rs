@@ -18,11 +18,21 @@ async fn hr_sees_the_payroll_runs_with_period_status_and_total_in_aed() {
     let app = demo().await;
     let html = page(&app, HR, "/hr/payroll").await;
     let month = day(0).format("%Y-%m").to_string();
-    says(&html, &["Payroll runs", &month, "Draft", "AED ", "New run"]);
+    // The grid shows bare amounts under a column label that ends with (AED).
+    says(
+        &html,
+        &[
+            "Payroll runs",
+            &month,
+            "Draft",
+            "Total net (AED)",
+            "New run",
+        ],
+    );
     no_raw_words(&html);
     fits_a_phone(&html);
     assert!(
-        html.contains("rx-table-wrap"),
+        html.contains("rx-grid__scroll"),
         "the table scrolls in its box"
     );
     let md = page(&app, MD, "/hr/payroll").await;
@@ -78,7 +88,8 @@ async fn the_settlement_list_shows_status_amounts_and_deadline_and_the_superviso
             "Dawit",
             "Resignation",
             "Draft",
-            "AED 3,850.00",
+            "Dues (AED)",
+            "3,850.00",
             &words(day(24)),
         ],
     );
