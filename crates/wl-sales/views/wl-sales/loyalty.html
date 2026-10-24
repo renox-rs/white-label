@@ -1,46 +1,42 @@
-{#- wl-sales: the loyalty programme and its accounts. A manager turns the
-    programme on; the cashier enrols a member and attaches the member to a
+{#- wl-sales: the loyalty programme and its members, a renox::grid that fills
+    the screen. The programme is a strip of badges in the header; a manager
+    turns it on, the cashier enrols a member and attaches the member to a
     sale. Replace it with resources/views/wl-sales/loyalty.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['loyalty.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['loyalty.title']" :subtitle="tx['loyalty.subtitle']">
-      <rx-link-button :href="route('wl_sales.loyalty_liability')" :label="tx['liability.title']" variant="secondary" icon="receipt"/>
-      <rx-link-button :href="route('wl_sales.loyalty_adjustments')" :label="tx['adjust.title']" variant="secondary" icon="history"/>
-      <rx-link-button rx-if="can_manage" :href="route('wl_sales.loyalty_review')" :label="tx['loyalty.review.title']" variant="secondary" icon="list-checks"/>
-      <rx-action-sheet rx-if="can_enrol" id="enrol-member" :label="tx['loyalty.enrol']" :action="route('wl_sales.loyalty_enrol')"
-                       :title="tx['loyalty.enrol']" :description="tx['loyalty.enrol_description']" :submit-label="tx['loyalty.enrol']" variant="primary" icon="plus">
-        <rx-input name="party_id" :label="tx['loyalty.party']" id="enrol-member-party" required/>
-        <rx-input name="mobile" :label="tx['loyalty.mobile']" id="enrol-member-mobile" required/>
-        <rx-input name="guardian_party_id" :label="tx['loyalty.guardian']" id="enrol-member-guardian"/>
-        <rx-checkbox name="terms" :label="tx['loyalty.accept_terms']" id="enrol-member-terms"/>
-      </rx-action-sheet>
-      <rx-action-sheet rx-if="can_manage" id="create-loyalty-programme" :label="tx['loyalty.turn_on']" :action="route('wl_sales.loyalty_programme')"
-                       :title="tx['loyalty.turn_on']" :submit-label="tx['loyalty.turn_on']" icon="gift">
-        <rx-input name="name" :label="tx['loyalty.name']" id="create-programme-name" required/>
-        <rx-input name="earn_kind" :label="tx['loyalty.earn_kind']" id="create-programme-kind"/>
-        <rx-input name="earn_rate" :label="tx['loyalty.earn_rate']" id="create-programme-rate"/>
-        <rx-input name="minimum" :label="tx['loyalty.minimum']" id="create-programme-minimum"/>
-        <rx-input name="point_value" :label="tx['loyalty.point_value']" id="create-programme-value"/>
-        <rx-input name="validity_months" :label="tx['loyalty.validity']" id="create-programme-validity"/>
-        <rx-input name="min_redeem_points" :label="tx['loyalty.min_redeem']" id="create-programme-min-redeem"/>
-        <rx-input name="max_share_percent" :label="tx['loyalty.max_share']" id="create-programme-max-share"/>
-        <rx-input name="terms_version" :label="tx['loyalty.terms_version']" id="create-programme-version"/>
-        <rx-textarea name="terms_en" :label="tx['loyalty.terms_en']" id="create-programme-terms-en"/>
-        <rx-textarea name="terms_ar" :label="tx['loyalty.terms_ar']" id="create-programme-terms-ar"/>
-      </rx-action-sheet>
-    </rx-page-header>
-    <rx-card rx-if="programme" :title="programme.name">
-      <rx-infolist columns="2">
-        <rx-entry rx-if="programme.closing" :label="tx['terms.closing']" :value="programme.closing"/>
-        <rx-entry :label="tx['loyalty.earn_kind']" :value="programme.earn"/>
-        <rx-entry :label="tx['loyalty.minimum']" :value="programme.minimum"/>
-        <rx-entry :label="tx['loyalty.point_value']" :value="programme.point_value"/>
-        <rx-entry :label="tx['loyalty.validity']" :value="programme.validity_months"/>
-        <rx-entry :label="tx['loyalty.terms_version']" :value="programme.terms_version"/>
-      </rx-infolist>
-    </rx-card>
-    <rx-alert rx-else kind="info" :message="tx['loyalty.no_programme']"/>
-    <rx-row rx-if="programme">
+  <rx-page-header :title="tx['loyalty.title']" :subtitle="subtitle">
+    <template rx-if="programme">
+      <rx-badge kind="success" :text="programme.name"/>
+      <rx-badge kind="info" :text="programme.earn"/>
+      <rx-badge kind="info" :text="tx['loyalty.point_value'] ~ ' ' ~ programme.point_value"/>
+      <rx-badge kind="info" :text="tx['loyalty.validity'] ~ ' ' ~ programme.validity_months"/>
+      <rx-badge kind="info" :text="tx['loyalty.terms_version'] ~ ' ' ~ programme.terms_version"/>
+      <rx-badge rx-if="programme.closing" kind="warning" :text="tx['terms.closing'] ~ ' ' ~ programme.closing"/>
+    </template>
+    <rx-link-button :href="route('wl_sales.loyalty_liability')" :label="tx['liability.title']" variant="secondary" icon="receipt"/>
+    <rx-link-button :href="route('wl_sales.loyalty_adjustments')" :label="tx['adjust.title']" variant="secondary" icon="history"/>
+    <rx-link-button rx-if="can_manage" :href="route('wl_sales.loyalty_review')" :label="tx['loyalty.review.title']" variant="secondary" icon="list-checks"/>
+    <rx-action-sheet rx-if="can_enrol" id="enrol-member" :label="tx['loyalty.enrol']" :action="route('wl_sales.loyalty_enrol')"
+                     :title="tx['loyalty.enrol']" :description="tx['loyalty.enrol_description']" :submit-label="tx['loyalty.enrol']" variant="primary" icon="plus">
+      <rx-input name="party_id" :label="tx['loyalty.party']" id="enrol-member-party" required/>
+      <rx-input name="mobile" :label="tx['loyalty.mobile']" id="enrol-member-mobile" required/>
+      <rx-input name="guardian_party_id" :label="tx['loyalty.guardian']" id="enrol-member-guardian"/>
+      <rx-checkbox name="terms" :label="tx['loyalty.accept_terms']" id="enrol-member-terms"/>
+    </rx-action-sheet>
+    <rx-action-sheet rx-if="can_manage" id="create-loyalty-programme" :label="tx['loyalty.turn_on']" :action="route('wl_sales.loyalty_programme')"
+                     :title="tx['loyalty.turn_on']" :submit-label="tx['loyalty.turn_on']" icon="gift">
+      <rx-input name="name" :label="tx['loyalty.name']" id="create-programme-name" required/>
+      <rx-input name="earn_kind" :label="tx['loyalty.earn_kind']" id="create-programme-kind"/>
+      <rx-input name="earn_rate" :label="tx['loyalty.earn_rate']" id="create-programme-rate"/>
+      <rx-input name="minimum" :label="tx['loyalty.minimum']" id="create-programme-minimum"/>
+      <rx-input name="point_value" :label="tx['loyalty.point_value']" id="create-programme-value"/>
+      <rx-input name="validity_months" :label="tx['loyalty.validity']" id="create-programme-validity"/>
+      <rx-input name="min_redeem_points" :label="tx['loyalty.min_redeem']" id="create-programme-min-redeem"/>
+      <rx-input name="max_share_percent" :label="tx['loyalty.max_share']" id="create-programme-max-share"/>
+      <rx-input name="terms_version" :label="tx['loyalty.terms_version']" id="create-programme-version"/>
+      <rx-textarea name="terms_en" :label="tx['loyalty.terms_en']" id="create-programme-terms-en"/>
+      <rx-textarea name="terms_ar" :label="tx['loyalty.terms_ar']" id="create-programme-terms-ar"/>
+    </rx-action-sheet>
+    <template rx-if="programme">
       <rx-action-sheet rx-if="can_manage" id="change-terms" :label="tx['terms.change']" :action="route('wl_sales.loyalty_terms_change')"
                        :title="tx['terms.change']" :description="tx['terms.change_description']" :submit-label="tx['terms.change']" icon="pencil">
         <rx-input name="effective_from" type="date" :label="tx['terms.effective_from']" id="change-terms-date" required/>
@@ -56,32 +52,37 @@
                        :title="tx['terms.turn_off']" :description="tx['terms.turn_off_description']" :submit-label="tx['terms.turn_off']" icon="x" danger>
         <rx-checkbox name="confirm" :label="tx['terms.turn_off_confirm']" id="turn-off-programme-confirm"/>
       </rx-action-sheet>
-    </rx-row>
-    <rx-table :rows="accounts" as="account" :key="account.id" :caption="tx['loyalty.accounts']" card>
-      <rx-column :label="tx['loyalty.code']">{{ account.code }}</rx-column>
-      <rx-column :label="tx['loyalty.member']">{{ account.party }}</rx-column>
-      <rx-column :label="tx['loyalty.mobile']" hide-narrow>{{ account.mobile }}</rx-column>
-      <rx-column :label="tx['loyalty.balance']">{{ account.balance }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge :kind="account.status_kind" :text="account.status_label"/></rx-column>
-      <rx-column :label="tx['loyalty.reminder']" hide-narrow>{{ account.reminder_note }}</rx-column>
-      <rx-row-actions>
-        <rx-action-sheet rx-if="can_enrol and account.open" :id="'leave-account-' ~ account.id" :label="tx['closure.leave']" :action="route('wl_sales.loyalty_leave', account.id)"
-                         :title="tx['closure.leave']" :description="tx['closure.forfeit'] ~ ' ' ~ account.leave_points" :submit-label="tx['closure.leave']" icon="x">
-          <rx-checkbox name="confirm" :label="tx['closure.confirm_counter']" :id="'leave-account-confirm-' ~ account.id"/>
-        </rx-action-sheet>
+    </template>
+  </rx-page-header>
+  <rx-grid :page="accounts">
+    <template rx-if="column.key == 'party'">{{ row.party }}</template>
+    <template rx-elif="column.key == 'reminder'">{{ row.reminder }}</template>
+    <template rx-elif="column.key == 'actions'">
+      <template rx-if="row.open">
+        <rx-open-button rx-if="can_enrol" :id="'leave-account-' ~ row.id" :label="tx['closure.leave']" icon="x" size="small"/>
         <template rx-if="can_adjust">
-          <rx-action-sheet rx-if="account.open" :id="'adjust-account-' ~ account.id" :label="tx['adjust.adjust']" :action="route('wl_sales.loyalty_adjust', account.id)"
-                           :title="tx['adjust.adjust']" :description="tx['adjust.adjust_description']" :submit-label="tx['adjust.adjust']" icon="pencil">
-            <rx-input name="points" :label="tx['adjust.points']" :id="'adjust-account-points-' ~ account.id" required/>
-            <rx-textarea name="reason" :label="tx['adjust.reason']" :id="'adjust-account-reason-' ~ account.id" required/>
-          </rx-action-sheet>
-          <rx-action-sheet rx-if="account.open" :id="'close-account-' ~ account.id" :label="tx['adjust.close']" :action="route('wl_sales.loyalty_close', account.id)"
-                           :title="tx['adjust.close']" :description="tx['adjust.close_description']" :submit-label="tx['adjust.close']" icon="x" danger>
-            <rx-textarea name="reason" :label="tx['adjust.reason']" :id="'close-account-reason-' ~ account.id" required/>
-          </rx-action-sheet>
+          <rx-open-button :id="'adjust-account-' ~ row.id" :label="tx['adjust.adjust']" icon="pencil" size="small"/>
+          <rx-open-button :id="'close-account-' ~ row.id" :label="tx['adjust.close']" variant="plain-danger" icon="x" size="small"/>
         </template>
-      </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['loyalty.no_accounts']" icon="inbox"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+      </template>
+    </template>
+  </rx-grid>
+  {#- The sheets of the open accounts on this page: forms sent with htmx. -#}
+  <template rx-for="account in sheets">
+    <rx-action-sheet rx-if="can_enrol" :button="false" :id="'leave-account-' ~ account.id" :label="tx['closure.leave']" :action="route('wl_sales.loyalty_leave', account.id)"
+                     :title="tx['closure.leave']" :description="tx['closure.forfeit'] ~ ' ' ~ account.leave_points" :submit-label="tx['closure.leave']" icon="x">
+      <rx-checkbox name="confirm" :label="tx['closure.confirm_counter']" :id="'leave-account-confirm-' ~ account.id"/>
+    </rx-action-sheet>
+    <template rx-if="can_adjust">
+      <rx-action-sheet :button="false" :id="'adjust-account-' ~ account.id" :label="tx['adjust.adjust']" :action="route('wl_sales.loyalty_adjust', account.id)"
+                       :title="tx['adjust.adjust']" :description="tx['adjust.adjust_description']" :submit-label="tx['adjust.adjust']" icon="pencil">
+        <rx-input name="points" :label="tx['adjust.points']" :id="'adjust-account-points-' ~ account.id" required/>
+        <rx-textarea name="reason" :label="tx['adjust.reason']" :id="'adjust-account-reason-' ~ account.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet :button="false" :id="'close-account-' ~ account.id" :label="tx['adjust.close']" :action="route('wl_sales.loyalty_close', account.id)"
+                       :title="tx['adjust.close']" :description="tx['adjust.close_description']" :submit-label="tx['adjust.close']" icon="x" danger>
+        <rx-textarea name="reason" :label="tx['adjust.reason']" :id="'close-account-reason-' ~ account.id" required/>
+      </rx-action-sheet>
+    </template>
+  </template>
 </rx-page>

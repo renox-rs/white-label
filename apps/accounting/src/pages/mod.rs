@@ -14,6 +14,7 @@ pub mod tax_profiles;
 
 use std::collections::BTreeMap;
 
+use renox::grid::Column;
 use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_kernel::parties::directory;
@@ -54,6 +55,35 @@ pub(crate) fn require(user: &AuthUser, permission: &str) -> Result {
     } else {
         Err(Error::Forbidden)
     }
+}
+
+/// The grid column of a record's number (`ENG-0007`): its id padded to four
+/// digits, so people search and sort by what they read. It is the frozen link
+/// to `url` (`{id}` is the row's id).
+pub(crate) fn number_column(label: &str, prefix: &str, url: &str) -> Column {
+    Column::text("number", label)
+        .computed(&format!(
+            "'{prefix}-' || CASE WHEN {{T}}.\"id\" < 10 THEN '000' \
+             WHEN {{T}}.\"id\" < 100 THEN '00' WHEN {{T}}.\"id\" < 1000 THEN '0' \
+             ELSE '' END || CAST({{T}}.\"id\" AS TEXT)"
+        ))
+        .frozen()
+        .mobile()
+        .searchable()
+        .link(url)
+}
+
+/// The grid column of the client company's name, read from its party.
+pub(crate) fn client_column(label: &str, foreign_key: &str) -> Column {
+    Column::related(
+        "client",
+        label,
+        "wl_parties_parties",
+        foreign_key,
+        "display_name",
+    )
+    .mobile()
+    .searchable()
 }
 
 /// The name of `party` in the page's language, else `#id`.

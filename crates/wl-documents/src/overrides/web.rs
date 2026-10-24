@@ -17,6 +17,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use renox::axum::extract::Query;
 use renox::chrono::FixedOffset;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine;
@@ -124,53 +125,89 @@ impl<'a> Names<'a> {
     }
 }
 
-/// One override in a list.
-#[derive(Serialize, Debug, Clone)]
-pub struct OverrideRow {
-    /// The override's id.
-    pub id: i64,
-    /// Its page.
-    pub url: String,
-    /// The kind that blocks.
-    pub kind: String,
-    /// The document subject, e.g. `hr.employee #7`.
-    pub subject: String,
-    /// The guarded transition.
-    pub guarded: String,
-    /// The guarded record's id.
-    pub record: i64,
-    /// Why it is asked for.
-    pub reason: String,
-    /// Who asked.
-    pub requested_by: String,
-    /// The status, in words.
-    pub status_label: String,
-    /// The badge's colour.
-    pub status_kind: &'static str,
-    /// The end of the validity, once approved.
-    pub valid_until: Option<String>,
-}
-
-async fn row(
-    names: &mut Names<'_>,
-    lang: &Lang,
-    o: &BlockOverride,
-    at: DateTime,
-) -> Result<OverrideRow> {
-    let status = shown_status(o, at);
-    Ok(OverrideRow {
-        id: o.id,
-        url: format!("/documents/overrides/{}", o.id),
-        kind: names.kind(o.kind_id).await?,
-        subject: format!("{} #{}", o.subject_type, o.subject_id),
-        guarded: o.guarded.clone(),
-        record: o.record_id,
-        reason: o.reason.clone(),
-        requested_by: names.user(o.requested_by).await?,
-        status_label: text(lang, &format!("overrides.status.{status}")),
-        status_kind: status_kind(status),
-        valid_until: o.valid_until.map(dubai),
-    })
+/// The overrides grid: the requests waiting for the viewer's approval and
+/// the viewer's own, told apart by the "list" filter. Search on kind, subject,
+/// guarded transition and reason, filters by status and requester.
+pub fn grid(lang: &Lang, user_id: i64, can_export: bool) -> Grid {
+    let statuses: Vec<(String, String)> = ["requested", "approved", "refused", "used"]
+        .into_iter()
+        .map(|key| {
+            (
+                key.to_owned(),
+                text(lang, &format!("overrides.status.{key}")),
+            )
+        })
+        .collect();
+    let lists = vec![
+        ("waiting".to_owned(), text(lang, "overrides.waiting")),
+        ("mine".to_owned(), text(lang, "overrides.mine")),
+    ];
+    let kind_sql = if lang.locale == "ar" {
+        "(SELECT COALESCE(NULLIF(\"name_ar\", ''), \"name_en\") FROM \"wl_documents_kinds\" WHERE \"id\" = {T}.\"kind_id\")"
+    } else {
+        "(SELECT \"name_en\" FROM \"wl_documents_kinds\" WHERE \"id\" = {T}.\"kind_id\")"
+    };
+    // `user_id` is the signed-in user's number, never a request value.
+    let list_sql =
+        format!("CASE WHEN {{T}}.\"requested_by\" = {user_id} THEN 'mine' ELSE 'waiting' END");
+    let grid = Grid::new("wl-documents-overrides")
+        .title(&text(lang, "overrides.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("kind", &text(lang, "fields.kind"))
+                .computed(kind_sql)
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/documents/overrides/{id}"),
+        )
+        .column(
+            Column::text("subject", &text(lang, "fields.subject"))
+                .computed("{T}.\"subject_type\" || ' #' || {T}.\"subject_id\"")
+                .searchable()
+                .mobile(),
+        )
+        .column(Column::text("guarded", &text(lang, "fields.guarded")).searchable())
+        .column(Column::number("record_id", &text(lang, "overrides.fields.record")).hidden())
+        .column(
+            Column::text(
+                "requested_name",
+                &text(lang, "overrides.fields.requested_by"),
+            )
+            .computed("(SELECT \"name\" FROM \"users\" WHERE \"id\" = {T}.\"requested_by\")")
+            .searchable(),
+        )
+        .column(Column::text("reason", &text(lang, "overrides.fields.reason")).searchable())
+        .column(
+            Column::select("status", &text(lang, "overrides.fields.status"), statuses)
+                .badges(&[
+                    ("requested", "warning"),
+                    ("approved", "success"),
+                    ("refused", "danger"),
+                    ("used", "neutral"),
+                ])
+                .mobile(),
+        )
+        .column(Column::datetime(
+            "valid_until",
+            &text(lang, "overrides.fields.valid_until"),
+        ))
+        .column(
+            Column::select("list", &text(lang, "overrides.list"), lists)
+                .computed(&list_sql)
+                .hidden(),
+        )
+        // The requests waiting for the viewer first, then the newest.
+        .sort_by("-list,-id")
+        .row_url("/documents/overrides/{id}")
+        .cards_on_mobile()
+        .empty_state(
+            &text(lang, "overrides.waiting_empty"),
+            Some(&text(lang, "overrides.subtitle")),
+        );
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list page needs.
@@ -178,8 +215,7 @@ async fn row(
 #[view(template = "wl-documents/overrides.html")]
 pub struct OverridesPage {
     tx: Texts,
-    waiting: Vec<OverrideRow>,
-    mine: Vec<OverrideRow>,
+    overrides: GridPage<BlockOverride>,
 }
 
 /// Whether `user` is among the current step's approvers of the pending
@@ -199,35 +235,49 @@ async fn is_step_approver(db: &Db, user: &User, o: &BlockOverride) -> Result<boo
 }
 
 /// `GET /documents/overrides`: the requests waiting for the viewer's
-/// approval, and the viewer's own requests, newest first.
-async fn index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View> {
-    let at = renox::db::now();
-    let mut names = Names::new(&db, &lang);
-    let pending = BlockOverride::query()
+/// approval and the viewer's own requests, as one grid (newest first).
+async fn index(
+    State(db): State<Db>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
+    let mut ids: Vec<i64> = Vec::new();
+    for o in BlockOverride::query()
         .where_(BlockOverride::STATUS.eq(BlockOverrideStatus::Requested))
-        .order_by_desc(BlockOverride::ID)
         .get(&db)
-        .await?;
-    let mut waiting = Vec::new();
-    for o in pending {
+        .await?
+    {
         if o.requested_by != user.id && is_step_approver(&db, &user, &o).await? {
-            waiting.push(row(&mut names, &lang, &o, at).await?);
+            ids.push(o.id);
         }
     }
-    let own = BlockOverride::query()
-        .where_(BlockOverride::REQUESTED_BY.eq(user.id))
-        .order_by_desc(BlockOverride::ID)
-        .get(&db)
-        .await?;
-    let mut mine = Vec::with_capacity(own.len());
-    for o in own {
-        mine.push(row(&mut names, &lang, &o, at).await?);
+    ids.extend(
+        BlockOverride::query()
+            .where_(BlockOverride::REQUESTED_BY.eq(user.id))
+            .get(&db)
+            .await?
+            .into_iter()
+            .map(|o| o.id),
+    );
+    let visible = BlockOverride::query().where_(BlockOverride::ID.is_in(if ids.is_empty() {
+        vec![-1]
+    } else {
+        ids
+    }));
+    let can_export = user.has_permission(permissions::MANAGE);
+    let grid = grid(&lang, user.id, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(visible.clone(), &request).await? {
+        return Ok(file);
     }
     Ok(View::typed(OverridesPage {
         tx: texts::all(&lang),
-        waiting,
-        mine,
-    }))
+        overrides: grid.page(visible, &request).await?,
+    })
+    .into_response())
 }
 
 /// What the request form needs.

@@ -21,7 +21,7 @@
 use std::collections::BTreeMap;
 
 use renox::chrono::NaiveDate;
-use renox::grid::{Column, Grid, GridPage, GridRequest};
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::serde_json::{Value, json};
 use renox::state_machine::{self, Available, StateMachine, TransitionError};
@@ -117,8 +117,9 @@ fn status_kind(status: PaymentStatus) -> &'static str {
 
 /// The payments grid: search on the number and the reference, filters by
 /// status, method and entity, money in each payment's currency.
-pub fn grid(lang: &Lang) -> Grid {
-    grid_with(&texts_in(lang))
+pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let grid = grid_with(&texts_in(lang));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// The labels of the codes in `codes`, as `(code, label)` under `group`.
@@ -143,6 +144,9 @@ fn method_codes() -> Vec<&'static str> {
 fn grid_with(t: Text<'_>) -> Grid {
     Grid::new("wl-payments")
         .title(&t("title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::text("number", &t("fields.number"))
                 .frozen()
@@ -173,7 +177,11 @@ fn grid_with(t: Text<'_>) -> Grid {
             &t("fields.method"),
             options(&t, "method", &method_codes()),
         ))
-        .column(Column::money("amount", &t("fields.amount")).currency_from("currency"))
+        .column(
+            Column::money("amount", &t("fields.amount"))
+                .currency_from("currency")
+                .summary(Summary::Sum),
+        )
         .column(
             Column::money("unallocated", &t("fields.unallocated"))
                 .computed(
@@ -183,6 +191,7 @@ fn grid_with(t: Text<'_>) -> Grid {
                      ELSE 0 END",
                 )
                 .currency_from("currency")
+                .summary(Summary::Sum)
                 .mobile(),
         )
         .column(
@@ -222,7 +231,7 @@ async fn index(
     lang: Lang,
     user: AuthUser,
     request: GridRequest,
-) -> Result<View> {
+) -> Result<Response> {
     // The payments of the user's scope: allocated to the invoices of their
     // buildings, prepaid for their leases, or the deposits' payments.
     let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
@@ -234,12 +243,22 @@ async fn index(
             wl_kernel::payments::PAYMENT_SUBJECT_TYPE,
         )
         .await?;
-    let payments = grid(&lang).page(query, &request).await?;
+    // The export is for those who record payments.
+    let can_record = user.has_permission(permissions::RECORD);
+    let grid = grid(&lang, can_record);
+    if request.param("export").is_some() && !can_record {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let payments = grid.page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         payments,
-        can_record: user.has_permission(permissions::RECORD),
-    }))
+        can_record,
+    })
+    .into_response())
 }
 
 /// What the new-payment page needs.
@@ -993,32 +1012,110 @@ async fn store_reverse(
     }
 }
 
+/// The follow-up tasks grid: search on the text and the party, the amount
+/// summed per currency. The links to the cheque or refund and the "Mark
+/// done" button are drawn by the template (`custom`).
+pub fn tasks_grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = texts_in(lang);
+    let grid = Grid::new("wl-payments-tasks")
+        .title(&t("tasks.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("text", &t("tasks.task"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .wrap(),
+        )
+        .column(
+            Column::text("party_name", &t("fields.party"))
+                .computed(
+                    "(SELECT \"wl_parties_parties\".\"display_name\" FROM \"wl_parties_parties\" \
+                     WHERE \"wl_parties_parties\".\"id\" = {T}.\"party_id\")",
+                )
+                .mobile()
+                .searchable(),
+        )
+        .column(
+            Column::money("amount", &t("fields.amount"))
+                .currency_from("currency")
+                .mobile()
+                .summary(Summary::Sum),
+        )
+        .column(
+            Column::select(
+                "status",
+                &t("fields.status"),
+                vec![
+                    ("open".to_owned(), t("tasks.open")),
+                    ("done".to_owned(), t("tasks.finished")),
+                ],
+            )
+            .badges(&[("open", "info"), ("done", "success")]),
+        )
+        .column(Column::custom("links", &t("tasks.links")))
+        .column(Column::date("due_on", &t("tasks.due_on")).hidden())
+        .column(Column::datetime("created_at", &t("fields.created_at")).hidden())
+        .column(Column::custom("actions", "").mobile())
+        .sort_by("id")
+        .cards_on_mobile()
+        .empty_state(&t("tasks.empty"), Some(&t("tasks.empty_hint")));
+    if can_export { grid.exports() } else { grid }
+}
+
 /// What the tasks page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-payments/tasks.html")]
 pub(crate) struct TasksPage {
     tx: Texts,
-    tasks: Vec<TaskRow>,
+    tasks: GridPage<FollowupTask>,
+    /// The ids of the tasks on the page, for their "Mark done" sheets.
+    sheets: Vec<i64>,
     can_mark: bool,
 }
 
 /// `GET /payments/tasks`: the open follow-up tasks of the accountant role and
-/// those assigned to the user.
-async fn tasks(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+/// those assigned to the user, or their export (`?export=`, for those who
+/// record payments).
+async fn tasks(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     // The accountants' tasks, and those assigned to the user (a case owner).
     let mut open = FollowupTask::open_for_user(&state.db, ACCOUNTANT_ROLE, user.id).await?;
     // A manager also sees the decisions left to the manager (`FIN.RUL.18`).
     let manager = crate::config_of(&state).cheque_manager_role.clone();
     if user.has_role(&manager) {
         open.extend(FollowupTask::open_for(&state.db, &manager).await?);
-        open.sort_by_key(|task| task.id);
-        open.dedup_by_key(|task| task.id);
     }
+    let mut ids: Vec<i64> = open.iter().map(|task| task.id).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    if ids.is_empty() {
+        ids.push(-1);
+    }
+    let query = FollowupTask::query().where_(FollowupTask::ID.is_in(ids));
+    let can_mark = user.has_permission(permissions::RECORD);
+    let grid = tasks_grid(&lang, can_mark);
+    if request.param("export").is_some() && !can_mark {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let tasks = grid.page(query, &request).await?;
+    let sheets = tasks.items().iter().map(|task| task.id).collect();
     Ok(View::typed(TasksPage {
         tx: texts::all(&lang),
-        tasks: task_rows(&state, &texts_in(&lang), &open).await?,
-        can_mark: user.has_permission(permissions::RECORD),
-    }))
+        tasks,
+        sheets,
+        can_mark,
+    })
+    .into_response())
 }
 
 /// `POST /payments/tasks/{id}/done`: marks the task done.

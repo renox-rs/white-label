@@ -1,21 +1,14 @@
-{#- wl-inventory: the preferred-supplier requests that wait for a decision,
-    oldest first, with the item (a link to its suppliers) and both
-    suppliers. Replace it with
+{#- wl-inventory: the preferred-supplier requests that wait for a decision, a
+    renox::grid, oldest first, with the item (a link to its suppliers) and
+    both suppliers. Replace it with
     resources/views/wl-inventory/preferred_requests.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['requests.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['requests.title']" :subtitle="tx['requests.subtitle']"/>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['requests.title']">
-      <rx-column :label="tx['item']">
-        <rx-stack>
-          <a href="{{ row.item_url }}">{{ row.item }}</a>
-          <span><a href="{{ row.url }}">#{{ row.id }}</a> <span class="rx-subtitle">{{ row.kind }}</span></span>
-          <span><rx-badge :kind="row.status_kind" :text="row.status"/></span>
-        </rx-stack>
-      </rx-column>
-      <rx-column :label="tx['requests.from']" hide-narrow>{{ row.from }}</rx-column>
-      <rx-column :label="tx['requests.to']">{{ row.to }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['requests.empty']" :message="tx['requests.empty_text']" icon="clipboard-list"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['requests.title']" :subtitle="tx['requests.subtitle']"/>
+  <rx-grid :page="rows">
+    <template rx-if="column.key == 'item'">
+      <a href="{{ row.item_url }}">{{ row.item_label }}</a>
+    </template>
+    <template rx-elif="column.key == 'from'">{{ row.from }}</template>
+    <template rx-elif="column.key == 'to'">{{ row.to }}</template>
+  </rx-grid>
 </rx-page>

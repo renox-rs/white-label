@@ -18,7 +18,7 @@
 
 use std::collections::BTreeMap;
 
-use renox::grid::{Column, Grid, GridPage, GridRequest};
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::serde_json::{Value, json};
 use renox::state_machine::{self, Available, StateMachine, TransitionError};
@@ -109,18 +109,21 @@ fn status_kind(status: InvoiceStatus) -> &'static str {
 
 /// The invoices grid: search on the number and the party, filters by
 /// status and issuing entity, money in each invoice's currency.
-pub fn grid(lang: &Lang) -> Grid {
-    grid_with(&texts_in(lang))
+pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+    grid_with(&texts_in(lang), can_export)
 }
 
 /// [`grid`] with the texts of `t`.
-fn grid_with(t: Text<'_>) -> Grid {
+fn grid_with(t: Text<'_>, can_export: bool) -> Grid {
     let statuses: Vec<(String, String)> = InvoiceStatus::ALL
         .iter()
         .map(|s| (s.as_str().to_owned(), t(&format!("status.{}", s.as_str()))))
         .collect();
-    Grid::new("wl-invoicing")
+    let grid = Grid::new("wl-invoicing")
         .title(&t("title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::text("number", &t("fields.number"))
                 .frozen()
@@ -145,10 +148,15 @@ fn grid_with(t: Text<'_>) -> Grid {
         ))
         .column(Column::date("issue_date", &t("fields.issue_date")))
         .column(Column::date("due_date", &t("fields.due_date")))
-        .column(Column::money("gross_total", &t("fields.gross_total")).currency_from("currency"))
+        .column(
+            Column::money("gross_total", &t("fields.gross_total"))
+                .currency_from("currency")
+                .summary(Summary::Sum),
+        )
         .column(
             Column::money("balance", &t("fields.balance"))
                 .currency_from("currency")
+                .summary(Summary::Sum)
                 .mobile(),
         )
         .column(
@@ -181,7 +189,8 @@ fn grid_with(t: Text<'_>) -> Grid {
         .sort_by("-created_at")
         .row_url("/invoices/{id}")
         .cards_on_mobile()
-        .empty_state(&t("empty"), Some(&t("empty_hint")))
+        .empty_state(&t("empty"), Some(&t("empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list page needs.
@@ -200,13 +209,21 @@ async fn index(
     user: AuthUser,
     lang: Lang,
     request: GridRequest,
-) -> Result<View> {
+) -> Result<Response> {
     // The invoices of the user's scope: all, or those billed for their buildings.
     let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
     let query = reach
         .apply(&state.db, Invoice::query(), "scope_type", "scope_id")
         .await?;
-    let invoices = grid(&lang).page(query, &request).await?;
+    let can_export = crate::may_export(&user, permissions::ISSUE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let invoices = grid.page(query, &request).await?;
     let queued = crate::einvoice_send::queued_count_all(&state.db).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
@@ -215,7 +232,8 @@ async fn index(
             &texts::t(&lang, "wl_invoicing.einvoice.banner"),
             queued,
         ),
-    }))
+    })
+    .into_response())
 }
 
 /// One line as the invoice page shows it.
@@ -733,7 +751,7 @@ mod tests {
 
     #[test]
     fn the_grid_lists_the_invoice_columns_and_statuses() {
-        let grid = grid_with(&english_text);
+        let grid = grid_with(&english_text, false);
         let keys: Vec<&str> = grid.columns().iter().map(Column::key).collect();
         assert_eq!(
             keys,

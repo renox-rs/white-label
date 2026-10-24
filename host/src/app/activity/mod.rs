@@ -56,6 +56,9 @@ pub fn grid() -> Grid {
     Grid::new("activity")
         .title("Activity")
         .per_page(25)
+        .remember()
+        .advanced_filter()
+        .cards_on_mobile()
         .column(Column::datetime("created_at", "When").mobile())
         .column(
             Column::related("user", "Who", "users", "user_id", "name")

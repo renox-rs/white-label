@@ -1,45 +1,41 @@
-{#- fnb: the fridges, freezers and hot-holding units of the outlets with their
+{#- fnb: the fridges, freezers and hot-holding units of the outlets, a renox::grid
+    (search on the name and code, filter by kind) that fills the screen, with their
     range, their last reading and the temperature hold they are on, the sheet
     that records a reading (an out-of-range one places a hold on the stock in
     the unit) and the sheet that sets a unit up with its stock location.
     Replace it with resources/views/fnb/cold_units.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['cold.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['cold.title']" :subtitle="tx['cold.subtitle']">
-      <template rx-if="can_manage">
-        <rx-action-sheet id="cold-create" :label="tx['cold.create']" :action="route('fnb.cold_unit_create')"
-                         :title="tx['cold.create_title']" :description="tx['cold.create_description']" :submit-label="tx['cold.create']" icon="plus">
-          <rx-input name="code" :label="tx['cold.code']" id="cold-create-code" required/>
-          <rx-input name="name" :label="tx['cold.name']" id="cold-create-name" required/>
-          <rx-select name="kind" :label="tx['cold.kind']" id="cold-create-kind" :options="kinds" :selected="'fridge'"/>
-          <rx-select name="location" :label="tx['cold.location']" :hint="tx['cold.location_hint']" id="cold-create-location" :options="locations" :selected="''" :placeholder="tx['cold.location']"/>
-          <rx-input name="min" :label="tx['cold.min']" :hint="tx['cold.range_hint']" id="cold-create-min"/>
-          <rx-input name="max" :label="tx['cold.max']" :hint="tx['cold.range_hint']" id="cold-create-max"/>
-        </rx-action-sheet>
-      </template>
-    </rx-page-header>
-    <rx-table :rows="units" as="unit" :key="unit.id" :caption="tx['cold.title']">
-      <rx-column :label="tx['cold.name']">
-        <rx-stack>
-          <span><a href="{{ unit.url }}">{{ unit.name }}</a></span>
-          <span class="rx-subtitle">{{ unit.code }} / {{ unit.kind }}</span>
-        </rx-stack>
-      </rx-column>
-      <rx-column :label="tx['cold.range']" hide-narrow>{{ unit.range }}</rx-column>
-      <rx-column :label="tx['cold.reading']" align="num"><rx-badge :kind="unit.reading_kind" :text="unit.reading"/></rx-column>
-      <rx-column :label="tx['cold.read_at']" hide-narrow>{{ unit.read_at }}</rx-column>
-      <rx-column :label="tx['state']">
-        <rx-badge rx-if="unit.on_hold" kind="warning" :text="tx['cold.on_hold']"/>
-        <span rx-if="unit.ticket" class="rx-subtitle">{{ unit.ticket }}</span>
-      </rx-column>
-      <rx-row-actions>
-        <rx-action-sheet rx-if="can_log" :id="'reading-' ~ unit.id" :label="tx['cold.record']" :action="route('fnb.cold_unit_reading', unit.id)"
-                         :title="tx['cold.record_title']" :description="tx['cold.record_description']" :submit-label="tx['cold.record']" icon="thermometer">
-          <rx-input name="temperature" :label="tx['cold.temperature']" :hint="tx['cold.temperature_hint']" :id="'reading-temperature-' ~ unit.id" required/>
-          <rx-textarea name="note" :label="tx['note']" :id="'reading-note-' ~ unit.id"/>
-        </rx-action-sheet>
-      </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['cold.empty']" :message="tx['cold.empty_text']" icon="thermometer"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['cold.title']" :subtitle="tx['cold.subtitle']">
+    <template rx-if="can_manage">
+      <rx-action-sheet id="cold-create" :label="tx['cold.create']" :action="route('fnb.cold_unit_create')"
+                       :title="tx['cold.create_title']" :description="tx['cold.create_description']" :submit-label="tx['cold.create']" icon="plus">
+        <rx-input name="code" :label="tx['cold.code']" id="cold-create-code" required/>
+        <rx-input name="name" :label="tx['cold.name']" id="cold-create-name" required/>
+        <rx-select name="kind" :label="tx['cold.kind']" id="cold-create-kind" :options="kinds" :selected="'fridge'"/>
+        <rx-select name="location" :label="tx['cold.location']" :hint="tx['cold.location_hint']" id="cold-create-location" :options="locations" :selected="''" :placeholder="tx['cold.location']"/>
+        <rx-input name="min" :label="tx['cold.min']" :hint="tx['cold.range_hint']" id="cold-create-min"/>
+        <rx-input name="max" :label="tx['cold.max']" :hint="tx['cold.range_hint']" id="cold-create-max"/>
+      </rx-action-sheet>
+    </template>
+  </rx-page-header>
+  <rx-grid :page="units">
+    <template rx-if="column.key == 'range'">{{ row.range }}</template>
+    <template rx-elif="column.key == 'reading'"><rx-badge :kind="row.reading_kind" :text="row.reading"/></template>
+    <template rx-elif="column.key == 'read_at'">{{ row.read_at }}</template>
+    <template rx-elif="column.key == 'state'">
+      <rx-badge rx-if="row.on_hold" kind="warning" :text="tx['cold.on_hold']"/>
+      <span rx-if="row.ticket" class="rx-subtitle">{{ row.ticket }}</span>
+    </template>
+    <template rx-elif="column.key == 'actions'">
+      <rx-open-button rx-if="can_log" :id="'reading-' ~ row.id" :label="tx['cold.record']" icon="thermometer" size="small"/>
+    </template>
+  </rx-grid>
+  {#- A sheet per unit of the page: a form sent with htmx. -#}
+  <template rx-if="can_log">
+    <rx-action-sheet rx-for="id in sheets" :button="false" :id="'reading-' ~ id" :label="tx['cold.record']" :action="route('fnb.cold_unit_reading', id)"
+                     :title="tx['cold.record_title']" :description="tx['cold.record_description']" :submit-label="tx['cold.record']" icon="thermometer">
+      <rx-input name="temperature" :label="tx['cold.temperature']" :hint="tx['cold.temperature_hint']" :id="'reading-temperature-' ~ id" required/>
+      <rx-textarea name="note" :label="tx['note']" :id="'reading-note-' ~ id"/>
+    </rx-action-sheet>
+  </template>
 </rx-page>

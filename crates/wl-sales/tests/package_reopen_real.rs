@@ -199,6 +199,7 @@ async fn boot() -> Real {
         .call("wl:install", Vec::<String>::new())
         .await
         .expect("wl:install runs");
+    support::stand_in_parties(&app).await;
     Real {
         app,
         desk,

@@ -20,6 +20,12 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_hr.employees.empty", "No employees yet"),
     (
+        "wl_hr.employees.empty_hint",
+        "An employee appears here when a person is hired.",
+    ),
+    ("wl_hr.employees.department", "Department"),
+    ("wl_hr.employees.last_working_day", "Last working day"),
+    (
         "wl_hr.employees.expiring_only",
         "Only the workers with a document that ends within 30 days.",
     ),
@@ -988,6 +994,12 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.my_leave.taken", "Working days taken in"),
     ("wl_hr.my_leave.empty", "No leave yet"),
     (
+        "wl_hr.my_leave.empty_hint",
+        "Use Ask for leave to make your first request.",
+    ),
+    ("wl_hr.leave.unpaid_days", "Unpaid days"),
+    ("wl_hr.leave.actions", "Actions"),
+    (
         "wl_hr.my_leave.no_employee",
         "Your account is not linked to an employee record, so there is no leave to show. Ask HR.",
     ),
@@ -1645,6 +1657,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.payroll.list.new_submit", "Start the run"),
     ("wl_hr.payroll.list.period", "Month"),
     ("wl_hr.payroll.list.kind", "Kind"),
+    ("wl_hr.payroll.list.reason", "Reason"),
     ("wl_hr.payroll.list.total", "Total net"),
     ("wl_hr.payroll.list.empty", "No payroll runs yet"),
     (
@@ -1674,6 +1687,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.settlement.list.paid", "Paid"),
     ("wl_hr.settlement.list.overdue", "Overdue"),
     ("wl_hr.settlement.list.empty", "No final settlements yet"),
+    (
+        "wl_hr.settlement.list.empty_hint",
+        "A settlement is drafted when an employee leaves.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

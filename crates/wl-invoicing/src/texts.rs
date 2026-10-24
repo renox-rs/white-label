@@ -1667,6 +1667,7 @@ const TEXTS: &[(&str, &str)] = &[
         "The kind cannot change once the category has a budget line or an actual.",
     ),
     ("wl_invoicing.budget.category.parent", "Parent"),
+    ("wl_invoicing.budget.category.position", "Order"),
     (
         "wl_invoicing.budget.category.parent_hint",
         "The code of the category this one is a part of.",

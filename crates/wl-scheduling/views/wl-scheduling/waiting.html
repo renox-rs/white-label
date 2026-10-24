@@ -1,27 +1,23 @@
-{#- wl-scheduling: the waiting list, in the order the parties joined, and the
-    form that adds one. Replace it with
-    resources/views/wl-scheduling/waiting.html in the app. -#}
+{#- wl-scheduling: the waiting list, a renox::grid (search on the party,
+    filters by service, resource and status) that fills the screen, the open
+    entries first in the order the parties joined, and the sheet that adds
+    one. Replace it with resources/views/wl-scheduling/waiting.html in the
+    app. -#}
 <rx-page layout="layouts/app.html" :title="tx['waiting.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['waiting.title']" :subtitle="tx['waiting.subtitle']" :back="route('wl_scheduling.bookings')" :back-label="tx['bookings.title']">
-      <rx-action-sheet rx-if="can_manage" id="waiting-add" :label="tx['waiting.add']" :action="route('wl_scheduling.waiting_join')"
-                       :title="tx['waiting.add']" :submit-label="tx['waiting.add']" icon="plus">
-        <rx-select name="party" :label="tx['waiting.party']" :options="[]" :placeholder="tx['new.party_placeholder']" options-url="{{ route('wl_scheduling.party_options') }}" id="waiting-add-party" required/>
-        <rx-select name="service" :label="tx['waiting.service']" :options="services" :selected="''" id="waiting-add-service" required/>
-        <rx-select name="resource" :label="tx['waiting.with']" :options="resources" :selected="''" id="waiting-add-resource"/>
-        <rx-input name="window_from" type="datetime-local" :label="tx['waiting.window_from']" id="waiting-add-from"/>
-        <rx-input name="window_until" type="datetime-local" :label="tx['waiting.window_until']" id="waiting-add-until"/>
-        <rx-input name="expires_on" type="date" :label="tx['waiting.expires_on']" id="waiting-add-expires"/>
-      </rx-action-sheet>
-    </rx-page-header>
-    <rx-table :rows="entries" as="entry" :key="entry.id" :caption="tx['waiting.title']" card>
-      <rx-column :label="tx['waiting.party']"><a href="{{ route('wl_scheduling.waiting_entry', entry.id) }}">{{ entry.party }}</a></rx-column>
-      <rx-column :label="tx['waiting.service']">{{ entry.service }}</rx-column>
-      <rx-column :label="tx['waiting.with']" hide-narrow>{{ entry.with }}</rx-column>
-      <rx-column :label="tx['waiting.window']" hide-narrow>{{ entry.window }}</rx-column>
-      <rx-column :label="tx['waiting.offer']" hide-narrow>{{ entry.offer }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge :kind="entry.status_kind" :text="entry.status"/></rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['waiting.empty']" icon="clock"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['waiting.title']" :subtitle="tx['waiting.subtitle']" :back="route('wl_scheduling.bookings')" :back-label="tx['bookings.title']">
+    <rx-action-sheet rx-if="can_manage" id="waiting-add" :label="tx['waiting.add']" :action="route('wl_scheduling.waiting_join')"
+                     :title="tx['waiting.add']" :submit-label="tx['waiting.add']" icon="plus">
+      <rx-select name="party" :label="tx['waiting.party']" :options="[]" :placeholder="tx['new.party_placeholder']" options-url="{{ route('wl_scheduling.party_options') }}" id="waiting-add-party" required/>
+      <rx-select name="service" :label="tx['waiting.service']" :options="services" :selected="''" id="waiting-add-service" required/>
+      <rx-select name="resource" :label="tx['waiting.with']" :options="resources" :selected="''" id="waiting-add-resource"/>
+      <rx-input name="window_from" type="datetime-local" :label="tx['waiting.window_from']" id="waiting-add-from"/>
+      <rx-input name="window_until" type="datetime-local" :label="tx['waiting.window_until']" id="waiting-add-until"/>
+      <rx-input name="expires_on" type="date" :label="tx['waiting.expires_on']" id="waiting-add-expires"/>
+    </rx-action-sheet>
+  </rx-page-header>
+  <rx-grid :page="entries">
+    <template rx-if="column.key == 'party'"><a href="{{ row.url }}">{{ row.party }}</a></template>
+    <template rx-elif="column.key == 'window'">{{ row.window }}</template>
+    <template rx-elif="column.key == 'offer'">{{ row.offer }}</template>
+  </rx-grid>
 </rx-page>

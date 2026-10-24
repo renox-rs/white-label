@@ -26,6 +26,7 @@
 pub(crate) mod absence_page;
 pub(crate) mod contract_page;
 pub(crate) mod deployment_page;
+pub(crate) mod lists;
 pub(crate) mod portal_page;
 pub(crate) mod request_page;
 

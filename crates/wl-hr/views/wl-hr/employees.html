@@ -1,24 +1,17 @@
-{#- wl-hr: the employees, with their status and the progress of the onboarding
-    in progress. Replace it with resources/views/wl-hr/employees.html in the
-    app. -#}
+{#- wl-hr: the employees, a renox::grid (search on number, role, title and
+    department, filters by status and type) with the progress of the
+    onboarding in progress; it fills the screen. Replace it with
+    resources/views/wl-hr/employees.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['employees.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['employees.title']" :subtitle="tx['employees.subtitle']"/>
-    <rx-alert rx-if="expiring_only" kind="info" :message="tx['employees.expiring_only']"/>
-    <rx-row rx-if="expiring_only"><rx-link-button href="/hr/employees" :label="tx['employees.show_all']"/></rx-row>
-    <rx-table :rows="employees" as="employee" :key="employee.id" :caption="tx['employees.title']" card>
-      <rx-column :label="tx['employees.name']">
-        <rx-stack>
-          <a href="{{ route('wl_hr.employee', employee.id) }}">{{ employee.name }}</a>
-          <span rx-if="employee.documents_ending" class="rx-subtitle">{{ tx['employees.documents_ending'] }}: {{ employee.documents_ending }}</span>
-        </rx-stack>
-      </rx-column>
-      <rx-column :label="tx['employees.number']" hide-narrow>{{ employee.number }}</rx-column>
-      <rx-column :label="tx['employees.job_role']">{{ employee.job_role | replace('_', ' ') | capitalize }}</rx-column>
-      <rx-column :label="tx['employees.hire_date']" hide-narrow>{{ employee.hire_date_text }}</rx-column>
-      <rx-column :label="tx['employees.progress']" hide-narrow>{{ employee.progress }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge :kind="employee.status_kind" :text="employee.status"/></rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['employees.expiring_empty'] if expiring_only else tx['employees.empty']" icon="users"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['employees.title']" :subtitle="tx['employees.expiring_only'] if expiring_only else tx['employees.subtitle']">
+    <rx-link-button rx-if="expiring_only" href="/hr/employees" :label="tx['employees.show_all']"/>
+  </rx-page-header>
+  <rx-grid :page="employees">
+    <template rx-if="column.key == 'name'">
+      <a href="{{ route('wl_hr.employee', row.id) }}">{{ row.name }}</a>
+      <div rx-if="row.documents_ending" class="rx-subtitle">{{ tx['employees.documents_ending'] }}: {{ row.documents_ending }}</div>
+    </template>
+    <template rx-elif="column.key == 'hire_date_text'">{{ row.hire_date_text }}</template>
+    <template rx-elif="column.key == 'progress'">{{ row.progress }}</template>
+  </rx-grid>
 </rx-page>

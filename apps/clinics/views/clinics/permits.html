@@ -1,28 +1,20 @@
 {#- clinics: the advertising permits of the campaigns that promote services
-    (CLN.ACL.13): the permit number, its last valid day and who approved it.
-    The medical director records them. Replace it with
-    resources/views/clinics/permits.html in the app. -#}
+    (CLN.ACL.13), a renox::grid that fills the screen: the permit number, its
+    last valid day and who approved it. The medical director records them.
+    Replace it with resources/views/clinics/permits.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['permit.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['permit.title']" :subtitle="tx['permit.subtitle']">
-      <template rx-if="can_manage">
-        <rx-action-sheet id="permit-record" :label="tx['permit.record']" :action="route('clinics.campaign_permit_record')"
-                         :title="tx['permit.record']" :description="tx['permit.record_description']" :submit-label="tx['permit.record']" icon="shield-check">
-          <rx-input name="campaign" type="number" :label="tx['permit.campaign']" id="permit-campaign" required/>
-          <rx-select name="promotes" :label="tx['permit.promotes']" :options="promotes_options" :selected="'yes'" id="permit-promotes"/>
-          <rx-input name="permit_number" :label="tx['permit.number']" id="permit-number"/>
-          <rx-input name="valid_to" type="date" :label="tx['permit.valid_to']" id="permit-valid-to"/>
-        </rx-action-sheet>
-      </template>
-    </rx-page-header>
-    <rx-table :rows="permits" as="row" :key="row.campaign" :caption="tx['permit.title']" card>
-      <rx-column :label="tx['permit.campaign']">{{ row.campaign }}</rx-column>
-      <rx-column :label="tx['permit.promotes']" hide-narrow>{{ row.promotes }}</rx-column>
-      <rx-column :label="tx['permit.number']">{{ row.number }}</rx-column>
-      <rx-column :label="tx['permit.valid_to']" hide-narrow>{{ row.valid_to }}</rx-column>
-      <rx-column :label="tx['permit.approved_by']" hide-narrow>{{ row.approved_by }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.state_kind" :text="row.state"/></rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['permit.empty']" icon="shield-check"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['permit.title']" :subtitle="tx['permit.subtitle']">
+    <template rx-if="can_manage">
+      <rx-action-sheet id="permit-record" :label="tx['permit.record']" :action="route('clinics.campaign_permit_record')"
+                       :title="tx['permit.record']" :description="tx['permit.record_description']" :submit-label="tx['permit.record']" icon="shield-check">
+        <rx-input name="campaign" type="number" :label="tx['permit.campaign']" id="permit-campaign" required/>
+        <rx-select name="promotes" :label="tx['permit.promotes']" :options="promotes_options" :selected="'yes'" id="permit-promotes"/>
+        <rx-input name="permit_number" :label="tx['permit.number']" id="permit-number"/>
+        <rx-input name="valid_to" type="date" :label="tx['permit.valid_to']" id="permit-valid-to"/>
+      </rx-action-sheet>
+    </template>
+  </rx-page-header>
+  <rx-grid :page="permits">
+    <template rx-if="column.key == 'campaign'">{{ row.campaign }}</template>
+  </rx-grid>
 </rx-page>

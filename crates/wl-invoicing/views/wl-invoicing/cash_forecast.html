@@ -3,7 +3,10 @@
     lines behind it), the projected balance, the memo lines that are shown and
     not counted, the warnings, the opening balance of each bank account and,
     for cashflow.manage, the opening cash balances entered by hand. Replace it
-    with resources/views/wl-invoicing/cash_forecast.html in the app. -#}
+    with resources/views/wl-invoicing/cash_forecast.html in the app.
+    Left as a table on purpose (#525): a matrix of weeks across with computed
+    cells and sections, not a list of records, so the standard grid (a model
+    query with rows, sort and export) cannot draw it. -#}
 <rx-page layout="layouts/app.html" :title="tx['cash.title']">
   <rx-stack>
     <rx-page-header :title="tx['cash.title']" :subtitle="tx['cash.subtitle']"/>

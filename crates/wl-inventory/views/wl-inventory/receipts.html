@@ -1,19 +1,11 @@
-{#- wl-inventory: the goods receipts, drafts first. Replace it with
-    resources/views/wl-inventory/receipts.html in the app. -#}
+{#- wl-inventory: the goods receipts, a renox::grid (search on the number,
+    order, store and delivery note; filters by status). Replace it
+    with resources/views/wl-inventory/receipts.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['receipts.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['receipts.title']" :subtitle="tx['receipts.subtitle']">
-      <rx-link-button route="wl_inventory.orders" :label="tx['orders.title']" variant="plain"/>
-    </rx-page-header>
-    <rx-table :rows="rows" as="row" :key="row.id" :caption="tx['receipts.title']" card>
-      <rx-column :label="tx['receipts.receipt']"><a href="{{ route('wl_inventory.receipt', row.id) }}">{{ row.title }}</a></rx-column>
-      <rx-column :label="tx['orders.number']" hide-narrow>{{ row.order }}</rx-column>
-      <rx-column :label="tx['orders.supplier']">{{ row.supplier }}</rx-column>
-      <rx-column :label="tx['stock.store']" hide-narrow>{{ row.location }}</rx-column>
-      <rx-column :label="tx['receipts.delivery_note']" hide-narrow>{{ row.delivery_note }}</rx-column>
-      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
-      <rx-column :label="tx['transfers.when']" hide-narrow>{{ row.when }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['receipts.empty']" icon="package"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['receipts.title']" :subtitle="tx['receipts.subtitle']">
+    <rx-link-button route="wl_inventory.orders" :label="tx['orders.title']" variant="plain"/>
+  </rx-page-header>
+  <rx-grid :page="rows">
+    <template rx-if="column.key == 'supplier'">{{ row.supplier }}</template>
+  </rx-grid>
 </rx-page>

@@ -179,15 +179,14 @@ async fn the_pages_fit_a_phone() {
     let t = boot().await;
     let (dispatch, _lot) = picked(&t).await;
     let dispatcher = t.dispatcher("Dina").await;
-    for path in [
-        "/dispatches".to_owned(),
-        format!("/dispatches/{}", dispatch.id),
-    ] {
-        let html = t.browse(&dispatcher, &path).await.text();
-        let tables = html.matches("<table").count();
-        assert!(tables > 0);
-        assert_eq!(tables, html.matches("rx-table-wrap").count(), "{path}");
-    }
+    // The list is a grid, which lays itself out for a phone (cards).
+    let list = t.browse(&dispatcher, "/dispatches").await.text();
+    assert!(list.contains("rx-grid"), "{list}");
+    let path = format!("/dispatches/{}", dispatch.id);
+    let html = t.browse(&dispatcher, &path).await.text();
+    let tables = html.matches("<table").count();
+    assert!(tables > 0);
+    assert_eq!(tables, html.matches("rx-table-wrap").count(), "{path}");
     let html = t
         .browse(&dispatcher, &format!("/dispatches/{}", dispatch.id))
         .await

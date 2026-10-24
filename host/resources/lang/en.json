@@ -310,6 +310,12 @@
     "save": "Save"
   },
   "settings": {
+    "search": "Search the settings",
+    "group_filter": "Group",
+    "all_groups": "All groups",
+    "show": "Search",
+    "none": "No setting matches",
+    "none_text": "Change the search or choose another group.",
     "negative_flow": {
       "title": "Money settings",
       "subtitle": "The values of the shared modules for this client: write-offs, disputes, cheques, deposits, supplier bills, party blocks, the cash-flow alert and the budget.",

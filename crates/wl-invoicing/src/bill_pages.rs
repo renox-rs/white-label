@@ -28,7 +28,7 @@ use std::collections::BTreeMap;
 
 use renox::auth::User;
 use renox::chrono::NaiveDate;
-use renox::grid::{Column, Grid, GridPage, GridRequest};
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::{self, TransitionError};
@@ -119,12 +119,12 @@ fn status_kind(status: SupplierBillStatus) -> &'static str {
 
 /// The supplier bills grid: search on the supplier's invoice number, filters
 /// by status and supplier, money in each bill's currency.
-pub fn grid(lang: &Lang) -> Grid {
-    grid_with(&texts_in(lang))
+pub fn grid(lang: &Lang, can_export: bool) -> Grid {
+    grid_with(&texts_in(lang), can_export)
 }
 
 /// [`grid`] with the texts of `t`.
-fn grid_with(t: Text<'_>) -> Grid {
+fn grid_with(t: Text<'_>, can_export: bool) -> Grid {
     let statuses: Vec<(String, String)> = SupplierBillStatus::ALL
         .iter()
         .map(|s| {
@@ -134,8 +134,11 @@ fn grid_with(t: Text<'_>) -> Grid {
             )
         })
         .collect();
-    Grid::new("wl-invoicing-supplier-bills")
+    let grid = Grid::new("wl-invoicing-supplier-bills")
         .title(&t("supplier_bill.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
         .column(
             Column::text("supplier_invoice_number", &t("supplier_bill.fields.number"))
                 .frozen()
@@ -163,6 +166,7 @@ fn grid_with(t: Text<'_>) -> Grid {
         .column(
             Column::money("gross_total", &t("fields.gross_total"))
                 .currency_from("currency")
+                .summary(Summary::Sum)
                 .mobile(),
         )
         .column(
@@ -182,7 +186,8 @@ fn grid_with(t: Text<'_>) -> Grid {
         .sort_by("-created_at")
         .row_url("/supplier-bills/{id}")
         .cards_on_mobile()
-        .empty_state(&t("supplier_bill.empty"), None)
+        .empty_state(&t("supplier_bill.empty"), None);
+    if can_export { grid.exports() } else { grid }
 }
 
 /// What the list page needs.
@@ -195,13 +200,22 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /supplier-bills`: the grid.
-async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<View> {
-    let bills = grid(&lang).page(SupplierBill::query(), &request).await?;
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
+    let can_export = crate::may_export(&user, permissions::SUPPLIER_BILLS_CREATE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(SupplierBill::query(), &request).await? {
+        return Ok(file);
+    }
+    let bills = grid.page(SupplierBill::query(), &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         bills,
         can_create: user.has_permission(permissions::SUPPLIER_BILLS_CREATE),
-    }))
+    })
+    .into_response())
 }
 
 /// One line of a bill.
@@ -1252,7 +1266,7 @@ mod tests {
 
     #[test]
     fn the_grid_lists_the_supplier_bill_columns() {
-        let grid = grid_with(&english_text);
+        let grid = grid_with(&english_text, false);
         let keys: Vec<&str> = grid.columns().iter().map(Column::key).collect();
         assert_eq!(
             keys,

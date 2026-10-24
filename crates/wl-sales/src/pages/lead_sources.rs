@@ -14,7 +14,9 @@
 
 use std::collections::BTreeMap;
 
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::validation::{Errors, ValidationError};
 use serde::{Deserialize, Serialize};
 
@@ -72,19 +74,64 @@ pub struct SourceRow {
     pub in_use: bool,
 }
 
+/// The lead sources grid: search on the names and the code, filter by
+/// status. The name's "in use" mark and the row buttons are drawn by the
+/// template (`custom`).
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let f = |key: &str| texts::t(lang, &format!("wl_sales.fields.{key}"));
+    let grid = Grid::new("sales-lead-sources")
+        .title(&text(lang, "title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("name_en", &f("name_en"))
+                .frozen()
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::text("name_ar", &f("name_ar")).hidden().searchable())
+        .column(Column::text("code", &f("code")).mobile().searchable())
+        .column(Column::custom("in_use", &text(lang, "in_use")))
+        .column(Column::bool("active", &f("status")).icons().mobile())
+        .column(Column::datetime("created_at", &text(lang, "created_at")).hidden())
+        .column(Column::custom("actions", ""))
+        .sort_by("code")
+        .cards_on_mobile()
+        .empty_state(&text(lang, "empty"), Some(&text(lang, "empty_hint")));
+    if can_export { grid.exports() } else { grid }
+}
+
 /// What the page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-sales/lead_sources.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    sources: Vec<SourceRow>,
+    sources: GridPage<LeadSource>,
+    /// The sources of the page, for their rename and switch sheets.
+    sheets: Vec<SourceRow>,
 }
 
-/// `GET /sales/lead-sources`: every source with its actions.
-async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
-    let mut sources = Vec::new();
-    for source in LeadSource::ordered(&db).await? {
-        sources.push(SourceRow {
+/// `GET /sales/lead-sources`: every source with its actions (`?export=`).
+async fn index(
+    State(db): State<Db>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
+    let can_export = user.has_permission(permissions::CAMPAIGNS_MANAGE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    let query = LeadSource::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut sheets = Vec::new();
+    for source in page.items() {
+        sheets.push(SourceRow {
             id: source.id,
             code: source.code.clone(),
             name: source.name(&lang.locale).to_owned(),
@@ -94,10 +141,14 @@ async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
             in_use: source.in_use(&db).await?,
         });
     }
+    let mut in_use = sheets.iter().map(|row| row.in_use);
+    let sources = page.extend(|_| json!({ "in_use": in_use.next().unwrap_or(false) }));
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         sources,
-    }))
+        sheets,
+    })
+    .into_response())
 }
 
 /// The add form.

@@ -21,13 +21,17 @@
 //! no review by the preparer. The actions answer with a toast and a refresh;
 //! a refusal answers 422 with its lines.
 
+use renox::grid::{Column, Grid, GridPage, GridRequest, Summary};
 use renox::prelude::*;
 use renox::state_machine::history;
 use serde::{Deserialize, Serialize};
 use wl_kernel::deadlines::deadline_tasks;
 use wl_kernel::documents::{dubai_text, today};
 
-use super::{Texts, invalid, parse_aed, parse_id, party_name, require, text, user_name};
+use super::{
+    Texts, client_column, invalid, number_column, parse_aed, parse_id, party_name, require, text,
+    user_name,
+};
 use crate::engagement::Engagement;
 use crate::filing;
 use crate::permissions;
@@ -125,33 +129,97 @@ pub(crate) async fn rows(state: &AppState, lang: &Lang, returns: &[Return]) -> V
     rows
 }
 
+/// The returns grid: search on the number and client, filters by tax, status
+/// and dates, sums of the tax payable.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let types: Vec<(String, String)> = ReturnType::ALL
+        .iter()
+        .map(|k| (k.as_str().to_owned(), type_label(lang, *k)))
+        .collect();
+    let statuses: Vec<(String, String)> = ReturnStatus::ALL
+        .iter()
+        .map(|s| (s.as_str().to_owned(), status_label(lang, *s)))
+        .collect();
+    let grid = Grid::new("accounting-returns")
+        .title(&t("returns.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(number_column(
+            &t("returns.number"),
+            "RET",
+            "/accounting/returns/{id}",
+        ))
+        .column(client_column(&t("returns.client"), "client_party_id"))
+        .column(Column::select("return_type", &t("returns.kind"), types).mobile())
+        .column(Column::date("period_end", &t("returns.period")))
+        .column(Column::date("due_date", &t("returns.due")).mobile())
+        .column(Column::number("version", &t("returns.version")))
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("approved", "success"),
+                    ("filed", "success"),
+                    ("preparing", "info"),
+                    ("in_review", "info"),
+                    ("client_approval", "info"),
+                    ("superseded", "info"),
+                    ("cancelled", "info"),
+                ])
+                .mobile(),
+        )
+        .column(Column::date("filed_on", &t("returns.filed_on")).hidden())
+        .column(
+            Column::money(
+                "tax_payable",
+                &wl_kernel::money_label(&t("returns.tax_payable")),
+            )
+            .hidden()
+            .summary(Summary::Sum),
+        )
+        .sort_by("-number")
+        .row_url("/accounting/returns/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("returns.empty"), Some(&t("returns.empty_text")));
+    if can_export { grid.exports() } else { grid }
+}
+
 /// What the list page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "accounting/returns.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    returns: Vec<ReturnRow>,
+    returns: GridPage<Return>,
     can_create: bool,
     types: Vec<[String; 2]>,
 }
 
 /// `GET /accounting/returns`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
     require(&user, permissions::RETURNS_VIEW)?;
-    let all = Return::query()
-        .order_by_desc(Return::ID)
-        .get(&state.db)
-        .await?;
+    // Whoever prepares returns may export them.
+    let can_export = user.has_permission(permissions::RETURNS_PREPARE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    let query = Return::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
     let types = ReturnType::ALL
         .iter()
         .map(|t| [t.as_str().to_owned(), type_label(&lang, *t)])
         .collect();
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        returns: rows(&state, &lang, &all).await,
+        returns: page,
         can_create: user.has_permission(permissions::RETURNS_PREPARE),
         types,
-    }))
+    })
+    .into_response())
 }
 
 /// The form that opens a return.

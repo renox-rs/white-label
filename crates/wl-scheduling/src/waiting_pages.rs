@@ -22,7 +22,9 @@
 use std::collections::BTreeMap;
 
 use renox::chrono::TimeDelta;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::Serialize;
 use wl_kernel::PartyId;
 use wl_kernel::documents::dubai_text;
@@ -166,32 +168,96 @@ async fn row_of(state: &AppState, lang: &Lang, entry: &WaitingEntry) -> Result<E
 #[view(template = "wl-scheduling/waiting.html")]
 pub(crate) struct ListPage {
     tx: BTreeMap<&'static str, String>,
-    entries: Vec<EntryRow>,
+    entries: GridPage<WaitingEntry>,
     services: Vec<(String, String)>,
     resources: Vec<(String, String)>,
     can_manage: bool,
 }
 
-/// `GET /scheduling/waiting-list`: the entries still open first, then the
-/// last closed ones, in the order they joined.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
-    let mut entries = Vec::new();
-    for entry in WaitingEntry::query()
-        .order_by(WaitingEntry::ID)
-        .limit(300)
-        .get(&state.db)
-        .await?
-    {
-        entries.push((entry.clone(), row_of(&state, &lang, &entry).await?));
-    }
-    // Waiting and offered entries lead; the closed ones follow.
-    entries.sort_by_key(|(entry, _)| {
-        !matches!(
-            entry.status,
-            WaitingStatus::Waiting | WaitingStatus::Offered
+/// The waiting-list grid: filters by service, resource
+/// and status. The entries still open lead, then the closed ones, in the
+/// order they joined. The window and the offer are drawn by the template
+/// (`custom`).
+fn waiting_grid(
+    lang: &Lang,
+    services: Vec<(String, String)>,
+    resources: Vec<(String, String)>,
+    can_export: bool,
+) -> Grid {
+    let t = |key: &str| texts::t(lang, &format!("wl_scheduling.{key}"));
+    let statuses: Vec<(String, String)> = WaitingStatus::ALL
+        .iter()
+        .map(|status| (status.as_str().to_owned(), status_text(lang, *status)))
+        .collect();
+    let grid = Grid::new("scheduling-waiting")
+        .title(&t("waiting.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        // The party's name comes from the kernel's directory (the parties module
+        // is not a dependency), so the template draws it.
+        .column(
+            Column::custom("party", &t("waiting.party"))
+                .frozen()
+                .mobile(),
         )
-    });
-    let services = ServiceType::query()
+        .column(Column::number("party_id", &t("bookings.party_id")).hidden().searchable())
+        .column(Column::select("service_type_id", &t("waiting.service"), services).mobile())
+        .column(
+            Column::select(
+                "preferred_resource_id",
+                &t("waiting.with"),
+                // "Any" is the sheet's blank choice, not a value to filter by.
+                resources.into_iter().filter(|(id, _)| !id.is_empty()),
+            )
+            .mobile(),
+        )
+        .column(Column::custom("window", &t("waiting.window")))
+        .column(Column::custom("offer", &t("waiting.offer")))
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("waiting", "warning"),
+                    ("offered", "info"),
+                    ("booked", "success"),
+                    ("expired", "neutral"),
+                    ("withdrawn", "neutral"),
+                ])
+                .mobile(),
+        )
+        .column(Column::date("expires_on", &t("waiting.expires_on")).hidden())
+        .column(Column::datetime("created_at", &t("fields.created_at")).hidden())
+        .column(
+            Column::number("open_first", "")
+                .computed("CASE WHEN {T}.\"status\" IN ('waiting', 'offered') THEN 0 ELSE 1 END")
+                .hidden(),
+        )
+        // Search: the entry number, the party id and the booking it became.
+        .column(
+            Column::text("lookup", &t("waiting.party"))
+                .computed("CAST({T}.\"id\" AS TEXT) || ' ' || COALESCE(CAST({T}.\"booking_id\" AS TEXT), '')")
+                .hidden()
+                .searchable()
+                .sortable(false)
+                .filterable(false),
+        )
+        .sort_by("open_first,id")
+        .row_url("/scheduling/waiting-list/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("waiting.empty"), None);
+    if can_export { grid.exports() } else { grid }
+}
+
+/// `GET /scheduling/waiting-list`: the entries still open first, then the
+/// closed ones, in the order they joined.
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
+    let can_manage = user.has_permission(permissions::MANAGE);
+    let services: Vec<(String, String)> = ServiceType::query()
         .where_(ServiceType::ACTIVE.eq(true))
         .order_by(ServiceType::NAME_EN)
         .get(&state.db)
@@ -209,13 +275,36 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             .into_iter()
             .map(|r| (r.id.to_string(), r.name)),
     );
+    let grid = waiting_grid(&lang, services.clone(), resources.clone(), can_manage);
+    if request.param("export").is_some() && !can_manage {
+        return Err(Error::Forbidden);
+    }
+    let query = WaitingEntry::query();
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut rows = BTreeMap::new();
+    for entry in page.items() {
+        rows.insert(entry.id, row_of(&state, &lang, entry).await?);
+    }
+    let entries = page.extend(|entry| {
+        let row = rows.get(&entry.id);
+        json!({
+            "party": row.map(|r| r.party.as_str()),
+            "url": format!("/scheduling/waiting-list/{}", entry.id),
+            "window": row.map(|r| r.window.as_str()),
+            "offer": row.map(|r| r.offer.as_str()),
+        })
+    });
     Ok(View::typed(ListPage {
         tx: texts::all(&lang),
-        entries: entries.into_iter().map(|(_, row)| row).collect(),
+        entries,
         services,
         resources,
-        can_manage: user.has_permission(permissions::MANAGE),
-    }))
+        can_manage,
+    })
+    .into_response())
 }
 
 /// What an entry's page needs.

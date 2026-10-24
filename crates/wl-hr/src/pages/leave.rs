@@ -32,6 +32,7 @@
 use std::collections::BTreeMap;
 
 use renox::chrono::{Datelike, NaiveDate};
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::calendar::calendar;
@@ -68,16 +69,6 @@ fn text(lang: &Lang, key: &str) -> String {
     texts::t(lang, &format!("wl_hr.{key}"))
 }
 
-fn status_kind(status: LeaveStatus) -> &'static str {
-    match status {
-        LeaveStatus::Requested => "warning",
-        LeaveStatus::Approved => "success",
-        LeaveStatus::Completed => "info",
-        LeaveStatus::Rejected => "error",
-        LeaveStatus::Cancelled => "info",
-    }
-}
-
 /// The leave types as a select's options.
 fn type_options(lang: &Lang) -> Vec<(String, String)> {
     LEAVE_TYPES
@@ -108,20 +99,6 @@ fn period(from: NaiveDate, to: NaiveDate) -> String {
     }
 }
 
-/// One of the user's own requests.
-#[derive(Serialize, Debug, Clone)]
-pub struct MyRow {
-    id: i64,
-    kind: String,
-    period: String,
-    days: i64,
-    status: String,
-    status_kind: &'static str,
-    reason: String,
-    note: String,
-    can_cancel: bool,
-}
-
 /// Working days taken this year, by type.
 #[derive(Serialize, Debug, Clone)]
 pub struct TakenRow {
@@ -136,10 +113,21 @@ pub(crate) struct MyLeavePage {
     tx: Texts,
     year: i32,
     has_employee: bool,
-    rows: Vec<MyRow>,
+    rows: GridPage<LeaveRequest>,
+    /// The requests of the page that can still be cancelled: one sheet each.
+    cancel_sheets: Vec<LeaveSheet>,
     taken: Vec<TakenRow>,
     types: Vec<(String, String)>,
     today: String,
+}
+
+/// The id of a row and the words of its sheets.
+#[derive(Serialize, Debug, Clone)]
+pub struct LeaveSheet {
+    id: i64,
+    who: String,
+    kind: String,
+    period: String,
 }
 
 fn sick_note_text(lang: &Lang, request: &LeaveRequest) -> String {
@@ -150,21 +138,94 @@ fn sick_note_text(lang: &Lang, request: &LeaveRequest) -> String {
     }
 }
 
+/// The columns both leave grids share: type, dates, working days, status,
+/// the reason given and the sick note. `queue` adds the employee.
+fn leave_grid(id: &str, title: &str, lang: &Lang, queue: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let statuses: Vec<(String, String)> = [
+        LeaveStatus::Requested,
+        LeaveStatus::Approved,
+        LeaveStatus::Completed,
+        LeaveStatus::Rejected,
+        LeaveStatus::Cancelled,
+    ]
+    .iter()
+    .map(|status| {
+        (
+            status.as_str().to_owned(),
+            t(&format!("leave_status.{}", status.as_str())),
+        )
+    })
+    .collect();
+    let mut grid = Grid::new(id)
+        .title(title)
+        .per_page(25)
+        .remember()
+        .advanced_filter();
+    if queue {
+        grid = grid
+            .column(
+                Column::related(
+                    "employee_number",
+                    &t("employees.number"),
+                    "wl_hr_employees",
+                    "employee_id",
+                    "employee_number",
+                )
+                .frozen()
+                .searchable(),
+            )
+            .column(Column::custom("who", &t("queue.who")).mobile());
+    }
+    let kind = Column::select("leave_type", &t("my_leave.type"), type_options(lang)).mobile();
+    grid.column(if queue { kind } else { kind.frozen() })
+        .column(Column::custom("period", &t("my_leave.period")).mobile())
+        .column(Column::date("from_date", &t("my_leave.from")).hidden())
+        .column(Column::date("to_date", &t("my_leave.to")).hidden())
+        .column(Column::custom("days", &t("my_leave.days")))
+        .column(Column::number("unpaid_days", &t("leave.unpaid_days")).hidden())
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("requested", "warning"),
+                    ("approved", "success"),
+                    ("completed", "info"),
+                    ("rejected", "danger"),
+                    ("cancelled", "info"),
+                ])
+                .mobile(),
+        )
+        .column(Column::text("decision_reason", &t("my_leave.reason")).searchable())
+        .column(Column::custom("note", &t("sick.note")))
+        .column(Column::custom("actions", &t("leave.actions")))
+        .sort_by(if queue { "from_date" } else { "-from_date" })
+        .cards_on_mobile()
+}
+
+/// The grid of *My leave*: no export, the person's own requests.
+pub(crate) fn my_grid(lang: &Lang) -> Grid {
+    let t = |key: &str| text(lang, key);
+    leave_grid("hr-my-leave", &t("my_leave.title"), lang, false)
+        .empty_state(&t("my_leave.empty"), Some(&t("my_leave.empty_hint")))
+}
+
 /// `GET /hr/leave`: the user's own leave.
-async fn my_leave(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn my_leave(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
     if !user.has_permission_anywhere(permissions::LEAVE_REQUEST) {
         return Err(Error::Forbidden);
     }
     let day = today();
     let employee = employee_of(&state.db, user.id).await?;
-    let mut rows = Vec::new();
+    let cal = calendar(&state);
     let mut days_by_type: BTreeMap<String, i64> = BTreeMap::new();
     if let Some(employee) = &employee {
-        let cal = calendar(&state);
         for request in LeaveRequest::query()
             .where_(LeaveRequest::EMPLOYEE_ID.eq(employee.id))
-            .order_by_desc(LeaveRequest::FROM_DATE)
-            .limit(100)
             .get(&state.db)
             .await?
         {
@@ -172,26 +233,28 @@ async fn my_leave(State(state): State<AppState>, user: AuthUser, lang: Lang) -> 
                 *days_by_type.entry(request.leave_type.clone()).or_default() +=
                     working_days(&cal, request.from_date, request.to_date);
             }
-            rows.push(MyRow {
-                id: request.id,
-                kind: text(&lang, &format!("leave_type.{}", request.leave_type)),
-                period: period(request.from_date, request.to_date),
-                days: working_days(&cal, request.from_date, request.to_date),
-                status: text(&lang, &format!("leave_status.{}", request.status.as_str())),
-                status_kind: status_kind(request.status),
-                reason: request.decision_reason.clone().unwrap_or_default(),
-                note: if request.leave_type == sick_leave::SICK {
-                    sick_note_text(&lang, &request)
-                } else {
-                    String::new()
-                },
-                can_cancel: matches!(
-                    request.status,
-                    LeaveStatus::Requested | LeaveStatus::Approved
-                ) && request.from_date > day,
-            });
         }
     }
+    let query = LeaveRequest::query()
+        .where_(LeaveRequest::EMPLOYEE_ID.eq(employee.as_ref().map_or(-1, |e| e.id)));
+    let page = my_grid(&lang).page(query, &request).await?;
+    let cancellable = |r: &LeaveRequest| {
+        matches!(r.status, LeaveStatus::Requested | LeaveStatus::Approved) && r.from_date > day
+    };
+    let cancel_sheets = page
+        .items()
+        .iter()
+        .filter(|r| cancellable(r))
+        .map(|r| sheet_of(&lang, r, String::new()))
+        .collect();
+    let rows = page.extend(|r| {
+        renox::serde_json::json!({
+            "period": period(r.from_date, r.to_date),
+            "days": working_days(&cal, r.from_date, r.to_date),
+            "note": if r.leave_type == sick_leave::SICK { sick_note_text(&lang, r) } else { String::new() },
+            "can_cancel": cancellable(r),
+        })
+    });
     let taken = LEAVE_TYPES
         .iter()
         .filter_map(|kind| {
@@ -206,10 +269,21 @@ async fn my_leave(State(state): State<AppState>, user: AuthUser, lang: Lang) -> 
         year: day.year(),
         has_employee: employee.is_some(),
         rows,
+        cancel_sheets,
         taken,
         types: type_options(&lang),
         today: day.to_string(),
     }))
+}
+
+/// The words of the sheets of request `r`.
+fn sheet_of(lang: &Lang, r: &LeaveRequest, who: String) -> LeaveSheet {
+    LeaveSheet {
+        id: r.id,
+        who,
+        kind: text(lang, &format!("leave_type.{}", r.leave_type)),
+        period: period(r.from_date, r.to_date),
+    }
 }
 
 /// What the employee enters to ask for leave.
@@ -330,36 +404,47 @@ async fn reject(
         .into_response())
 }
 
-/// One request in the queue.
-#[derive(Serialize, Debug, Clone)]
-pub struct QueueRow {
-    id: i64,
-    who: String,
-    kind: String,
-    period: String,
-    days: i64,
-    unpaid: i64,
-    status: String,
-    status_kind: &'static str,
-    reason: String,
-    note: String,
-    needs_note: bool,
-    can_decide: bool,
-    can_cancel: bool,
-}
-
 /// What the queue needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-hr/leave_queue.html")]
 pub(crate) struct QueuePage {
     tx: Texts,
-    waiting: Vec<QueueRow>,
-    decided: Vec<QueueRow>,
+    requests: GridPage<LeaveRequest>,
+    /// The requests of the page that wait for a sick note, for a decision, or
+    /// can be cancelled: one sheet each.
+    note_sheets: Vec<LeaveSheet>,
+    decide_sheets: Vec<LeaveSheet>,
+    cancel_sheets: Vec<LeaveSheet>,
+    waiting: usize,
+}
+
+/// The grid of the queue: the requests to decide and those decided lately,
+/// exportable by who may approve.
+pub(crate) fn queue_grid(lang: &Lang) -> Grid {
+    let t = |key: &str| text(lang, key);
+    leave_grid("hr-leave-queue", &t("queue.title"), lang, true)
+        .exports()
+        .empty_state(&t("queue.empty"), Some(&t("queue.empty_text")))
+}
+
+/// Whether `request` still needs its sick note.
+fn needs_note(request: &LeaveRequest) -> bool {
+    request.leave_type == sick_leave::SICK
+        && request.sick_note_document_id.is_none()
+        && !matches!(
+            request.status,
+            LeaveStatus::Rejected | LeaveStatus::Cancelled
+        )
 }
 
 /// `GET /hr/leave/queue`: the requests to decide in the user's scopes, then
-/// the recent decisions.
-async fn queue(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+/// the recent decisions; `?export=` too.
+async fn queue(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     if !user.has_permission(permissions::LEAVE_APPROVE)
         && !user.has_permission_anywhere(permissions::LEAVE_APPROVE)
     {
@@ -367,58 +452,74 @@ async fn queue(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
     }
     let day = today();
     let cal = calendar(&state);
-    let mut waiting = Vec::new();
-    let mut decided = Vec::new();
-    for request in LeaveRequest::query()
-        .order_by(LeaveRequest::FROM_DATE)
-        .limit(300)
-        .get(&state.db)
-        .await?
-    {
+    // The requests of the people in the user's scopes: waiting, or decided in
+    // the last 30 days (or not over yet).
+    let mut visible = Vec::new();
+    let mut waiting = 0;
+    let mut approvers: BTreeMap<i64, bool> = BTreeMap::new();
+    for request in LeaveRequest::query().get(&state.db).await? {
         let recent = request.status != LeaveStatus::Requested
             && request.to_date >= day - renox::chrono::Duration::days(30);
         if request.status != LeaveStatus::Requested && !recent {
             continue;
         }
-        let employee = Employee::find_or_404(&state.db, request.employee_id).await?;
-        if !leave_service::holds_approve(&state, user.id, &employee).await? {
-            continue;
-        }
-        let needs_note = request.leave_type == sick_leave::SICK
-            && request.sick_note_document_id.is_none()
-            && !matches!(
-                request.status,
-                LeaveStatus::Rejected | LeaveStatus::Cancelled
-            );
-        let row = QueueRow {
-            id: request.id,
-            who: employee_name(&state, &lang, &employee).await,
-            kind: text(&lang, &format!("leave_type.{}", request.leave_type)),
-            period: period(request.from_date, request.to_date),
-            days: working_days(&cal, request.from_date, request.to_date),
-            unpaid: request.unpaid_days,
-            status: text(&lang, &format!("leave_status.{}", request.status.as_str())),
-            status_kind: status_kind(request.status),
-            reason: request.decision_reason.clone().unwrap_or_default(),
-            note: if request.leave_type == sick_leave::SICK {
-                sick_note_text(&lang, &request)
-            } else {
-                String::new()
-            },
-            needs_note,
-            can_decide: request.status == LeaveStatus::Requested,
-            can_cancel: request.status == LeaveStatus::Approved && request.from_date > day,
+        let allowed = match approvers.get(&request.employee_id) {
+            Some(allowed) => *allowed,
+            None => {
+                let employee = Employee::find_or_404(&state.db, request.employee_id).await?;
+                let allowed = leave_service::holds_approve(&state, user.id, &employee).await?;
+                approvers.insert(request.employee_id, allowed);
+                allowed
+            }
         };
-        if request.status == LeaveStatus::Requested {
-            waiting.push(row);
-        } else {
-            decided.push(row);
+        if allowed {
+            waiting += usize::from(request.status == LeaveStatus::Requested);
+            visible.push(request.id);
         }
     }
-    decided.reverse();
+    let query = LeaveRequest::query().where_(LeaveRequest::ID.is_in(if visible.is_empty() {
+        vec![-1]
+    } else {
+        visible
+    }));
+    let grid = queue_grid(&lang);
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(query, &request).await?;
+    let mut names: BTreeMap<i64, String> = BTreeMap::new();
+    for item in page.items() {
+        let employee = Employee::find_or_404(&state.db, item.employee_id).await?;
+        names.insert(item.id, employee_name(&state, &lang, &employee).await);
+    }
+    let sheets = |keep: &dyn Fn(&LeaveRequest) -> bool| -> Vec<LeaveSheet> {
+        page.items()
+            .iter()
+            .filter(|r| keep(r))
+            .map(|r| sheet_of(&lang, r, names.get(&r.id).cloned().unwrap_or_default()))
+            .collect()
+    };
+    let note_sheets = sheets(&needs_note);
+    let decide_sheets = sheets(&|r| r.status == LeaveStatus::Requested);
+    let cancel_sheets = sheets(&|r| r.status == LeaveStatus::Approved && r.from_date > day);
+    let requests = page.extend(|r| {
+        renox::serde_json::json!({
+            "who": names.get(&r.id).cloned().unwrap_or_default(),
+            "period": period(r.from_date, r.to_date),
+            "days": working_days(&cal, r.from_date, r.to_date),
+            "note": if r.leave_type == sick_leave::SICK { sick_note_text(&lang, r) } else { String::new() },
+            "needs_note": needs_note(r),
+            "can_decide": r.status == LeaveStatus::Requested,
+            "can_cancel": r.status == LeaveStatus::Approved && r.from_date > day,
+        })
+    });
     Ok(View::typed(QueuePage {
         tx: texts::all(&lang),
+        requests,
+        note_sheets,
+        decide_sheets,
+        cancel_sheets,
         waiting,
-        decided,
-    }))
+    })
+    .into_response())
 }

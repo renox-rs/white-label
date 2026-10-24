@@ -42,6 +42,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("accounting.engagements.number", "Engagement"),
     ("accounting.engagements.reason", "Reason"),
     ("accounting.engagements.empty", "No engagements yet"),
+    (
+        "accounting.engagements.empty_text",
+        "Use New engagement to record the first one.",
+    ),
     ("accounting.engagements.created", "Engagement created."),
     ("accounting.engagements.details", "Engagement"),
     ("accounting.engagements.start", "Start"),
@@ -684,6 +688,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("accounting.returns.client", "Client"),
     ("accounting.returns.version", "Version"),
     ("accounting.returns.empty", "No returns yet"),
+    (
+        "accounting.returns.empty_text",
+        "Use New return to open the first one.",
+    ),
     ("accounting.returns.created", "Return opened."),
     ("accounting.returns.details", "Return"),
     ("accounting.returns.preparer", "Preparer"),
@@ -1354,6 +1362,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Closed, no action",
     ),
     ("accounting.aml.empty", "No AML cases"),
+    (
+        "accounting.aml.empty_text",
+        "A case appears when a concern is raised or a sanctions match is confirmed.",
+    ),
     ("accounting.aml.transition.review", "Reviewed"),
     ("accounting.aml.transition.report", "Reported"),
     ("accounting.aml.transition.close", "Closed"),
@@ -1545,6 +1557,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("accounting.kpi.period", "Period ending"),
     ("accounting.kpi.version", "Version"),
     ("accounting.kpi.empty", "No KPI packs yet"),
+    (
+        "accounting.kpi.empty_text",
+        "Use Import trial balance to create the first pack.",
+    ),
     (
         "accounting.kpi.imported",
         "Trial balance imported as a new draft.",

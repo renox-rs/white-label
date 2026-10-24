@@ -1,21 +1,18 @@
 {#- clinics: the calls the front desk has to make because a recall notice
-    could not be delivered; the outcome of each is recorded. Replace it with
+    could not be delivered, a renox::grid that fills the screen; the outcome of
+    each is recorded in a sheet after the grid. Replace it with
     resources/views/clinics/recall_calls.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['recall.calls_title']">
-  <rx-stack>
-    <rx-page-header :title="tx['recall.calls_title']" :subtitle="tx['recall.calls_subtitle']"/>
-    <rx-table :rows="calls" as="row" :key="row.id" :caption="tx['recall.calls_title']" card>
-      <rx-column :label="tx['recall.patient']">{{ row.patient }}</rx-column>
-      <rx-column :label="tx['recall.call_days']">{{ row.dates }}</rx-column>
-      <rx-column :label="tx['recall.branch']" hide-narrow>{{ row.branch }}</rx-column>
-      <rx-column :label="tx['recall.call_gave_up']" hide-narrow>{{ row.gave_up }}</rx-column>
-      <rx-row-actions>
-        <rx-action-sheet :id="'recall-call-' ~ row.id" :label="tx['recall.call_record']" :action="route('clinics.recall_call', row.id)"
-                         :title="tx['recall.call_record']" :description="tx['recall.calls_subtitle']" :submit-label="tx['recall.call_record']" icon="clipboard-list">
-          <rx-input name="outcome" :label="tx['recall.call_outcome']" :id="'recall-call-outcome-' ~ row.id" required/>
-        </rx-action-sheet>
-      </rx-row-actions>
-      <rx-slot name="empty"><rx-empty :title="tx['recall.calls_empty']" icon="clipboard-list"/></rx-slot>
-    </rx-table>
-  </rx-stack>
+  <rx-page-header :title="tx['recall.calls_title']" :subtitle="tx['recall.calls_subtitle']"/>
+  <rx-grid :page="calls">
+    <template rx-if="column.key == 'patient'">{{ row.patient }}</template>
+    <template rx-elif="column.key == 'branch'">{{ row.branch }}</template>
+    <template rx-elif="column.key == 'record'">
+      <rx-open-button :id="'recall-call-' ~ row.id" :label="tx['recall.call_record']" icon="clipboard-list" size="small"/>
+    </template>
+  </rx-grid>
+  <rx-action-sheet rx-for="id in sheets" :button="false" :id="'recall-call-' ~ id" :label="tx['recall.call_record']" :action="route('clinics.recall_call', id)"
+                   :title="tx['recall.call_record']" :description="tx['recall.calls_subtitle']" :submit-label="tx['recall.call_record']" icon="clipboard-list">
+    <rx-input name="outcome" :label="tx['recall.call_outcome']" :id="'recall-call-outcome-' ~ id" required/>
+  </rx-action-sheet>
 </rx-page>

@@ -28,6 +28,7 @@
 use std::collections::BTreeMap;
 
 use renox::chrono::NaiveDate;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
@@ -187,9 +188,97 @@ pub struct IndexQuery {
 #[view(template = "wl-hr/employees.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    employees: Vec<EmployeeRow>,
+    employees: GridPage<Employee>,
     /// Set when the list is narrowed to the workers with a document ending soon.
     expiring_only: bool,
+}
+
+/// The employees grid: search on the number, title, role and department,
+/// filters by status and type, the onboarding progress and the documents
+/// ending drawn by the template (`custom`). No pay column: the list shows
+/// nothing that needs `employees.sensitive.view`, so an export holds none.
+pub(crate) fn grid(lang: &Lang, can_export: bool) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let statuses: Vec<(String, String)> = [
+        EmployeeStatus::Onboarding,
+        EmployeeStatus::Active,
+        EmployeeStatus::OnLeave,
+        EmployeeStatus::Notice,
+        EmployeeStatus::Absconded,
+        EmployeeStatus::Deceased,
+        EmployeeStatus::Exited,
+        EmployeeStatus::OnboardingCancelled,
+    ]
+    .iter()
+    .map(|status| {
+        (
+            status.as_str().to_owned(),
+            t(&format!("employees.status.{}", status.as_str())),
+        )
+    })
+    .collect();
+    let types: Vec<(String, String)> = ["full_time", "part_time", "temporary", "freelance"]
+        .iter()
+        .map(|kind| ((*kind).to_owned(), t(&format!("employees.type.{kind}"))))
+        .collect();
+    let grid = Grid::new("hr-employees")
+        .title(&t("employees.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("employee_number", &t("employees.number"))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/hr/employees/{id}"),
+        )
+        .column(Column::custom("name", &t("employees.name")).mobile())
+        // The role in words (`security_guard` reads *Security guard*), as SQL
+        // so that search, sort and export see the words too.
+        .column(
+            Column::text("role_words", &t("employees.job_role"))
+                .computed(
+                    "UPPER(SUBSTR(REPLACE({T}.\"job_role\", '_', ' '), 1, 1)) \
+                     || SUBSTR(REPLACE({T}.\"job_role\", '_', ' '), 2)",
+                )
+                .mobile()
+                .searchable(),
+        )
+        .column(
+            Column::text("job_title", &t("employees.job_title"))
+                .hidden()
+                .searchable(),
+        )
+        .column(
+            Column::text("department", &t("employees.department"))
+                .hidden()
+                .searchable(),
+        )
+        .column(Column::select("employment_type", &t("employees.employment_type"), types).hidden())
+        // The hire date as `01 Nov 2026` (drawn by the template, like the page).
+        .column(Column::custom("hire_date_text", &t("employees.hire_date")))
+        .column(Column::date("last_working_day", &t("employees.last_working_day")).hidden())
+        .column(Column::custom("progress", &t("employees.progress")))
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("active", "success"),
+                    ("onboarding", "info"),
+                    ("on_leave", "info"),
+                    ("notice", "warning"),
+                    ("absconded", "danger"),
+                    ("deceased", "info"),
+                    ("exited", "info"),
+                    ("onboarding_cancelled", "info"),
+                ])
+                .mobile(),
+        )
+        .sort_by("-id")
+        .row_url("/hr/employees/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("employees.empty"), Some(&t("employees.empty_hint")));
+    if can_export { grid.exports() } else { grid }
 }
 
 /// The progress of the employee's `in_progress` onboardings: required steps
@@ -218,25 +307,25 @@ async fn progress_of(db: &Db, employee: i64) -> Result<String> {
 
 /// `GET /hr/employees`; `?documents=expiring` narrows it to the workers with
 /// a document that ends within 30 days (for those who may see documents).
+/// `?export=` needs `employees.manage`.
 async fn index(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Query(query): Query<IndexQuery>,
-) -> Result<View> {
+    request: GridRequest,
+) -> Result<Response> {
     let expiring_only = query.documents.as_deref() == Some("expiring")
         && user.has_permission_anywhere("documents.view");
-    let day = today();
-    let until = day + renox::chrono::Days::new(EXPIRING_DAYS);
-    let mut employees = Vec::new();
-    for employee in Employee::query()
-        .order_by_desc(Employee::ID)
-        .get(&state.db)
-        .await?
-    {
-        let mut ending = Vec::new();
-        if expiring_only {
+    let mut employees = Employee::query();
+    // Documents ending: the ids of the workers with one, else everyone.
+    let mut ending: BTreeMap<i64, String> = BTreeMap::new();
+    if expiring_only {
+        let day = today();
+        let until = day + renox::chrono::Days::new(EXPIRING_DAYS);
+        for employee in Employee::query().get(&state.db).await? {
             let subject = wl_kernel::workforce::EmployeeId(employee.id).subject();
+            let mut found = Vec::new();
             for line in wl_kernel::documents::guard(&state)
                 .documents_of(&state.db, &subject, day, &lang.locale)
                 .await?
@@ -246,38 +335,56 @@ async fn index(
                     .filter(|valid_to| *valid_to >= day && *valid_to <= until)
                     .filter(|_| line.validity != "pending" && line.validity != "rejected")
                 {
-                    ending.push(format!(
+                    found.push(format!(
                         "{} {}",
                         line.kind,
                         super::payroll::date_text(valid_to)
                     ));
                 }
             }
-            if ending.is_empty() {
-                continue;
+            if !found.is_empty() {
+                ending.insert(employee.id, found.join(", "));
             }
         }
-        employees.push(EmployeeRow {
-            id: employee.id,
-            name: employee_name(&state, &lang, &employee).await,
-            number: employee.employee_number.clone(),
-            job_role: employee.job_role.clone(),
-            hire_date: employee.hire_date.to_string(),
-            hire_date_text: super::payroll::date_text(employee.hire_date),
-            status: text(
-                &lang,
-                &format!("employees.status.{}", employee.status.as_str()),
-            ),
-            status_kind: employee_kind(employee.status),
-            progress: progress_of(&state.db, employee.id).await?,
-            documents_ending: ending.join(", "),
-        });
+        let ids: Vec<i64> = ending.keys().copied().collect();
+        employees =
+            employees.where_(Employee::ID.is_in(if ids.is_empty() { vec![-1] } else { ids }));
     }
+    let can_export = user.has_permission(permissions::EMPLOYEES_MANAGE);
+    let grid = grid(&lang, can_export);
+    if request.param("export").is_some() && !can_export {
+        return Err(Error::Forbidden);
+    }
+    if let Some(file) = grid.export(employees.clone(), &request).await? {
+        return Ok(file);
+    }
+    let page = grid.page(employees, &request).await?;
+    // The name, the onboarding progress and the documents ending of the page's rows.
+    let mut extra: BTreeMap<i64, (String, String)> = BTreeMap::new();
+    for employee in page.items() {
+        extra.insert(
+            employee.id,
+            (
+                employee_name(&state, &lang, employee).await,
+                progress_of(&state.db, employee.id).await?,
+            ),
+        );
+    }
+    let page = page.extend(|employee| {
+        let (name, progress) = extra.get(&employee.id).cloned().unwrap_or_default();
+        renox::serde_json::json!({
+            "name": name,
+            "progress": progress,
+            "hire_date_text": super::payroll::date_text(employee.hire_date),
+            "documents_ending": ending.get(&employee.id).cloned().unwrap_or_default(),
+        })
+    });
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        employees,
+        employees: page,
         expiring_only,
-    }))
+    })
+    .into_response())
 }
 
 /// One step of an onboarding as the page shows it.

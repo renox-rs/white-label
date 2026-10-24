@@ -98,6 +98,14 @@ pub(crate) const SCREEN_TEXTS: &[(&str, &str)] = &[
         "construction.screen.projects.attention",
         "Waiting on the client",
     ),
+    ("construction.screen.projects.status", "Status"),
+    (
+        "construction.screen.projects.completion_due",
+        "Completion due",
+    ),
+    ("construction.screen.projects.budget", "Budget"),
+    ("construction.screen.projects.advance_paid", "Advance paid"),
+    ("construction.screen.projects.emirate", "Emirate"),
     ("construction.screen.projects.no_ipas", "No IPAs yet"),
     ("construction.screen.projects.empty", "No projects yet"),
     (

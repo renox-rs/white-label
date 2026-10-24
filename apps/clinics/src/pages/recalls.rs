@@ -15,7 +15,11 @@
 //! lots, the hold, the close and the report) is wl-inventory's page, which
 //! links here for the patients.
 
+use std::collections::BTreeMap;
+
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 
@@ -180,63 +184,102 @@ async fn send(
     Ok((Toast::success(text(&lang, "recall.sent")), renox::HxRefresh).into_response())
 }
 
-/// One call waiting for the front desk.
-#[derive(Serialize, Debug, Clone)]
-pub struct CallRow {
-    /// The notice.
-    pub id: i64,
-    /// The patient.
-    pub patient: String,
-    /// The visit days.
-    pub dates: String,
-    /// The branch.
-    pub branch: String,
-    /// When the message gave up.
-    pub gave_up: String,
-}
-
 /// What the calls page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "clinics/recall_calls.html")]
 pub(crate) struct CallsPage {
     tx: Texts,
-    calls: Vec<CallRow>,
+    calls: GridPage<RecallNotice>,
+    /// The notices on this page: each has a sheet that records the call.
+    sheets: Vec<i64>,
+}
+
+/// The recall calls grid: search on the visit days. The patient, branch and
+/// the button that records the call are drawn by the template (`custom`); no
+/// export, the list names patients.
+pub(crate) fn calls_grid(lang: &Lang) -> Grid {
+    Grid::new("clinics-recall-calls")
+        .title(&text(lang, "recall.calls_title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::custom("patient", &text(lang, "recall.patient"))
+                .frozen()
+                .mobile(),
+        )
+        .column(
+            Column::text("visit_dates", &text(lang, "recall.call_days"))
+                .mobile()
+                .searchable(),
+        )
+        .column(Column::custom("branch", &text(lang, "recall.branch")).mobile())
+        .column(Column::datetime(
+            "gave_up_at",
+            &text(lang, "recall.call_gave_up"),
+        ))
+        .column(Column::custom("record", &text(lang, "recall.call_record")).frozen_right())
+        .sort_by("gave_up_at")
+        .cards_on_mobile()
+        .empty_state(
+            &text(lang, "recall.calls_empty"),
+            Some(&text(lang, "recall.calls_subtitle")),
+        )
 }
 
 /// `GET /clinics/recall-calls`: the calls of the user's branches.
-async fn calls(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn calls(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
     if !may_call(&user) {
         return Err(Error::Forbidden);
     }
-    let mut rows = Vec::new();
-    let mut shown = Vec::new();
+    // The notices in the user's branches, with the branch of each.
+    let mut visible = Vec::new();
+    let mut branches = BTreeMap::new();
     for notice in RecallNotice::waiting_for_a_call(&state.db).await? {
         let scope = recalls::notice_scope(&state.db, &notice).await?;
         if !user.has_permission_in(permissions::RECALLS_CALL, &scope) {
             continue;
         }
+        branches.insert(
+            notice.id,
+            wl_kernel::scopes::label_of(&state.db, &scope).await?,
+        );
+        visible.push(notice.id);
+    }
+    let query = RecallNotice::query().where_(RecallNotice::ID.is_in(if visible.is_empty() {
+        vec![-1]
+    } else {
+        visible
+    }));
+    let page = calls_grid(&lang).page(query, &request).await?;
+    let shown: Vec<i64> = page.items().iter().map(|notice| notice.id).collect();
+    let mut patients = BTreeMap::new();
+    for notice in page.items() {
         let patient = party_name(
             &state,
             &lang,
             PartyId(notice.patient_party_id.unwrap_or(notice.party_id)),
         )
         .await;
-        shown.push(notice.id);
-        rows.push(CallRow {
-            id: notice.id,
-            patient,
-            dates: notice.visit_dates.clone(),
-            branch: wl_kernel::scopes::label_of(&state.db, &scope).await?,
-            gave_up: notice
-                .gave_up_at
-                .map_or_else(|| text(&lang, "none"), wl_kernel::documents::dubai_text),
-        });
+        patients.insert(notice.id, patient);
     }
     // The list shows names and visit days: every view is audited.
     recalls::audit_calls_view(&state, &user, &shown).await?;
+    let page = page.extend(|notice| {
+        json!({
+            "patient": patients.get(&notice.id),
+            "branch": branches.get(&notice.id),
+        })
+    });
     Ok(View::typed(CallsPage {
         tx: texts::all(&lang),
-        calls: rows,
+        calls: page,
+        sheets: shown,
     }))
 }
 

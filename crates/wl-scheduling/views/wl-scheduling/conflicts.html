@@ -1,30 +1,19 @@
 {#- wl-scheduling: the bookings in conflict (a block or a lapsed licence
-    overlaps them) and the bulk actions on them. Replace it with
+    overlaps them), a renox::grid that fills the screen. Select rows and
+    "Apply to the selected" opens the sheet of the bulk actions. The page also
+    takes ?resource= and ?day= in its address. Replace it with
     resources/views/wl-scheduling/conflicts.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['conflicts.title']">
-  <rx-stack>
-    <rx-page-header :title="tx['conflicts.title']" :subtitle="tx['conflicts.subtitle']" :back="route('wl_scheduling.bookings')" :back-label="tx['bookings.title']"/>
-    <rx-form method="GET" action="{{ route('wl_scheduling.conflicts') }}">
-      <rx-row>
-        <rx-select name="resource" :label="tx['conflicts.resource']" :options="resources" :selected="filter_resource" id="conflicts-resource"/>
-        <rx-input name="day" type="date" :label="tx['conflicts.day']" :value="filter_day" id="conflicts-day"/>
-        <rx-button type="submit" :label="tx['conflicts.filter']"/>
-      </rx-row>
-    </rx-form>
-    <rx-empty rx-if="empty" :title="tx['conflicts.empty']" icon="calendar-check"/>
-    <rx-form rx-if="has_rows" action="{{ route('wl_scheduling.conflicts_resolve') }}" novalidate>
-      <rx-card :title="tx['conflicts.title']">
-        <rx-form-errors/>
-        <rx-stack>
-          <rx-checkbox-list name="bookings" :label="tx['conflicts.bookings']" :options="options"/>
-          <rx-select rx-if="can_manage" name="action" :label="tx['conflicts.action']" :options="actions" :selected="'reassign'" id="conflicts-action"/>
-          <rx-select rx-if="can_manage" name="to" :label="tx['conflicts.to']" :options="targets" :selected="''" id="conflicts-to"/>
-          <rx-select rx-if="can_manage" name="reason_code" :label="tx['conflicts.reason_code']" :options="reasons" :selected="'resource_unavailable'" id="conflicts-reason"/>
-        </rx-stack>
-        <div class="rx-card__footer">
-          <rx-button rx-if="can_manage" :label="tx['conflicts.apply']"/>
-        </div>
-      </rx-card>
-    </rx-form>
-  </rx-stack>
+  <rx-page-header :title="tx['conflicts.title']" :subtitle="tx['conflicts.subtitle']" :back="route('wl_scheduling.bookings')" :back-label="tx['bookings.title']"/>
+  <rx-grid :page="bookings">
+    <template rx-if="column.key == 'party'">{{ row.party }}</template>
+    <template rx-elif="column.key == 'resources'">{{ row.resources }}</template>
+    <template rx-elif="column.key == 'causes'">{{ row.causes }}</template>
+  </rx-grid>
+  <rx-action-sheet rx-if="can_manage" id="conflicts-resolve" :label="tx['conflicts.apply']" :action="route('wl_scheduling.conflicts_resolve')"
+                   :title="tx['conflicts.title']" :submit-label="tx['conflicts.apply']" :button="false">
+    <rx-select name="action" :label="tx['conflicts.action']" :options="actions" :selected="'reassign'" id="conflicts-action"/>
+    <rx-select name="to" :label="tx['conflicts.to']" :options="targets" :selected="''" id="conflicts-to"/>
+    <rx-select name="reason_code" :label="tx['conflicts.reason_code']" :options="reasons" :selected="'resource_unavailable'" id="conflicts-reason"/>
+  </rx-action-sheet>
 </rx-page>

@@ -243,7 +243,7 @@ async fn prp_prt_01_the_pages_show_the_buildings_and_their_units() {
         .assert_ok()
         .assert_view("property/index.html")
         .assert_see("Tower TWR-A")
-        .assert_see("50%")
+        .assert_see("Occupancy (%)")
         .assert_dont_see("Tower TWR-B");
     t.app
         .get(&format!("/property/buildings/{}", mine.id))

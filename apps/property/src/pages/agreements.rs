@@ -21,15 +21,19 @@
 //! The actions answer with a toast and a refresh, as the sheets post them by
 //! htmx; a refusal answers 422 with its reason.
 
+use std::collections::BTreeMap;
+
 use renox::chrono::NaiveDate;
+use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
+use renox::serde_json::json;
 use renox::state_machine::TransitionError;
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::documents::today;
 
 use super::statements::owner_name;
-use super::{Texts, text};
+use super::{Texts, padded, text};
 use crate::agreement::{
     self, AGREEMENT_SUBJECT_TYPE, AgreementStatus, AgreementUnit, ManagementAgreement, NewAgreement,
 };
@@ -129,23 +133,59 @@ async fn ensure_in_reach(
     }
 }
 
-/// One agreement of the list.
-#[derive(Serialize, Debug, Clone)]
-pub struct AgreementRow {
-    /// The primary key.
-    pub id: i64,
-    /// The number.
-    pub number: String,
-    /// The owner's name.
-    pub owner: String,
-    /// The fee.
-    pub fee: String,
-    /// The first day.
-    pub start: String,
-    /// The status in the page's language.
-    pub status: String,
-    /// The badge kind.
-    pub status_kind: &'static str,
+/// The agreements grid: search on the number, filter by
+/// status. The owner's name (from the parties directory) and the fee text
+/// (percent and fixed fee) are drawn by the template.
+pub(crate) fn grid(lang: &Lang) -> Grid {
+    let t = |key: &str| text(lang, key);
+    let statuses: Vec<(String, String)> = AgreementStatus::ALL
+        .iter()
+        .map(|status| {
+            (
+                status.as_str().to_owned(),
+                t(&format!("agreements.status.{}", status.as_str())),
+            )
+        })
+        .collect();
+    Grid::new("property-agreements")
+        .title(&t("agreements.title"))
+        .per_page(25)
+        .remember()
+        .advanced_filter()
+        .column(
+            Column::text("number", &t("agreements.number"))
+                .computed(&format!("'MA-' || {}", padded("id", 4)))
+                .frozen()
+                .mobile()
+                .searchable()
+                .link("/property/agreements/{id}"),
+        )
+        .column(Column::custom("owner", &t("agreements.owner")).mobile())
+        .column(Column::custom("fee", &t("agreements.fee")).mobile())
+        .column(
+            Column::money(
+                "fee_fixed",
+                &wl_kernel::money_label(&t("agreements.fee_fixed")),
+            )
+            .hidden(),
+        )
+        .column(Column::date("start_date", &t("agreements.start")).mobile())
+        .column(Column::date("end_date", &t("agreements.last_day")).hidden())
+        .column(
+            Column::select("status", &t("fields.status"), statuses)
+                .badges(&[
+                    ("active", "success"),
+                    ("ending", "warning"),
+                    ("draft", "info"),
+                    ("ended", "info"),
+                ])
+                .mobile(),
+        )
+        .sort_by("-id")
+        .row_url("/property/agreements/{id}")
+        .cards_on_mobile()
+        .empty_state(&t("agreements.empty"), Some(&t("agreements.empty_hint")))
+        .exports()
 }
 
 /// What the list page needs.
@@ -153,12 +193,17 @@ pub struct AgreementRow {
 #[view(template = "property/agreements.html")]
 pub(crate) struct IndexPage {
     tx: Texts,
-    agreements: Vec<AgreementRow>,
+    agreements: GridPage<ManagementAgreement>,
     today: String,
 }
 
 /// `GET /property/agreements`.
-async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     // The agreements of the user's buildings (all, for a company-wide holder).
     let reach = manage_reach(&state, &user).await?;
     let query = reach
@@ -169,30 +214,25 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             AGREEMENT_SUBJECT_TYPE,
         )
         .await?;
-    let mut rows = Vec::new();
-    for found in query
-        .order_by_desc(ManagementAgreement::ID)
-        .get(&state.db)
-        .await?
-    {
-        rows.push(AgreementRow {
-            id: found.id,
-            number: found.number(),
-            owner: owner_name(&state, &lang, found.owner_party_id).await,
-            fee: fee_text(&found),
-            start: found.start_date.to_string(),
-            status: text(
-                &lang,
-                &format!("agreements.status.{}", found.status.as_str()),
-            ),
-            status_kind: status_kind(found.status),
-        });
+    // Whoever sees the list manages the agreements, so may export it.
+    let grid = grid(&lang);
+    if let Some(file) = grid.export(query.clone(), &request).await? {
+        return Ok(file);
     }
+    let page = grid.page(query, &request).await?;
+    let mut owners = BTreeMap::new();
+    for found in page.items() {
+        let name = owner_name(&state, &lang, found.owner_party_id).await;
+        owners.insert(found.id, name);
+    }
+    let agreements =
+        page.extend(|found| json!({ "owner": owners.get(&found.id), "fee": fee_text(found) }));
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
-        agreements: rows,
+        agreements,
         today: today().to_string(),
-    }))
+    })
+    .into_response())
 }
 
 /// The form that drafts an agreement.
