@@ -12,6 +12,9 @@
           <rx-input name="subject_id" type="number" :label="tx['fields.subject_id']" :hint="tx['fields.subject_id_hint']" required/>
           <rx-select name="category" :label="tx['fields.category']" :options="categories" :selected="'general'" required/>
           <rx-input name="requester_code" :label="tx['fields.requester_code']" :hint="tx['fields.requester_code_hint']"/>
+          <rx-input name="reported_at" type="datetime-local" :label="tx['fields.reported_at']" :hint="tx['fields.reported_at_hint']"/>
+          <rx-input name="outage_reference" :label="tx['fields.outage_reference']"/>
+          <rx-input name="late_reason" :label="tx['fields.late_reason']" span="full"/>
           <rx-input name="title" :label="tx['fields.title']" span="full" required/>
           <rx-textarea name="description" :label="tx['fields.description']" span="full"/>
         </rx-form-grid>

@@ -19,6 +19,7 @@ pub mod deadlines;
 pub mod flag_pages;
 pub mod flags;
 pub mod job_cancel;
+pub mod late;
 mod machine;
 pub mod no_show;
 mod notices;
@@ -440,6 +441,8 @@ impl Module for WlTicketing {
         notices::register(app);
         // BL-TKT-12: the notice that a ticket found nobody in its role.
         role_queue::register();
+        // BL-TKT-13: the ticket's late-entry definition (`reported_at`).
+        late::register();
         // A ticket's scope is its subject's (the approvals and wl-notify find
         // the people responsible through it).
         ticket::register_scope();

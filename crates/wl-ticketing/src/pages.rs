@@ -199,6 +199,7 @@ fn grid_with(t: Text<'_>, can_export: bool) -> Grid {
                 )
                 .searchable(),
         )
+        .column(Column::custom("overdue", &t("fields.overdue")))
         .column(Column::datetime("visit_at", &t("fields.visit_at")).hidden())
         .column(Column::datetime(
             "resolution_due",
@@ -264,7 +265,12 @@ async fn index(
     if let Some(file) = grid.export(query.clone(), &request).await? {
         return Ok(file);
     }
-    let tickets = grid.page(query, &request).await?;
+    // *Overdue* is worked out from the due times, never stored (BL-TKT-13).
+    let at = renox::db::now();
+    let tickets = grid
+        .page(query, &request)
+        .await?
+        .extend(|ticket| json!({ "overdue": ticket.is_overdue(at) }));
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         can_create: user.has_permission(permissions::CREATE),
@@ -335,6 +341,26 @@ pub struct TicketForm {
     /// The code of the party who asked for it, if one did.
     #[validate(max = 32)]
     pub requester_code: Option<String>,
+    /// When it was reported, Asia/Dubai (`2026-11-03T10:00`); now when
+    /// empty (BL-TKT-13).
+    #[validate(max = 32)]
+    pub reported_at: Option<String>,
+    /// Why it is entered late (required when it is).
+    #[validate(max = 500)]
+    pub late_reason: Option<String>,
+    /// The outage it refers to, if any.
+    #[validate(max = 100)]
+    pub outage_reference: Option<String>,
+}
+
+/// A `datetime-local` value (`2026-11-03T10:00`, seconds optional) read in
+/// Asia/Dubai.
+fn local_time(state: &AppState, text: &str) -> Option<DateTime> {
+    let text = text.trim();
+    let parsed = NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M")
+        .or_else(|_| NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M:%S"))
+        .ok()?;
+    Some(calendar(state).from_local(parsed))
 }
 
 /// A validation error on `field`, with the form's input filled in again.
@@ -356,6 +382,7 @@ pub(crate) async fn party_by_code(state: &AppState, code: &str) -> Result<Option
 async fn store(
     State(state): State<AppState>,
     lang: Lang,
+    user: AuthUser,
     Valid(form): Valid<TicketForm>,
 ) -> Result<Response> {
     let t = texts_in(&lang);
@@ -380,7 +407,32 @@ async fn store(
             }
         }
     }
-    let ticket = Tickets::open(&state, request).await?;
+    // *Reported at*: now unless given; a time more than M minutes ago is a
+    // late entry with its reason (BL-TKT-13).
+    let reported_at = match form.reported_at.as_deref().filter(|r| !r.trim().is_empty()) {
+        Some(text) => match local_time(&state, text) {
+            Some(at) => at,
+            None => return Err(invalid("reported_at", t("late.bad_time"), &form)),
+        },
+        None => renox::db::now(),
+    };
+    if reported_at > renox::db::now() {
+        return Err(invalid("reported_at", t("late.future"), &form));
+    }
+    let mut reported = crate::late::Reported::at(reported_at);
+    if let Some(reason) = &form.late_reason {
+        reported = reported.reason(reason);
+    }
+    if let Some(reference) = &form.outage_reference {
+        reported = reported.outage(reference);
+    }
+    let preview =
+        wl_kernel::late_entries::preview(&state, wl_kernel::tickets::TICKET_SUBJECT_TYPE, reported_at)
+            .await?;
+    if preview.needs_reason() && reported.reason.is_none() {
+        return Err(invalid("late_reason", t("late.reason_required"), &form));
+    }
+    let ticket = crate::late::open_reported(&state, user.id, request, reported).await?;
     Ok((
         Toast::success(t("created")),
         Redirect::route("wl_ticketing.show", &[&ticket.id.0])?,
@@ -432,6 +484,8 @@ pub(crate) struct Card {
     hold_reason: Option<String>,
     cancel_reason: Option<String>,
     created: Option<String>,
+    /// When it was reported, when that is not when it was opened.
+    reported: Option<String>,
 }
 
 /// One button for a lifecycle action that asks for nothing more.
@@ -497,6 +551,8 @@ pub(crate) struct ShowPage {
     /// Whether "Take" is offered: a role owns the ticket and the user holds
     /// it in the ticket's scope (BL-TKT-12).
     can_take: bool,
+    /// Whether a due time has passed (BL-TKT-13).
+    overdue: bool,
     /// The reassignment reason the assign sheet starts on.
     reason_selected: String,
 }
@@ -823,6 +879,7 @@ async fn show(
         hold_reason,
         cancel_reason: ticket.cancel_reason.clone(),
         created: when(&state, ticket.created_at),
+        reported: when(&state, ticket.reported_at),
     };
     let offered = offered(&ticket, &user);
     let users = if offered.assign {
@@ -924,6 +981,7 @@ async fn show(
         contract,
         can_new_time: no_show_row.is_some(),
         can_take,
+        overdue: ticket.is_overdue(renox::db::now()),
         no_show,
         reason_selected,
         tx: texts::all(&lang),

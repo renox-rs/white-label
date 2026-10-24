@@ -5,5 +5,9 @@
   <rx-page-header :title="tx['title']">
     <rx-link-button rx-if="can_create" route="wl_ticketing.create" :label="tx['new']" icon="plus"/>
   </rx-page-header>
-  <rx-grid :page="tickets"/>
+  <rx-grid :page="tickets">
+    <template rx-if="column.key == 'overdue'">
+      <rx-badge rx-if="row.overdue" kind="error" :text="tx['overdue']"/>
+    </template>
+  </rx-grid>
 </rx-page>

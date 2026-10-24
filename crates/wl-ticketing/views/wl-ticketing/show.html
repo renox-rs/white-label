@@ -30,6 +30,8 @@
     </rx-page-header>
     <rx-alert rx-if="ticket.vendor_document_flag" kind="warning" :title="tx['contract.vendor_document']" :message="tx['contract.vendor_document_visit']"/>
     <rx-alert rx-if="no_show" kind="warning" :title="tx['no_show.title']" :message="no_show"/>
+    <rx-alert rx-if="overdue" kind="error" :title="tx['overdue']" :message="card.response_due"/>
+    <rx-alert rx-if="ticket.late_entry" kind="warning" :title="tx['late.flag']" :message="ticket.late_reason"/>
     <rx-card :title="tx['sections.details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['fields.number']" :value="ticket.number" copyable/>
@@ -37,6 +39,7 @@
         <rx-entry :label="tx['fields.category']" :value="card.category"/>
         <rx-entry :label="tx['fields.priority']" :value="card.priority"/>
         <rx-entry :label="tx['fields.channel']" :value="card.channel"/>
+        <rx-entry rx-if="card.reported" :label="tx['fields.reported_at']" :value="card.reported"/>
         <rx-entry :label="tx['fields.requester']" :value="card.requester" :placeholder="tx['none']"/>
         <rx-entry :label="tx['fields.contract']" rx-if="contract" :value="contract.number" :url="route('wl_ticketing.contract', contract.id)"/>
         <rx-entry :label="tx['fields.assignee']" :value="card.assignee" :placeholder="tx['none']"/>

@@ -151,6 +151,17 @@ pub struct Ticket {
     pub assignee_role_key: Option<String>,
     /// The role and scope for people: `Receivables (ACME Properties LLC)`.
     pub assignee_role_display: Option<String>,
+    /// When the problem was reported (the business time, BL-TKT-13); `None`
+    /// for a ticket opened when it was reported.
+    pub reported_at: Option<DateTime>,
+    /// Whether it was entered more than M minutes after it was reported.
+    pub late_entry: bool,
+    /// Why it was entered late.
+    pub late_reason: Option<String>,
+    /// The outage the late entry refers to, if any.
+    pub outage_reference: Option<String>,
+    /// The kernel's late entry (`wl_late_entries`) it was recorded under.
+    pub late_entry_id: Option<i64>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -195,6 +206,18 @@ impl Ticket {
             (None, Some(id)) => Some(Assignee::Party { id: PartyId(id) }),
             (None, None) => None,
         }
+    }
+
+    /// Whether it is overdue at `now` (BL-TKT-13): the response due time has
+    /// passed and work has not started, or the resolution due time has
+    /// passed and it is not resolved. Worked out, never stored.
+    pub fn is_overdue(&self, now: DateTime) -> bool {
+        if !self.is_open() {
+            return false;
+        }
+        let response_late = self.responded_at.is_none() && self.response_due.is_some_and(|due| now > due);
+        let resolution_late = self.resolved_at.is_none() && self.resolution_due.is_some_and(|due| now > due);
+        response_late || resolution_late
     }
 
     /// The role that owns it until a holder takes it, if a role does.
