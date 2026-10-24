@@ -433,6 +433,7 @@ impl Module for WlInventory {
     }
 
     fn register(&self, app: &mut Registry) {
+        goods_receipt::register_late_entry();
         app.view_data::<screens::SuppliersPage>()
             .view_data::<screens::ReorderPage>()
             .view_data::<screens::ScorePage>()

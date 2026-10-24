@@ -841,3 +841,116 @@ async fn a_dispatch_over_the_limit_is_refused_by_the_real_credit_recheck_and_hol
         "the real checker held the real order"
     );
 }
+
+// ------------------------------------------------------------- late entry
+
+/// `PLT.ACL.10` with the 07 limits for goods receipts (30 minutes, 24
+/// hours): an arrival 10 minutes ago is on time; 5 hours ago it needs a
+/// reason and carries the flag; 30 hours ago it waits for the production
+/// manager and the receipt keeps its arrival time until then.
+#[renox::test]
+async fn the_arrival_of_a_goods_receipt_is_flagged_after_30_minutes_and_approved_after_24_hours() {
+    use renox::chrono::Duration;
+    use renox::state_machine::StateMachine;
+    use wl_inventory::goods_receipt::{GoodsReceipt, GoodsReceiptStatus, enter_arrival};
+    use wl_kernel::late_entries::{Entered, limits_for};
+
+    let app = manufacturing_booted().await;
+    let limits = limits_for(app.db(), wl_inventory::goods_receipt::LATE_SUBJECT_TYPE)
+        .await
+        .unwrap();
+    assert_eq!(
+        (limits.flag_after_minutes, limits.approval_after_hours),
+        (30, 24)
+    );
+    let keeper = person(&app, "Kim", host::roles::STOREKEEPER).await;
+    let manager = person(&app, "Mona", host::roles::PRODUCTION_MANAGER).await;
+    let supplier = company(&app, "Gulf Resin LLC").await;
+    let mut store = wl_inventory::Location::new("RAW", "Raw materials");
+    store.save(app.db()).await.unwrap();
+    let draft = || async {
+        let mut receipt = GoodsReceipt {
+            supplier_party_id: supplier.0,
+            location_id: store.id,
+            status: GoodsReceiptStatus::Draft,
+            ..GoodsReceipt::default()
+        };
+        let mut tx = app.db().begin().await.unwrap();
+        receipt
+            .insert_in_state(&mut tx, GoodsReceiptStatus::Draft, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        receipt
+    };
+    let appr = &app;
+    let reload = |id| async move { GoodsReceipt::find_or_404(appr.db(), id).await.unwrap() };
+    let now = renox::db::now();
+
+    let on_time = draft().await;
+    let entered = enter_arrival(
+        app.state(),
+        keeper.id,
+        on_time.id,
+        now - Duration::minutes(10),
+        None,
+    )
+    .await
+    .unwrap();
+    assert!(matches!(entered, Entered::OnTime { .. }), "{entered:?}");
+    assert!(!reload(on_time.id).await.late_entry);
+
+    let flagged = draft().await;
+    let hours = now - Duration::hours(5);
+    assert!(
+        enter_arrival(app.state(), keeper.id, flagged.id, hours, None)
+            .await
+            .is_err(),
+        "a late entry needs a reason"
+    );
+    let entered = enter_arrival(
+        app.state(),
+        keeper.id,
+        flagged.id,
+        hours,
+        Some("Tablet down, paper note"),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(entered, Entered::Recorded { .. }), "{entered:?}");
+    let stored = reload(flagged.id).await;
+    assert!(stored.late_entry);
+    assert_eq!(stored.arrived_at, Some(hours));
+
+    let waiting = draft().await;
+    let long_ago = now - Duration::hours(30);
+    let entered = enter_arrival(
+        app.state(),
+        keeper.id,
+        waiting.id,
+        long_ago,
+        Some("Weekend delivery"),
+    )
+    .await
+    .unwrap();
+    let Entered::Pending {
+        approval_request_id,
+        ..
+    } = entered
+    else {
+        panic!("{entered:?}");
+    };
+    assert_eq!(reload(waiting.id).await.arrived_at, None, "unchanged");
+    assert!(
+        approvals::approve(app.state(), approval_request_id, &keeper, "")
+            .await
+            .is_err(),
+        "the storekeeper cannot approve"
+    );
+    approvals::approve(app.state(), approval_request_id, &manager, "")
+        .await
+        .unwrap();
+    let stored = reload(waiting.id).await;
+    assert!(stored.late_entry);
+    assert_eq!(stored.arrived_at, Some(long_ago));
+}

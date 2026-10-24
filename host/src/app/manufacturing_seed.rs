@@ -18,7 +18,7 @@
 //!   [`hr`] are the builder calls of the invoicing, payments, sales, stock and
 //!   HR modules for a manufacturer; [`ManufacturingSeed`] (command
 //!   `manufacturing:install`) stores what the modules lack: the late-entry
-//!   limits of a production report, the lead sources 07 uses, the onboarding
+//!   limits of a production report and a goods receipt, the lead sources 07 uses, the onboarding
 //!   checklists and the SOP library. A re-run changes nothing and keeps what
 //!   the client changed.
 //!
@@ -558,33 +558,38 @@ pub async fn install(state: &AppState) -> Result<Installed> {
     Ok(installed)
 }
 
-/// Only the production report has these limits. Deferred (F7, BL-MFG-14): the
-/// same limits for goods receipts and for the inspections of returned goods
-/// (07 §7.1 *Late entry*), which keep their business time but have no limit
-/// installed; and no kind is registered for calibration certificates
+/// M and N of a production report and of a goods receipt entered after the
+/// fact (`PLT.ACL.10`, 07 §7.1 *Late entry*): flagged with a reason after 30
+/// minutes, approved by the production manager after 24 hours. A limit the
+/// client changed is kept. Deferred (F7, BL-MFG-14): the inspections of
+/// returned goods have no business time (the decision is stamped when it is
+/// made), and no kind is registered for calibration certificates
 /// (`DOC.EXP.01`), there being no equipment record to attach them to.
-///
-/// M and N of a production report entered after the shift (`PLT.ACL.10`):
-/// flagged with a reason after 30 minutes, approved by the production manager
-/// after 24 hours. A limit the client changed is kept.
 async fn install_late_entry_limits(db: &Db) -> Result<usize> {
-    let found = LateEntryLimits::query()
-        .where_(LateEntryLimits::SUBJECT_TYPE.eq(manufacturing::late_report::SUBJECT_TYPE))
-        .count(db)
-        .await?;
-    if found > 0 {
-        return Ok(0);
-    }
-    set_limits(
-        db,
+    let mut created = 0;
+    for subject_type in [
         manufacturing::late_report::SUBJECT_TYPE,
-        Limits {
-            flag_after_minutes: LATE_ENTRY_FLAG_MINUTES,
-            approval_after_hours: LATE_ENTRY_APPROVAL_HOURS,
-        },
-    )
-    .await?;
-    Ok(1)
+        wl_inventory::goods_receipt::LATE_SUBJECT_TYPE,
+    ] {
+        let found = LateEntryLimits::query()
+            .where_(LateEntryLimits::SUBJECT_TYPE.eq(subject_type))
+            .count(db)
+            .await?;
+        if found > 0 {
+            continue;
+        }
+        set_limits(
+            db,
+            subject_type,
+            Limits {
+                flag_after_minutes: LATE_ENTRY_FLAG_MINUTES,
+                approval_after_hours: LATE_ENTRY_APPROVAL_HOURS,
+            },
+        )
+        .await?;
+        created += 1;
+    }
+    Ok(created)
 }
 
 /// Turns off the seeded lead sources 07 does not use.
