@@ -65,7 +65,7 @@ fn grid_is_a_child_of_the_page(name: &str) {
         lines[at].starts_with("  <rx-grid"),
         "{name}: the grid is a direct child of <rx-page>"
     );
-    let child = |line: &&str| line.starts_with("  <") && !line.starts_with("   ");
+    let child = |line: &&&str| line.starts_with("  <") && !line.starts_with("   ");
     for line in lines[..at].iter().filter(child) {
         assert!(
             ["  <rx-page-header", "  <rx-include", "  </rx-page-header"]

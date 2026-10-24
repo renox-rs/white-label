@@ -185,7 +185,7 @@ impl Scene {
         assert_eq!(lease.status, LeaseStatus::NoticeGiven);
         assert!(lease.actual_move_out.is_none());
         assert_eq!(lease.termination_credit, 0);
-        assert_ne!(self.t.unit_now(&self.unit).await.status, UnitStatus::Vacant);
+        assert_ne!(self.t.unit_now(&self.unit).await.status, UnitStatus::Available);
         assert!(self.t.cheques.returns().is_empty());
         assert_eq!(self.returned(), 0);
         assert!(
@@ -223,7 +223,7 @@ async fn bl_prp_33_terminate_commits_every_money_effect_together() {
 
     let lease = s.t.reload(&s.lease).await;
     assert_eq!(lease.status, LeaseStatus::Terminated);
-    assert_eq!(s.t.unit_now(&s.unit).await.status, UnitStatus::Vacant);
+    assert_eq!(s.t.unit_now(&s.unit).await.status, UnitStatus::Available);
     let june = s.invoice_of(d(6, 1)).await;
     let july = s.invoice_of(d(7, 1)).await;
     assert_eq!(s.notes_of(june).await, 1);

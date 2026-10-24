@@ -8,7 +8,6 @@ mod support;
 
 use property::agreement::{self, NewAgreement};
 use property::leases::create_draft;
-use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::tickets::ComplianceFlagRaised;
 

@@ -244,7 +244,10 @@ pub async fn ensure(state: &AppState, request: PdfRequest) -> Result<Option<Gene
         request.template,
         request.title.clone(),
     );
-    let Some(document_id) = generator(state).generate(state, request).await? else {
+    let Some(generator) = generator(state) else {
+        return Ok(None);
+    };
+    let Some(document_id) = generator.generate(state, request).await? else {
         return Ok(None);
     };
     GeneratedDocument::create(
